@@ -58,21 +58,51 @@ function normalizeItem(raw) {
     id: raw.id,
     code,
     name,
+    nombre: name,
     full_name: fullName,
     department,
+    departamento: department,
     province,
+    provincia: province,
     district,
+    distrito: district,
     ubigeo,
     dep_id: typeof raw.dep_id === 'number' ? raw.dep_id : null,
     prov_id: typeof raw.prov_id === 'number' ? raw.prov_id : null,
     dist_id: typeof raw.dist_id === 'number' ? raw.dist_id : null,
     address,
+    direccion: address,
     phone: raw.telefono || '(01) 500-7878',
+    telefono: raw.telefono || '(01) 500-7878',
     schedule: scheduleText,
+    horario: scheduleText,
     latitude: typeof raw.latitud === 'number' ? raw.latitud : null,
     longitude: typeof raw.longitud === 'number' ? raw.longitud : null,
     is_active: true,
     updated_at: new Date().toISOString()
+  };
+}
+
+function toDbRow(item) {
+  return {
+    id: item.id,
+    code: item.code,
+    name: item.name,
+    full_name: item.full_name,
+    department: item.department,
+    province: item.province,
+    district: item.district,
+    ubigeo: item.ubigeo,
+    dep_id: item.dep_id,
+    prov_id: item.prov_id,
+    dist_id: item.dist_id,
+    address: item.address,
+    phone: item.phone,
+    schedule: item.schedule,
+    latitude: item.latitude,
+    longitude: item.longitude,
+    is_active: item.is_active,
+    updated_at: item.updated_at
   };
 }
 
@@ -192,7 +222,7 @@ async function runShalomSync() {
   let upserted = 0;
   const batchSize = 100;
   for (let i = 0; i < normalized.length; i += batchSize) {
-    const batch = normalized.slice(i, i + batchSize);
+    const batch = normalized.slice(i, i + batchSize).map(toDbRow);
     const { error } = await supabase
       .from('shalom_agencies')
       .upsert(batch, { onConflict: 'id' });

@@ -81,14 +81,19 @@ export interface ShalomAgency {
   prov_id?: number | null;
   dist_id?: number | null;
   nombre: string;
+  name?: string;
   full_name?: string;
   direccion: string;
+  address?: string;
   telefono?: string | null;
+  phone?: string | null;
   horario?: string | null;
+  schedule?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   distance_meters?: number;
   is_active?: boolean;
+  updated_at?: string;
   full_display_name?: string;
 }
 

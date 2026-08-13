@@ -1,0 +1,35 @@
+name: Sincronización Diaria 23:59 de Agencias Shalom
+
+on:
+  # Ejecución automática todas las noches a las 23:59 (Hora Perú UTC-5 = 04:59 UTC)
+  schedule:
+    - cron: '59 4 * * *'
+  # Permite ejecución manual desde la pestaña Actions en GitHub
+  workflow_dispatch:
+
+jobs:
+  sync-shalom-agencies:
+    name: Sincronización Inteligente Shalom (Diff, Nuevas, Modificadas y Bajas)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Configurar Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Instalar dependencias
+        run: npm ci
+
+      - name: 🚀 Ejecutar Pipeline de Ingesta Inteligente
+        env:
+          SHALOM_API_KEY: ${{ secrets.SHALOM_API_KEY || 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma' }}
+          SHALOM_API_URL: ${{ secrets.SHALOM_API_URL || 'https://api.shalom-api-peru.com' }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://uwmdjsxwetjvsxsdngko.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3bWRqc3h3ZXRqdnN4c2RuZ2tvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2NDE5MTEsImV4cCI6MjEwMjIxNzkxMX0.KaqryIyoe4IDQGTJD_cswZkW-wfgnMcyV9tJoWxHMq8' }}
+        run: node scripts/sync-shalom.mjs

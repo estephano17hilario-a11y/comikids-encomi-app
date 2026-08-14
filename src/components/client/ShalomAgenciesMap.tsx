@@ -314,12 +314,19 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
 
         {/* Barra Flotante Superior */}
         <div className="absolute top-3 left-3 right-3 z-[400] flex items-center justify-between pointer-events-none gap-2">
-          <div className="bg-slate-900/90 backdrop-blur-xl px-4 py-2 rounded-2xl border border-white/10 shadow-lg text-xs flex items-center gap-2 pointer-events-auto">
+          
+          {/* Botón interactivo de sedes encontradas: al presionarlo encuadra todas las sedes (igual que la brújula) */}
+          <button
+            type="button"
+            onClick={handleFitAll}
+            className="bg-slate-900/90 hover:bg-slate-800 active:scale-95 transition-all px-4 py-2 rounded-2xl border border-white/15 shadow-lg text-xs flex items-center gap-2 pointer-events-auto cursor-pointer"
+            title="Encuadrar todas las sedes en el mapa"
+          >
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
             <span className="font-semibold text-white text-xs">
               {validAgencies.length} sedes disponibles
             </span>
-          </div>
+          </button>
 
           <div className="flex items-center gap-2 pointer-events-auto">
             <button

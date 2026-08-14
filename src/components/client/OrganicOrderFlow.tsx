@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { ordersService } from '../../services/ordersService';
-import { useShalomAgencies, formatFullAgencyName, cleanAddressText, formatShortAgencyName } from '../../hooks/useShalomAgencies';
+import { useShalomAgencies, formatFullAgencyName, cleanAddressText } from '../../hooks/useShalomAgencies';
 import { searchDistritos } from '../../data/distritosLima';
 import { PlacesMapPicker } from './PlacesMapPicker';
 import { ShalomAgenciesMap } from './ShalomAgenciesMap';
@@ -22,13 +22,51 @@ import {
   Search,
   X,
   User,
-  ChevronDown,
-  Compass
+  ChevronDown
 } from 'lucide-react';
 
 interface Props {
   onSuccess?: () => void;
 }
+
+/**
+ * Componente que resalta y subraya las letras coincidentes con la búsqueda
+ */
+const HighlightMatch: React.FC<{ text: string; query: string; className?: string }> = ({
+  text,
+  query,
+  className = ''
+}) => {
+  if (!query || !query.trim() || !text) {
+    return <span className={className}>{text}</span>;
+  }
+
+  const q = query.trim();
+  try {
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escaped})`, 'gi');
+    const parts = text.split(regex);
+
+    return (
+      <span className={className}>
+        {parts.map((part, idx) =>
+          regex.test(part) ? (
+            <span
+              key={idx}
+              className="underline decoration-cyan-400 decoration-2 underline-offset-2 font-black text-cyan-300 bg-cyan-400/15 px-0.5 rounded"
+            >
+              {part}
+            </span>
+          ) : (
+            <span key={idx}>{part}</span>
+          )
+        )}
+      </span>
+    );
+  } catch {
+    return <span className={className}>{text}</span>;
+  }
+};
 
 export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const { createPedido, activeShippingMethods } = useOrders();
@@ -37,16 +75,63 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   // Step state: 1 = WhatsApp, 2 = Método, 3 = Datos de Destino + Nombre
   const [organicStep, setOrganicStep] = useState<1 | 2 | 3>(1);
 
-  // Form Fields
-  const [whatsapp, setWhatsapp] = useState(currentUser?.dni || '');
-  const [selectedMethodId, setSelectedMethodId] = useState<string>(activeShippingMethods[0]?.id || 'met-shalom');
+  // Form Fields con Auto-Persistencia LocalStorage
+  const [whatsapp, setWhatsapp] = useState<string>(() => {
+    return localStorage.getItem('incomi_saved_phone') || currentUser?.dni || '';
+  });
 
-  // Shalom Hook & Synced Search
+  const [nombreCompleto, setNombreCompleto] = useState<string>(() => {
+    return localStorage.getItem('incomi_saved_fullname') || currentUser?.nombre_completo || '';
+  });
+
+  const [dniShalom, setDniShalom] = useState<string>(() => {
+    return localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
+  });
+
+  const [distritoQuery, setDistritoQuery] = useState<string>(() => {
+    return localStorage.getItem('incomi_saved_district') || '';
+  });
+
+  const [direccionExacta, setDireccionExacta] = useState<string>(() => {
+    return localStorage.getItem('incomi_saved_address') || '';
+  });
+
+  const [referencia, setReferencia] = useState<string>(() => {
+    return localStorage.getItem('incomi_saved_reference') || '';
+  });
+
+  const [selectedMethodId, setSelectedMethodId] = useState<string>(
+    activeShippingMethods[0]?.id || 'met-shalom'
+  );
+
+  // Auto-guardado en LocalStorage cuando cambian los campos
+  useEffect(() => {
+    if (whatsapp) localStorage.setItem('incomi_saved_phone', whatsapp);
+  }, [whatsapp]);
+
+  useEffect(() => {
+    if (nombreCompleto) localStorage.setItem('incomi_saved_fullname', nombreCompleto);
+  }, [nombreCompleto]);
+
+  useEffect(() => {
+    if (dniShalom) localStorage.setItem('incomi_saved_doc', dniShalom);
+  }, [dniShalom]);
+
+  useEffect(() => {
+    if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery);
+  }, [distritoQuery]);
+
+  useEffect(() => {
+    if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta);
+  }, [direccionExacta]);
+
+  useEffect(() => {
+    if (referencia) localStorage.setItem('incomi_saved_reference', referencia);
+  }, [referencia]);
+
+  // Shalom Hook
   const {
     agencies: shalomAgenciesList,
-    allAgencies,
-    nearestAgency,
-    loading: loadingAgencies,
     isLocating,
     gpsError,
     userLocation,
@@ -60,23 +145,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   } = useShalomAgencies({ initialDepartment: 'TODOS' });
 
   const [selectedAgencyObject, setSelectedAgencyObject] = useState<ShalomAgency | null>(null);
-  const [dniShalom, setDniShalom] = useState(currentUser?.dni || '');
   const [isAgencyListOpen, setIsAgencyListOpen] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
 
-  // Motorizado Branch Fields
-  const [distritoQuery, setDistritoQuery] = useState('');
+  // Motorizado Branch Coordinates
   const [showDistritoSuggestions, setShowDistritoSuggestions] = useState(false);
-  const [direccionExacta, setDireccionExacta] = useState('');
-  const [referencia, setReferencia] = useState('');
   const [lat, setLat] = useState<number>(-12.1215);
   const [lng, setLng] = useState<number>(-77.0298);
 
   // Custom Method Text
   const [customDestinoText, setCustomDestinoText] = useState('');
-
-  // Name (Common for all methods)
-  const [nombreCompleto, setNombreCompleto] = useState(currentUser?.nombre_completo || '');
 
   // Secret Empresa Prompt
   const [isEmpresaUnlock, setIsEmpresaUnlock] = useState(false);
@@ -89,7 +167,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
   const suggestedDistritos = searchDistritos(distritoQuery);
 
-  // Auto-seleccionar primera agencia por defecto si no hay ninguna
+  // Auto-seleccionar primera agencia por defecto
   useEffect(() => {
     if (shalomAgenciesList.length > 0 && !selectedAgencyObject) {
       setSelectedAgencyObject(shalomAgenciesList[0]);
@@ -117,13 +195,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     }
   };
 
-  useEffect(() => {
-    if (currentUser) {
-      setWhatsapp(currentUser.dni);
-      setNombreCompleto(currentUser.nombre_completo);
-    }
-  }, [currentUser]);
-
   const selectedMethod: MetodoEnvio | undefined =
     activeShippingMethods.find(m => m.id === selectedMethodId) || activeShippingMethods[0];
 
@@ -148,6 +219,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       return;
     }
 
+    // Persistir teléfono
+    localStorage.setItem('incomi_saved_phone', whatsapp.trim());
     setOrganicStep(2);
   };
 
@@ -190,7 +263,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         return;
       }
       if (!dniShalom.trim()) {
-        setErrorMsg('Por favor ingresa tu DNI para recoger en la agencia.');
+        setErrorMsg('Por favor ingresa tu DNI o Carnet de Extranjería (CE).');
         return;
       }
     }
@@ -205,6 +278,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         return;
       }
     }
+
+    // Persistir todos los datos
+    localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
+    localStorage.setItem('incomi_saved_doc', dniShalom.trim());
+    if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery.trim());
+    if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta.trim());
+    if (referencia) localStorage.setItem('incomi_saved_reference', referencia.trim());
 
     setSubmitting(true);
     try {
@@ -233,7 +313,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
       if (selectedMethod?.tipo_formulario === 'shalom') {
         const fullAgencyStr = selectedAgencyObject ? formatFullAgencyName(selectedAgencyObject) : 'AGENCIA SHALOM CENTRAL';
-        finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI Recojo: ${dniShalom.trim()})`;
+        finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dniShalom.trim()})`;
       } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
         finalDestinoDetalle = `${distritoQuery.trim()} • ${direccionExacta.trim()}${referencia.trim() ? ` (Ref: ${referencia.trim()})` : ''}`;
       } else {
@@ -273,7 +353,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   return (
     <div className="w-full max-w-xl mx-auto py-2 font-sans tracking-tight">
       
-      {/* Modal de Mapa Apple Vision Pro con Buscador Sincronizado y Eje Y Amplio */}
+      {/* Modal de Mapa Apple Vision Pro con Buscador Sincronizado */}
       {showMapModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-2xl animate-fadeIn">
           <div className="w-full max-w-4xl bg-slate-900/95 border border-white/15 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
@@ -399,7 +479,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           </div>
 
           {/* =====================================================================
-              PASO 1: WHATSAPP
+              PASO 1: WHATSAPP (CON MEMORIA AUTO-GUARDADA)
               ===================================================================== */}
           {organicStep === 1 && (
             <form onSubmit={handleWhatsappSubmit} className="space-y-6 animate-fadeIn">
@@ -549,7 +629,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       )}
                     </div>
 
-                    {/* Tarjeta Principal de la Agencia Seleccionada (Recuadro Grande Apple Vision Pro) */}
+                    {/* Tarjeta Principal de la Agencia Seleccionada */}
                     {selectedAgencyObject && !isAgencyListOpen && (
                       <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.05] border border-white/10 backdrop-blur-2xl shadow-xl space-y-3">
                         <div className="flex items-start justify-between gap-3">
@@ -597,7 +677,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </div>
                     )}
 
-                    {/* Buscador & Lista de Recuadros Grandes Amplia (Sin recortes ni tiras chicas) */}
+                    {/* Buscador & Lista de Recuadros Grandes con Resaltado de Texto */}
                     {(isAgencyListOpen || !selectedAgencyObject) && (
                       <div className="space-y-3 animate-fadeIn">
                         
@@ -626,7 +706,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           )}
                         </div>
 
-                        {/* Recuadro Amplio con Tarjetas Grandes Estilo Cupertino */}
+                        {/* Recuadro Amplio con Tarjetas Grandes y Letras Resaltadas */}
                         <div className="max-h-[440px] overflow-y-auto space-y-2.5 p-2 rounded-3xl bg-slate-950/80 border border-white/10 shadow-2xl">
                           {shalomAgenciesList.length === 0 ? (
                             <p className="text-center text-xs text-slate-400 py-6">
@@ -639,6 +719,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               const distanceText = ag.distance_meters !== undefined
                                 ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
                                 : null;
+
+                              const titleText = `${ag.departamento || ''} / ${ag.provincia || ''} / ${ag.distrito || ag.nombre || ''}`;
 
                               return (
                                 <button
@@ -655,15 +737,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                       : 'bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300'
                                   }`}
                                 >
-                                  {/* Cabecera de la tarjeta con nombre y badge de distancia */}
+                                  {/* Cabecera con Nombre y Resaltado */}
                                   <div className="flex items-start justify-between gap-3">
                                     <div>
                                       <h5 className="text-sm font-bold text-white tracking-tight leading-snug">
-                                        {ag.distrito || ag.nombre}
+                                        <HighlightMatch text={titleText} query={agencySearchQuery} />
                                       </h5>
-                                      <p className="text-[11px] font-medium text-slate-400 mt-0.5">
-                                        {ag.departamento} • {ag.provincia}
-                                      </p>
                                     </div>
 
                                     {distanceText && (
@@ -673,9 +752,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                     )}
                                   </div>
 
-                                  {/* Dirección completa legible sin truncar */}
+                                  {/* Dirección completa con Resaltado si coincide */}
                                   <p className="text-xs text-slate-300 leading-relaxed">
-                                    {cleanAddr || 'Dirección de la sede'}
+                                    <HighlightMatch text={cleanAddr || 'Dirección de la sede'} query={agencySearchQuery} />
                                   </p>
 
                                   {/* Horario */}
@@ -691,30 +770,34 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           )}
                         </div>
 
+                        {/* Botón Destacado Más Grande y con Color Cyan para Cerrar Lista */}
                         {selectedAgencyObject && (
-                          <button
-                            type="button"
-                            onClick={() => setIsAgencyListOpen(false)}
-                            className="text-xs font-semibold text-slate-400 hover:text-white block mx-auto pt-1 cursor-pointer"
-                          >
-                            Cerrar lista
-                          </button>
+                          <div className="pt-2 flex justify-center">
+                            <button
+                              type="button"
+                              onClick={() => setIsAgencyListOpen(false)}
+                              className="px-6 py-2.5 rounded-2xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-xs sm:text-sm font-bold border border-cyan-500/30 shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                            >
+                              <X className="w-4 h-4" />
+                              <span>Cerrar lista de agencias</span>
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}
                   </div>
 
-                  {/* DNI para recoger en agencia */}
+                  {/* DNI o CE de quien recibirá con Auto-Persistencia */}
                   <div className="space-y-2 pt-2">
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      DNI o Documento de quien recogerá *
+                      DNI o Carnet de Extranjería (CE) de la persona que recibirá *
                     </label>
                     <input
                       type="text"
                       required
                       value={dniShalom}
                       onChange={e => setDniShalom(e.target.value)}
-                      placeholder="Número de documento de identidad"
+                      placeholder="Número de DNI o Carnet de Extranjería (CE)"
                       className="w-full px-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm font-mono text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 tracking-wider"
                     />
                   </div>
@@ -722,7 +805,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               )}
 
-              {/* RAMA B: MOTORIZADO LOCAL LIMA */}
+              {/* RAMA B: MOTORIZADO LOCAL LIMA (CON AUTO-PERSISTENCIA) */}
               {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
                 <div className="space-y-4">
                   <div className="space-y-2 relative">
@@ -823,7 +906,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               )}
 
-              {/* CAMPO OBLIGATORIO: NOMBRE COMPLETO */}
+              {/* CAMPO OBLIGATORIO: NOMBRE COMPLETO (CON AUTO-PERSISTENCIA) */}
               <div className="space-y-2 pt-2 border-t border-white/[0.08]">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
                   Tu Nombre Completo (Destinatario) *

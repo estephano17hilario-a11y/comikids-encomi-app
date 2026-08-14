@@ -182,7 +182,7 @@ function findMatchingDistrict(rawDistrict: string, fullAddressText: string = '')
   return rawDistrict.trim() || 'Lima';
 }
 
-function cleanStreetName(rawStreet: string, houseNumber?: string): string {
+function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHint?: string): string {
   if (!rawStreet) return '';
 
   let street = rawStreet.trim();
@@ -207,8 +207,16 @@ function cleanStreetName(rawStreet: string, houseNumber?: string): string {
     .replace(/^prolongacion\s+/i, 'Prol. ')
     .replace(/^prolongación\s+/i, 'Prol. ');
 
-  if (houseNumber && !street.includes(houseNumber)) {
-    return `${street} ${houseNumber}`;
+  let num = houseNumber || '';
+  if (!num && searchQueryHint) {
+    const numMatch = searchQueryHint.match(/\b\d+[a-zA-Z]?\b/);
+    if (numMatch) {
+      num = numMatch[0];
+    }
+  }
+
+  if (num && !street.includes(num)) {
+    return `${street} ${num}`;
   }
 
   return street;
@@ -364,7 +372,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
           const lon = coordsArr[0]?.toString();
           const lat = coordsArr[1]?.toString();
 
-          const street = cleanStreetName(props.street || props.name || cleanQuery, props.housenumber);
+          const street = cleanStreetName(props.street || props.name || cleanQuery, props.housenumber, cleanQuery);
           const rawDist = props.district || props.city || props.locality || 'Lima';
           const district = findMatchingDistrict(rawDist, props.county || '');
           const sub = `${district}, Lima, Perú`;
@@ -706,12 +714,33 @@ export const PlacesMapPicker: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Botón Principal Flotante: CONFIRMAR UBICACIÓN */}
-        <div className="absolute bottom-4 left-4 right-4 z-[400]">
+        {/* Panel Inferior Flotante: Especificación Exacta de Dirección (Número, Cruce, Dpto) + Botón Confirmar */}
+        <div className="absolute bottom-4 left-4 right-4 z-[400] space-y-2.5">
+          
+          {/* Campo editable de dirección milimétrica exacta */}
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-500/40 shadow-2xl space-y-1.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
+                📍 Dirección Exacta (Número / Cruce / Dpto):
+              </span>
+              <span className="text-[10px] text-cyan-400 font-mono font-bold bg-cyan-500/15 px-2 py-0.5 rounded-full border border-cyan-500/30">
+                Punto fijado
+              </span>
+            </div>
+            <input
+              type="text"
+              value={detectedAddress}
+              onChange={(e) => setDetectedAddress(e.target.value)}
+              placeholder="Ej. Jr. Huamanga 1586, Cruce con Av. México / Dpto 302..."
+              className="w-full px-4 py-3 bg-white/[0.08] border border-white/20 rounded-xl text-xs sm:text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 shadow-inner"
+            />
+          </div>
+
+          {/* Botón Principal: CONFIRMAR UBICACIÓN */}
           <button
             type="button"
             onClick={handleConfirm}
-            className={`w-full py-5 px-6 rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-3 shadow-2xl transition-all cursor-pointer active:scale-[0.98] ${
+            className={`w-full py-4.5 sm:py-5 px-6 rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-3 shadow-2xl transition-all cursor-pointer active:scale-[0.98] ${
               hasConfirmed
                 ? 'bg-emerald-500 text-white shadow-emerald-500/50 border-2 border-emerald-400'
                 : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white shadow-cyan-500/50 hover:brightness-110 border-2 border-cyan-400'

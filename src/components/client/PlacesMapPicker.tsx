@@ -187,7 +187,7 @@ function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHin
 
   let street = rawStreet.trim();
 
-  // Limpiar prefijos ciclovías
+  // Limpiar prefijos de ciclovías o vías auxiliares
   if (street.toLowerCase().startsWith('ciclovia ') || street.toLowerCase().startsWith('ciclovía ')) {
     street = street.replace(/ciclov[ií]a\s+/i, 'Av. ');
   } else if (street.toLowerCase().startsWith('via auxiliar ') || street.toLowerCase().startsWith('vía auxiliar ')) {
@@ -220,6 +220,51 @@ function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHin
   }
 
   return street;
+}
+
+// Formatear dirección completa ultra-específica (calle, número, urbanización, cruces)
+function formatFullDetailedAddress(props: any, lat: number, lng: number, searchQueryHint?: string): { fullAddress: string; district: string } {
+  let street = props.street || '';
+  let name = props.name || '';
+  let houseNumber = props.housenumber || '';
+  let locality = props.locality || props.quarter || props.suburb || props.neighbourhood || '';
+  let rawDist = props.district || props.city || props.town || props.municipality || 'Lima';
+
+  let mainWay = street;
+  let landmark = '';
+
+  if (!mainWay && name) {
+    mainWay = name;
+  } else if (mainWay && name && name !== mainWay) {
+    // Si name es un lugar/comercio/colegio/cruce interesante
+    if (!name.toLowerCase().includes('colegio') && !name.toLowerCase().includes('educativa')) {
+      landmark = name;
+    }
+  }
+
+  let formattedStreet = cleanStreetName(mainWay || 'Ubicación', houseNumber, searchQueryHint);
+
+  let fullAddress = formattedStreet;
+
+  // Añadir Urbanización si está presente
+  if (locality && !fullAddress.toLowerCase().includes(locality.toLowerCase())) {
+    const cleanLoc = locality.replace(/^urb\.?\s*/i, '').trim();
+    if (cleanLoc && !cleanLoc.toLowerCase().startsWith('pueblo joven') && !cleanLoc.toLowerCase().startsWith('asociacion')) {
+      fullAddress = `${fullAddress}, Urb. ${cleanLoc}`;
+    }
+  }
+
+  // Añadir Referencia / Cruce si está presente
+  if (landmark && !fullAddress.toLowerCase().includes(landmark.toLowerCase())) {
+    fullAddress = `${fullAddress} (${landmark})`;
+  }
+
+  const district = findMatchingDistrict(rawDist, locality || props.county || '');
+
+  return {
+    fullAddress: fullAddress || `Ubicación GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+    district: district || 'Lima'
+  };
 }
 
 export const PlacesMapPicker: React.FC<Props> = ({
@@ -255,14 +300,14 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
 
-  // Motor Multi-API de Geocodificación Inversa Ultra-Rápido y Resistente
+  // Motor Multi-API de Geocodificación Inversa Ultra-Detallado
   const fetchAddressFromCoords = useCallback(async (latitude: number, longitude: number) => {
     setIsGeocoding(true);
-    setStatusMessage('Consultando calle y numeración...');
+    setStatusMessage('Consultando calle, numeración y urbanización...');
 
     let addressResolved = false;
 
-    // 1. Primer Intento: Photon by Komoot (Respuesta JSON instantánea con OSM)
+    // 1. Photon by Komoot
     try {
       const photonRes = await fetch(
         `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`,
@@ -274,15 +319,10 @@ export const PlacesMapPicker: React.FC<Props> = ({
         const firstFeature = photonData?.features?.[0]?.properties;
 
         if (firstFeature) {
-          const street = firstFeature.street || firstFeature.name || '';
-          const houseNumber = firstFeature.housenumber || '';
-          const rawDist = firstFeature.district || firstFeature.city || firstFeature.locality || '';
+          const { fullAddress, district } = formatFullDetailedAddress(firstFeature, latitude, longitude);
 
-          if (street) {
-            const cleanStreet = cleanStreetName(street, houseNumber);
-            const district = findMatchingDistrict(rawDist, firstFeature.locality || '');
-
-            setDetectedAddress(cleanStreet);
+          if (fullAddress && !fullAddress.startsWith('Ubicación GPS')) {
+            setDetectedAddress(fullAddress);
             setDetectedDistrict(district);
             addressResolved = true;
           }
@@ -292,7 +332,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
       console.warn('Photon reverse fallback:', err);
     }
 
-    // 2. Segundo Intento: BigDataCloud Reverse Geocoder
+    // 2. BigDataCloud Fallback
     if (!addressResolved) {
       try {
         const bdcRes = await fetch(
@@ -304,7 +344,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
           const locality = bdcData.locality || bdcData.city || '';
           const district = findMatchingDistrict(locality, bdcData.principalSubdivision || '');
 
-          // Extraer información detallada si existe
           const adminParts = bdcData.localityInfo?.administrative || [];
           const specificName = adminParts.find((a: any) => a.order >= 7)?.name || '';
 
@@ -321,7 +360,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
       }
     }
 
-    // 3. Fallback Seguro: Coordenadas GPS con Distrito aproximado
     if (!addressResolved) {
       setDetectedAddress(`Ubicación GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
       setDetectedDistrict(detectedDistrict || 'Lima');
@@ -350,7 +388,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
     }
   }, [fetchAddressFromCoords]);
 
-  // Buscador Multi-API en vivo (Photon + Nominatim)
+  // Buscador Multi-API en vivo
   const handleSearchAddress = async (query: string) => {
     if (!query || query.trim().length < 2) {
       setSearchResults([]);
@@ -366,26 +404,29 @@ export const PlacesMapPicker: React.FC<Props> = ({
       const response = await fetch(photonUrl);
       if (response.ok) {
         const data = await response.json();
-        const formattedList: SearchPlaceItem[] = (data?.features || []).map((feat: any) => {
-          const props = feat.properties || {};
-          const coordsArr = feat.geometry?.coordinates || [-77.03, -12.07];
-          const lon = coordsArr[0]?.toString();
-          const lat = coordsArr[1]?.toString();
+        const formattedList: SearchPlaceItem[] = (data?.features || [])
+          .filter((feat: any) => {
+            const country = feat.properties?.countrycode || '';
+            return !country || country.toUpperCase() === 'PE';
+          })
+          .map((feat: any) => {
+            const props = feat.properties || {};
+            const coordsArr = feat.geometry?.coordinates || [-77.03, -12.07];
+            const lon = coordsArr[0]?.toString();
+            const lat = coordsArr[1]?.toString();
 
-          const street = cleanStreetName(props.street || props.name || cleanQuery, props.housenumber, cleanQuery);
-          const rawDist = props.district || props.city || props.locality || 'Lima';
-          const district = findMatchingDistrict(rawDist, props.county || '');
-          const sub = `${district}, Lima, Perú`;
+            const { fullAddress, district } = formatFullDetailedAddress(props, parseFloat(lat), parseFloat(lon), cleanQuery);
+            const sub = `${district}, Lima, Perú`;
 
-          return {
-            display_name: `${street}, ${sub}`,
-            lat: lat,
-            lon: lon,
-            mainText: street,
-            subText: sub,
-            district: district,
-          };
-        });
+            return {
+              display_name: `${fullAddress}, ${sub}`,
+              lat: lat,
+              lon: lon,
+              mainText: fullAddress,
+              subText: sub,
+              district: district,
+            };
+          });
 
         if (formattedList.length > 0) {
           setSearchResults(formattedList);
@@ -410,7 +451,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
     updateDeliveryPosition(newLat, newLng, result.mainText, result.district);
   };
 
-  // Pedir GPS en tiempo real y mostrar el Puntito Azul
+  // Pedir GPS en tiempo real
   const requestCurrentLocation = useCallback(() => {
     if (!('geolocation' in navigator)) {
       setLocationPermissionDenied(true);
@@ -430,7 +471,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
         setIsLocating(false);
         setLocationPermissionDenied(false);
 
-        // Mostrar o mover el Puntito Azul de la ubicación física
         if (mapInstanceRef.current) {
           if (!userLocationMarkerRef.current) {
             userLocationMarkerRef.current = L.marker([userLat, userLng], {
@@ -446,7 +486,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
           });
         }
 
-        // Mover el pin de entrega a la ubicación del usuario
         updateDeliveryPosition(userLat, userLng);
       },
       (error) => {
@@ -464,7 +503,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
     );
   }, [updateDeliveryPosition]);
 
-  // Inicializar Leaflet una sola vez
+  // Inicializar Leaflet
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
@@ -482,7 +521,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
       subdomains: 'abcd',
     }).addTo(map);
 
-    // Marcador de entrega (Pin Rojo/Cian arrastrable)
     const deliveryMarker = L.marker([coords.lat, coords.lng], {
       icon: createDeliveryPinIcon(),
       draggable: true,
@@ -490,13 +528,11 @@ export const PlacesMapPicker: React.FC<Props> = ({
       zIndexOffset: 500,
     }).addTo(map);
 
-    // Evento al arrastrar el pin
     deliveryMarker.on('dragend', () => {
       const newPos = deliveryMarker.getLatLng();
       updateDeliveryPosition(newPos.lat, newPos.lng);
     });
 
-    // Evento al hacer clic en cualquier punto del mapa: mueve el pin INMEDIATAMENTE
     map.on('click', (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
       updateDeliveryPosition(lat, lng);
@@ -509,7 +545,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
       map.invalidateSize();
     }, 250);
 
-    // Solicitar ubicación GPS inicial para mostrar el puntito azul y centrar
     requestCurrentLocation();
 
     return () => {
@@ -520,7 +555,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
     };
   }, []);
 
-  // Centrar en el puntito azul de mi GPS
   const handleCenterOnUserGps = () => {
     if (userGpsCoords && mapInstanceRef.current) {
       mapInstanceRef.current.flyTo([userGpsCoords.lat, userGpsCoords.lng], 19, { duration: 1 });
@@ -530,7 +564,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
     }
   };
 
-  // Botón de Confirmación "Es aquí"
   const handleConfirm = () => {
     const finalDistrict = detectedDistrict.trim() || 'Lima';
     const finalAddress = detectedAddress.trim() || `Ubicación GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
@@ -654,7 +687,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
         {/* Leyenda sutil: Puntito Azul = Tu ubicación física | Pin Rojo/Cian = Punto de entrega */}
-        <div className="absolute bottom-24 left-4 z-[400] pointer-events-none hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/15 text-[11px] text-slate-300 shadow-xl">
+        <div className="absolute bottom-28 left-4 z-[400] pointer-events-none hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/15 text-[11px] text-slate-300 shadow-xl">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 border border-white shadow-[0_0_8px_rgba(6,182,212,1)] inline-block"></span>
             <span className="font-semibold text-white">Tu ubicación GPS (Puntito)</span>
@@ -731,7 +764,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
               type="text"
               value={detectedAddress}
               onChange={(e) => setDetectedAddress(e.target.value)}
-              placeholder="Ej. Jr. Huamanga 1586, Cruce con Av. México / Dpto 302..."
+              placeholder="Ej. Jr. Huamanga 1586, Urb. Matute (Cruce con Av. México)..."
               className="w-full px-4 py-3 bg-white/[0.08] border border-white/20 rounded-xl text-xs sm:text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 shadow-inner"
             />
           </div>

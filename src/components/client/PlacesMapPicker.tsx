@@ -184,12 +184,14 @@ function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHin
 
   let street = rawStreet.trim();
 
+  // Limpiar prefijos ciclovías
   if (street.toLowerCase().startsWith('ciclovia ') || street.toLowerCase().startsWith('ciclovía ')) {
     street = street.replace(/ciclov[ií]a\s+/i, 'Av. ');
   } else if (street.toLowerCase().startsWith('via auxiliar ') || street.toLowerCase().startsWith('vía auxiliar ')) {
     street = street.replace(/v[ií]a auxiliar\s+/i, 'Av. ');
   }
 
+  // Prefijos comunes en Lima
   if (!/^(jr|jir[oó]n|av|avenida|calle|ca|pje|pasaje|prol|prolongaci[oó]n|alameda|carretera)/i.test(street)) {
     street = `Jr. ${street}`;
   }
@@ -217,45 +219,49 @@ function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHin
   return street;
 }
 
-// Formatear dirección completa ultra-específica
-function formatFullDetailedAddress(props: any, lat: number, lng: number, searchQueryHint?: string): { fullAddress: string; district: string } {
-  let street = props.street || '';
-  let name = props.name || '';
-  let houseNumber = props.housenumber || '';
-  let locality = props.locality || props.quarter || props.suburb || props.neighbourhood || '';
-  let rawDist = props.district || props.city || props.town || props.municipality || 'Lima';
+// Analizar la respuesta completa de OpenStreetMap Nominatim con máxima precisión
+function parseOsmDetailedAddress(data: any, lat: number, lng: number, queryHint?: string): { fullAddress: string; district: string } {
+  const addr = data.address || {};
+  const dispName = data.display_name || '';
+  const parts = dispName.split(',').map((p: string) => p.trim());
 
-  let mainWay = street;
-  let landmark = '';
+  let road = addr.road || addr.pedestrian || addr.footway || addr.path || addr.street || '';
+  let houseNumber = addr.house_number || '';
+  let urb = addr.residential || addr.neighbourhood || addr.quarter || addr.suburb || '';
+  let landmark = addr.amenity || addr.shop || addr.building || data.name || '';
+  let rawDistrict = addr.city_district || addr.suburb || addr.town || addr.city || 'Lima';
 
-  if (!mainWay && name) {
-    mainWay = name;
-  } else if (mainWay && name && name !== mainWay) {
-    if (!name.toLowerCase().includes('colegio') && !name.toLowerCase().includes('educativa')) {
-      landmark = name;
+  // Extraer número de puerta de display_name si existe (ej. "1166, Avenida México")
+  if (!houseNumber && parts.length > 0) {
+    const numPart = parts.find((p: string) => /^\d+[a-zA-Z]?$/.test(p));
+    if (numPart) houseNumber = numPart;
+  }
+
+  // Extraer urbanización de display_name si existe
+  if (!urb && parts.length > 0) {
+    const urbPart = parts.find((p: string) => /^urbanizaci[oó]n\s+/i.test(p) || /^urb\.?\s+/i.test(p) || /^unidad vecinal\s+/i.test(p));
+    if (urbPart) urb = urbPart;
+  }
+
+  let formattedRoad = cleanStreetName(road || parts[0] || 'Ubicación', houseNumber, queryHint);
+  let full = formattedRoad;
+
+  if (urb && !full.toLowerCase().includes(urb.toLowerCase())) {
+    const cleanUrb = urb.replace(/^urbanizaci[oó]n\s+/i, 'Urb. ').replace(/^unidad vecinal\s+/i, 'U.V. ');
+    if (!cleanUrb.toLowerCase().startsWith('pueblo joven') && !cleanUrb.toLowerCase().startsWith('asociacion')) {
+      full = `${full}, ${cleanUrb}`;
     }
   }
 
-  let formattedStreet = cleanStreetName(mainWay || 'Ubicación', houseNumber, searchQueryHint);
-
-  let fullAddress = formattedStreet;
-
-  if (locality && !fullAddress.toLowerCase().includes(locality.toLowerCase())) {
-    const cleanLoc = locality.replace(/^urb\.?\s*/i, '').trim();
-    if (cleanLoc && !cleanLoc.toLowerCase().startsWith('pueblo joven') && !cleanLoc.toLowerCase().startsWith('asociacion')) {
-      fullAddress = `${fullAddress}, Urb. ${cleanLoc}`;
+  if (landmark && landmark !== road && !full.toLowerCase().includes(landmark.toLowerCase())) {
+    if (!landmark.toLowerCase().includes('colegio') && !landmark.toLowerCase().includes('educativa')) {
+      full = `${full} (${landmark})`;
     }
   }
-
-  if (landmark && !fullAddress.toLowerCase().includes(landmark.toLowerCase())) {
-    fullAddress = `${fullAddress} (${landmark})`;
-  }
-
-  const district = findMatchingDistrict(rawDist, locality || props.county || '');
 
   return {
-    fullAddress: fullAddress || `Ubicación GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
-    district: district || 'Lima'
+    fullAddress: full || `Ubicación GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+    district: findMatchingDistrict(rawDistrict, dispName)
   };
 }
 
@@ -277,7 +283,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
   // Referencias para Google Maps Engine
   const googleMapRef = useRef<google.maps.Map | null>(null);
   const googleMarkerRef = useRef<google.maps.Marker | null>(null);
-  const isGoogleMapsActiveRef = useRef<boolean>(false);
 
   const [coords, setCoords] = useState<{ lat: number; lng: number }>({
     lat: initialLat,
@@ -299,12 +304,12 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
 
-  // Geocodificación Inversa: Implementación de Máxima Precisión (results[0] con region=PE y language=es)
+  // Geocodificación Inversa de Alta Fidelidad
   const fetchAddressFromCoords = useCallback(async (latitude: number, longitude: number) => {
     setIsGeocoding(true);
-    setStatusMessage('Consultando calle, numeración y urbanización...');
+    setStatusMessage('Consultando calle, número municipal y urbanización...');
 
-    // 1. Si Google Maps está disponible, usar Geocoder oficial de Google con results[0]
+    // 1. Google Maps Geocoder (si está activo con region=PE y language=es)
     if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
       try {
         const geocoder = new (window as any).google.maps.Geocoder();
@@ -322,11 +327,9 @@ export const PlacesMapPicker: React.FC<Props> = ({
         });
 
         if (response && response.length > 0) {
-          // results[0] es la dirección más específica (premise, street_address, subpremise)
           const mostSpecific = response[0];
           const fullAddress = mostSpecific.formatted_address || '';
 
-          // Extraer distrito
           let district = '';
           const districtComp = mostSpecific.address_components?.find((c: any) =>
             c.types.includes('sublocality_level_1') ||
@@ -335,7 +338,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
           );
           if (districtComp) district = districtComp.long_name;
 
-          // Limpiar sufijos redundantes ", Perú", ", Lima"
           let cleanAddr = fullAddress.replace(/,\s*(Perú|Peru|15\d{3})$/gi, '').trim();
 
           setDetectedAddress(cleanAddr);
@@ -345,34 +347,35 @@ export const PlacesMapPicker: React.FC<Props> = ({
           return;
         }
       } catch (err) {
-        console.warn('Google Geocoder error, usando respaldo:', err);
+        console.warn('Google Geocoder fallback:', err);
       }
     }
 
-    // 2. Motor de respaldo de alta velocidad: Photon Komoot (OpenStreetMap Perú)
+    // 2. OpenStreetMap Nominatim JSONv2 Regional con Headers Oficiales
     let addressResolved = false;
     try {
-      const photonRes = await fetch(
-        `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`,
-        { headers: { 'Accept': 'application/json' } }
+      const osmRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+        {
+          headers: {
+            'Accept-Language': 'es',
+            'User-Agent': 'EncomiPerúApp/1.0 (contacto@comikids.pe)'
+          }
+        }
       );
 
-      if (photonRes.ok) {
-        const photonData = await photonRes.json();
-        const firstFeature = photonData?.features?.[0]?.properties;
+      if (osmRes.ok) {
+        const osmData = await osmRes.json();
+        const { fullAddress, district } = parseOsmDetailedAddress(osmData, latitude, longitude);
 
-        if (firstFeature) {
-          const { fullAddress, district } = formatFullDetailedAddress(firstFeature, latitude, longitude);
-
-          if (fullAddress && !fullAddress.startsWith('Ubicación GPS')) {
-            setDetectedAddress(fullAddress);
-            setDetectedDistrict(district);
-            addressResolved = true;
-          }
+        if (fullAddress && !fullAddress.startsWith('Ubicación GPS')) {
+          setDetectedAddress(fullAddress);
+          setDetectedDistrict(district);
+          addressResolved = true;
         }
       }
     } catch (err) {
-      console.warn('Photon reverse fallback:', err);
+      console.warn('OSM reverse fallback:', err);
     }
 
     // 3. Fallback BigDataCloud
@@ -419,12 +422,10 @@ export const PlacesMapPicker: React.FC<Props> = ({
     setShowSearchResults(false);
     setSearchQuery('');
 
-    // Actualizar marcador Leaflet
     if (deliveryMarkerRef.current) {
       deliveryMarkerRef.current.setLatLng([newLat, newLng]);
     }
 
-    // Actualizar marcador Google Maps
     if (googleMarkerRef.current) {
       googleMarkerRef.current.setPosition({ lat: newLat, lng: newLng });
     }
@@ -448,34 +449,33 @@ export const PlacesMapPicker: React.FC<Props> = ({
     setIsSearching(true);
     try {
       const cleanQuery = query.trim();
-      const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(cleanQuery)}&lat=-12.07&lon=-77.03&limit=8`;
+      const encoded = encodeURIComponent(`${cleanQuery}, Lima, Perú`);
+      const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encoded}&countrycodes=pe&limit=8&addressdetails=1`;
       
-      const response = await fetch(photonUrl);
+      const response = await fetch(searchUrl, {
+        headers: {
+          'Accept-Language': 'es',
+          'User-Agent': 'EncomiPerúApp/1.0 (contacto@comikids.pe)'
+        }
+      });
+
       if (response.ok) {
         const data = await response.json();
-        const formattedList: SearchPlaceItem[] = (data?.features || [])
-          .filter((feat: any) => {
-            const country = feat.properties?.countrycode || '';
-            return !country || country.toUpperCase() === 'PE';
-          })
-          .map((feat: any) => {
-            const props = feat.properties || {};
-            const coordsArr = feat.geometry?.coordinates || [-77.03, -12.07];
-            const lon = coordsArr[0]?.toString();
-            const lat = coordsArr[1]?.toString();
+        const formattedList: SearchPlaceItem[] = (data || []).map((item: any) => {
+          const lat = item.lat;
+          const lon = item.lon;
+          const { fullAddress, district } = parseOsmDetailedAddress(item, parseFloat(lat), parseFloat(lon), cleanQuery);
+          const sub = `${district}, Lima, Perú`;
 
-            const { fullAddress, district } = formatFullDetailedAddress(props, parseFloat(lat), parseFloat(lon), cleanQuery);
-            const sub = `${district}, Lima, Perú`;
-
-            return {
-              display_name: `${fullAddress}, ${sub}`,
-              lat: lat,
-              lon: lon,
-              mainText: fullAddress,
-              subText: sub,
-              district: district,
-            };
-          });
+          return {
+            display_name: `${fullAddress}, ${sub}`,
+            lat: lat,
+            lon: lon,
+            mainText: fullAddress,
+            subText: sub,
+            district: district,
+          };
+        });
 
         if (formattedList.length > 0) {
           setSearchResults(formattedList);
@@ -524,7 +524,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
         setIsLocating(false);
         setLocationPermissionDenied(false);
 
-        // Mover o crear puntito azul en Leaflet
         if (leafletMapRef.current) {
           if (!userLocationMarkerRef.current) {
             userLocationMarkerRef.current = L.marker([userLat, userLng], {
@@ -540,7 +539,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
           });
         }
 
-        // Centrar en Google Maps
         if (googleMapRef.current) {
           googleMapRef.current.panTo({ lat: userLat, lng: userLng });
           googleMapRef.current.setZoom(19);
@@ -563,20 +561,17 @@ export const PlacesMapPicker: React.FC<Props> = ({
     );
   }, [updateDeliveryPosition]);
 
-  // Inicializar Motor Cartográfico
+  // Inicializar Leaflet / Google Maps
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
     let isMounted = true;
 
-    // Intentar inicializar Google Maps SDK con region=PE y language=es
     loadGoogleMapsScript().then((googleMaps) => {
       if (!isMounted || !mapContainerRef.current) return;
 
       if (googleMaps && !leafletMapRef.current && !googleMapRef.current) {
         try {
-          isGoogleMapsActiveRef.current = true;
-
           const gMap = new googleMaps.Map(mapContainerRef.current, {
             center: { lat: coords.lat, lng: coords.lng },
             zoom: 19,
@@ -624,11 +619,10 @@ export const PlacesMapPicker: React.FC<Props> = ({
           requestCurrentLocation();
           return;
         } catch (err) {
-          console.warn('Fallo inicialización Google Maps, activando Leaflet:', err);
+          console.warn('Fallo Google Maps, usando Leaflet:', err);
         }
       }
 
-      // Motor Leaflet CartoDB Voyager
       if (!leafletMapRef.current && !googleMapRef.current && mapContainerRef.current) {
         const map = L.map(mapContainerRef.current, {
           center: [coords.lat, coords.lng],
@@ -733,7 +727,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
               setSearchQuery(e.target.value);
               handleSearchAddress(e.target.value);
             }}
-            placeholder="Buscar calle, jirón, pasaje o avenida (ej. Jr. Huamanga 1586, Av. México 1580)..."
+            placeholder="Buscar calle, jirón, pasaje o avenida (ej. Jr. Huamanga 1586, Av. México 1166)..."
             className="w-full pl-12 pr-28 py-4 bg-slate-900/95 border-2 border-white/20 rounded-2xl text-sm sm:text-base text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/25 shadow-2xl transition-all font-semibold"
           />
           <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />

@@ -17,12 +17,9 @@ const MainAppContent: React.FC = () => {
     );
   }
 
-  // By default, everyone (new visitor or logged in client) sees the seamless organic portal
+  // Clientes y usuarios regulares solo ven el portal de envíos sin alertas administrativas
   return (
-    <>
-      <ClientPortal />
-      <OrderAlertModal />
-    </>
+    <ClientPortal />
   );
 };
 

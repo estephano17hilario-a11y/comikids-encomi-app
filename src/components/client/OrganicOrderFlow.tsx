@@ -25,7 +25,6 @@ import {
   ChevronDown,
   MessageCircle,
   FileCheck2,
-  Phone,
   RotateCcw
 } from 'lucide-react';
 
@@ -202,6 +201,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const selectedMethod: MetodoEnvio | undefined =
     activeShippingMethods.find(m => m.id === selectedMethodId) || activeShippingMethods[0];
 
+  const whatsappTallerNumber = (tallerConfig?.whatsapp_pedidos || '51987654321').replace(/\D/g, '');
+
   // --- STEP 1: WHATSAPP SUBMIT ---
   const handleWhatsappSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -367,14 +368,42 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     );
   };
 
-  const whatsappTallerNumber = (tallerConfig?.whatsapp_pedidos || '51987654321').replace(/\D/g, '');
   const whatsappUrl = createdOrder
     ? `https://wa.me/${whatsappTallerNumber}?text=${encodeURIComponent(buildWhatsAppMessage(createdOrder))}`
     : '#';
 
   return (
-    <div className="w-full max-w-xl mx-auto py-2 font-sans tracking-tight">
+    <div className="w-full max-w-xl mx-auto py-2 font-sans tracking-tight space-y-4">
       
+      {/* Banner de Empresas Recientes (Comikids) */}
+      {!createdOrder && (
+        <div className="p-3.5 sm:p-4 rounded-3xl bg-gradient-to-r from-cyan-950/40 via-slate-900/60 to-blue-950/40 border border-cyan-500/20 backdrop-blur-xl shadow-lg flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-xl shadow-inner shrink-0">
+              🧵
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">Empresas Recientes</span>
+                <span className="text-[9px] bg-cyan-500/20 text-cyan-300 font-bold px-1.5 py-0.2 rounded-full border border-cyan-500/30">Oficial</span>
+              </div>
+              <h4 className="text-sm font-bold text-white leading-tight">Comikids</h4>
+              <p className="text-[11px] text-slate-400">Taller de Bordados & Personalizados</p>
+            </div>
+          </div>
+
+          <a
+            href={`https://wa.me/${whatsappTallerNumber}?text=${encodeURIComponent('¡Hola Comikids! 👋 Deseo realizar un nuevo pedido de bordados y mercadería. ¿Me podrían brindar atención? ✨')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition-all shrink-0 cursor-pointer"
+          >
+            <MessageCircle className="w-3.5 h-3.5 fill-current" />
+            <span>Pedir</span>
+          </a>
+        </div>
+      )}
+
       {/* Modal de Mapa Apple Vision Pro con Buscador Sincronizado */}
       {showMapModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-2xl animate-fadeIn">
@@ -442,19 +471,19 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <span className="text-slate-400 block font-medium">Destinatario:</span>
+                <span className="text-slate-400 block font-medium">👤 Destinatario:</span>
                 <span className="text-white font-bold text-sm">{nombreCompleto}</span>
               </div>
               <div>
-                <span className="text-slate-400 block font-medium">WhatsApp:</span>
+                <span className="text-slate-400 block font-medium">📱 WhatsApp:</span>
                 <span className="text-white font-bold text-sm">+51 {whatsapp}</span>
               </div>
               <div>
-                <span className="text-slate-400 block font-medium">DNI o CE de Recojo:</span>
+                <span className="text-slate-400 block font-medium">🪪 DNI o CE de Recojo:</span>
                 <span className="text-white font-bold text-sm">{dniShalom || 'No especificado'}</span>
               </div>
               <div>
-                <span className="text-slate-400 block font-medium">Tipo de Envío:</span>
+                <span className="text-slate-400 block font-medium">🚚 Tipo de Envío:</span>
                 <span className="text-white font-bold text-sm">{selectedMethod?.nombre}</span>
               </div>
             </div>
@@ -462,7 +491,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             {/* Detalle de Agencia Shalom en Formato Optimizado */}
             {selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject && (
               <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
-                <span className="text-slate-400 font-medium block">Agencia Shalom de Destino:</span>
+                <span className="text-slate-400 font-medium block">📦 Agencia Shalom de Destino:</span>
                 <p className="text-white font-bold leading-snug">
                   {formatFullAgencyName(selectedAgencyObject)}
                 </p>
@@ -477,7 +506,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
             {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
               <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
-                <span className="text-slate-400 font-medium block">Dirección de Entrega:</span>
+                <span className="text-slate-400 font-medium block">📍 Dirección de Entrega:</span>
                 <p className="text-white font-bold">
                   {distritoQuery} • {direccionExacta} {referencia ? `(Ref: ${referencia})` : ''}
                 </p>
@@ -564,28 +593,28 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         </div>
       ) : (
         /* Main Flow Container */
-        <div className="minimal-card p-6 sm:p-8 space-y-6">
+        <div className="minimal-card p-5 sm:p-7 space-y-5">
           
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+          <div className="flex items-center justify-between border-b border-white/[0.08] pb-3.5">
             <div>
               <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 bg-white/[0.06] px-3 py-1 rounded-full border border-white/10">
                 Paso {organicStep} de 3
               </span>
-              <h2 className="text-xl sm:text-2xl font-bold text-white mt-2 tracking-tight">
+              <h2 className="text-lg sm:text-xl font-bold text-white mt-1.5 tracking-tight">
                 {organicStep === 1 && 'Envío de Mercadería 📦'}
                 {organicStep === 2 && '¿Cómo deseas recibir tu pedido? 🚚'}
-                {organicStep === 3 && 'Datos de Entrega & Nombre 📍'}
+                {organicStep === 3 && 'Datos de Entrega & Destinatario 📍'}
               </h2>
             </div>
             {organicStep > 1 && (
               <button
                 type="button"
                 onClick={() => setOrganicStep((prev) => (prev - 1) as 1 | 2)}
-                className="p-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-400 hover:text-white transition-colors cursor-pointer"
                 title="Volver"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -594,14 +623,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               PASO 1: WHATSAPP (CON MEMORIA AUTO-GUARDADA)
               ===================================================================== */}
           {organicStep === 1 && (
-            <form onSubmit={handleWhatsappSubmit} className="space-y-6 animate-fadeIn">
-              <div className="space-y-3">
-                <p className="text-sm text-slate-400">
-                  Ingresa tu número para enviarte las fotos del paquete y el código de seguimiento.
+            <form onSubmit={handleWhatsappSubmit} className="space-y-5 animate-fadeIn">
+              <div className="space-y-2.5">
+                <p className="text-xs sm:text-sm text-slate-400">
+                  Ingresa tu número de WhatsApp para enviarte las fotos del paquete y el código de seguimiento:
                 </p>
                 
                 <div className="flex items-center rounded-2xl bg-white/[0.04] border border-white/10 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/20 transition-all p-1.5 shadow-inner">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-white/[0.06] rounded-xl text-white font-bold text-base border border-white/10 shrink-0 select-none">
+                  <div className="flex items-center gap-2 px-3.5 py-2.5 bg-white/[0.06] rounded-xl text-white font-bold text-base border border-white/10 shrink-0 select-none">
                     <span className="text-lg">🇵🇪</span>
                     <span className="font-mono text-cyan-300 font-bold">+51</span>
                   </div>
@@ -612,7 +641,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     value={whatsapp}
                     onChange={e => setWhatsapp(e.target.value)}
                     placeholder="987 654 321"
-                    className="w-full bg-transparent px-4 py-3 text-lg sm:text-xl font-bold font-mono text-white placeholder-slate-500 focus:outline-none tracking-wider"
+                    className="w-full bg-transparent px-3 py-2.5 text-base sm:text-lg font-bold font-mono text-white placeholder-slate-500 focus:outline-none tracking-wider"
                   />
                 </div>
               </div>
@@ -624,9 +653,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               )}
 
-              <button type="submit" className="big-btn-primary">
+              <button type="submit" className="big-btn-primary py-3.5">
                 <span>Continuar</span>
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}
@@ -635,12 +664,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               PASO 2: SELECCIÓN DE MÉTODO (CON LOGO OFICIAL DE SHALOM)
               ===================================================================== */}
           {organicStep === 2 && (
-            <div className="space-y-4 animate-fadeIn">
-              <p className="text-sm text-slate-400">
+            <div className="space-y-3.5 animate-fadeIn">
+              <p className="text-xs sm:text-sm text-slate-400">
                 Selecciona la opción de transporte de tu preferencia:
               </p>
 
-              <div className="grid grid-cols-1 gap-3.5">
+              <div className="grid grid-cols-1 gap-3">
                 {activeShippingMethods.map((method) => {
                   const isShalom = method.tipo_formulario === 'shalom';
                   return (
@@ -648,21 +677,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       key={method.id}
                       type="button"
                       onClick={() => handleMethodSelect(method.id)}
-                      className="p-5 sm:p-6 rounded-3xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-lg"
+                      className="p-4 sm:p-5 rounded-3xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-lg"
                     >
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3.5">
                         {isShalom ? (
-                          <div className="w-14 h-14 rounded-2xl bg-white/[0.08] border border-white/15 flex items-center justify-center p-2.5 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-inner">
+                          <div className="w-12 h-12 rounded-2xl bg-white/[0.08] border border-white/15 flex items-center justify-center p-2 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-inner">
                             <img src="/Shalom-Courier-Logo.webp" alt="Shalom Courier" className="w-full h-full object-contain" />
                           </div>
                         ) : (
-                          <div className="w-14 h-14 rounded-2xl bg-white/[0.06] border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
-                            <Truck className="w-7 h-7" />
+                          <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
+                            <Truck className="w-6 h-6" />
                           </div>
                         )}
 
                         <div>
-                          <h4 className="text-base sm:text-lg font-bold text-white group-hover:text-cyan-300 transition-colors">
+                          <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors">
                             {method.nombre}
                           </h4>
                           <p className="text-xs text-slate-400 mt-0.5">
@@ -670,7 +699,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           </p>
                         </div>
                       </div>
-                      <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+                      <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
                     </button>
                   );
                 })}
@@ -679,107 +708,103 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           )}
 
           {/* =====================================================================
-              PASO 3: DATOS DE ENTREGA & NOMBRE (CUPERTINO STYLE)
+              PASO 3: DATOS DE ENTREGA & NOMBRE (COMPACTO CON EMOJIS)
               ===================================================================== */}
           {organicStep === 3 && (
-            <form onSubmit={handleFinalSubmit} className="space-y-5 animate-fadeIn">
+            <form onSubmit={handleFinalSubmit} className="space-y-4 animate-fadeIn">
               
               {/* RAMA A: AGENCIA SHALOM */}
               {selectedMethod?.tipo_formulario === 'shalom' && (
-                <div className="space-y-4">
+                <div className="space-y-3.5">
                   
-                  {/* Botones Grandes de Acción Superior */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Botones Compactos de Acción Superior */}
+                  <div className="grid grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={handleQuickNearest5}
                       disabled={isLocating}
-                      className="p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-md"
+                      className="p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
-                          <Navigation className={`w-5 h-5 ${isLocating ? 'animate-spin' : ''}`} />
-                        </div>
-                        <div>
-                          <span className="block text-[11px] text-slate-400">Geolocalización</span>
-                          <span className="block text-xs sm:text-sm font-bold text-white">Sedes Cercanas</span>
-                        </div>
+                      <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
+                        <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-400">GPS</span>
+                        <span className="block text-xs font-bold text-white">Sedes Cercanas</span>
                       </div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setShowMapModal(true)}
-                      className="p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-md"
+                      className="p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
-                          <MapPin className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <span className="block text-[11px] text-slate-400">Ubicación visual</span>
-                          <span className="block text-xs sm:text-sm font-bold text-white">Ver en Mapa</span>
-                        </div>
+                      <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
+                        <MapPin className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-400">Visual</span>
+                        <span className="block text-xs font-bold text-white">Ver en Mapa</span>
                       </div>
                     </button>
                   </div>
 
                   {gpsError && (
-                    <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-3 rounded-2xl border border-amber-500/20">
+                    <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-2.5 rounded-2xl border border-amber-500/20">
                       <AlertCircle className="w-4 h-4 shrink-0" />
                       <span>{gpsError}</span>
                     </div>
                   )}
 
-                  {/* Sección de Selección de Agencia */}
-                  <div className="space-y-2.5">
+                  {/* Selección de Agencia */}
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Agencia Shalom de Entrega
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        📦 Agencia Shalom de Destino
                       </label>
                       {selectedAgencyObject && (
                         <button
                           type="button"
                           onClick={() => setIsAgencyListOpen(!isAgencyListOpen)}
-                          className="text-xs font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer"
+                          className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer"
                         >
-                          {isAgencyListOpen ? 'Cerrar selector' : 'Cambiar agencia'}
+                          {isAgencyListOpen ? 'Cerrar selector' : 'Cambiar sede'}
                         </button>
                       )}
                     </div>
 
                     {/* Tarjeta Principal de la Agencia Seleccionada */}
                     {selectedAgencyObject && !isAgencyListOpen && (
-                      <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.05] border border-white/10 backdrop-blur-2xl shadow-xl space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3.5">
-                            <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
-                              <Building className="w-6 h-6" />
+                      <div className="p-4 rounded-2xl bg-white/[0.05] border border-white/10 backdrop-blur-2xl shadow-lg space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
+                              <Building className="w-5 h-5" />
                             </div>
                             <div>
-                              <h4 className="text-base font-bold text-white leading-snug tracking-tight">
+                              <h4 className="text-sm font-bold text-white leading-tight">
                                 {selectedAgencyObject.distrito || selectedAgencyObject.nombre}
                               </h4>
-                              <p className="text-xs font-medium text-slate-400 mt-0.5">
+                              <p className="text-[11px] font-medium text-slate-400">
                                 {selectedAgencyObject.departamento} • {selectedAgencyObject.provincia}
                               </p>
                             </div>
                           </div>
 
                           {selectedAgencyObject.distance_meters !== undefined && (
-                            <span className="text-xs font-bold text-cyan-300 bg-cyan-500/15 px-3 py-1 rounded-full border border-cyan-500/25 shrink-0">
+                            <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/15 px-2.5 py-0.5 rounded-full border border-cyan-500/25 shrink-0">
                               📍 {selectedAgencyObject.distance_meters < 1000 ? `${Math.round(selectedAgencyObject.distance_meters)} m` : `${(selectedAgencyObject.distance_meters / 1000).toFixed(1)} km`}
                             </span>
                           )}
                         </div>
 
-                        <div className="pt-2 border-t border-white/[0.06] space-y-1.5 text-xs text-slate-300">
-                          <p className="leading-relaxed">
-                            <strong className="text-white">Dirección:</strong> {cleanAddressText(selectedAgencyObject.direccion, selectedAgencyObject.provincia, selectedAgencyObject.departamento)}
+                        <div className="pt-2 border-t border-white/[0.06] space-y-1 text-xs text-slate-300">
+                          <p className="leading-snug text-[11px]">
+                            <strong className="text-white">📍 Dirección:</strong> {cleanAddressText(selectedAgencyObject.direccion, selectedAgencyObject.provincia, selectedAgencyObject.departamento)}
                           </p>
                           {selectedAgencyObject.horario && (
-                            <p className="flex items-center gap-1.5 text-slate-400">
-                              <Clock className="w-3.5 h-3.5 text-slate-500" />
+                            <p className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                              <Clock className="w-3 h-3 text-slate-500" />
                               <span>{selectedAgencyObject.horario}</span>
                             </p>
                           )}
@@ -788,19 +813,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         <button
                           type="button"
                           onClick={() => setIsAgencyListOpen(true)}
-                          className="w-full py-3 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-bold text-cyan-300 transition-colors flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                          className="w-full py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-bold text-cyan-300 transition-colors flex items-center justify-center gap-1 cursor-pointer"
                         >
                           <span>Buscar / Cambiar de Sede</span>
-                          <ChevronDown className="w-4 h-4" />
+                          <ChevronDown className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     )}
 
-                    {/* Buscador & Lista de Recuadros Grandes con Resaltado de Texto */}
+                    {/* Buscador & Lista Compacta */}
                     {(isAgencyListOpen || !selectedAgencyObject) && (
-                      <div className="space-y-3 animate-fadeIn">
+                      <div className="space-y-2.5 animate-fadeIn">
                         
-                        {/* Buscador Apple con padding perfecto para la lupa */}
                         <div className="relative flex items-center">
                           <input
                             type="text"
@@ -810,23 +834,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               setAgencySearchQuery(e.target.value);
                               if (showOnlyNearest5) setShowOnlyNearest5(false);
                             }}
-                            placeholder="Buscar por distrito, avenida o provincia (ej. Gamarra, San Isidro, Trujillo)..."
-                            className="w-full pl-12 pr-10 py-4 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all shadow-inner font-medium"
+                            placeholder="Buscar por distrito o provincia (ej. Gamarra, San Isidro, Trujillo)..."
+                            className="w-full pl-10 pr-9 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all font-medium"
                           />
-                          <Search className="w-4 h-4 text-slate-400 absolute left-4 pointer-events-none" />
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
                           {agencySearchQuery && (
                             <button
                               type="button"
                               onClick={() => setAgencySearchQuery('')}
-                              className="w-7 h-7 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-3 cursor-pointer"
+                              className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
                             >
-                              <X className="w-4 h-4" />
+                              <X className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
 
-                        {/* Recuadro Amplio con Tarjetas Grandes y Letras Resaltadas */}
-                        <div className="max-h-[440px] overflow-y-auto space-y-2.5 p-2 rounded-3xl bg-slate-950/80 border border-white/10 shadow-2xl">
+                        <div className="max-h-[360px] overflow-y-auto space-y-2 p-2 rounded-2xl bg-slate-950/90 border border-white/10 shadow-2xl">
                           {shalomAgenciesList.length === 0 ? (
                             <p className="text-center text-xs text-slate-400 py-6">
                               No se encontraron agencias con &quot;{agencySearchQuery}&quot;
@@ -850,54 +873,41 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                     if (ag.departamento) setDepartamentoShalom(ag.departamento);
                                     setIsAgencyListOpen(false);
                                   }}
-                                  className={`w-full text-left p-4 sm:p-5 rounded-2xl transition-all flex flex-col gap-2 cursor-pointer ${
+                                  className={`w-full text-left p-3.5 rounded-xl transition-all flex flex-col gap-1.5 cursor-pointer ${
                                     isSelected
-                                      ? 'bg-cyan-500/20 border border-cyan-500/50 text-white shadow-lg shadow-cyan-500/10'
+                                      ? 'bg-cyan-500/20 border border-cyan-500/50 text-white shadow-md'
                                       : 'bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300'
                                   }`}
                                 >
-                                  {/* Cabecera con Nombre y Resaltado */}
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <h5 className="text-sm font-bold text-white tracking-tight leading-snug">
-                                        <HighlightMatch text={titleText} query={agencySearchQuery} />
-                                      </h5>
-                                    </div>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <h5 className="text-xs font-bold text-white tracking-tight leading-snug">
+                                      <HighlightMatch text={titleText} query={agencySearchQuery} />
+                                    </h5>
 
                                     {distanceText && (
-                                      <span className="text-[11px] font-bold text-cyan-300 bg-cyan-500/15 px-3 py-1 rounded-full shrink-0 border border-cyan-500/25">
+                                      <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-full shrink-0 border border-cyan-500/25">
                                         📍 {distanceText}
                                       </span>
                                     )}
                                   </div>
 
-                                  {/* Dirección completa con Resaltado si coincide */}
-                                  <p className="text-xs text-slate-300 leading-relaxed">
+                                  <p className="text-[11px] text-slate-300 leading-snug">
                                     <HighlightMatch text={cleanAddr || 'Dirección de la sede'} query={agencySearchQuery} />
                                   </p>
-
-                                  {/* Horario */}
-                                  {ag.horario && (
-                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 pt-1 border-t border-white/[0.04]">
-                                      <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                      <span>{ag.horario}</span>
-                                    </div>
-                                  )}
                                 </button>
                               );
                             })
                           )}
                         </div>
 
-                        {/* Botón Destacado Más Grande y con Color Cyan para Cerrar Lista */}
                         {selectedAgencyObject && (
-                          <div className="pt-2 flex justify-center">
+                          <div className="pt-1 flex justify-center">
                             <button
                               type="button"
                               onClick={() => setIsAgencyListOpen(false)}
-                              className="px-6 py-2.5 rounded-2xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-xs sm:text-sm font-bold border border-cyan-500/30 shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                              className="px-5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-xs font-bold border border-cyan-500/30 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
                             >
-                              <X className="w-4 h-4" />
+                              <X className="w-3.5 h-3.5" />
                               <span>Cerrar lista de agencias</span>
                             </button>
                           </div>
@@ -906,30 +916,30 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     )}
                   </div>
 
-                  {/* DNI o CE de quien recibirá con Auto-Persistencia */}
-                  <div className="space-y-2 pt-2">
+                  {/* DNI o CE con Emoji */}
+                  <div className="space-y-1.5">
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      DNI o Carnet de Extranjería (CE) de la persona que recibirá *
+                      🪪 DNI o Carnet de Extranjería (CE) de quien recibirá *
                     </label>
                     <input
                       type="text"
                       required
                       value={dniShalom}
                       onChange={e => setDniShalom(e.target.value)}
-                      placeholder="Número de DNI o Carnet de Extranjería (CE)"
-                      className="w-full px-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm font-mono text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 tracking-wider"
+                      placeholder="Número de DNI o Carnet de Extranjería"
+                      className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm font-mono text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 tracking-wider"
                     />
                   </div>
 
                 </div>
               )}
 
-              {/* RAMA B: MOTORIZADO LOCAL LIMA (CON AUTO-PERSISTENCIA) */}
+              {/* RAMA B: MOTORIZADO LOCAL LIMA */}
               {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
-                <div className="space-y-4">
-                  <div className="space-y-2 relative">
+                <div className="space-y-3">
+                  <div className="space-y-1.5 relative">
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Distrito de Lima *
+                      🧭 Distrito de Lima *
                     </label>
                     <div className="relative flex items-center">
                       <input
@@ -942,9 +952,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           setShowDistritoSuggestions(true);
                         }}
                         placeholder="Escribe tu distrito (ej. Miraflores, San Isidro)..."
-                        className="w-full pl-12 pr-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                        className="w-full pl-10 pr-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
                       />
-                      <Search className="w-4 h-4 text-slate-400 absolute left-4 pointer-events-none" />
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
                     </div>
 
                     {showDistritoSuggestions && suggestedDistritos.length > 0 && (
@@ -967,9 +977,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     )}
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Dirección Exacta (Calle, Número, Dpto) *
+                      📍 Dirección Exacta (Calle, Número, Dpto) *
                     </label>
                     <input
                       type="text"
@@ -977,20 +987,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       value={direccionExacta}
                       onChange={e => setDireccionExacta(e.target.value)}
                       placeholder="Ej. Av. Larco 1234, Dpto 402"
-                      className="w-full px-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                      className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Referencia de Entrega (Opcional)
+                      🏷️ Referencia de Entrega (Opcional)
                     </label>
                     <input
                       type="text"
                       value={referencia}
                       onChange={e => setReferencia(e.target.value)}
                       placeholder="Ej. Frente al parque, rejas negras"
-                      className="w-full px-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                      className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
                     />
                   </div>
 
@@ -1010,9 +1020,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
               {/* RAMA C: OTRO MÉTODO PERSONALIZADO */}
               {selectedMethod?.tipo_formulario === 'texto_simple' && (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Indicaciones de Entrega *
+                    📝 Indicaciones de Entrega *
                   </label>
                   <textarea
                     required
@@ -1020,15 +1030,15 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     value={customDestinoText}
                     onChange={e => setCustomDestinoText(e.target.value)}
                     placeholder="Indica las instrucciones de entrega..."
-                    className="w-full p-4 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
+                    className="w-full p-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
                   />
                 </div>
               )}
 
-              {/* CAMPO OBLIGATORIO: NOMBRE COMPLETO (CON AUTO-PERSISTENCIA) */}
-              <div className="space-y-2 pt-2 border-t border-white/[0.08]">
+              {/* NOMBRE COMPLETO CON EMOJI */}
+              <div className="space-y-1.5 pt-2 border-t border-white/[0.08]">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Tu Nombre Completo (Destinatario) *
+                  👤 Tu Nombre Completo (Destinatario) *
                 </label>
                 <div className="relative flex items-center">
                   <input
@@ -1037,14 +1047,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     value={nombreCompleto}
                     onChange={e => setNombreCompleto(e.target.value)}
                     placeholder="Ej. Carlos Mendoza Ramos"
-                    className="w-full pl-12 pr-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                    className="w-full pl-10 pr-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
                   />
-                  <User className="w-4 h-4 text-slate-400 absolute left-4 pointer-events-none" />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
                 </div>
               </div>
 
               {errorMsg && (
-                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3 rounded-2xl border border-rose-500/20">
+                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-2.5 rounded-2xl border border-rose-500/20">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{errorMsg}</span>
                 </div>
@@ -1053,14 +1063,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               <button
                 type="submit"
                 disabled={submitting}
-                className="big-btn-primary mt-4"
+                className="big-btn-primary py-3.5 mt-2"
               >
                 {submitting ? (
-                  <span>Registrando Pedido...</span>
+                  <span>Registrando Envío...</span>
                 ) : (
                   <>
-                    <span>Confirmar y Enviar Pedido</span>
-                    <ArrowRight className="w-5 h-5" />
+                    <span>Confirmar y Finalizar Pedido</span>
+                    <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </button>

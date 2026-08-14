@@ -1,5 +1,6 @@
 import React from 'react';
 import { useOrders } from '../../context/OrderContext';
+import { useAuth } from '../../context/AuthContext';
 import { Bell, X, ArrowRight } from 'lucide-react';
 
 interface Props {
@@ -8,8 +9,10 @@ interface Props {
 
 export const OrderAlertModal: React.FC<Props> = ({ onViewOrder }) => {
   const { latestNewOrder, clearLatestOrderAlert } = useOrders();
+  const { role } = useAuth();
 
-  if (!latestNewOrder) return null;
+  // Solo se muestra a la cuenta de la empresa / taller
+  if (role !== 'empresa' || !latestNewOrder) return null;
 
   return (
     <div className="fixed top-20 right-4 left-4 sm:left-auto sm:w-96 z-50 animate-bounce">
@@ -32,7 +35,7 @@ export const OrderAlertModal: React.FC<Props> = ({ onViewOrder }) => {
 
           <button
             onClick={clearLatestOrderAlert}
-            className="p-1 text-slate-400 hover:text-white rounded-full bg-slate-800"
+            className="p-1 text-slate-400 hover:text-white rounded-full bg-slate-800 cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -43,7 +46,7 @@ export const OrderAlertModal: React.FC<Props> = ({ onViewOrder }) => {
             #{latestNewOrder.codigo_seguimiento} • {latestNewOrder.metodo_envio_nombre}
           </p>
           <p className="line-clamp-1 text-slate-300 text-[11px]">
-            "{latestNewOrder.detalles_bordado}"
+            &quot;{latestNewOrder.detalles_bordado}&quot;
           </p>
           <p className="text-[10px] text-cyan-400 font-medium truncate">
             📍 {latestNewOrder.destino_detalle}
@@ -56,14 +59,14 @@ export const OrderAlertModal: React.FC<Props> = ({ onViewOrder }) => {
               clearLatestOrderAlert();
               if (onViewOrder) onViewOrder();
             }}
-            className="flex-1 py-1.5 px-3 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1"
+            className="flex-1 py-1.5 px-3 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1 cursor-pointer"
           >
             <span>Ver Pedido</span>
             <ArrowRight className="w-3 h-3" />
           </button>
           <button
             onClick={clearLatestOrderAlert}
-            className="py-1.5 px-3 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700"
+            className="py-1.5 px-3 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium hover:bg-slate-700 cursor-pointer"
           >
             Cerrar
           </button>

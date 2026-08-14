@@ -531,7 +531,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
       )}
 
       {/* Contenedor del Mapa Leaflet Amplio, Inmersivo y con Zoom Profundo */}
-      <div className={`relative w-full ${isModal ? 'h-[55vh] sm:h-[65vh] min-h-[380px]' : 'h-[380px] sm:h-[460px]'} rounded-3xl overflow-hidden border border-white/15 bg-slate-950 shadow-2xl`}>
+      <div className={`relative w-full ${isModal ? 'h-[55vh] sm:h-[65vh] min-h-[400px]' : 'h-[460px] sm:h-[540px]'} rounded-3xl overflow-hidden border border-white/15 bg-slate-950 shadow-2xl`}>
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
         {/* Controles de Zoom Flotantes estilo Apple Maps */}
@@ -610,12 +610,12 @@ export const PlacesMapPicker: React.FC<Props> = ({
             {hasConfirmed ? (
               <>
                 <CheckCircle className="w-6 h-6" />
-                <span>¡Ubicación Confirmada! (Casillas rellenadas)</span>
+                <span>¡Ubicación Confirmada! Cargando...</span>
               </>
             ) : (
               <>
                 <Sparkles className="w-5 h-5 text-cyan-200" />
-                <span>Confirmar, es aquí 📍</span>
+                <span>Confirmar ubicación y continuar ➔</span>
               </>
             )}
           </button>

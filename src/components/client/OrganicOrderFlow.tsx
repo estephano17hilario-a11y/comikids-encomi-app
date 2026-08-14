@@ -153,7 +153,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [showMapModal, setShowMapModal] = useState(false);
   const [showMotorizadoMapModal, setShowMotorizadoMapModal] = useState(false);
 
-  // Motorizado Branch Coordinates
+  // Motorizado Branch State
+  const [motorizadoSubStep, setMotorizadoSubStep] = useState<'map' | 'form'>('map');
   const [showDistritoSuggestions, setShowDistritoSuggestions] = useState(false);
   const [lat, setLat] = useState<number>(-12.1215);
   const [lng, setLng] = useState<number>(-77.0298);
@@ -251,6 +252,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   // --- STEP 2: METHOD SELECTION ---
   const handleMethodSelect = (methodId: string) => {
     setSelectedMethodId(methodId);
+    const method = activeShippingMethods.find(m => m.id === methodId);
+    if (method?.tipo_formulario === 'mapa_direccion') {
+      setMotorizadoSubStep('map');
+    }
     setOrganicStep(3);
   };
 
@@ -635,7 +640,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       <span>📦</span>
                     </span>
                   ) : selectedMethod?.tipo_formulario === 'mapa_direccion' ? (
-                    <span>Envío por Motorizado 🛵</span>
+                    motorizadoSubStep === 'map' ? (
+                      <span>Selecciona la ubicación de entrega 📍</span>
+                    ) : (
+                      <span>Confirmar Datos de Entrega 🛵</span>
+                    )
                   ) : (
                     <span>Datos de Entrega & Destinatario 📍</span>
                   )
@@ -645,7 +654,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             {organicStep > 1 && (
               <button
                 type="button"
-                onClick={() => setOrganicStep((prev) => (prev - 1) as 1 | 2)}
+                onClick={() => {
+                  if (organicStep === 3 && selectedMethod?.tipo_formulario === 'mapa_direccion' && motorizadoSubStep === 'form') {
+                    setMotorizadoSubStep('map');
+                    return;
+                  }
+                  setOrganicStep((prev) => (prev - 1) as 1 | 2);
+                }}
                 className="p-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-400 hover:text-white transition-colors cursor-pointer"
                 title="Volver"
               >
@@ -972,103 +987,170 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               {/* RAMA B: MOTORIZADO LOCAL LIMA */}
               {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
                 <div className="space-y-4">
-                  {/* Mapa Interactivo Integrado con botón para abrir pantalla completa */}
-                  <PlacesMapPicker
-                    initialLat={lat}
-                    initialLng={lng}
-                    initialAddress={direccionExacta}
-                    initialDistrict={distritoQuery}
-                    onOpenModal={() => setShowMotorizadoMapModal(true)}
-                    onConfirmLocation={({ district, address: confirmedAddr, lat: newLat, lng: newLng }) => {
-                      if (district) {
-                        setDistritoQuery(district);
-                        localStorage.setItem('incomi_saved_district', district);
-                      }
-                      if (confirmedAddr) {
-                        setDireccionExacta(confirmedAddr);
-                        localStorage.setItem('incomi_saved_address', confirmedAddr);
-                      }
-                      setLat(newLat);
-                      setLng(newLng);
-                    }}
-                  />
-
-                  {/* Casillas de Distrito y Dirección en el formulario principal (Más grandes en eje Y) */}
-                  <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.05] border-2 border-white/10 space-y-4 shadow-xl">
-                    <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-                      <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-cyan-400" />
-                        Dirección Confirmada para Despacho
-                      </span>
-                    </div>
-
-                    <div className="space-y-2 relative">
-                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                        🧭 Distrito de Lima *
-                      </label>
-                      <div className="relative flex items-center">
-                        <input
-                          type="text"
-                          required
-                          value={distritoQuery}
-                          onFocus={() => setShowDistritoSuggestions(true)}
-                          onChange={e => {
-                            setDistritoQuery(e.target.value);
-                            setShowDistritoSuggestions(true);
-                          }}
-                          placeholder="Escribe tu distrito (ej. Miraflores, San Isidro)..."
-                          className="w-full pl-12 pr-4 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
-                        />
-                        <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+                  
+                  {/* SUBPASO 1: MAPA GIGANTE OBLIGATORIO */}
+                  {motorizadoSubStep === 'map' && (
+                    <div className="space-y-3.5 animate-fadeIn">
+                      <div className="p-3.5 sm:p-4 rounded-2xl bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+                          <Navigation className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm sm:text-base font-black text-white leading-tight">
+                            Seleccione la ubicación de recojo / entrega
+                          </h4>
+                          <p className="text-xs text-slate-400">
+                            Usa tu GPS, busca tu calle o arrastra el pin hasta tu puerta exacta.
+                          </p>
+                        </div>
                       </div>
 
-                      {showDistritoSuggestions && suggestedDistritos.length > 0 && (
-                        <div className="absolute z-20 top-full mt-1.5 w-full max-h-56 overflow-y-auto bg-slate-900/98 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-2">
-                          {suggestedDistritos.map((distNombre, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => {
-                                setDistritoQuery(distNombre);
-                                setShowDistritoSuggestions(false);
-                              }}
-                              className="w-full text-left p-3.5 rounded-xl hover:bg-white/[0.08] text-xs sm:text-sm text-white flex items-center justify-between transition-colors cursor-pointer"
-                            >
-                              <span className="font-bold">{distNombre}</span>
-                              <span className="text-xs text-cyan-400 font-mono">Lima</span>
-                            </button>
-                          ))}
+                      <PlacesMapPicker
+                        initialLat={lat}
+                        initialLng={lng}
+                        initialAddress={direccionExacta}
+                        initialDistrict={distritoQuery}
+                        onConfirmLocation={({ district, address: confirmedAddr, lat: newLat, lng: newLng }) => {
+                          if (district) {
+                            setDistritoQuery(district);
+                            localStorage.setItem('incomi_saved_district', district);
+                          }
+                          if (confirmedAddr) {
+                            setDireccionExacta(confirmedAddr);
+                            localStorage.setItem('incomi_saved_address', confirmedAddr);
+                          }
+                          setLat(newLat);
+                          setLng(newLng);
+                          setMotorizadoSubStep('form');
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* SUBPASO 2: FORMULARIO DE CONFIRMACIÓN CON BOTÓN DE VOLVER AL MAPA */}
+                  {motorizadoSubStep === 'form' && (
+                    <div className="space-y-4 animate-fadeIn">
+                      
+                      {/* Tarjeta de Resumen con Botón de Volver al Mapa */}
+                      <div className="p-4 sm:p-5 rounded-3xl bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center justify-between gap-3 shadow-lg">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-11 h-11 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+                            <MapPin className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 block">
+                              Punto fijado en el Mapa ({distritoQuery || 'Lima'})
+                            </span>
+                            <p className="text-sm sm:text-base font-black text-white truncate">
+                              {direccionExacta || 'Dirección seleccionada'}
+                            </p>
+                          </div>
                         </div>
-                      )}
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => setMotorizadoSubStep('map')}
+                          className="px-4 py-2.5 rounded-2xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs sm:text-sm font-bold border border-cyan-500/40 flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-95 transition-all shadow-md"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Volver al Mapa</span>
+                        </button>
+                      </div>
 
-                    <div className="space-y-2">
-                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                        📍 Dirección Exacta (Calle, Pasaje, Número, Dpto) *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={direccionExacta}
-                        onChange={e => setDireccionExacta(e.target.value)}
-                        placeholder="Ej. Av. Larco 1234, Dpto 402 / Pasaje Los Sauces 120"
-                        className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
-                      />
-                    </div>
+                      {/* Casillas de Distrito y Dirección */}
+                      <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.05] border-2 border-white/10 space-y-4 shadow-xl">
+                        
+                        <div className="space-y-2 relative">
+                          <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                            🧭 Distrito de Lima *
+                          </label>
+                          <div className="relative flex items-center">
+                            <input
+                              type="text"
+                              required
+                              value={distritoQuery}
+                              onFocus={() => setShowDistritoSuggestions(true)}
+                              onChange={e => {
+                                setDistritoQuery(e.target.value);
+                                setShowDistritoSuggestions(true);
+                              }}
+                              placeholder="Escribe tu distrito (ej. Miraflores, San Isidro)..."
+                              className="w-full pl-12 pr-4 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
+                            />
+                            <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+                          </div>
 
-                    <div className="space-y-2">
-                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                        🏷️ Referencia de Entrega (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        value={referencia}
-                        onChange={e => setReferencia(e.target.value)}
-                        placeholder="Ej. Frente al parque, rejas negras, timbre blanco"
-                        className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
-                      />
+                          {showDistritoSuggestions && suggestedDistritos.length > 0 && (
+                            <div className="absolute z-20 top-full mt-1.5 w-full max-h-56 overflow-y-auto bg-slate-900/98 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-2">
+                              {suggestedDistritos.map((distNombre, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => {
+                                    setDistritoQuery(distNombre);
+                                    setShowDistritoSuggestions(false);
+                                  }}
+                                  className="w-full text-left p-3.5 rounded-xl hover:bg-white/[0.08] text-xs sm:text-sm text-white flex items-center justify-between transition-colors cursor-pointer"
+                                >
+                                  <span className="font-bold">{distNombre}</span>
+                                  <span className="text-xs text-cyan-400 font-mono">Lima</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                            📍 Dirección Exacta (Calle, Pasaje, Número, Dpto) *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={direccionExacta}
+                            onChange={e => setDireccionExacta(e.target.value)}
+                            onBlur={async () => {
+                              if (!direccionExacta.trim()) return;
+                              try {
+                                const q = encodeURIComponent(`${direccionExacta.trim()}, ${distritoQuery.trim()}, Lima, Peru`);
+                                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&countrycodes=pe&limit=1`);
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  if (data && data[0]) {
+                                    setLat(parseFloat(data[0].lat));
+                                    setLng(parseFloat(data[0].lon));
+                                  }
+                                }
+                              } catch (err) {
+                                console.warn('Geocodificación de sincronización:', err);
+                              }
+                            }}
+                            placeholder="Ej. Av. Larco 1234, Dpto 402 / Pasaje Los Sauces 120"
+                            className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
+                          />
+                          
+                          {/* Mensaje de aviso cuando se edita la dirección */}
+                          <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-3 rounded-2xl border border-amber-500/25 font-medium mt-1.5">
+                            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                            <span>(Si se modifica cambiará la ubicación del Mapa)</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                            🏷️ Referencia de Entrega (Opcional)
+                          </label>
+                          <input
+                            type="text"
+                            value={referencia}
+                            onChange={e => setReferencia(e.target.value)}
+                            placeholder="Ej. Frente al parque, rejas negras, timbre blanco"
+                            className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
+
                 </div>
               )}
 
@@ -1089,45 +1171,49 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               )}
 
-              {/* NOMBRE COMPLETO CON EMOJI */}
-              <div className="space-y-2 pt-2 border-t border-white/[0.08]">
-                <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                  👤 Tu Nombre Completo (Destinatario) *
-                </label>
-                <div className="relative flex items-center">
-                  <input
-                    type="text"
-                    required
-                    value={nombreCompleto}
-                    onChange={e => setNombreCompleto(e.target.value)}
-                    placeholder="Ej. Carlos Mendoza Ramos"
-                    className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
-                  />
-                  <User className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
-                </div>
-              </div>
+              {/* NOMBRE COMPLETO CON EMOJI (Solo se muestra cuando no estamos en la selección del mapa de motorizado) */}
+              {(selectedMethod?.tipo_formulario !== 'mapa_direccion' || motorizadoSubStep === 'form') && (
+                <>
+                  <div className="space-y-2 pt-2 border-t border-white/[0.08]">
+                    <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                      👤 Tu Nombre Completo (Destinatario) *
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        required
+                        value={nombreCompleto}
+                        onChange={e => setNombreCompleto(e.target.value)}
+                        placeholder="Ej. Carlos Mendoza Ramos"
+                        className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
+                      />
+                      <User className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+                    </div>
+                  </div>
 
-              {errorMsg && (
-                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3 rounded-2xl border border-rose-500/20">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{errorMsg}</span>
-                </div>
+                  {errorMsg && (
+                    <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3 rounded-2xl border border-rose-500/20">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{errorMsg}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="big-btn-primary py-4.5 sm:py-5 text-base sm:text-lg font-black mt-2 shadow-2xl"
+                  >
+                    {submitting ? (
+                      <span>Registrando Envío...</span>
+                    ) : (
+                      <>
+                        <span>Confirmar y Finalizar Pedido</span>
+                        <ArrowRight className="w-5 h-5" />
+                      </>
+                    )}
+                  </button>
+                </>
               )}
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="big-btn-primary py-4.5 sm:py-5 text-base sm:text-lg font-black mt-2 shadow-2xl"
-              >
-                {submitting ? (
-                  <span>Registrando Envío...</span>
-                ) : (
-                  <>
-                    <span>Confirmar y Finalizar Pedido</span>
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
             </form>
           )}
 

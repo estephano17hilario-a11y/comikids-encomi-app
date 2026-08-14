@@ -128,6 +128,64 @@ export const OrderLiveTracker: React.FC = () => {
           {displayedOrders.map((pedido) => {
             const currentStep = getStepProgress(pedido);
             const whatsappUrl = getWhatsAppEditUrl(pedido);
+            const isFinished = pedido.estado_envio === 'entregado';
+
+            // Vista Reducida y Compacta para Pedidos Completados en Historial
+            if (isFinished && filter === 'todos') {
+              return (
+                <div
+                  key={pedido.id}
+                  className="minimal-card p-4 sm:p-5 space-y-3 animate-fadeIn border-emerald-500/20 bg-emerald-500/[0.02]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] pb-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-sm sm:text-base font-black text-cyan-400">
+                        #{pedido.codigo_seguimiento}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        ✓ Entregado
+                      </span>
+                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white/[0.05] text-slate-300">
+                        {pedido.metodo_envio_nombre}
+                      </span>
+                    </div>
+
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {formatDate(pedido.created_at)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 text-xs flex-wrap">
+                    <p className="font-bold text-white flex items-center gap-1.5 truncate max-w-sm">
+                      <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span className="truncate">{pedido.destino_detalle}</span>
+                    </p>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {pedido.latitud && pedido.longitud && (
+                        <a
+                          href={`https://www.google.com/maps?q=${pedido.latitud},${pedido.longitud}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-[10px] font-bold flex items-center gap-1 transition-all"
+                        >
+                          <span>📍 Maps</span>
+                        </a>
+                      )}
+                      <a
+                        href={whatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold flex items-center gap-1 transition-all"
+                      >
+                        <MessageCircle className="w-3 h-3" />
+                        <span>Consultar</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
 
             return (
               <div
@@ -168,14 +226,6 @@ export const OrderLiveTracker: React.FC = () => {
                         className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-[11px] font-bold flex items-center gap-1 transition-all"
                       >
                         <span>📍 Maps</span>
-                      </a>
-                      <a
-                        href={`https://waze.com/ul?ll=${pedido.latitud},${pedido.longitud}&navigate=yes`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2.5 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 text-[11px] font-bold flex items-center gap-1 transition-all"
-                      >
-                        <span>🚗 Waze</span>
                       </a>
                     </div>
                   )}

@@ -21,7 +21,7 @@ export const ACHIEVEMENTS_CATALOG: AchievementDefinition[] = [
   {
     codigo: 'envio_3',
     titulo: '3 Envíos ⚡',
-    descripcion: 'Has completado 3 despachos confiando en Comikids.',
+    descripcion: 'Has completado 3 despachos de mercadería con éxito.',
     icono: 'Zap',
     puntosXp: 100,
     badgeColor: 'from-blue-500 to-indigo-500',

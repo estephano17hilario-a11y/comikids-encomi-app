@@ -20,7 +20,7 @@ export const DEFAULT_EMPRESA_USER: Usuario = {
   edad: 30,
   password_hash: '989834969MI',
   rol: 'empresa',
-  avatar_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+  avatar_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=ComiKidsMaster&backgroundColor=06b6d4,3b82f6',
   puntos_xp: 5000,
   nivel: 10,
   created_at: new Date().toISOString()

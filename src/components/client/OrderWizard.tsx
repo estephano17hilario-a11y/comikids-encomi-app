@@ -1,35 +1,16 @@
-import React, { useState } from 'react';
-import { OrganicOrderFlow } from './OrganicOrderFlow';
+import React from 'react';
 import { useOrders } from '../../context/OrderContext';
-import { MessageCircle, Building2, ChevronRight, PackageCheck } from 'lucide-react';
+import { MessageCircle, Building2 } from 'lucide-react';
 
 interface Props {
   onSuccess?: () => void;
 }
 
-export const OrderWizard: React.FC<Props> = ({ onSuccess }) => {
+export const OrderWizard: React.FC<Props> = () => {
   const { tallerConfig } = useOrders();
-  const [showOrderForm, setShowOrderForm] = useState(false);
 
-  const whatsappNumber = tallerConfig.whatsapp_pedidos || '51987654321';
+  const whatsappNumber = (tallerConfig?.whatsapp_pedidos || '51987654321').replace(/\D/g, '');
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent('¡Hola Comikids! 👋 Deseo hacer un nuevo pedido de mercadería.')}`;
-
-  if (showOrderForm) {
-    return (
-      <div className="space-y-4 animate-fadeIn">
-        <div className="flex items-center justify-between px-1">
-          <button
-            type="button"
-            onClick={() => setShowOrderForm(false)}
-            className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <span>← Volver a inicio de pedidos</span>
-          </button>
-        </div>
-        <OrganicOrderFlow onSuccess={onSuccess} />
-      </div>
-    );
-  }
 
   return (
     <div className="w-full max-w-xl mx-auto space-y-6 animate-fadeIn">
@@ -59,7 +40,7 @@ export const OrderWizard: React.FC<Props> = ({ onSuccess }) => {
         </div>
 
         {/* Botón Principal de WhatsApp */}
-        <div className="space-y-3 pt-2">
+        <div className="pt-2">
           <a
             href={whatsappUrl}
             target="_blank"
@@ -69,17 +50,6 @@ export const OrderWizard: React.FC<Props> = ({ onSuccess }) => {
             <MessageCircle className="w-6 h-6 fill-current" />
             <span>Hacer un nuevo pedido</span>
           </a>
-
-          {/* Botón secundario para registrar datos de despacho si ya tiene pedido */}
-          <button
-            type="button"
-            onClick={() => setShowOrderForm(true)}
-            className="w-full py-3 px-5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
-          >
-            <PackageCheck className="w-4 h-4 text-cyan-400" />
-            <span>¿Ya compraste? Registrar datos de envío y despacho</span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
-          </button>
         </div>
 
       </div>

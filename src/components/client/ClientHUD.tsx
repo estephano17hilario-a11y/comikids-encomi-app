@@ -31,11 +31,17 @@ export const ClientHUD: React.FC = () => {
             title="Toca para editar tus datos predeterminados"
           >
             <div className="relative shrink-0">
-              <img
-                src={currentUser.avatar_url}
-                alt={currentUser.nombre_completo}
-                className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl object-cover border border-cyan-400/40 group-hover:border-cyan-400 shadow-xl transition-colors"
-              />
+              {currentUser.avatar_url && !currentUser.avatar_url.includes('unsplash') ? (
+                <img
+                  src={currentUser.avatar_url}
+                  alt={currentUser.nombre_completo}
+                  className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl object-cover border border-cyan-400/40 group-hover:border-cyan-400 shadow-xl transition-colors bg-slate-900"
+                />
+              ) : (
+                <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 border border-cyan-400/40 flex items-center justify-center text-white font-black text-base sm:text-lg shadow-xl shadow-cyan-500/20 group-hover:border-cyan-400 transition-all">
+                  {(currentUser.nombre_completo || 'C').charAt(0).toUpperCase()}
+                </div>
+              )}
               <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-lg bg-cyan-500 text-white text-[9px] sm:text-[10px] font-black shadow-md">
                 Nv.{levelInfo.nivel}
               </span>

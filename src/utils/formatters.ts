@@ -37,9 +37,11 @@ export function formatShortDate(dateString?: string): string {
 }
 
 export function generateOrderTrackingCode(): string {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const prefix = Array.from({ length: 3 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
   const year = new Date().getFullYear();
   const randomNum = Math.floor(1000 + Math.random() * 9000);
-  return `INC-${year}-${randomNum}`;
+  return `${prefix}-${year}-${randomNum}`;
 }
 
 export function cleanPhoneNumber(phone: string): string {

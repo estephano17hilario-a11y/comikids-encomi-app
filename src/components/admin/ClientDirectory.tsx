@@ -80,16 +80,22 @@ export const ClientDirectory: React.FC = () => {
               <div>
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="flex items-center gap-3">
-                    <img
-                      src={client.avatar_url}
-                      alt={client.nombre_completo}
-                      className="w-12 h-12 rounded-2xl object-cover border border-pink-500/30"
-                    />
+                    {client.avatar_url && !client.avatar_url.includes('unsplash') ? (
+                      <img
+                        src={client.avatar_url}
+                        alt={client.nombre_completo}
+                        className="w-12 h-12 rounded-2xl object-cover border border-cyan-500/30 bg-slate-900"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 border border-cyan-500/30 flex items-center justify-center text-white font-black text-base shadow-md shadow-cyan-500/20 shrink-0">
+                        {(client.nombre_completo || 'C').charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <h4 className="text-sm font-bold text-white leading-tight">
                         {client.nombre_completo}
                       </h4>
-                      <span className="text-[10px] text-pink-400 font-semibold">
+                      <span className="text-[10px] text-cyan-400 font-semibold">
                         {levelInfo.nombre}
                       </span>
                     </div>
@@ -103,40 +109,24 @@ export const ClientDirectory: React.FC = () => {
                 <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-1.5 text-xs text-slate-300">
                   <p className="flex items-center justify-between">
                     <span className="text-slate-400">🆔 DNI:</span>
-                    <span className="font-mono font-bold text-white">{client.dni}</span>
+                    <span className="font-mono text-white font-bold">{client.dni}</span>
                   </p>
-                  <p className="flex items-center justify-between">
-                    <span className="text-slate-400">🎂 Edad:</span>
-                    <span>{client.edad ? `${client.edad} años` : '-'}</span>
-                  </p>
-                  <p className="flex items-center justify-between border-t border-slate-800 pt-1.5 mt-1.5">
-                    <span className="text-slate-400">🛍️ Pedidos:</span>
-                    <span className="font-bold text-pink-400">{clientOrders.length} pedidos</span>
-                  </p>
+                  {client.telefono_default && (
+                    <p className="flex items-center justify-between">
+                      <span className="text-slate-400">📱 WhatsApp:</span>
+                      <span className="font-mono text-cyan-300">+51 {client.telefono_default}</span>
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2 pt-2">
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>WhatsApp</span>
-                </a>
-
-                <button
-                  onClick={() => setSelectedClient(client)}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
-                  title="Ver historial de pedidos"
-                >
-                  <Package className="w-4 h-4" />
-                </button>
-              </div>
-
+              <button
+                onClick={() => setSelectedClient(client)}
+                className="w-full mt-2 py-2 px-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Ver historial de despachos</span>
+              </button>
             </div>
           );
         })}
@@ -149,11 +139,17 @@ export const ClientDirectory: React.FC = () => {
             
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
               <div className="flex items-center gap-3">
-                <img
-                  src={selectedClient.avatar_url}
-                  alt={selectedClient.nombre_completo}
-                  className="w-10 h-10 rounded-xl object-cover"
-                />
+                {selectedClient.avatar_url && !selectedClient.avatar_url.includes('unsplash') ? (
+                  <img
+                    src={selectedClient.avatar_url}
+                    alt={selectedClient.nombre_completo}
+                    className="w-10 h-10 rounded-xl object-cover bg-slate-900"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-md">
+                    {(selectedClient.nombre_completo || 'C').charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div>
                   <h3 className="text-base font-bold text-white">{selectedClient.nombre_completo}</h3>
                   <p className="text-xs text-slate-400 font-mono">DNI: {selectedClient.dni}</p>

@@ -128,6 +128,26 @@ export const OrdersCalendarView: React.FC<Props> = ({
     { num: 4, title: 'En Camino', icon: Truck },
   ];
 
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchStartX - touchEndX;
+    if (Math.abs(diff) > 45) {
+      if (diff > 0) {
+        handleNextMonth();
+      } else {
+        handlePrevMonth();
+      }
+    }
+    setTouchStartX(null);
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       
@@ -139,7 +159,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
           </div>
           <div>
             <h3 className="text-base font-black text-white">Mapa de Calendario</h3>
-            <p className="text-xs text-slate-400">Días con despachos registrados</p>
+            <p className="text-xs text-slate-400">Desliza o usa las flechas para explorar meses</p>
           </div>
         </div>
 
@@ -153,55 +173,35 @@ export const OrdersCalendarView: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* Calendario Interactivo */}
-      <div className="minimal-card p-5 sm:p-7 space-y-5">
+      {/* Calendario Interactivo con Deslizamiento Táctil */}
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="minimal-card p-5 sm:p-7 space-y-5 select-none"
+      >
         
-        {/* Controles de Mes y Año */}
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-4">
+        {/* Controles Pasantes de Mes y Año */}
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
           <button
             type="button"
             onClick={handlePrevMonth}
-            className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.12] text-slate-200 border border-white/10 transition-all active:scale-95 cursor-pointer flex items-center gap-1 text-xs font-bold"
             title="Mes Anterior"
           >
             <ChevronLeft className="w-5 h-5" />
+            <span className="hidden sm:inline">Anterior</span>
           </button>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <select
-              value={currentMonth}
-              onChange={(e) => {
-                setCurrentMonth(Number(e.target.value));
-                setSelectedDateStr(null);
-              }}
-              className="bg-slate-900 border border-white/20 rounded-xl px-3 py-2 text-sm sm:text-base font-black text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
-            >
-              {MONTH_NAMES.map((name, idx) => (
-                <option key={name} value={idx}>
-                  {name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={currentYear}
-              onChange={(e) => {
-                setCurrentYear(Number(e.target.value));
-                setSelectedDateStr(null);
-              }}
-              className="bg-slate-900 border border-white/20 rounded-xl px-3 py-2 text-sm sm:text-base font-mono font-black text-cyan-400 focus:outline-none focus:border-cyan-400 cursor-pointer"
-            >
-              {[2024, 2025, 2026, 2027, 2028].map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-3 text-center">
+            <h4 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2">
+              <span className="text-cyan-300">{MONTH_NAMES[currentMonth]}</span>
+              <span className="text-slate-400 font-mono">{currentYear}</span>
+            </h4>
 
             <button
               type="button"
               onClick={handleGoToday}
-              className="hidden sm:inline-block px-3 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-black transition-all cursor-pointer"
+              className="px-2.5 py-1 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-[11px] font-black transition-all cursor-pointer"
             >
               Hoy
             </button>
@@ -210,9 +210,10 @@ export const OrdersCalendarView: React.FC<Props> = ({
           <button
             type="button"
             onClick={handleNextMonth}
-            className="p-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.12] text-slate-200 border border-white/10 transition-all active:scale-95 cursor-pointer flex items-center gap-1 text-xs font-bold"
             title="Mes Siguiente"
           >
+            <span className="hidden sm:inline">Siguiente</span>
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>

@@ -74,11 +74,17 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <img
-                src={currentUser?.avatar_url}
-                alt={currentUser?.nombre_completo}
-                className="w-12 h-12 rounded-2xl object-cover border-2 border-cyan-400 shadow-md"
-              />
+              {currentUser?.avatar_url && !currentUser.avatar_url.includes('unsplash') ? (
+                <img
+                  src={currentUser.avatar_url}
+                  alt={currentUser?.nombre_completo}
+                  className="w-12 h-12 rounded-2xl object-cover border-2 border-cyan-400 shadow-md bg-slate-950"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 border-2 border-cyan-400 flex items-center justify-center text-white font-black text-lg shadow-md shadow-cyan-500/25">
+                  {(currentUser?.nombre_completo || 'C').charAt(0).toUpperCase()}
+                </div>
+              )}
               <span className="absolute -bottom-1 -right-1 px-1.5 py-0.2 rounded-md bg-cyan-500 text-white text-[9px] font-black">
                 Nv.{levelInfo.nivel}
               </span>

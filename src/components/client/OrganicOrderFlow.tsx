@@ -513,9 +513,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
 
                 {referencia.trim() && (
-                  <div className="pt-2 border-t border-white/[0.06] text-xs space-y-0.5">
-                    <span className="text-slate-400 font-medium block">🏷️ Referencia:</span>
-                    <p className="text-white font-semibold">
+                  <div className="pt-1.5 text-xs space-y-0.5">
+                    <span className="text-cyan-400 font-bold block text-[11px]">🏷️ Referencia:</span>
+                    <p className="text-white font-medium text-xs bg-white/[0.04] p-2 rounded-xl border border-white/10">
                       {referencia}
                     </p>
                   </div>
@@ -588,7 +588,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             </p>
           </div>
 
-          {/* Botón Grande de WhatsApp + Botón Hacer Nuevo Pedido */}
+          {/* Botón Principal de WhatsApp + Registrar Otro */}
           <div className="space-y-3 pt-2">
             <a
               href={whatsappUrl}
@@ -598,16 +598,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             >
               <MessageCircle className="w-6 h-6 fill-current" />
               <span>Enviar Comprobante por WhatsApp</span>
-            </a>
-
-            <a
-              href={whatsappNuevoPedidoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3.5 px-6 rounded-2xl bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 active:scale-[0.98] text-cyan-300 text-sm font-black flex items-center justify-center gap-2.5 shadow-lg transition-all cursor-pointer"
-            >
-              <MessageCircle className="w-4 h-4" />
-              <span>Hacer nuevo pedido</span>
             </a>
 
             <button

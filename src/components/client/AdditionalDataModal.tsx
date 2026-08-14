@@ -65,13 +65,14 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
               <AlertTriangle className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase font-black tracking-widest text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/20">
-                  Importante
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/25 px-2.5 py-0.5 rounded-full border border-amber-500/40 flex items-center gap-1 shadow-sm">
+                  <span>⚡</span>
+                  <span>Registre y gane 100 de XP</span>
                 </span>
                 <span className="text-[10px] text-slate-400 font-bold">Paso {step} de 3</span>
               </div>
-              <h3 className="text-lg font-black text-white leading-snug">
+              <h3 className="text-lg font-black text-white leading-snug mt-0.5">
                 Datos Adicionales
               </h3>
             </div>

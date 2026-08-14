@@ -11,6 +11,8 @@ interface AuthContextType {
   register: (nombre: string, dni: string, edad: number, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   updatePassword: (newPass: string) => Promise<boolean>;
+  updateProfile: (updates: Partial<Usuario>) => Promise<boolean>;
+  updateAdditionalData: (data: { genero?: 'masculino' | 'femenino' | 'otro'; edad?: number; motivo_compra?: 'uso_personal' | 'emprender' | 'empresa' }) => Promise<boolean>;
   refreshUser: () => void;
   triggerConfetti: () => void;
 }
@@ -73,6 +75,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return ok;
   };
 
+  const updateProfile = async (updates: Partial<Usuario>): Promise<boolean> => {
+    if (!currentUser) return false;
+    const updated = await ordersService.updateUserProfile(currentUser.id, updates);
+    if (updated) {
+      setCurrentUser(updated);
+      // Sincronizar con claves de autocompletado si existen
+      if (updates.nombre_completo) localStorage.setItem('incomi_saved_fullname', updates.nombre_completo);
+      if (updates.telefono_default) localStorage.setItem('incomi_saved_phone', updates.telefono_default);
+      if (updates.dni_default) localStorage.setItem('incomi_saved_doc', updates.dni_default);
+      if (updates.distrito_default) localStorage.setItem('incomi_saved_district', updates.distrito_default);
+      if (updates.direccion_default) localStorage.setItem('incomi_saved_address', updates.direccion_default);
+      if (updates.referencia_default) localStorage.setItem('incomi_saved_reference', updates.referencia_default);
+      triggerConfetti();
+      return true;
+    }
+    return false;
+  };
+
+  const updateAdditionalData = async (data: {
+    genero?: 'masculino' | 'femenino' | 'otro';
+    edad?: number;
+    motivo_compra?: 'uso_personal' | 'emprender' | 'empresa';
+  }): Promise<boolean> => {
+    if (!currentUser) return false;
+    const updates: Partial<Usuario> = {
+      ...data,
+      datos_adicionales_completados: true,
+      puntos_xp: (currentUser.puntos_xp || 0) + (currentUser.datos_adicionales_completados ? 0 : 50),
+    };
+    const updated = await ordersService.updateUserProfile(currentUser.id, updates);
+    if (updated) {
+      setCurrentUser(updated);
+      triggerConfetti();
+      return true;
+    }
+    return false;
+  };
+
   const refreshUser = () => {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if (raw) {
@@ -100,6 +140,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         register,
         logout,
         updatePassword,
+        updateProfile,
+        updateAdditionalData,
         refreshUser,
         triggerConfetti,
       }}

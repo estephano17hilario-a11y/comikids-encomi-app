@@ -164,6 +164,24 @@ class OrdersService {
     return true;
   }
 
+  async updateUserProfile(userId: string, updates: Partial<Usuario>): Promise<Usuario | null> {
+    const users = this.getUsers();
+    const index = users.findIndex(u => u.id === userId);
+    if (index === -1) return null;
+
+    users[index] = { ...users[index], ...updates };
+    this.saveUsers(users);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('usuarios').update(updates).eq('id', userId);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    return users[index];
+  }
+
   // --- MÉTODOS DE ENVÍO / DESTINOS (Configurables por la empresa) ---
   getShippingMethods(): MetodoEnvio[] {
     const raw = localStorage.getItem(STORAGE_KEYS.SHIPPING_METHODS);

@@ -5,7 +5,7 @@ export function getWhatsAppEditOrderUrl(pedido: Pedido, tallerConfig: TallerConf
   const number = cleanPhoneNumber(tallerConfig.whatsapp_pedidos || '51987654321');
   const clientName = pedido.usuario?.nombre_completo || 'Clienta Encomi';
   
-  const text = `¡Hola Encomi! 🧵\nSoy *${clientName}*, deseo consultar sobre mi pedido *#${pedido.codigo_seguimiento}*.\n\n*Bordado:* ${pedido.detalles_bordado}\n*Destino:* ${pedido.destino_detalle}\n\n¿Cómo va mi bordado? ✨`;
+  const text = `¡Hola Comikids! 📦\nSoy *${clientName}*, deseo consultar sobre mi despacho *#${pedido.codigo_seguimiento}*.\n\n*Detalle:* ${pedido.detalles_bordado}\n*Destino:* ${pedido.destino_detalle}\n\n¿Cuál es el estado de mi envío? ✨`;
 
   return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
 }

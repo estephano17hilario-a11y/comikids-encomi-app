@@ -8,6 +8,14 @@ export interface Usuario {
   dni: string;
   nombre_completo: string;
   edad?: number;
+  genero?: 'masculino' | 'femenino' | 'otro';
+  motivo_compra?: 'uso_personal' | 'emprender' | 'empresa';
+  telefono_default?: string;
+  dni_default?: string;
+  distrito_default?: string;
+  direccion_default?: string;
+  referencia_default?: string;
+  datos_adicionales_completados?: boolean;
   password_hash: string;
   rol: UserRole;
   avatar_url: string;

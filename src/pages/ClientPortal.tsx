@@ -41,7 +41,7 @@ export const ClientPortal: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <span className="px-4 py-2 rounded-2xl text-sm sm:text-base font-black bg-gradient-to-r from-pink-500/30 via-purple-500/30 to-cyan-500/30 text-pink-200 border-2 border-pink-400/50 flex items-center gap-2 shadow-xl shadow-pink-500/25 tracking-wide">
-                <span className="text-base sm:text-lg">🧵</span>
+                <span className="text-base sm:text-lg">📦</span>
                 <span>ComiKids</span>
               </span>
             </div>

@@ -694,29 +694,8 @@ export const PlacesMapPicker: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Panel Inferior Flotante: Especificación Exacta de Dirección (Número, Cruce, Dpto) + Botón Confirmar */}
-        <div className="absolute bottom-4 left-4 right-4 z-[400] space-y-2.5">
-          
-          {/* Campo editable de dirección milimétrica exacta */}
-          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-500/40 shadow-2xl space-y-1.5">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5">
-                📍 Dirección Exacta (Número / Cruce / Dpto):
-              </span>
-              <span className="text-[10px] text-cyan-400 font-mono font-bold bg-cyan-500/15 px-2 py-0.5 rounded-full border border-cyan-500/30">
-                Punto fijado
-              </span>
-            </div>
-            <input
-              type="text"
-              value={detectedAddress}
-              onChange={(e) => setDetectedAddress(e.target.value)}
-              placeholder="Ej. Jr. Huamanga 1586, Urb. Matute (Cruce con Av. México)..."
-              className="w-full px-4 py-3 bg-white/[0.08] border border-white/20 rounded-xl text-xs sm:text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 shadow-inner"
-            />
-          </div>
-
-          {/* Botón Principal: CONFIRMAR UBICACIÓN */}
+        {/* Panel Inferior Flotante: Botón Confirmar Ubicación */}
+        <div className="absolute bottom-4 left-4 right-4 z-[400]">
           <button
             type="button"
             onClick={handleConfirm}

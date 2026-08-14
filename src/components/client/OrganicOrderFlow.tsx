@@ -72,6 +72,12 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
   }
 };
 
+const formatPhoneWithSpaces = (raw: string) => {
+  const digits = (raw || '').replace(/\D/g, '').slice(0, 9);
+  const parts = digits.match(/.{1,3}/g);
+  return parts ? parts.join(' ') : digits;
+};
+
 export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const { createPedido, activeShippingMethods, tallerConfig } = useOrders();
   const { currentUser, login, triggerConfetti } = useAuth();
@@ -79,34 +85,47 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   // Step state: 1 = WhatsApp, 2 = Método, 3 = Datos de Destino + Nombre
   const [organicStep, setOrganicStep] = useState<1 | 2 | 3>(1);
 
-  // Form Fields con Auto-Persistencia LocalStorage
+  // Form Fields con Auto-Persistencia LocalStorage y Datos Predeterminados de Usuario
   const [whatsapp, setWhatsapp] = useState<string>(() => {
-    return localStorage.getItem('incomi_saved_phone') || currentUser?.dni || '';
+    const raw = currentUser?.telefono_default || localStorage.getItem('incomi_saved_phone') || currentUser?.dni || '';
+    return formatPhoneWithSpaces(raw);
   });
 
   const [nombreCompleto, setNombreCompleto] = useState<string>(() => {
-    return localStorage.getItem('incomi_saved_fullname') || currentUser?.nombre_completo || '';
+    return currentUser?.nombre_completo || localStorage.getItem('incomi_saved_fullname') || '';
   });
 
   const [dniShalom, setDniShalom] = useState<string>(() => {
-    return localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
+    return currentUser?.dni_default || localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
   });
 
   const [distritoQuery, setDistritoQuery] = useState<string>(() => {
-    return localStorage.getItem('incomi_saved_district') || '';
+    return currentUser?.distrito_default || localStorage.getItem('incomi_saved_district') || '';
   });
 
   const [direccionExacta, setDireccionExacta] = useState<string>(() => {
-    return localStorage.getItem('incomi_saved_address') || '';
+    return currentUser?.direccion_default || localStorage.getItem('incomi_saved_address') || '';
   });
 
   const [referencia, setReferencia] = useState<string>(() => {
-    return localStorage.getItem('incomi_saved_reference') || '';
+    return currentUser?.referencia_default || localStorage.getItem('incomi_saved_reference') || '';
   });
 
   const [selectedMethodId, setSelectedMethodId] = useState<string>(
     activeShippingMethods[0]?.id || 'met-shalom'
   );
+
+  // Sincronizar automáticamente cuando el usuario actualiza sus datos predeterminados en el perfil
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.nombre_completo) setNombreCompleto(currentUser.nombre_completo);
+      if (currentUser.telefono_default) setWhatsapp(currentUser.telefono_default);
+      if (currentUser.dni_default) setDniShalom(currentUser.dni_default);
+      if (currentUser.distrito_default) setDistritoQuery(currentUser.distrito_default);
+      if (currentUser.direccion_default) setDireccionExacta(currentUser.direccion_default);
+      if (currentUser.referencia_default) setReferencia(currentUser.referencia_default);
+    }
+  }, [currentUser]);
 
   // Auto-guardado en LocalStorage cuando cambian los campos
   useEffect(() => {
@@ -358,6 +377,25 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
   // Construir mensaje predefinido para WhatsApp
   const buildWhatsAppMessage = (order: Pedido) => {
+    // Plantilla especial para Motorizado (sin DNI ni WhatsApp repetido, con enlace directo completo a Google Maps)
+    if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
+      const orderLat = order.latitud || lat;
+      const orderLng = order.longitud || lng;
+      const googleMapsUrl = (orderLat && orderLng) ? `https://www.google.com/maps?q=${orderLat},${orderLng}` : '';
+
+      return (
+        `¡Hola Comikids! 👋 Acabo de registrar mi despacho por Motorizado:\n\n` +
+        `📦 *Código:* #${order.codigo_seguimiento}\n` +
+        `👤 *Destinatario:* ${nombreCompleto.trim()}\n` +
+        `🚚 *Tipo de Envío:* ${selectedMethod?.nombre || 'Motorizado Local Lima'}\n` +
+        `📍 *Dirección Exacta:* ${distritoQuery.trim()} • ${direccionExacta.trim()}\n` +
+        (referencia.trim() ? `🏷️ *Referencia:* ${referencia.trim()}\n` : '') +
+        (googleMapsUrl ? `\n🗺️ *Ubicación en Google Maps:*\n${googleMapsUrl}\n` : '') +
+        `\nAdjunto aquí mi comprobante de pago para proceder con el despacho. ¡Muchas gracias!`
+      );
+    }
+
+    // Plantilla para Shalom / Otros métodos
     let destinoTexto = order.destino_detalle;
     if (selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject) {
       destinoTexto = formatFullAgencyName(selectedAgencyObject);
@@ -378,6 +416,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const whatsappUrl = createdOrder
     ? `https://wa.me/${whatsappTallerNumber}?text=${encodeURIComponent(buildWhatsAppMessage(createdOrder))}`
     : '#';
+
+  const whatsappNuevoPedidoUrl = `https://wa.me/${whatsappTallerNumber}?text=${encodeURIComponent('¡Hola Comikids! 👋 Deseo solicitar un nuevo pedido de mercadería.')}`;
 
   return (
     <div className="w-full max-w-2xl mx-auto py-1 font-sans tracking-tight space-y-3.5">
@@ -451,47 +491,91 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className="text-slate-400 block font-medium">👤 Destinatario:</span>
-                <span className="text-white font-bold text-sm">{nombreCompleto}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block font-medium">📱 WhatsApp:</span>
-                <span className="text-white font-bold text-sm">+51 {whatsapp}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block font-medium">🪪 DNI o CE de Recojo:</span>
-                <span className="text-white font-bold text-sm">{dniShalom || 'No especificado'}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block font-medium">🚚 Tipo de Envío:</span>
-                <span className="text-white font-bold text-sm">{selectedMethod?.nombre}</span>
-              </div>
-            </div>
+            {selectedMethod?.tipo_formulario === 'mapa_direccion' ? (
+              /* Comprobante Limpio para Motorizado (Sin DNI ni WhatsApp) */
+              <div className="space-y-3.5 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-slate-400 block font-medium">👤 Destinatario:</span>
+                    <span className="text-white font-bold text-sm">{nombreCompleto}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">🚚 Tipo de Envío:</span>
+                    <span className="text-white font-bold text-sm">{selectedMethod?.nombre || 'Motorizado Local'}</span>
+                  </div>
+                </div>
 
-            {/* Detalle de Agencia Shalom en Formato Optimizado */}
-            {selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject && (
-              <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
-                <span className="text-slate-400 font-medium block">📦 Agencia Shalom de Destino:</span>
-                <p className="text-white font-bold leading-snug">
-                  {formatFullAgencyName(selectedAgencyObject)}
-                </p>
-                {selectedAgencyObject.horario && (
-                  <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1">
-                    <Clock className="w-3 h-3 text-slate-500" />
-                    <span>{selectedAgencyObject.horario}</span>
+                <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
+                  <span className="text-slate-400 font-medium block">📍 Dirección Exacta de Destino:</span>
+                  <p className="text-white font-bold text-sm">
+                    {distritoQuery} • {direccionExacta}
                   </p>
+                </div>
+
+                {referencia.trim() && (
+                  <div className="pt-2 border-t border-white/[0.06] text-xs space-y-0.5">
+                    <span className="text-slate-400 font-medium block">🏷️ Referencia:</span>
+                    <p className="text-white font-semibold">
+                      {referencia}
+                    </p>
+                  </div>
+                )}
+
+                {(createdOrder?.latitud || lat) && (createdOrder?.longitud || lng) && (
+                  <div className="pt-2.5 border-t border-white/[0.06] space-y-1.5">
+                    <span className="text-[11px] font-bold text-slate-400 block">
+                      🗺️ Coordenadas exactas fijadas en el mapa:
+                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <a
+                        href={`https://www.google.com/maps?q=${createdOrder?.latitud || lat},${createdOrder?.longitud || lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-xl bg-blue-600/25 hover:bg-blue-600/35 text-blue-300 border border-blue-500/50 text-xs font-black flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
+                      >
+                        <span>📍</span>
+                        <span>Ver ubicación exacta en Google Maps</span>
+                      </a>
+                    </div>
+                  </div>
                 )}
               </div>
-            )}
+            ) : (
+              /* Comprobante para Agencia Shalom / Otros */
+              <div className="space-y-3.5 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-slate-400 block font-medium">👤 Destinatario:</span>
+                    <span className="text-white font-bold text-sm">{nombreCompleto}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">📱 WhatsApp:</span>
+                    <span className="text-white font-bold text-sm">+51 {whatsapp}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">🪪 DNI o CE de Recojo:</span>
+                    <span className="text-white font-bold text-sm">{dniShalom || 'No especificado'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">🚚 Tipo de Envío:</span>
+                    <span className="text-white font-bold text-sm">{selectedMethod?.nombre}</span>
+                  </div>
+                </div>
 
-            {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
-              <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
-                <span className="text-slate-400 font-medium block">📍 Dirección de Entrega:</span>
-                <p className="text-white font-bold">
-                  {distritoQuery} • {direccionExacta} {referencia ? `(Ref: ${referencia})` : ''}
-                </p>
+                {selectedAgencyObject && (
+                  <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
+                    <span className="text-slate-400 font-medium block">📦 Agencia Shalom de Destino:</span>
+                    <p className="text-white font-bold leading-snug">
+                      {formatFullAgencyName(selectedAgencyObject)}
+                    </p>
+                    {selectedAgencyObject.horario && (
+                      <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1">
+                        <Clock className="w-3 h-3 text-slate-500" />
+                        <span>{selectedAgencyObject.horario}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -504,7 +588,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             </p>
           </div>
 
-          {/* Botón Grande y Llamativo de WhatsApp */}
+          {/* Botón Grande de WhatsApp + Botón Hacer Nuevo Pedido */}
           <div className="space-y-3 pt-2">
             <a
               href={whatsappUrl}
@@ -514,6 +598,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             >
               <MessageCircle className="w-6 h-6 fill-current" />
               <span>Enviar Comprobante por WhatsApp</span>
+            </a>
+
+            <a
+              href={whatsappNuevoPedidoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3.5 px-6 rounded-2xl bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 active:scale-[0.98] text-cyan-300 text-sm font-black flex items-center justify-center gap-2.5 shadow-lg transition-all cursor-pointer"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Hacer nuevo pedido</span>
             </a>
 
             <button
@@ -526,7 +620,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               className="text-xs text-slate-400 hover:text-white flex items-center justify-center gap-1.5 mx-auto py-2 cursor-pointer transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Registrar otro pedido</span>
+              <span>Registrar otro paquete de despacho</span>
             </button>
           </div>
 
@@ -584,7 +678,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 Paso {organicStep} de 3
               </span>
               <h2 className="text-lg sm:text-xl font-bold text-white mt-1.5 tracking-tight">
-                {organicStep === 1 && 'Envío de Mercadería 📦'}
+                {organicStep === 1 && (
+                  <span className="flex items-center gap-2 flex-wrap">
+                    <span>Envío de Mercadería</span>
+                    <span>📦</span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-black">
+                      <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                      <span>WhatsApp</span>
+                    </span>
+                  </span>
+                )}
                 {organicStep === 2 && '¿Cómo deseas recibir tu pedido? 🚚'}
                 {organicStep === 3 && (
                   selectedMethod?.tipo_formulario === 'shalom' ? (
@@ -630,7 +733,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             <form onSubmit={handleWhatsappSubmit} className="space-y-5 animate-fadeIn">
               <div className="space-y-3">
                 <p className="text-xs sm:text-sm text-slate-300 font-medium">
-                  Ingresa tu número de WhatsApp para enviarte las fotos del paquete y el código de seguimiento:
+                  Ingresa tu número de WhatsApp para enviarte las fotos del paquete 📦 y el código de seguimiento:
                 </p>
                 
                 <div className="flex items-center rounded-2xl bg-white/[0.05] border-2 border-white/15 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/25 transition-all p-2 shadow-inner">
@@ -643,8 +746,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     required
                     autoFocus
                     value={whatsapp}
-                    onChange={e => setWhatsapp(e.target.value)}
+                    onChange={e => setWhatsapp(formatPhoneWithSpaces(e.target.value))}
                     placeholder="987 654 321"
+                    maxLength={11}
                     className="w-full bg-transparent px-4 py-3 text-lg sm:text-2xl font-bold font-mono text-white placeholder-slate-500 focus:outline-none tracking-wider"
                   />
                 </div>
@@ -944,21 +1048,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   
                   {/* SUBPASO 1: MAPA GIGANTE OBLIGATORIO */}
                   {motorizadoSubStep === 'map' && (
-                    <div className="space-y-3.5 animate-fadeIn">
-                      <div className="p-3.5 sm:p-4 rounded-2xl bg-cyan-500/10 border-2 border-cyan-500/30 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
-                          <Navigation className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm sm:text-base font-black text-white leading-tight">
-                            Seleccione la ubicación de recojo / entrega
-                          </h4>
-                          <p className="text-xs text-slate-400">
-                            Usa tu GPS, busca tu calle o arrastra el pin hasta tu puerta exacta.
-                          </p>
-                        </div>
-                      </div>
-
+                    <div className="animate-fadeIn">
                       <PlacesMapPicker
                         initialLat={lat}
                         initialLng={lng}
@@ -1067,16 +1157,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
                           />
                           
-                          {/* Mensajes condicionales */}
+                          {/* Mensajes condicionales con recuadro azul para sugerencia y verde para recordatorio */}
                           {(!initialMapAddress || direccionExacta.trim() === initialMapAddress.trim()) ? (
-                            <div className="flex items-center gap-2 text-xs text-cyan-300 bg-cyan-500/10 p-3 rounded-2xl border border-cyan-500/25 font-medium mt-1.5 animate-fadeIn">
-                              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
-                              <span>Especifique más la ruta si lo ve necesario</span>
+                            <div className="flex items-center gap-2 text-xs text-blue-300 bg-blue-500/15 p-3 rounded-2xl border border-blue-500/30 font-medium mt-1.5 animate-fadeIn">
+                              <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
+                              <span>puedes especificar mas, la direccion si lo ves necesario</span>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-3 rounded-2xl border border-amber-500/25 font-medium mt-1.5 animate-fadeIn">
-                              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                              <span>Esta dirección modificada tiene que coincidir con la ubicación del Mapa.</span>
+                            <div className="flex items-center gap-2.5 text-xs text-emerald-300 bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/25 font-medium mt-1.5 animate-fadeIn">
+                              <span className="text-base shrink-0">👁️</span>
+                              <span><strong>Recordatorio:</strong> La dirección modificada debe ser acorde a la ubicación fijada en el mapa.</span>
                             </div>
                           )}
                         </div>

@@ -13,6 +13,7 @@ import {
   Crosshair
 } from 'lucide-react';
 import { DISTRITOS_LIMA } from '../../data/distritosLima';
+import { loadGoogleMapsScript } from '../../services/googleMapsLoader';
 
 interface Props {
   initialLat?: number;
@@ -79,7 +80,6 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
 const createDeliveryPinIcon = () => {
   const html = `
     <div style="position: relative; width: 44px; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
-      <!-- Pin principal -->
       <div style="
         width: 40px; 
         height: 40px; 
@@ -97,7 +97,6 @@ const createDeliveryPinIcon = () => {
           📍
         </div>
       </div>
-      <!-- Diana en la punta exacta del anclaje -->
       <div style="
         width: 10px; 
         height: 10px; 
@@ -123,7 +122,6 @@ const createDeliveryPinIcon = () => {
 const createUserLocationDotIcon = () => {
   const html = `
     <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
-      <!-- Halo pulsante -->
       <div style="
         position: absolute; 
         width: 34px; 
@@ -132,7 +130,6 @@ const createUserLocationDotIcon = () => {
         background: rgba(14, 165, 233, 0.45); 
         animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
       "></div>
-      <!-- Puntito central azul -->
       <div style="
         position: relative; 
         width: 16px; 
@@ -187,14 +184,12 @@ function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHin
 
   let street = rawStreet.trim();
 
-  // Limpiar prefijos de ciclovías o vías auxiliares
   if (street.toLowerCase().startsWith('ciclovia ') || street.toLowerCase().startsWith('ciclovía ')) {
     street = street.replace(/ciclov[ií]a\s+/i, 'Av. ');
   } else if (street.toLowerCase().startsWith('via auxiliar ') || street.toLowerCase().startsWith('vía auxiliar ')) {
     street = street.replace(/v[ií]a auxiliar\s+/i, 'Av. ');
   }
 
-  // Prefijos comunes en Lima
   if (!/^(jr|jir[oó]n|av|avenida|calle|ca|pje|pasaje|prol|prolongaci[oó]n|alameda|carretera)/i.test(street)) {
     street = `Jr. ${street}`;
   }
@@ -222,7 +217,7 @@ function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHin
   return street;
 }
 
-// Formatear dirección completa ultra-específica (calle, número, urbanización, cruces)
+// Formatear dirección completa ultra-específica
 function formatFullDetailedAddress(props: any, lat: number, lng: number, searchQueryHint?: string): { fullAddress: string; district: string } {
   let street = props.street || '';
   let name = props.name || '';
@@ -236,7 +231,6 @@ function formatFullDetailedAddress(props: any, lat: number, lng: number, searchQ
   if (!mainWay && name) {
     mainWay = name;
   } else if (mainWay && name && name !== mainWay) {
-    // Si name es un lugar/comercio/colegio/cruce interesante
     if (!name.toLowerCase().includes('colegio') && !name.toLowerCase().includes('educativa')) {
       landmark = name;
     }
@@ -246,7 +240,6 @@ function formatFullDetailedAddress(props: any, lat: number, lng: number, searchQ
 
   let fullAddress = formattedStreet;
 
-  // Añadir Urbanización si está presente
   if (locality && !fullAddress.toLowerCase().includes(locality.toLowerCase())) {
     const cleanLoc = locality.replace(/^urb\.?\s*/i, '').trim();
     if (cleanLoc && !cleanLoc.toLowerCase().startsWith('pueblo joven') && !cleanLoc.toLowerCase().startsWith('asociacion')) {
@@ -254,7 +247,6 @@ function formatFullDetailedAddress(props: any, lat: number, lng: number, searchQ
     }
   }
 
-  // Añadir Referencia / Cruce si está presente
   if (landmark && !fullAddress.toLowerCase().includes(landmark.toLowerCase())) {
     fullAddress = `${fullAddress} (${landmark})`;
   }
@@ -276,9 +268,16 @@ export const PlacesMapPicker: React.FC<Props> = ({
   onCloseModal,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
+  
+  // Referencias para Leaflet Engine
+  const leafletMapRef = useRef<L.Map | null>(null);
   const deliveryMarkerRef = useRef<L.Marker | null>(null);
   const userLocationMarkerRef = useRef<L.Marker | null>(null);
+
+  // Referencias para Google Maps Engine
+  const googleMapRef = useRef<google.maps.Map | null>(null);
+  const googleMarkerRef = useRef<google.maps.Marker | null>(null);
+  const isGoogleMapsActiveRef = useRef<boolean>(false);
 
   const [coords, setCoords] = useState<{ lat: number; lng: number }>({
     lat: initialLat,
@@ -300,14 +299,58 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
 
-  // Motor Multi-API de Geocodificación Inversa Ultra-Detallado
+  // Geocodificación Inversa: Implementación de Máxima Precisión (results[0] con region=PE y language=es)
   const fetchAddressFromCoords = useCallback(async (latitude: number, longitude: number) => {
     setIsGeocoding(true);
     setStatusMessage('Consultando calle, numeración y urbanización...');
 
-    let addressResolved = false;
+    // 1. Si Google Maps está disponible, usar Geocoder oficial de Google con results[0]
+    if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+      try {
+        const geocoder = new (window as any).google.maps.Geocoder();
+        const response = await new Promise<any>((resolve) => {
+          geocoder.geocode(
+            { location: { lat: latitude, lng: longitude } },
+            (results: any, status: string) => {
+              if (status === 'OK' && results && results.length > 0) {
+                resolve(results);
+              } else {
+                resolve(null);
+              }
+            }
+          );
+        });
 
-    // 1. Photon by Komoot
+        if (response && response.length > 0) {
+          // results[0] es la dirección más específica (premise, street_address, subpremise)
+          const mostSpecific = response[0];
+          const fullAddress = mostSpecific.formatted_address || '';
+
+          // Extraer distrito
+          let district = '';
+          const districtComp = mostSpecific.address_components?.find((c: any) =>
+            c.types.includes('sublocality_level_1') ||
+            c.types.includes('administrative_area_level_3') ||
+            c.types.includes('locality')
+          );
+          if (districtComp) district = districtComp.long_name;
+
+          // Limpiar sufijos redundantes ", Perú", ", Lima"
+          let cleanAddr = fullAddress.replace(/,\s*(Perú|Peru|15\d{3})$/gi, '').trim();
+
+          setDetectedAddress(cleanAddr);
+          setDetectedDistrict(findMatchingDistrict(district, cleanAddr));
+          setIsGeocoding(false);
+          setStatusMessage('');
+          return;
+        }
+      } catch (err) {
+        console.warn('Google Geocoder error, usando respaldo:', err);
+      }
+    }
+
+    // 2. Motor de respaldo de alta velocidad: Photon Komoot (OpenStreetMap Perú)
+    let addressResolved = false;
     try {
       const photonRes = await fetch(
         `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`,
@@ -332,7 +375,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
       console.warn('Photon reverse fallback:', err);
     }
 
-    // 2. BigDataCloud Fallback
+    // 3. Fallback BigDataCloud
     if (!addressResolved) {
       try {
         const bdcRes = await fetch(
@@ -376,8 +419,14 @@ export const PlacesMapPicker: React.FC<Props> = ({
     setShowSearchResults(false);
     setSearchQuery('');
 
+    // Actualizar marcador Leaflet
     if (deliveryMarkerRef.current) {
       deliveryMarkerRef.current.setLatLng([newLat, newLng]);
+    }
+
+    // Actualizar marcador Google Maps
+    if (googleMarkerRef.current) {
+      googleMarkerRef.current.setPosition({ lat: newLat, lng: newLng });
     }
 
     if (explicitAddress) {
@@ -444,8 +493,12 @@ export const PlacesMapPicker: React.FC<Props> = ({
     const newLat = parseFloat(result.lat);
     const newLng = parseFloat(result.lon);
 
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo([newLat, newLng], 19, { duration: 1.2 });
+    if (leafletMapRef.current) {
+      leafletMapRef.current.flyTo([newLat, newLng], 19, { duration: 1.2 });
+    }
+    if (googleMapRef.current) {
+      googleMapRef.current.panTo({ lat: newLat, lng: newLng });
+      googleMapRef.current.setZoom(19);
     }
 
     updateDeliveryPosition(newLat, newLng, result.mainText, result.district);
@@ -471,19 +524,26 @@ export const PlacesMapPicker: React.FC<Props> = ({
         setIsLocating(false);
         setLocationPermissionDenied(false);
 
-        if (mapInstanceRef.current) {
+        // Mover o crear puntito azul en Leaflet
+        if (leafletMapRef.current) {
           if (!userLocationMarkerRef.current) {
             userLocationMarkerRef.current = L.marker([userLat, userLng], {
               icon: createUserLocationDotIcon(),
               zIndexOffset: 100,
-            }).addTo(mapInstanceRef.current);
+            }).addTo(leafletMapRef.current);
           } else {
             userLocationMarkerRef.current.setLatLng([userLat, userLng]);
           }
 
-          mapInstanceRef.current.flyTo([userLat, userLng], 19, {
+          leafletMapRef.current.flyTo([userLat, userLng], 19, {
             duration: 1.2,
           });
+        }
+
+        // Centrar en Google Maps
+        if (googleMapRef.current) {
+          googleMapRef.current.panTo({ lat: userLat, lng: userLng });
+          googleMapRef.current.setZoom(19);
         }
 
         updateDeliveryPosition(userLat, userLng);
@@ -503,61 +563,137 @@ export const PlacesMapPicker: React.FC<Props> = ({
     );
   }, [updateDeliveryPosition]);
 
-  // Inicializar Leaflet
+  // Inicializar Motor Cartográfico
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    if (!mapContainerRef.current) return;
 
-    const map = L.map(mapContainerRef.current, {
-      center: [coords.lat, coords.lng],
-      zoom: 18,
-      maxZoom: 20,
-      minZoom: 10,
-      zoomControl: false,
-      attributionControl: false,
+    let isMounted = true;
+
+    // Intentar inicializar Google Maps SDK con region=PE y language=es
+    loadGoogleMapsScript().then((googleMaps) => {
+      if (!isMounted || !mapContainerRef.current) return;
+
+      if (googleMaps && !leafletMapRef.current && !googleMapRef.current) {
+        try {
+          isGoogleMapsActiveRef.current = true;
+
+          const gMap = new googleMaps.Map(mapContainerRef.current, {
+            center: { lat: coords.lat, lng: coords.lng },
+            zoom: 19,
+            mapTypeId: 'roadmap',
+            disableDefaultUI: true,
+            zoomControl: false,
+            gestureHandling: 'greedy',
+            styles: [
+              { elementType: 'geometry', stylers: [{ color: '#171c26' }] },
+              { elementType: 'labels.text.stroke', stylers: [{ color: '#171c26' }] },
+              { elementType: 'labels.text.fill', stylers: [{ color: '#8ec3b9' }] },
+              { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2c3344' }] },
+              { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+              { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b9' }] },
+              { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+              { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
+            ],
+          });
+
+          const gMarker = new googleMaps.Marker({
+            position: { lat: coords.lat, lng: coords.lng },
+            map: gMap,
+            draggable: true,
+            title: 'Punto de Entrega',
+          });
+
+          gMap.addListener('click', (e: google.maps.MapMouseEvent) => {
+            if (e.latLng) {
+              const lat = e.latLng.lat();
+              const lng = e.latLng.lng();
+              updateDeliveryPosition(lat, lng);
+            }
+          });
+
+          gMarker.addListener('dragend', () => {
+            const pos = gMarker.getPosition();
+            if (pos) {
+              updateDeliveryPosition(pos.lat(), pos.lng());
+            }
+          });
+
+          googleMapRef.current = gMap;
+          googleMarkerRef.current = gMarker;
+
+          requestCurrentLocation();
+          return;
+        } catch (err) {
+          console.warn('Fallo inicialización Google Maps, activando Leaflet:', err);
+        }
+      }
+
+      // Motor Leaflet CartoDB Voyager
+      if (!leafletMapRef.current && !googleMapRef.current && mapContainerRef.current) {
+        const map = L.map(mapContainerRef.current, {
+          center: [coords.lat, coords.lng],
+          zoom: 18,
+          maxZoom: 20,
+          minZoom: 10,
+          zoomControl: false,
+          attributionControl: false,
+        });
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          maxZoom: 20,
+          subdomains: 'abcd',
+        }).addTo(map);
+
+        const deliveryMarker = L.marker([coords.lat, coords.lng], {
+          icon: createDeliveryPinIcon(),
+          draggable: true,
+          autoPan: true,
+          zIndexOffset: 500,
+        }).addTo(map);
+
+        deliveryMarker.on('dragend', () => {
+          const newPos = deliveryMarker.getLatLng();
+          updateDeliveryPosition(newPos.lat, newPos.lng);
+        });
+
+        map.on('click', (e: L.LeafletMouseEvent) => {
+          const { lat, lng } = e.latlng;
+          updateDeliveryPosition(lat, lng);
+        });
+
+        deliveryMarkerRef.current = deliveryMarker;
+        leafletMapRef.current = map;
+
+        setTimeout(() => {
+          map.invalidateSize();
+        }, 250);
+
+        requestCurrentLocation();
+      }
     });
-
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      maxZoom: 20,
-      subdomains: 'abcd',
-    }).addTo(map);
-
-    const deliveryMarker = L.marker([coords.lat, coords.lng], {
-      icon: createDeliveryPinIcon(),
-      draggable: true,
-      autoPan: true,
-      zIndexOffset: 500,
-    }).addTo(map);
-
-    deliveryMarker.on('dragend', () => {
-      const newPos = deliveryMarker.getLatLng();
-      updateDeliveryPosition(newPos.lat, newPos.lng);
-    });
-
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      const { lat, lng } = e.latlng;
-      updateDeliveryPosition(lat, lng);
-    });
-
-    deliveryMarkerRef.current = deliveryMarker;
-    mapInstanceRef.current = map;
-
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 250);
-
-    requestCurrentLocation();
 
     return () => {
-      map.remove();
-      mapInstanceRef.current = null;
-      deliveryMarkerRef.current = null;
-      userLocationMarkerRef.current = null;
+      isMounted = false;
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+        deliveryMarkerRef.current = null;
+        userLocationMarkerRef.current = null;
+      }
+      googleMapRef.current = null;
+      googleMarkerRef.current = null;
     };
   }, []);
 
   const handleCenterOnUserGps = () => {
-    if (userGpsCoords && mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo([userGpsCoords.lat, userGpsCoords.lng], 19, { duration: 1 });
+    if (userGpsCoords) {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.flyTo([userGpsCoords.lat, userGpsCoords.lng], 19, { duration: 1 });
+      }
+      if (googleMapRef.current) {
+        googleMapRef.current.panTo({ lat: userGpsCoords.lat, lng: userGpsCoords.lng });
+        googleMapRef.current.setZoom(19);
+      }
       updateDeliveryPosition(userGpsCoords.lat, userGpsCoords.lng);
     } else {
       requestCurrentLocation();
@@ -703,7 +839,13 @@ export const PlacesMapPicker: React.FC<Props> = ({
         <div className="absolute right-4 top-4 z-[400] flex flex-col gap-2.5">
           <button
             type="button"
-            onClick={() => mapInstanceRef.current?.zoomIn()}
+            onClick={() => {
+              if (leafletMapRef.current) leafletMapRef.current.zoomIn();
+              if (googleMapRef.current) {
+                const z = googleMapRef.current.getZoom() || 19;
+                googleMapRef.current.setZoom(z + 1);
+              }
+            }}
             className="w-11 h-11 rounded-2xl bg-slate-900/95 hover:bg-slate-800 text-white font-bold flex items-center justify-center border border-white/20 shadow-2xl transition-all active:scale-95 cursor-pointer text-xl"
             title="Acercar mapa (Zoom In)"
           >
@@ -711,7 +853,13 @@ export const PlacesMapPicker: React.FC<Props> = ({
           </button>
           <button
             type="button"
-            onClick={() => mapInstanceRef.current?.zoomOut()}
+            onClick={() => {
+              if (leafletMapRef.current) leafletMapRef.current.zoomOut();
+              if (googleMapRef.current) {
+                const z = googleMapRef.current.getZoom() || 19;
+                googleMapRef.current.setZoom(z - 1);
+              }
+            }}
             className="w-11 h-11 rounded-2xl bg-slate-900/95 hover:bg-slate-800 text-white font-bold flex items-center justify-center border border-white/20 shadow-2xl transition-all active:scale-95 cursor-pointer text-xl"
             title="Alejar mapa (Zoom Out)"
           >

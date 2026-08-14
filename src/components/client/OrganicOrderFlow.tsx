@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { ordersService } from '../../services/ordersService';
-import { useShalomAgencies, formatFullAgencyName } from '../../hooks/useShalomAgencies';
+import { useShalomAgencies, formatFullAgencyName, cleanAddressText, formatShortAgencyName } from '../../hooks/useShalomAgencies';
 import { searchDistritos } from '../../data/distritosLima';
 import { PlacesMapPicker } from './PlacesMapPicker';
+import { ShalomAgenciesMap } from './ShalomAgenciesMap';
 import { MetodoEnvio, ShalomAgency } from '../../types/database.types';
 import {
   Package,
@@ -14,17 +15,15 @@ import {
   CheckCircle,
   Sparkles,
   MapPin,
-  Phone,
-  User,
-  CreditCard,
   Building,
   Navigation,
-  Compass,
   AlertCircle,
-  LocateFixed,
   Clock,
   Search,
-  X
+  X,
+  User,
+  ChevronDown,
+  Compass
 } from 'lucide-react';
 
 interface Props {
@@ -42,23 +41,28 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [whatsapp, setWhatsapp] = useState(currentUser?.dni || '');
   const [selectedMethodId, setSelectedMethodId] = useState<string>(activeShippingMethods[0]?.id || 'met-shalom');
 
-  // Shalom Hook & Branch Fields
+  // Shalom Hook & Synced Search
   const {
     agencies: shalomAgenciesList,
     allAgencies,
     nearestAgency,
     loading: loadingAgencies,
-    selectedDepartment: departamentoShalom,
+    isLocating,
+    gpsError,
+    userLocation,
     setSelectedDepartment: setDepartamentoShalom,
     searchQuery: agencySearchQuery,
     setSearchQuery: setAgencySearchQuery,
-    availableDepartments,
-    refreshLocation,
-    userLocation
+    showOnlyNearest5,
+    setShowOnlyNearest5,
+    triggerGpsLookup,
+    getTopNearestAgencies
   } = useShalomAgencies({ initialDepartment: 'TODOS' });
 
   const [selectedAgencyObject, setSelectedAgencyObject] = useState<ShalomAgency | null>(null);
   const [dniShalom, setDniShalom] = useState(currentUser?.dni || '');
+  const [isAgencyListOpen, setIsAgencyListOpen] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
 
   // Motorizado Branch Fields
   const [distritoQuery, setDistritoQuery] = useState('');
@@ -68,7 +72,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [lat, setLat] = useState<number>(-12.1215);
   const [lng, setLng] = useState<number>(-77.0298);
 
-  // Custom Method Text (if configured by Comikids)
+  // Custom Method Text
   const [customDestinoText, setCustomDestinoText] = useState('');
 
   // Name (Common for all methods)
@@ -85,21 +89,31 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
   const suggestedDistritos = searchDistritos(distritoQuery);
 
-  // Auto-seleccionar primera agencia cuando cambia la lista
+  // Auto-seleccionar primera agencia por defecto si no hay ninguna
   useEffect(() => {
     if (shalomAgenciesList.length > 0 && !selectedAgencyObject) {
       setSelectedAgencyObject(shalomAgenciesList[0]);
     }
   }, [shalomAgenciesList, selectedAgencyObject]);
 
-  // Si se detecta la agencia más cercana, seleccionarla
-  const handleDetectNearestAgency = async () => {
-    const coords = await refreshLocation();
-    if (coords && nearestAgency) {
-      setSelectedAgencyObject(nearestAgency);
-      if (nearestAgency.departamento) {
-        setDepartamentoShalom(nearestAgency.departamento);
+  // Acción rápida: Buscar 5 Sedes Más Cercanas con GPS
+  const handleQuickNearest5 = async () => {
+    if (!userLocation) {
+      const res = await triggerGpsLookup();
+      if (res.coords) {
+        setShowOnlyNearest5(true);
+        if (res.nearest) {
+          setSelectedAgencyObject(res.nearest);
+        }
+        setIsAgencyListOpen(true);
       }
+    } else {
+      setShowOnlyNearest5(true);
+      const top5 = getTopNearestAgencies(5);
+      if (top5.length > 0) {
+        setSelectedAgencyObject(top5[0]);
+      }
+      setIsAgencyListOpen(true);
     }
   };
 
@@ -140,11 +154,17 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   // Secret Empresa Login
   const handleEmpresaLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-    const res = await login('42020312COMIKIDS', empresaPassword.trim());
-    setSubmitting(false);
-    if (!res.success) {
-      setErrorMsg('Contraseña incorrecta para la cuenta Empresa.');
+    setErrorMsg('');
+    try {
+      const res = await ordersService.loginUser('admin', empresaPassword);
+      if (res.user && res.user.rol === 'empresa') {
+        await login('admin', empresaPassword);
+        window.location.reload();
+      } else {
+        setErrorMsg('Contraseña de administrador incorrecta.');
+      }
+    } catch {
+      setErrorMsg('Error al autenticar acceso administrativo.');
     }
   };
 
@@ -154,19 +174,25 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     setOrganicStep(3);
   };
 
-  // --- STEP 3: FINAL SUBMIT ---
+  // --- STEP 3: FINAL CONFIRMATION ---
   const handleFinalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
     if (!nombreCompleto.trim()) {
-      setErrorMsg('Por favor ingresa tu nombre y apellidos completos.');
+      setErrorMsg('Por favor ingresa tu Nombre Completo.');
       return;
     }
 
-    if (selectedMethod?.tipo_formulario === 'shalom' && !dniShalom.trim()) {
-      setErrorMsg('Por favor ingresa tu DNI o Carnet de Extranjería para recoger en Shalom.');
-      return;
+    if (selectedMethod?.tipo_formulario === 'shalom') {
+      if (!selectedAgencyObject) {
+        setErrorMsg('Por favor selecciona una Agencia Shalom de destino.');
+        return;
+      }
+      if (!dniShalom.trim()) {
+        setErrorMsg('Por favor ingresa tu DNI para recoger en la agencia.');
+        return;
+      }
     }
 
     if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
@@ -202,8 +228,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       }
 
       let finalDestinoDetalle = '';
-      let agencyLat = selectedAgencyObject?.latitude;
-      let agencyLng = selectedAgencyObject?.longitude;
+      let agencyLat = selectedAgencyObject?.latitude ? Number(selectedAgencyObject.latitude) : undefined;
+      let agencyLng = selectedAgencyObject?.longitude ? Number(selectedAgencyObject.longitude) : undefined;
 
       if (selectedMethod?.tipo_formulario === 'shalom') {
         const fullAgencyStr = selectedAgencyObject ? formatFullAgencyName(selectedAgencyObject) : 'AGENCIA SHALOM CENTRAL';
@@ -221,8 +247,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
         metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
         destino_detalle: finalDestinoDetalle,
-        latitud: selectedMethod?.tipo_formulario === 'shalom' ? (agencyLat ?? undefined) : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lat : undefined),
-        longitud: selectedMethod?.tipo_formulario === 'shalom' ? (agencyLng ?? undefined) : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
+        latitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLat : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lat : undefined),
+        longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
         observaciones_cliente: referencia.trim() || undefined,
         fecha_limite: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0],
       });
@@ -245,110 +271,135 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto py-2">
+    <div className="w-full max-w-xl mx-auto py-2 font-sans tracking-tight">
       
+      {/* Modal de Mapa Apple Vision Pro con Buscador Sincronizado y Eje Y Amplio */}
+      {showMapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-2xl animate-fadeIn">
+          <div className="w-full max-w-4xl bg-slate-900/95 border border-white/15 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white tracking-tight">Mapa de Agencias Shalom</h3>
+                <p className="text-xs text-slate-400">Busca o toca cualquier pin en el mapa para seleccionarla</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMapModal(false)}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <ShalomAgenciesMap
+              agencies={shalomAgenciesList}
+              selectedAgency={selectedAgencyObject}
+              onSelectAgency={(agency) => {
+                setSelectedAgencyObject(agency);
+                if (agency.departamento) setDepartamentoShalom(agency.departamento);
+                setShowMapModal(false);
+                setIsAgencyListOpen(false);
+              }}
+              userLocation={userLocation}
+              onRequestLocation={triggerGpsLookup}
+              isLocating={isLocating}
+              onClose={() => setShowMapModal(false)}
+              searchQuery={agencySearchQuery}
+              onSearchChange={setAgencySearchQuery}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Success Screen */}
       {createdOrderCode ? (
         <div className="minimal-card p-8 sm:p-12 text-center animate-fadeIn space-y-5">
-          <div className="w-24 h-24 mx-auto rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-2xl shadow-emerald-500/20">
-            <CheckCircle className="w-12 h-12" />
+          <div className="w-20 h-20 mx-auto rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-2xl shadow-emerald-500/20">
+            <CheckCircle className="w-10 h-10" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-3xl font-black text-white tracking-tight">¡Envío Programado! 🎉</h3>
+            <h3 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">¡Envío Programado! 🎉</h3>
             <p className="text-sm text-slate-400">Tu orden de mercadería ha sido registrada:</p>
           </div>
-          <div className="inline-block font-mono text-xl font-black px-6 py-3 rounded-2xl bg-white/[0.05] text-cyan-300 border border-white/10 shadow-inner">
-            #{createdOrderCode}
+          <div className="inline-block font-mono text-lg font-bold px-6 py-3 rounded-2xl bg-white/[0.06] text-cyan-300 border border-white/10 shadow-inner">
+            {createdOrderCode}
           </div>
-          <p className="text-xs text-slate-500">Abriendo el seguimiento en vivo...</p>
+          <p className="text-xs text-slate-400 max-w-xs mx-auto">
+            Te estaremos contactando por WhatsApp con las actualizaciones de tu pedido.
+          </p>
         </div>
       ) : isEmpresaUnlock ? (
-        /* Secret Empresa Password Dialog */
-        <div className="minimal-card p-8 sm:p-10 space-y-6 animate-fadeIn">
-          <div>
-            <h3 className="text-2xl font-black text-white">Acceso Administradora</h3>
-            <p className="text-sm text-slate-400 mt-1">Ingresa tu contraseña para acceder al panel de Comikids:</p>
-          </div>
-
-          {errorMsg && (
-            <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm font-semibold flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 shrink-0" />
-              <span>{errorMsg}</span>
+        /* Admin Login */
+        <div className="minimal-card p-6 sm:p-8 animate-fadeIn space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 flex items-center justify-center text-cyan-400">
+              <Sparkles className="w-6 h-6" />
             </div>
-          )}
+            <div>
+              <h3 className="text-xl font-bold text-white">Panel de Administración</h3>
+              <p className="text-xs text-slate-400">Ingresa la clave de acceso</p>
+            </div>
+          </div>
 
           <form onSubmit={handleEmpresaLogin} className="space-y-4">
             <input
               type="password"
-              required
               autoFocus
+              required
               value={empresaPassword}
               onChange={e => setEmpresaPassword(e.target.value)}
-              placeholder="••••••••"
-              className="big-input text-lg"
+              placeholder="Contraseña..."
+              className="big-input text-center text-lg"
             />
-            <div className="flex gap-3 pt-2">
+            {errorMsg && (
+              <p className="text-xs text-rose-400 text-center font-semibold bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20">
+                {errorMsg}
+              </p>
+            )}
+            <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setIsEmpresaUnlock(false);
-                  setWhatsapp('');
-                }}
-                className="py-4 px-6 rounded-2xl bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 text-sm font-bold transition-colors"
+                onClick={() => setIsEmpresaUnlock(false)}
+                className="big-btn-secondary w-1/3"
               >
                 Cancelar
               </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="big-btn-primary flex-1 text-base"
-              >
-                {submitting ? 'Ingresando...' : 'Entrar al Panel'}
+              <button type="submit" className="big-btn-primary w-2/3">
+                Ingresar
               </button>
             </div>
           </form>
         </div>
       ) : (
-        /* =========================================================================
-           ULTRA-MINIMALIST LARGE STEP WIZARD
-           ========================================================================= */
-        <div className="minimal-card p-6 sm:p-10 space-y-8 animate-fadeIn">
+        /* Main Flow Container */
+        <div className="minimal-card p-6 sm:p-8 space-y-6">
           
-          {/* Progress Indicator */}
-          <div className="flex items-center justify-between border-b border-white/[0.08] pb-5">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
             <div>
-              <span className="text-xs font-black uppercase tracking-widest text-cyan-400">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 bg-white/[0.06] px-3 py-1 rounded-full border border-white/10">
                 Paso {organicStep} de 3
               </span>
-              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-0.5">
-                {organicStep === 1 && '¿Cuál es tu WhatsApp?'}
-                {organicStep === 2 && '¿Cómo deseas recibirlo?'}
-                {organicStep === 3 && 'Datos de Entrega'}
+              <h2 className="text-xl sm:text-2xl font-bold text-white mt-2 tracking-tight">
+                {organicStep === 1 && 'Envío de Mercadería 📦'}
+                {organicStep === 2 && '¿Cómo deseas recibir tu pedido? 🚚'}
+                {organicStep === 3 && 'Datos de Entrega & Nombre 📍'}
               </h2>
             </div>
-
             {organicStep > 1 && (
               <button
                 type="button"
-                onClick={() => setOrganicStep((organicStep - 1) as 1 | 2)}
-                className="py-2.5 px-4 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 text-xs font-bold transition-all flex items-center gap-1.5"
+                onClick={() => setOrganicStep((prev) => (prev - 1) as 1 | 2)}
+                className="p-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title="Volver"
               >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Volver</span>
+                <ArrowLeft className="w-5 h-5" />
               </button>
             )}
           </div>
 
-          {/* Error Message */}
-          {errorMsg && (
-            <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-sm font-semibold flex items-center gap-2.5 animate-fadeIn">
-              <AlertCircle className="w-5 h-5 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
           {/* =====================================================================
-              PASO 1: WHATSAPP (GRAN RECUADRO CON PREFIJO +51 FIJO)
+              PASO 1: WHATSAPP
               ===================================================================== */}
           {organicStep === 1 && (
             <form onSubmit={handleWhatsappSubmit} className="space-y-6 animate-fadeIn">
@@ -357,11 +408,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   Ingresa tu número para enviarte las fotos del paquete y el código de seguimiento.
                 </p>
                 
-                {/* Contenedor Unificado con Prefijo +51 Fijo */}
                 <div className="flex items-center rounded-2xl bg-white/[0.04] border border-white/10 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/20 transition-all p-1.5 shadow-inner">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-white/[0.06] rounded-xl text-white font-black text-base border border-white/10 shrink-0 select-none shadow-sm">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-white/[0.06] rounded-xl text-white font-bold text-base border border-white/10 shrink-0 select-none">
                     <span className="text-lg">🇵🇪</span>
-                    <span className="font-mono text-cyan-300 font-black tracking-wider">+51</span>
+                    <span className="font-mono text-cyan-300 font-bold">+51</span>
                   </div>
                   <input
                     type="tel"
@@ -375,6 +425,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               </div>
 
+              {errorMsg && (
+                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3 rounded-2xl border border-rose-500/20">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
               <button type="submit" className="big-btn-primary">
                 <span>Continuar</span>
                 <ArrowRight className="w-5 h-5" />
@@ -383,7 +440,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           )}
 
           {/* =====================================================================
-              PASO 2: ¿CÓMO QUIERES RECIBIR TU PEDIDO? (RECUADROS GRANDES TÁCTILES)
+              PASO 2: SELECCIÓN DE MÉTODO (CUPERTINO CARDS)
               ===================================================================== */}
           {organicStep === 2 && (
             <div className="space-y-4 animate-fadeIn">
@@ -391,7 +448,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 Selecciona la opción de transporte de tu preferencia:
               </p>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-3.5">
                 {activeShippingMethods.map((method) => {
                   const isShalom = method.tipo_formulario === 'shalom';
                   return (
@@ -399,22 +456,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       key={method.id}
                       type="button"
                       onClick={() => handleMethodSelect(method.id)}
-                      className="p-6 sm:p-7 rounded-3xl bg-white/[0.03] hover:bg-cyan-500/[0.08] border border-white/[0.08] hover:border-cyan-400/50 text-left transition-all flex items-center justify-between group active:scale-[0.98] shadow-lg"
+                      className="p-5 sm:p-6 rounded-3xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-lg"
                     >
-                      <div className="flex items-center gap-5">
-                        <div className="w-16 h-16 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                          {isShalom ? <Package className="w-8 h-8" /> : <Truck className="w-8 h-8" />}
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-white/[0.06] border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform">
+                          {isShalom ? <Package className="w-7 h-7" /> : <Truck className="w-7 h-7" />}
                         </div>
                         <div>
-                          <h4 className="text-lg sm:text-xl font-black text-white group-hover:text-cyan-300 transition-colors">
+                          <h4 className="text-base sm:text-lg font-bold text-white group-hover:text-cyan-300 transition-colors">
                             {method.nombre}
                           </h4>
-                          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                          <p className="text-xs text-slate-400 mt-0.5">
                             {method.descripcion}
                           </p>
                         </div>
                       </div>
-                      <ArrowRight className="w-6 h-6 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
+                      <ArrowRight className="w-5 h-5 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
                     </button>
                   );
                 })}
@@ -423,314 +480,388 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           )}
 
           {/* =====================================================================
-              PASO 3: DATOS DE ENTREGA & NOMBRE (AMPLIO Y MODERNO)
+              PASO 3: DATOS DE ENTREGA & NOMBRE (CUPERTINO STYLE & GRANDES RECUADROS)
               ===================================================================== */}
           {organicStep === 3 && (
-            <form onSubmit={handleFinalSubmit} className="space-y-6 animate-fadeIn">
+            <form onSubmit={handleFinalSubmit} className="space-y-5 animate-fadeIn">
               
-              {/* RAMA A: AGENCIA SHALOM (Buscador Único sin Selects) */}
+              {/* RAMA A: AGENCIA SHALOM */}
               {selectedMethod?.tipo_formulario === 'shalom' && (
-                <div className="space-y-5">
-                  {/* Botón de Geolocalización Inteligente GPS */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/25">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
-                        <LocateFixed className="w-4 h-4 animate-pulse" />
+                <div className="space-y-4">
+                  
+                  {/* Botones Grandes de Acción Superior */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={handleQuickNearest5}
+                      disabled={isLocating}
+                      className="p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-md"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
+                          <Navigation className={`w-5 h-5 ${isLocating ? 'animate-spin' : ''}`} />
+                        </div>
+                        <div>
+                          <span className="block text-[11px] text-slate-400">Geolocalización</span>
+                          <span className="block text-xs sm:text-sm font-bold text-white">Sedes Cercanas</span>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">Geolocalización GPS</p>
-                        <p className="text-[11px] text-cyan-300/80">
-                          {nearestAgency && nearestAgency.distance_meters !== undefined
-                            ? `Sede más cercana: ${(nearestAgency.distance_meters / 1000).toFixed(1)} km`
-                            : 'Detecta automáticamente la agencia Shalom más cercana a ti'}
-                        </p>
-                      </div>
-                    </div>
+                    </button>
 
                     <button
                       type="button"
-                      onClick={handleDetectNearestAgency}
-                      disabled={loadingAgencies}
-                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
+                      onClick={() => setShowMapModal(true)}
+                      className="p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-md"
                     >
-                      <LocateFixed className="w-3.5 h-3.5" />
-                      <span>{loadingAgencies ? 'Buscando...' : '📍 Usar mi GPS'}</span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
+                          <MapPin className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="block text-[11px] text-slate-400">Ubicación visual</span>
+                          <span className="block text-xs sm:text-sm font-bold text-white">Ver en Mapa</span>
+                        </div>
+                      </div>
                     </button>
                   </div>
 
-                  {/* Buscador de Agencia por Nombre, Distrito, Departamento o Código */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                        Buscar Agencia Shalom (Total: {allAgencies.length || 546} sedes) *
-                      </label>
-                      {agencySearchQuery && (
-                        <span className="text-[11px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
-                          {shalomAgenciesList.length} encontrada{shalomAgenciesList.length === 1 ? '' : 's'}
-                        </span>
-                      )}
+                  {gpsError && (
+                    <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-3 rounded-2xl border border-amber-500/20">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{gpsError}</span>
                     </div>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={agencySearchQuery}
-                        onChange={e => setAgencySearchQuery(e.target.value)}
-                        placeholder="Escribe para buscar (ej. Gamarra, San Isidro, Trujillo, Arequipa, Cusco)..."
-                        className="big-input pl-10 pr-10 text-sm"
-                      />
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      {agencySearchQuery && (
+                  )}
+
+                  {/* Sección de Selección de Agencia */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Agencia Shalom de Entrega
+                      </label>
+                      {selectedAgencyObject && (
                         <button
                           type="button"
-                          onClick={() => setAgencySearchQuery('')}
-                          className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer transition-colors"
+                          onClick={() => setIsAgencyListOpen(!isAgencyListOpen)}
+                          className="text-xs font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          {isAgencyListOpen ? 'Cerrar selector' : 'Cambiar agencia'}
                         </button>
                       )}
                     </div>
 
-                    {/* Lista de Resultados Desplegable y Scrolleable (Sin cortes, acceso a las 546) */}
-                    <div className="max-h-60 overflow-y-auto space-y-1.5 p-2 rounded-2xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-md">
-                      {shalomAgenciesList.length === 0 ? (
-                        <p className="text-center text-xs text-slate-400 py-4">
-                          No se encontraron agencias con &quot;{agencySearchQuery}&quot;
-                        </p>
-                      ) : (
-                        shalomAgenciesList.map(ag => {
-                          const isSelected = selectedAgencyObject?.id === ag.id;
-                          const fullName = formatFullAgencyName(ag);
-                          return (
+                    {/* Tarjeta Principal de la Agencia Seleccionada (Recuadro Grande Apple Vision Pro) */}
+                    {selectedAgencyObject && !isAgencyListOpen && (
+                      <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.05] border border-white/10 backdrop-blur-2xl shadow-xl space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3.5">
+                            <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
+                              <Building className="w-6 h-6" />
+                            </div>
+                            <div>
+                              <h4 className="text-base font-bold text-white leading-snug tracking-tight">
+                                {selectedAgencyObject.distrito || selectedAgencyObject.nombre}
+                              </h4>
+                              <p className="text-xs font-medium text-slate-400 mt-0.5">
+                                {selectedAgencyObject.departamento} • {selectedAgencyObject.provincia}
+                              </p>
+                            </div>
+                          </div>
+
+                          {selectedAgencyObject.distance_meters !== undefined && (
+                            <span className="text-xs font-bold text-cyan-300 bg-cyan-500/15 px-3 py-1 rounded-full border border-cyan-500/25 shrink-0">
+                              📍 {selectedAgencyObject.distance_meters < 1000 ? `${Math.round(selectedAgencyObject.distance_meters)} m` : `${(selectedAgencyObject.distance_meters / 1000).toFixed(1)} km`}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-white/[0.06] space-y-1.5 text-xs text-slate-300">
+                          <p className="leading-relaxed">
+                            <strong className="text-white">Dirección:</strong> {cleanAddressText(selectedAgencyObject.direccion, selectedAgencyObject.provincia, selectedAgencyObject.departamento)}
+                          </p>
+                          {selectedAgencyObject.horario && (
+                            <p className="flex items-center gap-1.5 text-slate-400">
+                              <Clock className="w-3.5 h-3.5 text-slate-500" />
+                              <span>{selectedAgencyObject.horario}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsAgencyListOpen(true)}
+                          className="w-full py-3 rounded-2xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-bold text-cyan-300 transition-colors flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                        >
+                          <span>Buscar / Cambiar de Sede</span>
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Buscador & Lista de Recuadros Grandes Amplia (Sin recortes ni tiras chicas) */}
+                    {(isAgencyListOpen || !selectedAgencyObject) && (
+                      <div className="space-y-3 animate-fadeIn">
+                        
+                        {/* Buscador Apple con padding perfecto para la lupa */}
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={agencySearchQuery}
+                            onChange={e => {
+                              setAgencySearchQuery(e.target.value);
+                              if (showOnlyNearest5) setShowOnlyNearest5(false);
+                            }}
+                            placeholder="Buscar por distrito, avenida o provincia (ej. Gamarra, San Isidro, Trujillo)..."
+                            className="w-full pl-12 pr-10 py-4 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all shadow-inner font-medium"
+                          />
+                          <Search className="w-4 h-4 text-slate-400 absolute left-4 pointer-events-none" />
+                          {agencySearchQuery && (
                             <button
-                              key={ag.id}
                               type="button"
-                              onClick={() => {
-                                setSelectedAgencyObject(ag);
-                                if (ag.departamento) setDepartamentoShalom(ag.departamento);
-                              }}
-                              className={`w-full text-left p-3 rounded-xl text-xs transition-all flex flex-col gap-1 cursor-pointer ${
-                                isSelected
-                                  ? 'bg-cyan-500/20 border border-cyan-500/50 text-cyan-200 font-bold shadow-md shadow-cyan-500/10'
-                                  : 'hover:bg-white/[0.06] border border-transparent text-slate-300'
-                              }`}
+                              onClick={() => setAgencySearchQuery('')}
+                              className="w-7 h-7 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-3 cursor-pointer"
                             >
-                              <div className="flex items-start justify-between gap-2">
-                                <span className={`text-xs font-bold leading-snug ${isSelected ? 'text-cyan-300' : 'text-white'}`}>
-                                  {fullName}
-                                </span>
-                              </div>
-                              {ag.horario && (
-                                <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                                  <Clock className="w-3 h-3 text-slate-500 shrink-0" />
-                                  <span>{ag.horario}</span>
-                                </div>
-                              )}
+                              <X className="w-4 h-4" />
                             </button>
-                          );
-                        })
-                      )}
-                    </div>
+                          )}
+                        </div>
+
+                        {/* Recuadro Amplio con Tarjetas Grandes Estilo Cupertino */}
+                        <div className="max-h-[440px] overflow-y-auto space-y-2.5 p-2 rounded-3xl bg-slate-950/80 border border-white/10 shadow-2xl">
+                          {shalomAgenciesList.length === 0 ? (
+                            <p className="text-center text-xs text-slate-400 py-6">
+                              No se encontraron agencias con &quot;{agencySearchQuery}&quot;
+                            </p>
+                          ) : (
+                            shalomAgenciesList.map(ag => {
+                              const isSelected = selectedAgencyObject?.id === ag.id;
+                              const cleanAddr = cleanAddressText(ag.direccion, ag.provincia, ag.departamento);
+                              const distanceText = ag.distance_meters !== undefined
+                                ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
+                                : null;
+
+                              return (
+                                <button
+                                  key={ag.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedAgencyObject(ag);
+                                    if (ag.departamento) setDepartamentoShalom(ag.departamento);
+                                    setIsAgencyListOpen(false);
+                                  }}
+                                  className={`w-full text-left p-4 sm:p-5 rounded-2xl transition-all flex flex-col gap-2 cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-cyan-500/20 border border-cyan-500/50 text-white shadow-lg shadow-cyan-500/10'
+                                      : 'bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300'
+                                  }`}
+                                >
+                                  {/* Cabecera de la tarjeta con nombre y badge de distancia */}
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <h5 className="text-sm font-bold text-white tracking-tight leading-snug">
+                                        {ag.distrito || ag.nombre}
+                                      </h5>
+                                      <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                                        {ag.departamento} • {ag.provincia}
+                                      </p>
+                                    </div>
+
+                                    {distanceText && (
+                                      <span className="text-[11px] font-bold text-cyan-300 bg-cyan-500/15 px-3 py-1 rounded-full shrink-0 border border-cyan-500/25">
+                                        📍 {distanceText}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Dirección completa legible sin truncar */}
+                                  <p className="text-xs text-slate-300 leading-relaxed">
+                                    {cleanAddr || 'Dirección de la sede'}
+                                  </p>
+
+                                  {/* Horario */}
+                                  {ag.horario && (
+                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 pt-1 border-t border-white/[0.04]">
+                                      <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                      <span>{ag.horario}</span>
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {selectedAgencyObject && (
+                          <button
+                            type="button"
+                            onClick={() => setIsAgencyListOpen(false)}
+                            className="text-xs font-semibold text-slate-400 hover:text-white block mx-auto pt-1 cursor-pointer"
+                          >
+                            Cerrar lista
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Tarjeta de Agencia Seleccionada */}
-                  {selectedAgencyObject && (
-                    <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-950/70 to-slate-900/90 border border-cyan-500/40 space-y-2 text-xs text-slate-300 shadow-2xl">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5 leading-snug">
-                          <Building className="w-4 h-4 text-cyan-400 shrink-0" />
-                          {formatFullAgencyName(selectedAgencyObject)}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-bold text-[10px] shrink-0">
-                          SELECCIONADA
-                        </span>
-                      </div>
-
-                      <div className="flex items-start gap-2 text-cyan-200">
-                        <MapPin className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                        <span><strong>Dirección:</strong> {selectedAgencyObject.direccion} ({selectedAgencyObject.distrito})</span>
-                      </div>
-
-                      {selectedAgencyObject.horario && (
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span><strong>Horario:</strong> {selectedAgencyObject.horario}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Campo DNI para recoger */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                      DNI o Carnet de Extranjería (Para recoger en agencia) *
+                  {/* DNI para recoger en agencia */}
+                  <div className="space-y-2 pt-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      DNI o Documento de quien recogerá *
                     </label>
                     <input
                       type="text"
                       required
                       value={dniShalom}
                       onChange={e => setDniShalom(e.target.value)}
-                      placeholder="Ej. 74561234"
-                      className="big-input font-mono text-base font-bold"
+                      placeholder="Número de documento de identidad"
+                      className="w-full px-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm font-mono text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 tracking-wider"
                     />
                   </div>
+
                 </div>
               )}
 
               {/* RAMA B: MOTORIZADO LOCAL LIMA */}
               {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
-                <div className="space-y-5">
-                  {/* Distrito Inteligente */}
+                <div className="space-y-4">
                   <div className="space-y-2 relative">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                        Distrito en Lima (Escribe para autocompletar) *
-                      </label>
-                      <span className="text-[11px] text-cyan-400 font-semibold">43 Distritos</span>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Distrito de Lima *
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        required
+                        value={distritoQuery}
+                        onFocus={() => setShowDistritoSuggestions(true)}
+                        onChange={e => {
+                          setDistritoQuery(e.target.value);
+                          setShowDistritoSuggestions(true);
+                        }}
+                        placeholder="Escribe tu distrito (ej. Miraflores, San Isidro)..."
+                        className="w-full pl-12 pr-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                      />
+                      <Search className="w-4 h-4 text-slate-400 absolute left-4 pointer-events-none" />
                     </div>
 
-                    <input
-                      type="text"
-                      required
-                      value={distritoQuery}
-                      onFocus={() => setShowDistritoSuggestions(true)}
-                      onChange={e => {
-                        setDistritoQuery(e.target.value);
-                        setShowDistritoSuggestions(true);
-                      }}
-                      placeholder="Ej: Miraflores, La Victoria, Surco, San Borja..."
-                      className="big-input text-base font-medium"
-                    />
-
-                    {showDistritoSuggestions && (
-                      <div className="absolute z-30 top-full mt-2 w-full bg-slate-900/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl max-h-48 overflow-y-auto p-2">
-                        <div className="px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-400 border-b border-white/[0.06]">
-                          <span>Sugerencias ({suggestedDistritos.length}):</span>
+                    {showDistritoSuggestions && suggestedDistritos.length > 0 && (
+                      <div className="absolute z-20 top-full mt-1 w-full max-h-48 overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-1.5">
+                        {suggestedDistritos.map((distNombre, idx) => (
                           <button
-                            type="button"
-                            onClick={() => setShowDistritoSuggestions(false)}
-                            className="text-cyan-400 hover:underline font-bold"
-                          >
-                            Cerrar
-                          </button>
-                        </div>
-                        {suggestedDistritos.map((d, i) => (
-                          <button
-                            key={i}
+                            key={idx}
                             type="button"
                             onClick={() => {
-                              setDistritoQuery(d);
+                              setDistritoQuery(distNombre);
                               setShowDistritoSuggestions(false);
                             }}
-                            className="w-full text-left px-4 py-2.5 hover:bg-white/[0.08] text-sm text-slate-100 rounded-xl flex items-center justify-between transition-colors"
+                            className="w-full text-left p-2.5 rounded-xl hover:bg-white/[0.08] text-xs text-white flex items-center justify-between transition-colors cursor-pointer"
                           >
-                            <span>{d}</span>
-                            <span className="text-xs text-slate-500">Lima</span>
+                            <span className="font-semibold">{distNombre}</span>
+                            <span className="text-[10px] text-cyan-400 font-mono">Lima</span>
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  {/* Dirección Exacta */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                      Dirección Exacta (Calle, Avenida, Número, Dpto) *
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Dirección Exacta (Calle, Número, Dpto) *
                     </label>
                     <input
                       type="text"
                       required
                       value={direccionExacta}
                       onChange={e => setDireccionExacta(e.target.value)}
-                      placeholder="Ej. Av. Larco 812, Dpto 402"
-                      className="big-input text-base font-medium"
+                      placeholder="Ej. Av. Larco 1234, Dpto 402"
+                      className="w-full px-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
                     />
                   </div>
 
-                  {/* Referencia */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                      Referencia de Llegada (Opcional)
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Referencia de Entrega (Opcional)
                     </label>
                     <input
                       type="text"
                       value={referencia}
                       onChange={e => setReferencia(e.target.value)}
-                      placeholder="Ej. Frente al parque, rejas negras, tocar timbre 4"
-                      className="big-input text-base"
+                      placeholder="Ej. Frente al parque, rejas negras"
+                      className="w-full px-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
                     />
                   </div>
 
-                  {/* Mapa */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                      Vista en Mapa / Pin de Ubicación
-                    </label>
-                    <PlacesMapPicker
-                      address={`${distritoQuery} ${direccionExacta}`.trim() || 'Lima, Perú'}
-                      onAddressChange={(addr, newLat, newLng) => {
-                        if (newLat && newLng) {
-                          setLat(newLat);
-                          setLng(newLng);
-                        }
-                      }}
-                      lat={lat}
-                      lng={lng}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* RAMA C: PERSONALIZADO */}
-              {selectedMethod?.tipo_formulario === 'texto_simple' && (
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                    Lugar o indicaciones de entrega:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={customDestinoText}
-                    onChange={e => setCustomDestinoText(e.target.value)}
-                    placeholder="Ej. Recojo presencial en almacén..."
-                    className="big-input text-base"
+                  <PlacesMapPicker
+                    address={direccionExacta ? `${direccionExacta}, ${distritoQuery}` : distritoQuery}
+                    onAddressChange={(newAddr, newLat, newLng) => {
+                      if (newLat && newLng) {
+                        setLat(newLat);
+                        setLng(newLng);
+                      }
+                    }}
+                    lat={lat}
+                    lng={lng}
                   />
                 </div>
               )}
 
-              {/* NOMBRE COMPLETO */}
+              {/* RAMA C: OTRO MÉTODO PERSONALIZADO */}
+              {selectedMethod?.tipo_formulario === 'texto_simple' && (
+                <div className="space-y-3">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Indicaciones de Entrega *
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={customDestinoText}
+                    onChange={e => setCustomDestinoText(e.target.value)}
+                    placeholder="Indica las instrucciones de entrega..."
+                    className="w-full p-4 bg-white/[0.05] border border-white/10 rounded-2xl text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
+                  />
+                </div>
+              )}
+
+              {/* CAMPO OBLIGATORIO: NOMBRE COMPLETO */}
               <div className="space-y-2 pt-2 border-t border-white/[0.08]">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Nombre Completo y Apellidos del Destinatario *
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Tu Nombre Completo (Destinatario) *
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={nombreCompleto}
-                  onChange={e => setNombreCompleto(e.target.value)}
-                  placeholder="Ej. Valeria Mendoza Flores"
-                  className="big-input text-lg font-bold"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    required
+                    value={nombreCompleto}
+                    onChange={e => setNombreCompleto(e.target.value)}
+                    placeholder="Ej. Carlos Mendoza Ramos"
+                    className="w-full pl-12 pr-4 py-3.5 bg-white/[0.05] border border-white/10 rounded-2xl text-sm font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                  />
+                  <User className="w-4 h-4 text-slate-400 absolute left-4 pointer-events-none" />
+                </div>
               </div>
 
-              {/* BOTÓN GIGANTE DE CONFIRMACIÓN */}
+              {errorMsg && (
+                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3 rounded-2xl border border-rose-500/20">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={submitting}
-                className="big-btn-primary pt-4 pb-4 text-lg mt-4"
+                className="big-btn-primary mt-4"
               >
                 {submitting ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Programando Envío...</span>
-                  </>
+                  <span>Registrando Pedido...</span>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5" />
-                    <span>Confirmar & Despachar Mercadería 🚀</span>
+                    <span>Confirmar y Enviar Pedido</span>
+                    <ArrowRight className="w-5 h-5" />
                   </>
                 )}
               </button>
-
             </form>
           )}
 

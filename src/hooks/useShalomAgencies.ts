@@ -15,27 +15,90 @@ export interface UserCoordinates {
 }
 
 /**
- * Formatea el nombre completo y detallado de la agencia con todos sus identificadores:
- * [DEPARTAMENTO] / [PROVINCIA] / [DISTRITO] / [NOMBRE_AGENCIA] - [DIRECCION] (CÓDIGO: [CODE]) ([DISTANCIA] km)
+ * Limpia el texto de la dirección eliminando sufijos repetitivos de provincia/departamento
+ */
+export function cleanAddressText(address: string | null | undefined, prov?: string, dep?: string): string {
+  if (!address) return '';
+  let cleaned = address.trim();
+
+  // Quitar etiquetas de código si vinieran en el string
+  cleaned = cleaned.replace(/\(CÓDIGO:[^)]+\)/gi, '').trim();
+
+  // Quitar repeticiones tipo ", BAGUA - BAGUA - AMAZONAS" o "- LIMA - LIMA"
+  if (prov && dep) {
+    const p = prov.toUpperCase().trim();
+    const d = dep.toUpperCase().trim();
+    const regex1 = new RegExp(`,?\\s*${p}\\s*-\\s*${p}\\s*-\\s*${d}`, 'gi');
+    const regex2 = new RegExp(`,?\\s*${p}\\s*-\\s*${d}`, 'gi');
+    const regex3 = new RegExp(`,?\\s*${d}\\s*-\\s*${p}`, 'gi');
+    cleaned = cleaned.replace(regex1, '').replace(regex2, '').replace(regex3, '');
+  }
+
+  // Limpiar dobles comas o guiones colgados
+  cleaned = cleaned
+    .replace(/,\s*,/g, ',')
+    .replace(/,\s*-\s*,/g, ',')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return cleaned;
+}
+
+/**
+ * Formatea el nombre limpio de la agencia SIN redundancia ni código:
+ * [DEPARTAMENTO] / [PROVINCIA] / [DISTRITO] – [DIRECCIÓN_LIMPIA] ([DISTANCIA] km)
  */
 export function formatFullAgencyName(agency: ShalomAgency): string {
   const dep = (agency.departamento || agency.department || 'PERÚ').toUpperCase().trim();
   const prov = (agency.provincia || agency.province || dep).toUpperCase().trim();
   const dist = (agency.distrito || agency.district || 'CENTRO').toUpperCase().trim();
-  const locationPath = `${dep} / ${prov} / ${dist}`;
-  const agencyDetail = `${agency.nombre}${agency.direccion ? ` - ${agency.direccion}` : ''}`;
-  const codeTag = agency.code ? ` (CÓDIGO: ${agency.code})` : '';
+  
+  // Extraer nombre local si aporta valor
+  let localName = '';
+  if (agency.nombre && agency.nombre.includes('/')) {
+    const segments = agency.nombre.split('/').map(s => s.trim().toUpperCase()).filter(Boolean);
+    const lastSeg = segments[segments.length - 1];
+    if (lastSeg && lastSeg !== dist && lastSeg !== prov && lastSeg !== dep) {
+      localName = ` (${lastSeg})`;
+    }
+  }
+
+  const locationPath = `${dep} / ${prov} / ${dist}${localName}`;
+  const cleanAddr = cleanAddressText(agency.direccion || agency.address, prov, dep);
+  
   const distanceTag = agency.distance_meters !== undefined 
-    ? ` (${(agency.distance_meters / 1000).toFixed(1)} km)` 
+    ? (agency.distance_meters < 1000 
+        ? ` (${Math.round(agency.distance_meters)} m)` 
+        : ` (${(agency.distance_meters / 1000).toFixed(1)} km)`)
     : '';
 
-  return `${locationPath} / ${agencyDetail}${codeTag}${distanceTag}`.toUpperCase();
+  if (cleanAddr) {
+    return `${locationPath} – ${cleanAddr}${distanceTag}`.toUpperCase();
+  }
+
+  return `${locationPath}${distanceTag}`.toUpperCase();
 }
 
 /**
- * Calcula la distancia haversine aproximada en metros entre dos puntos (fallback offline)
+ * Nombre corto y amigable para tarjetas o pines en el mapa
  */
-function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+export function formatShortAgencyName(agency: ShalomAgency): string {
+  const dist = (agency.distrito || agency.district || 'CENTRO').toUpperCase().trim();
+  let localName = dist;
+
+  if (agency.nombre && agency.nombre.includes('/')) {
+    const segments = agency.nombre.split('/').map(s => s.trim().toUpperCase()).filter(Boolean);
+    const lastSeg = segments[segments.length - 1];
+    if (lastSeg) localName = lastSeg;
+  }
+
+  return localName;
+}
+
+/**
+ * Calcula la distancia haversine aproximada en metros entre dos puntos
+ */
+export function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3; // Radio de la Tierra en metros
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
@@ -59,36 +122,70 @@ const normalizeSearchText = (str: string | number | null | undefined): string =>
 };
 
 /**
- * Hook personalizado para la gestión y geolocalización inteligente de Agencias Shalom
+ * Hook personalizado para la gestión, mapa interactivo y geolocalización inteligente de Agencias Shalom
  */
 export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
-  const { autoFetchNearby = true, initialDepartment = 'TODOS', defaultLimit = 1500 } = options;
+  const { autoFetchNearby = false, initialDepartment = 'TODOS', defaultLimit = 1500 } = options;
 
   const [agencies, setAgencies] = useState<ShalomAgency[]>([]);
   const [allAgencies, setAllAgencies] = useState<ShalomAgency[]>([]);
   const [nearestAgency, setNearestAgency] = useState<ShalomAgency | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<UserCoordinates | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<string>(initialDepartment);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showOnlyNearest5, setShowOnlyNearest5] = useState<boolean>(false);
 
   /**
-   * Obtener coordenadas GPS del usuario (Capacitor / Browser Geolocation)
+   * Recalcula distancias para todas las agencias a partir de las coordenadas del usuario
+   */
+  const applyDistances = useCallback((catalog: ShalomAgency[], coords: UserCoordinates): ShalomAgency[] => {
+    return catalog
+      .map(ag => {
+        if (ag.latitude && ag.longitude) {
+          const dist = calculateDistanceMeters(
+            coords.latitude,
+            coords.longitude,
+            Number(ag.latitude),
+            Number(ag.longitude)
+          );
+          return {
+            ...ag,
+            distance_meters: dist,
+            full_display_name: formatFullAgencyName({ ...ag, distance_meters: dist })
+          };
+        }
+        return {
+          ...ag,
+          full_display_name: formatFullAgencyName(ag)
+        };
+      })
+      .sort((a, b) => (a.distance_meters ?? 99999999) - (b.distance_meters ?? 99999999));
+  }, []);
+
+  /**
+   * Solicitar coordenadas GPS del usuario (Navegador / Capacitor)
    */
   const requestUserLocation = useCallback(async (): Promise<UserCoordinates | null> => {
+    setIsLocating(true);
+    setGpsError(null);
+
     return new Promise((resolve) => {
-      // 1. Intentar Capacitor Geolocation si está disponible globalmente
+      // 1. Intentar Capacitor Geolocation si está disponible en móvil
       if (typeof window !== 'undefined' && (window as any).Capacitor?.isPluginAvailable?.('Geolocation')) {
         try {
           const Geolocation = (window as any).Capacitor.Plugins.Geolocation;
           Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 })
             .then((pos: any) => {
-              const coords = {
+              const coords: UserCoordinates = {
                 latitude: pos.coords.latitude,
                 longitude: pos.coords.longitude
               };
               setUserLocation(coords);
+              setIsLocating(false);
               resolve(coords);
             })
             .catch(() => fallbackBrowserLocation(resolve));
@@ -102,30 +199,45 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
     });
 
     function fallbackBrowserLocation(resolvePromise: (val: UserCoordinates | null) => void) {
-      if (typeof navigator !== 'undefined' && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const coords = {
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude
-            };
-            setUserLocation(coords);
-            resolvePromise(coords);
-          },
-          (err) => {
-            console.warn('⚠️ No se pudo obtener ubicación por GPS:', err.message);
-            resolvePromise(null);
-          },
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-        );
-      } else {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        setGpsError('Tu navegador no soporta geolocalización GPS.');
+        setIsLocating(false);
         resolvePromise(null);
+        return;
       }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const coords: UserCoordinates = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude
+          };
+          setUserLocation(coords);
+          setIsLocating(false);
+          setGpsError(null);
+          resolvePromise(coords);
+        },
+        (err) => {
+          console.warn('⚠️ Error de geolocalización GPS:', err.message);
+          let userMsg = 'No se pudo obtener tu ubicación GPS.';
+          if (err.code === 1) {
+            userMsg = 'Permiso denegado. Por favor autoriza el acceso a tu ubicación en tu navegador para ver las agencias cercanas.';
+          } else if (err.code === 2) {
+            userMsg = 'Ubicación no disponible en este momento.';
+          } else if (err.code === 3) {
+            userMsg = 'Tiempo de espera agotado al conectar con GPS.';
+          }
+          setGpsError(userMsg);
+          setIsLocating(false);
+          resolvePromise(null);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
     }
   }, []);
 
   /**
-   * Cargar catálogo general desde Supabase o fallback local (546 agencias de todo el Perú)
+   * Cargar catálogo general desde Supabase o fallback local
    */
   const fetchAgenciesCatalog = useCallback(async (coords?: UserCoordinates | null) => {
     setLoading(true);
@@ -138,7 +250,7 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
           .select('*')
           .eq('is_active', true)
           .order('name', { ascending: true })
-          .limit(1500);
+          .limit(defaultLimit);
 
         if (!dbError && data && data.length > 0) {
           catalog = data.map((row: any) => {
@@ -159,8 +271,8 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
               direccion: row.address,
               telefono: row.phone,
               horario: row.schedule,
-              latitude: row.latitude,
-              longitude: row.longitude
+              latitude: row.latitude ? Number(row.latitude) : null,
+              longitude: row.longitude ? Number(row.longitude) : null
             };
             item.full_display_name = formatFullAgencyName(item);
             return item;
@@ -174,29 +286,18 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
             ...a,
             department: a.departamento,
             province: a.provincia,
-            district: a.distrito
+            district: a.distrito,
+            latitude: a.latitude ? Number(a.latitude) : null,
+            longitude: a.longitude ? Number(a.longitude) : null
           };
           item.full_display_name = formatFullAgencyName(item);
           return item;
         });
       }
 
-      // Si hay coordenadas GPS, calcular distancias para todas las agencias
       const targetCoords = coords || userLocation;
       if (targetCoords) {
-        catalog = catalog.map(ag => {
-          if (ag.latitude && ag.longitude) {
-            const dist = calculateDistanceMeters(
-              targetCoords.latitude,
-              targetCoords.longitude,
-              ag.latitude,
-              ag.longitude
-            );
-            return { ...ag, distance_meters: dist, full_display_name: formatFullAgencyName({ ...ag, distance_meters: dist }) };
-          }
-          return ag;
-        }).sort((a, b) => (a.distance_meters ?? 99999999) - (b.distance_meters ?? 99999999));
-
+        catalog = applyDistances(catalog, targetCoords);
         setNearestAgency(catalog[0] || null);
       }
 
@@ -204,14 +305,28 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
       setAgencies(catalog);
     } catch (err: any) {
       console.warn('Usando catálogo local de agencias Shalom:', err);
-      setAllAgencies(SHALOM_AGENCIES);
-      setAgencies(SHALOM_AGENCIES);
+      let localCat: ShalomAgency[] = SHALOM_AGENCIES.map(a => ({
+        ...a,
+        department: a.departamento,
+        province: a.provincia,
+        district: a.distrito,
+        latitude: a.latitude ? Number(a.latitude) : null,
+        longitude: a.longitude ? Number(a.longitude) : null,
+        full_display_name: formatFullAgencyName(a)
+      }));
+      const targetCoords = coords || userLocation;
+      if (targetCoords) {
+        localCat = applyDistances(localCat, targetCoords);
+        setNearestAgency(localCat[0] || null);
+      }
+      setAllAgencies(localCat);
+      setAgencies(localCat);
     } finally {
       setLoading(false);
     }
-  }, [userLocation]);
+  }, [userLocation, applyDistances, defaultLimit]);
 
-  // Inicialización garantizada: siempre carga el catálogo completo de 546 agencias
+  // Carga inicial
   useEffect(() => {
     let isMounted = true;
 
@@ -233,47 +348,60 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
   }, [autoFetchNearby, fetchAgenciesCatalog, requestUserLocation]);
 
   /**
-   * Filtrar por texto y/o departamento en memoria (sin límite artificial)
+   * Obtener las N sedes más cercanas
+   */
+  const getTopNearestAgencies = useCallback((count: number = 5): ShalomAgency[] => {
+    const list = allAgencies.length > 0 ? allAgencies : (agencies.length > 0 ? agencies : SHALOM_AGENCIES);
+    const withDistance = list.filter(a => a.distance_meters !== undefined && a.distance_meters !== null);
+    if (withDistance.length > 0) {
+      return withDistance.slice(0, count);
+    }
+    return list.slice(0, count);
+  }, [allAgencies, agencies]);
+
+  /**
+   * Filtrar por texto, departamento o modo "Top 5 más cercanas"
    */
   const filteredAgencies = useMemo(() => {
-    let result = allAgencies.length > 0 ? allAgencies : (agencies.length > 0 ? agencies : SHALOM_AGENCIES);
+    let source = allAgencies.length > 0 ? allAgencies : (agencies.length > 0 ? agencies : SHALOM_AGENCIES);
+
+    if (showOnlyNearest5 && userLocation) {
+      return source
+        .filter(a => a.distance_meters !== undefined && a.distance_meters !== null)
+        .slice(0, 5);
+    }
 
     const q = normalizeSearchText(searchQuery);
 
     if (q) {
-      // Búsqueda global en todas las provincias de Perú
-      result = result.filter((a) => {
+      return source.filter((a) => {
         const fullStr = normalizeSearchText(a.full_display_name || formatFullAgencyName(a));
-        const fullName = normalizeSearchText(a.full_name);
         const dep = normalizeSearchText(a.departamento || a.department);
         const prov = normalizeSearchText(a.provincia || a.province);
         const dist = normalizeSearchText(a.distrito || a.district);
         const nom = normalizeSearchText(a.nombre);
         const dir = normalizeSearchText(a.direccion);
-        const code = normalizeSearchText(a.code);
         const ubi = normalizeSearchText(a.ubigeo);
 
         return (
           fullStr.includes(q) ||
-          fullName.includes(q) ||
           dep.includes(q) ||
           prov.includes(q) ||
           dist.includes(q) ||
           nom.includes(q) ||
           dir.includes(q) ||
-          code.includes(q) ||
           ubi.includes(q)
         );
       });
     } else if (selectedDepartment && selectedDepartment !== 'TODOS') {
       const depTarget = normalizeSearchText(selectedDepartment);
-      result = result.filter(
+      return source.filter(
         (a) => normalizeSearchText(a.departamento || a.department) === depTarget
       );
     }
 
-    return result;
-  }, [agencies, allAgencies, selectedDepartment, searchQuery]);
+    return source;
+  }, [agencies, allAgencies, selectedDepartment, searchQuery, showOnlyNearest5, userLocation]);
 
   /**
    * Lista de todos los departamentos únicos disponibles
@@ -288,25 +416,49 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
     return ['TODOS', ...Array.from(deps).sort()];
   }, [allAgencies]);
 
+  /**
+   * Activar GPS explícitamente y actualizar todas las distancias
+   */
+  const triggerGpsLookup = useCallback(async (): Promise<{ coords: UserCoordinates | null; nearest: ShalomAgency | null; top5: ShalomAgency[] }> => {
+    const coords = await requestUserLocation();
+    if (coords) {
+      const updated = applyDistances(allAgencies.length > 0 ? allAgencies : SHALOM_AGENCIES, coords);
+      setAllAgencies(updated);
+      setAgencies(updated);
+      const topNearest = updated[0] || null;
+      setNearestAgency(topNearest);
+      return {
+        coords,
+        nearest: topNearest,
+        top5: updated.slice(0, 5)
+      };
+    }
+    return {
+      coords: null,
+      nearest: nearestAgency,
+      top5: []
+    };
+  }, [requestUserLocation, applyDistances, allAgencies, nearestAgency]);
+
   return {
     agencies: filteredAgencies,
     allAgencies,
     nearestAgency,
     loading,
+    isLocating,
     error,
+    gpsError,
     userLocation,
     selectedDepartment,
     setSelectedDepartment,
     searchQuery,
     setSearchQuery,
     availableDepartments,
-    refreshLocation: async () => {
-      const coords = await requestUserLocation();
-      if (coords) {
-        await fetchAgenciesCatalog(coords);
-      }
-      return coords;
-    },
+    showOnlyNearest5,
+    setShowOnlyNearest5,
+    getTopNearestAgencies,
+    triggerGpsLookup,
+    refreshLocation: triggerGpsLookup,
     refetchCatalog: fetchAgenciesCatalog
   };
 }

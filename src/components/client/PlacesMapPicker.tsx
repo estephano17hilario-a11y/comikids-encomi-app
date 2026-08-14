@@ -10,9 +10,7 @@ import {
   Sparkles,
   Search,
   X,
-  Crosshair,
-  Building2,
-  Compass
+  Crosshair
 } from 'lucide-react';
 import { DISTRITOS_LIMA } from '../../data/distritosLima';
 
@@ -28,7 +26,6 @@ interface Props {
     lng: number;
   }) => void;
   onCloseModal?: () => void;
-  onOpenModal?: () => void;
   isModal?: boolean;
 }
 
@@ -39,10 +36,9 @@ interface SearchPlaceItem {
   mainText: string;
   subText: string;
   district: string;
-  addressDetails?: Record<string, string>;
 }
 
-// Resaltar coincidencias de búsqueda (igual que Shalom)
+// Resaltar coincidencias de búsqueda estilo Shalom
 const HighlightMatch: React.FC<{ text: string; query: string; className?: string }> = ({
   text,
   query,
@@ -79,10 +75,10 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
   }
 };
 
-// Icono milimétrico con punta inferior de alta precisión
-const createPrecisePinIcon = () => {
+// 1. Icono para el PIN de entrega seleccionado (Rojo/Cian hiper-preciso con punta inferior exacta)
+const createDeliveryPinIcon = () => {
   const html = `
-    <div style="position: relative; width: 42px; height: 50px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
+    <div style="position: relative; width: 44px; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
       <!-- Pin principal -->
       <div style="
         width: 40px; 
@@ -115,11 +111,45 @@ const createPrecisePinIcon = () => {
   `;
 
   return L.divIcon({
-    className: 'precise-motorizado-pin-wrapper',
+    className: 'delivery-pin-marker',
     html,
-    iconSize: [42, 50],
-    iconAnchor: [21, 50], // Centro horizontal 21, base exacta 50
-    popupAnchor: [0, -50],
+    iconSize: [44, 52],
+    iconAnchor: [22, 52], // Centro 22, punta inferior 52
+    popupAnchor: [0, -52],
+  });
+};
+
+// 2. Icono para la ubicación física GPS del usuario (Puntito azul brillante animado)
+const createUserLocationDotIcon = () => {
+  const html = `
+    <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
+      <!-- Halo pulsante -->
+      <div style="
+        position: absolute; 
+        width: 34px; 
+        height: 34px; 
+        border-radius: 50%; 
+        background: rgba(14, 165, 233, 0.45); 
+        animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+      "></div>
+      <!-- Puntito central azul -->
+      <div style="
+        position: relative; 
+        width: 16px; 
+        height: 16px; 
+        border-radius: 50%; 
+        background: #0284c7; 
+        border: 3px solid #ffffff; 
+        box-shadow: 0 0 16px rgba(14, 165, 233, 1), 0 2px 6px rgba(0,0,0,0.4);
+      "></div>
+    </div>
+  `;
+
+  return L.divIcon({
+    className: 'user-gps-blue-dot',
+    html,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
   });
 };
 
@@ -152,12 +182,12 @@ function findMatchingDistrict(rawDistrict: string, fullAddressText: string = '')
   return rawDistrict.trim() || 'Lima';
 }
 
-// Extraer y limpiar dirección milimétrica exacta (ej: Jr. Huamanga 1586)
+// Extraer dirección limpia y exacta (ej: Jr. Huamanga 1586, Av. México 1580)
 function formatMilimetricAddress(addr: Record<string, string>, displayName: string, lat: number, lng: number): string {
   let road = addr.road || addr.pedestrian || addr.street || addr.footway || addr.path || addr.residential || addr.highway || '';
   let houseNumber = addr.house_number || '';
 
-  // Si display_name empieza con número (ej. "1586, Jirón Huamanga..."), extraerlo
+  // Si display_name empieza con un número municipal (ej: "1586, Jirón Huamanga..."), extraerlo
   if (!houseNumber && displayName) {
     const firstPart = displayName.split(',')[0]?.trim() || '';
     if (/^\d+[a-zA-Z]?$/.test(firstPart)) {
@@ -165,7 +195,7 @@ function formatMilimetricAddress(addr: Record<string, string>, displayName: stri
     }
   }
 
-  // Limpiar y formatear prefijos comunes de Lima
+  // Limpiar términos genéricos
   if (road.toLowerCase().startsWith('ciclovia ') || road.toLowerCase().startsWith('ciclovía ')) {
     road = road.replace(/ciclov[ií]a\s+/i, 'Av. ');
   } else if (road.toLowerCase().startsWith('via auxiliar ') || road.toLowerCase().startsWith('vía auxiliar ')) {
@@ -174,12 +204,11 @@ function formatMilimetricAddress(addr: Record<string, string>, displayName: stri
 
   let fullStreet = road.trim();
 
-  // Si la calle no tiene prefijo pero es un nombre propio conocido en Lima
+  // Prefijo por defecto para Lima si no tiene
   if (fullStreet && !/^(jr|jir[oó]n|av|avenida|calle|ca|pje|pasaje|prol|prolongaci[oó]n|alameda|carretera)/i.test(fullStreet)) {
     fullStreet = `Jr. ${fullStreet}`;
   }
 
-  // Normalizar abreviaturas
   fullStreet = fullStreet
     .replace(/^jiron\s+/i, 'Jr. ')
     .replace(/^jirón\s+/i, 'Jr. ')
@@ -196,7 +225,7 @@ function formatMilimetricAddress(addr: Record<string, string>, displayName: stri
     return fullStreet;
   }
 
-  // Fallback: Analizar partes del display_name
+  // Si no hay vía detectada, limpiar display_name
   if (displayName) {
     const parts = displayName.split(',').map(p => p.trim());
     const validParts = parts.filter(p => {
@@ -225,51 +254,36 @@ export const PlacesMapPicker: React.FC<Props> = ({
   initialDistrict = '',
   onConfirmLocation,
   onCloseModal,
-  isModal = false,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
+  const deliveryMarkerRef = useRef<L.Marker | null>(null);
+  const userLocationMarkerRef = useRef<L.Marker | null>(null);
 
   const [coords, setCoords] = useState<{ lat: number; lng: number }>({
     lat: initialLat,
     lng: initialLng,
   });
 
+  const [userGpsCoords, setUserGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [detectedAddress, setDetectedAddress] = useState<string>(initialAddress);
   const [detectedDistrict, setDetectedDistrict] = useState<string>(initialDistrict);
-  const [exactNumberInput, setExactNumberInput] = useState<string>(''); // Para añadir número exacto si falta
   const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [locationPermissionDenied, setLocationPermissionDenied] = useState<boolean>(false);
   const [hasConfirmed, setHasConfirmed] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   
-  // Buscador de calles en Perú / Lima con sugerencias instantáneas
+  // Búsqueda de direcciones en Perú
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<SearchPlaceItem[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
 
-  // Sincronizar props externas
-  useEffect(() => {
-    if (initialLat && initialLng && (initialLat !== coords.lat || initialLng !== coords.lng)) {
-      setCoords({ lat: initialLat, lng: initialLng });
-      if (markerRef.current) markerRef.current.setLatLng([initialLat, initialLng]);
-      if (mapInstanceRef.current) mapInstanceRef.current.setView([initialLat, initialLng]);
-    }
-    if (initialAddress && initialAddress !== detectedAddress) {
-      setDetectedAddress(initialAddress);
-    }
-    if (initialDistrict && initialDistrict !== detectedDistrict) {
-      setDetectedDistrict(initialDistrict);
-    }
-  }, [initialLat, initialLng, initialAddress, initialDistrict]);
-
-  // Geocodificación Inversa Milimétrica
+  // Geocodificación Inversa
   const fetchAddressFromCoords = useCallback(async (latitude: number, longitude: number) => {
     setIsGeocoding(true);
-    setStatusMessage('Localizando calle y numeración exacta...');
+    setStatusMessage('Consultando calle y numeración...');
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=19&addressdetails=1&namedetails=1`,
@@ -293,7 +307,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
       setDetectedDistrict(matchedDistrict || rawDistrict || 'Lima');
       setStatusMessage('');
     } catch (err) {
-      console.warn('Fallo geocodificación:', err);
+      console.warn('Geocodificación inversa:', err);
       if (!detectedAddress) {
         setDetectedAddress(`Ubicación GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
       }
@@ -303,7 +317,23 @@ export const PlacesMapPicker: React.FC<Props> = ({
     }
   }, [detectedAddress]);
 
-  // Buscador Exclusivo de Perú con soporte de calles, jirones, pasajes y números
+  // Actualizar la posición de entrega (Delivery Pin) de forma instantánea
+  const updateDeliveryPosition = useCallback((newLat: number, newLng: number, skipGeocode = false) => {
+    setCoords({ lat: newLat, lng: newLng });
+    setHasConfirmed(false);
+    setShowSearchResults(false);
+    setSearchQuery('');
+
+    if (deliveryMarkerRef.current) {
+      deliveryMarkerRef.current.setLatLng([newLat, newLng]);
+    }
+
+    if (!skipGeocode) {
+      fetchAddressFromCoords(newLat, newLng);
+    }
+  }, [fetchAddressFromCoords]);
+
+  // Búsqueda en vivo restringida a Perú
   const handleSearchAddress = async (query: string) => {
     if (!query || query.trim().length < 2) {
       setSearchResults([]);
@@ -337,7 +367,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
             mainText: main,
             subText: sub,
             district: district,
-            addressDetails: addr
           };
         });
 
@@ -355,22 +384,17 @@ export const PlacesMapPicker: React.FC<Props> = ({
     const newLat = parseFloat(result.lat);
     const newLng = parseFloat(result.lon);
 
-    setCoords({ lat: newLat, lng: newLng });
-    setShowSearchResults(false);
-    setSearchQuery('');
-    setHasConfirmed(false);
     setDetectedAddress(result.mainText);
     setDetectedDistrict(result.district || 'Lima');
 
     if (mapInstanceRef.current) {
       mapInstanceRef.current.flyTo([newLat, newLng], 19, { duration: 1.2 });
     }
-    if (markerRef.current) {
-      markerRef.current.setLatLng([newLat, newLng]);
-    }
+
+    updateDeliveryPosition(newLat, newLng, true);
   };
 
-  // Pedir GPS en tiempo real
+  // Pedir GPS en tiempo real y mostrar el Puntito Azul
   const requestCurrentLocation = useCallback(() => {
     if (!('geolocation' in navigator)) {
       setLocationPermissionDenied(true);
@@ -386,23 +410,28 @@ export const PlacesMapPicker: React.FC<Props> = ({
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
 
-        setCoords({ lat: userLat, lng: userLng });
+        setUserGpsCoords({ lat: userLat, lng: userLng });
         setIsLocating(false);
         setLocationPermissionDenied(false);
-        setSearchQuery('');
-        setHasConfirmed(false);
 
+        // Mostrar o mover el Puntito Azul de la ubicación física del usuario
         if (mapInstanceRef.current) {
+          if (!userLocationMarkerRef.current) {
+            userLocationMarkerRef.current = L.marker([userLat, userLng], {
+              icon: createUserLocationDotIcon(),
+              zIndexOffset: 100,
+            }).addTo(mapInstanceRef.current);
+          } else {
+            userLocationMarkerRef.current.setLatLng([userLat, userLng]);
+          }
+
           mapInstanceRef.current.flyTo([userLat, userLng], 19, {
             duration: 1.2,
           });
         }
 
-        if (markerRef.current) {
-          markerRef.current.setLatLng([userLat, userLng]);
-        }
-
-        fetchAddressFromCoords(userLat, userLng);
+        // Mover el pin de entrega a la ubicación del usuario
+        updateDeliveryPosition(userLat, userLng);
       },
       (error) => {
         setIsLocating(false);
@@ -417,7 +446,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
         maximumAge: 0,
       }
     );
-  }, [fetchAddressFromCoords]);
+  }, [updateDeliveryPosition]);
 
   // Inicializar Leaflet
   useEffect(() => {
@@ -437,55 +466,58 @@ export const PlacesMapPicker: React.FC<Props> = ({
       subdomains: 'abcd',
     }).addTo(map);
 
-    const marker = L.marker([coords.lat, coords.lng], {
-      icon: createPrecisePinIcon(),
+    // Marcador de entrega (Pin Rojo/Cian arrastrable)
+    const deliveryMarker = L.marker([coords.lat, coords.lng], {
+      icon: createDeliveryPinIcon(),
       draggable: true,
       autoPan: true,
+      zIndexOffset: 500,
     }).addTo(map);
 
-    marker.on('dragend', () => {
-      const newPos = marker.getLatLng();
-      setCoords({ lat: newPos.lat, lng: newPos.lng });
-      setSearchQuery('');
-      setShowSearchResults(false);
-      setHasConfirmed(false);
-      fetchAddressFromCoords(newPos.lat, newPos.lng);
+    // Evento al arrastrar el pin
+    deliveryMarker.on('dragend', () => {
+      const newPos = deliveryMarker.getLatLng();
+      updateDeliveryPosition(newPos.lat, newPos.lng);
     });
 
+    // Evento al hacer clic en cualquier punto del mapa: mueve el pin INMEDIATAMENTE
     map.on('click', (e: L.LeafletMouseEvent) => {
       const { lat, lng } = e.latlng;
-      marker.setLatLng([lat, lng]);
-      setCoords({ lat, lng });
-      setSearchQuery('');
-      setShowSearchResults(false);
-      setHasConfirmed(false);
-      fetchAddressFromCoords(lat, lng);
+      updateDeliveryPosition(lat, lng);
     });
 
-    markerRef.current = marker;
+    deliveryMarkerRef.current = deliveryMarker;
     mapInstanceRef.current = map;
 
     setTimeout(() => {
       map.invalidateSize();
-    }, 200);
+    }, 250);
 
+    // Solicitar ubicación GPS inicial para mostrar el puntito azul y centrar
     requestCurrentLocation();
 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
-      markerRef.current = null;
+      deliveryMarkerRef.current = null;
+      userLocationMarkerRef.current = null;
     };
   }, []);
 
-  // Confirmación
+  // Centrar en el puntito azul de mi GPS
+  const handleCenterOnUserGps = () => {
+    if (userGpsCoords && mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([userGpsCoords.lat, userGpsCoords.lng], 19, { duration: 1 });
+      updateDeliveryPosition(userGpsCoords.lat, userGpsCoords.lng);
+    } else {
+      requestCurrentLocation();
+    }
+  };
+
+  // Botón de Confirmación "Es aquí"
   const handleConfirm = () => {
     const finalDistrict = detectedDistrict.trim() || 'Lima';
-    let finalAddress = detectedAddress.trim() || `Ubicación GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
-
-    if (exactNumberInput.trim() && !finalAddress.includes(exactNumberInput.trim())) {
-      finalAddress = `${finalAddress} #${exactNumberInput.trim()}`;
-    }
+    const finalAddress = detectedAddress.trim() || `Ubicación GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`;
 
     onConfirmLocation({
       district: finalDistrict,
@@ -506,7 +538,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
   return (
     <div className="space-y-3 animate-fadeIn w-full">
       
-      {/* ÚNICO BUSCADOR SUPERIOR: Calles, Pasajes, Jirones y Lugares en Lima/Perú */}
+      {/* Buscador Único Superior con Coincidencias en Perú */}
       <div className="relative w-full z-30">
         <div className="relative flex items-center">
           <input
@@ -516,7 +548,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
               setSearchQuery(e.target.value);
               handleSearchAddress(e.target.value);
             }}
-            placeholder="Buscar calle, jirón, pasaje o avenida (ej. Jr. Huamanga 1586, Av. Larco 812)..."
+            placeholder="Buscar calle, jirón, pasaje o avenida (ej. Jr. Huamanga 1586, Av. México 1580)..."
             className="w-full pl-12 pr-28 py-4 bg-slate-900/95 border-2 border-white/20 rounded-2xl text-sm sm:text-base text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/25 shadow-2xl transition-all font-semibold"
           />
           <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
@@ -536,7 +568,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
 
           <button
             type="button"
-            onClick={requestCurrentLocation}
+            onClick={handleCenterOnUserGps}
             disabled={isLocating}
             className="absolute right-2 px-3.5 py-2.5 rounded-xl bg-cyan-500/25 hover:bg-cyan-500/35 text-cyan-300 text-xs font-black flex items-center gap-1.5 border border-cyan-500/40 transition-all cursor-pointer shadow-md"
             title="Ubicar mi GPS"
@@ -546,11 +578,11 @@ export const PlacesMapPicker: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Dropdown de Coincidencias al estilo Shalom (Resaltado y Específico) */}
+        {/* Dropdown de Coincidencias en Perú */}
         {showSearchResults && searchResults.length > 0 && (
           <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden animate-fadeIn max-h-72 overflow-y-auto">
             <div className="p-3 border-b border-white/10 flex items-center justify-between text-xs text-slate-400">
-              <span className="font-bold text-cyan-300">Coincidencias encontradas en Perú:</span>
+              <span className="font-bold text-cyan-300">Lugares coincidentes en Perú:</span>
               <button
                 type="button"
                 onClick={() => setShowSearchResults(false)}
@@ -601,11 +633,24 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
       )}
 
-      {/* CONTENEDOR DEL MAPA EXTRA-LARGO EN EL EJE Y (640px a 740px) */}
+      {/* MAPA EXTRA-LARGO EN EL EJE Y (640px - 720px) */}
       <div className="relative w-full h-[620px] sm:h-[720px] min-h-[560px] rounded-3xl overflow-hidden border-2 border-white/20 bg-slate-950 shadow-2xl">
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-        {/* Controles Flotantes de Zoom */}
+        {/* Leyenda sutil: Puntito Azul = Tu ubicación física | Pin Rojo/Cian = Punto de entrega */}
+        <div className="absolute bottom-24 left-4 z-[400] pointer-events-none hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/15 text-[11px] text-slate-300 shadow-xl">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 border border-white shadow-[0_0_8px_rgba(6,182,212,1)] inline-block"></span>
+            <span className="font-semibold text-white">Tu ubicación GPS (Puntito)</span>
+          </div>
+          <span className="text-slate-600">•</span>
+          <div className="flex items-center gap-1.5">
+            <span>📍</span>
+            <span className="font-semibold text-white">Punto de Entrega</span>
+          </div>
+        </div>
+
+        {/* Controles Flotantes de Zoom & GPS */}
         <div className="absolute right-4 top-4 z-[400] flex flex-col gap-2.5">
           <button
             type="button"
@@ -625,15 +670,15 @@ export const PlacesMapPicker: React.FC<Props> = ({
           </button>
           <button
             type="button"
-            onClick={requestCurrentLocation}
+            onClick={handleCenterOnUserGps}
             className="w-11 h-11 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center shadow-2xl shadow-cyan-600/40 transition-all active:scale-95 cursor-pointer"
-            title="Centrar en mi ubicación actual"
+            title="Centrar en mi ubicación GPS (Puntito azul)"
           >
             <Crosshair className={`w-5 h-5 ${isLocating ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
-        {/* Banner Superior: Dirección Milimétrica en Tiempo Real */}
+        {/* Banner Superior Flotante: Dirección en Tiempo Real */}
         <div className="absolute top-4 left-4 right-20 z-[400] pointer-events-none">
           <div className="p-4 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border-2 border-white/25 shadow-2xl flex items-center gap-3.5 text-xs text-white">
             <div className="w-10 h-10 rounded-2xl bg-cyan-500/25 text-cyan-400 flex items-center justify-center shrink-0 shadow-md">

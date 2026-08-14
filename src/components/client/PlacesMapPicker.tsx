@@ -8,8 +8,6 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  Search,
-  X,
   Crosshair
 } from 'lucide-react';
 import { DISTRITOS_LIMA } from '../../data/distritosLima';
@@ -30,53 +28,7 @@ interface Props {
   isModal?: boolean;
 }
 
-interface SearchPlaceItem {
-  display_name: string;
-  lat: string;
-  lon: string;
-  mainText: string;
-  subText: string;
-  district: string;
-}
-
-// Resaltar coincidencias de búsqueda estilo Shalom
-const HighlightMatch: React.FC<{ text: string; query: string; className?: string }> = ({
-  text,
-  query,
-  className = ''
-}) => {
-  if (!query || !query.trim() || !text) {
-    return <span className={className}>{text}</span>;
-  }
-
-  const q = query.trim();
-  try {
-    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escaped})`, 'gi');
-    const parts = text.split(regex);
-
-    return (
-      <span className={className}>
-        {parts.map((part, idx) =>
-          regex.test(part) ? (
-            <span
-              key={idx}
-              className="font-bold text-cyan-300 bg-cyan-400/25 px-1 py-0.5 rounded"
-            >
-              {part}
-            </span>
-          ) : (
-            <span key={idx}>{part}</span>
-          )
-        )}
-      </span>
-    );
-  } catch {
-    return <span className={className}>{text}</span>;
-  }
-};
-
-// 1. Icono para el PIN de entrega seleccionado (Punta inferior exacta)
+// 1. Icono para el PIN de entrega seleccionado (Punta inferior milimétrica)
 const createDeliveryPinIcon = () => {
   const html = `
     <div style="position: relative; width: 44px; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
@@ -179,19 +131,19 @@ function findMatchingDistrict(rawDistrict: string, fullAddressText: string = '')
   return rawDistrict.trim() || 'Lima';
 }
 
-function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHint?: string): string {
+function cleanStreetName(rawStreet: string, houseNumber?: string): string {
   if (!rawStreet) return '';
 
   let street = rawStreet.trim();
 
-  // Limpiar prefijos ciclovías
+  // Limpiar prefijos de vías auxiliares o ciclovías
   if (street.toLowerCase().startsWith('ciclovia ') || street.toLowerCase().startsWith('ciclovía ')) {
     street = street.replace(/ciclov[ií]a\s+/i, 'Av. ');
   } else if (street.toLowerCase().startsWith('via auxiliar ') || street.toLowerCase().startsWith('vía auxiliar ')) {
     street = street.replace(/v[ií]a auxiliar\s+/i, 'Av. ');
   }
 
-  // Prefijos comunes en Lima
+  // Normalizar prefijos de Lima
   if (!/^(jr|jir[oó]n|av|avenida|calle|ca|pje|pasaje|prol|prolongaci[oó]n|alameda|carretera)/i.test(street)) {
     street = `Jr. ${street}`;
   }
@@ -204,23 +156,15 @@ function cleanStreetName(rawStreet: string, houseNumber?: string, searchQueryHin
     .replace(/^prolongacion\s+/i, 'Prol. ')
     .replace(/^prolongación\s+/i, 'Prol. ');
 
-  let num = houseNumber || '';
-  if (!num && searchQueryHint) {
-    const numMatch = searchQueryHint.match(/\b\d+[a-zA-Z]?\b/);
-    if (numMatch) {
-      num = numMatch[0];
-    }
-  }
-
-  if (num && !street.includes(num)) {
-    return `${street} ${num}`;
+  if (houseNumber && !street.includes(houseNumber)) {
+    return `${street} ${houseNumber}`;
   }
 
   return street;
 }
 
-// Analizar la respuesta completa de OpenStreetMap Nominatim con máxima precisión
-function parseOsmDetailedAddress(data: any, lat: number, lng: number, queryHint?: string): { fullAddress: string; district: string } {
+// Analizar la respuesta completa de OpenStreetMap Nominatim metro a metro
+function parseOsmDetailedAddress(data: any, lat: number, lng: number): { fullAddress: string; district: string } {
   const addr = data.address || {};
   const dispName = data.display_name || '';
   const parts = dispName.split(',').map((p: string) => p.trim());
@@ -243,7 +187,7 @@ function parseOsmDetailedAddress(data: any, lat: number, lng: number, queryHint?
     if (urbPart) urb = urbPart;
   }
 
-  let formattedRoad = cleanStreetName(road || parts[0] || 'Ubicación', houseNumber, queryHint);
+  let formattedRoad = cleanStreetName(road || parts[0] || 'Ubicación', houseNumber);
   let full = formattedRoad;
 
   if (urb && !full.toLowerCase().includes(urb.toLowerCase())) {
@@ -297,17 +241,11 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const [locationPermissionDenied, setLocationPermissionDenied] = useState<boolean>(false);
   const [hasConfirmed, setHasConfirmed] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
-  
-  // Búsqueda de direcciones en Perú
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [searchResults, setSearchResults] = useState<SearchPlaceItem[]>([]);
-  const [isSearching, setIsSearching] = useState<boolean>(false);
-  const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
 
-  // Geocodificación Inversa de Alta Fidelidad
+  // Geocodificación Inversa Metro a Metro de Alta Fidelidad
   const fetchAddressFromCoords = useCallback(async (latitude: number, longitude: number) => {
     setIsGeocoding(true);
-    setStatusMessage('Consultando calle, número municipal y urbanización...');
+    setStatusMessage('Localizando número y calle exacta...');
 
     // 1. Google Maps Geocoder (si está activo con region=PE y language=es)
     if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
@@ -355,7 +293,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
     let addressResolved = false;
     try {
       const osmRes = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=19&addressdetails=1`,
         {
           headers: {
             'Accept-Language': 'es',
@@ -419,8 +357,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const updateDeliveryPosition = useCallback((newLat: number, newLng: number, explicitAddress?: string, explicitDistrict?: string) => {
     setCoords({ lat: newLat, lng: newLng });
     setHasConfirmed(false);
-    setShowSearchResults(false);
-    setSearchQuery('');
 
     if (deliveryMarkerRef.current) {
       deliveryMarkerRef.current.setLatLng([newLat, newLng]);
@@ -437,72 +373,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
       fetchAddressFromCoords(newLat, newLng);
     }
   }, [fetchAddressFromCoords]);
-
-  // Buscador Multi-API en vivo
-  const handleSearchAddress = async (query: string) => {
-    if (!query || query.trim().length < 2) {
-      setSearchResults([]);
-      setShowSearchResults(false);
-      return;
-    }
-
-    setIsSearching(true);
-    try {
-      const cleanQuery = query.trim();
-      const encoded = encodeURIComponent(`${cleanQuery}, Lima, Perú`);
-      const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encoded}&countrycodes=pe&limit=8&addressdetails=1`;
-      
-      const response = await fetch(searchUrl, {
-        headers: {
-          'Accept-Language': 'es',
-          'User-Agent': 'EncomiPerúApp/1.0 (contacto@comikids.pe)'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const formattedList: SearchPlaceItem[] = (data || []).map((item: any) => {
-          const lat = item.lat;
-          const lon = item.lon;
-          const { fullAddress, district } = parseOsmDetailedAddress(item, parseFloat(lat), parseFloat(lon), cleanQuery);
-          const sub = `${district}, Lima, Perú`;
-
-          return {
-            display_name: `${fullAddress}, ${sub}`,
-            lat: lat,
-            lon: lon,
-            mainText: fullAddress,
-            subText: sub,
-            district: district,
-          };
-        });
-
-        if (formattedList.length > 0) {
-          setSearchResults(formattedList);
-          setShowSearchResults(true);
-        }
-      }
-    } catch (err) {
-      console.error('Error buscando dirección:', err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleSelectSearchResult = (result: SearchPlaceItem) => {
-    const newLat = parseFloat(result.lat);
-    const newLng = parseFloat(result.lon);
-
-    if (leafletMapRef.current) {
-      leafletMapRef.current.flyTo([newLat, newLng], 19, { duration: 1.2 });
-    }
-    if (googleMapRef.current) {
-      googleMapRef.current.panTo({ lat: newLat, lng: newLng });
-      googleMapRef.current.setZoom(19);
-    }
-
-    updateDeliveryPosition(newLat, newLng, result.mainText, result.district);
-  };
 
   // Pedir GPS en tiempo real
   const requestCurrentLocation = useCallback(() => {
@@ -717,84 +587,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
   return (
     <div className="space-y-3 animate-fadeIn w-full">
       
-      {/* Buscador Único Superior con Coincidencias en Perú */}
-      <div className="relative w-full z-30">
-        <div className="relative flex items-center">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              handleSearchAddress(e.target.value);
-            }}
-            placeholder="Buscar calle, jirón, pasaje o avenida (ej. Jr. Huamanga 1586, Av. México 1166)..."
-            className="w-full pl-12 pr-28 py-4 bg-slate-900/95 border-2 border-white/20 rounded-2xl text-sm sm:text-base text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/25 shadow-2xl transition-all font-semibold"
-          />
-          <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
-
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setShowSearchResults(false);
-              }}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 flex items-center justify-center absolute right-16 cursor-pointer transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={handleCenterOnUserGps}
-            disabled={isLocating}
-            className="absolute right-2 px-3.5 py-2.5 rounded-xl bg-cyan-500/25 hover:bg-cyan-500/35 text-cyan-300 text-xs font-black flex items-center gap-1.5 border border-cyan-500/40 transition-all cursor-pointer shadow-md"
-            title="Centrar en mi ubicación GPS"
-          >
-            <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
-            <span>{isLocating ? 'GPS...' : 'Mi GPS'}</span>
-          </button>
-        </div>
-
-        {/* Dropdown de Coincidencias en Perú */}
-        {showSearchResults && searchResults.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-500/30 rounded-2xl shadow-2xl overflow-hidden animate-fadeIn max-h-72 overflow-y-auto">
-            <div className="p-3 border-b border-white/10 flex items-center justify-between text-xs text-slate-400">
-              <span className="font-bold text-cyan-300">Lugares coincidentes en Perú:</span>
-              <button
-                type="button"
-                onClick={() => setShowSearchResults(false)}
-                className="text-xs text-slate-400 hover:text-white cursor-pointer font-bold"
-              >
-                Cerrar ✕
-              </button>
-            </div>
-
-            {searchResults.map((item, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleSelectSearchResult(item)}
-                className="w-full text-left px-4 py-3.5 hover:bg-cyan-500/20 text-xs sm:text-sm text-slate-200 border-b border-white/[0.06] last:border-0 flex items-start gap-3 transition-colors cursor-pointer group"
-              >
-                <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
-                  <MapPin className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h5 className="font-bold text-white leading-snug">
-                    <HighlightMatch text={item.mainText} query={searchQuery} />
-                  </h5>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    <HighlightMatch text={item.subText} query={searchQuery} />
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Aviso de permiso GPS si es necesario */}
       {locationPermissionDenied && (
         <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2.5 animate-fadeIn">
@@ -812,11 +604,11 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
       )}
 
-      {/* MAPA EXTRA-LARGO EN EL EJE Y (620px - 720px) */}
-      <div className="relative w-full h-[620px] sm:h-[720px] min-h-[560px] rounded-3xl overflow-hidden border-2 border-white/20 bg-slate-950 shadow-2xl">
+      {/* MAPA EXTRA-LARGO EN EL EJE Y (640px - 740px) SIN NINGÚN BUSCADOR */}
+      <div className="relative w-full h-[640px] sm:h-[740px] min-h-[580px] rounded-3xl overflow-hidden border-2 border-white/20 bg-slate-950 shadow-2xl">
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-        {/* Leyenda sutil: Puntito Azul = Tu ubicación física | Pin Rojo/Cian = Punto de entrega */}
+        {/* Leyenda sutil: Puntito Azul = Tu ubicación física | Pin = Punto de entrega */}
         <div className="absolute bottom-28 left-4 z-[400] pointer-events-none hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/15 text-[11px] text-slate-300 shadow-xl">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 border border-white shadow-[0_0_8px_rgba(6,182,212,1)] inline-block"></span>
@@ -869,23 +661,36 @@ export const PlacesMapPicker: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Banner Superior Flotante: Dirección en Tiempo Real */}
-        <div className="absolute top-4 left-4 right-20 z-[400] pointer-events-none">
-          <div className="p-4 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border-2 border-white/25 shadow-2xl flex items-center gap-3.5 text-xs text-white">
-            <div className="w-10 h-10 rounded-2xl bg-cyan-500/25 text-cyan-400 flex items-center justify-center shrink-0 shadow-md">
-              <MapPin className="w-5 h-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-black uppercase text-cyan-300 tracking-wider">
-                  {detectedDistrict ? `DISTRITO: ${detectedDistrict.toUpperCase()}` : 'UBICACIÓN SELECCIONADA'}
-                </span>
-                {isGeocoding && <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />}
+        {/* Banner Superior Flotante: Dirección en Tiempo Real con Botón Mi GPS */}
+        <div className="absolute top-4 left-4 right-20 z-[400]">
+          <div className="p-4 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border-2 border-white/25 shadow-2xl flex items-center justify-between gap-3 text-xs text-white">
+            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-500/25 text-cyan-400 flex items-center justify-center shrink-0 shadow-md">
+                <MapPin className="w-5 h-5" />
               </div>
-              <p className="font-black text-white text-sm sm:text-base truncate leading-tight mt-0.5">
-                {detectedAddress || statusMessage || 'Toca o mueve el pin hasta tu puerta exacta...'}
-              </p>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-black uppercase text-cyan-300 tracking-wider">
+                    {detectedDistrict ? `DISTRITO: ${detectedDistrict.toUpperCase()}` : 'UBICACIÓN SELECCIONADA'}
+                  </span>
+                  {isGeocoding && <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />}
+                </div>
+                <p className="font-black text-white text-sm sm:text-base truncate leading-tight mt-0.5">
+                  {detectedAddress || statusMessage || 'Toca o mueve el pin hasta tu puerta exacta...'}
+                </p>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={handleCenterOnUserGps}
+              disabled={isLocating}
+              className="px-3.5 py-2.5 rounded-xl bg-cyan-500/25 hover:bg-cyan-500/35 text-cyan-300 text-xs font-black flex items-center gap-1.5 border border-cyan-500/40 transition-all cursor-pointer shadow-md shrink-0"
+              title="Centrar en mi ubicación GPS"
+            >
+              <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
+              <span>{isLocating ? 'GPS...' : 'Mi GPS'}</span>
+            </button>
           </div>
         </div>
 

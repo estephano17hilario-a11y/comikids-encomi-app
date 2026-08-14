@@ -155,6 +155,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   // Motorizado Branch State
   const [motorizadoSubStep, setMotorizadoSubStep] = useState<'map' | 'form'>('map');
   const [showDistritoSuggestions, setShowDistritoSuggestions] = useState(false);
+  const [initialMapAddress, setInitialMapAddress] = useState<string>('');
   const [lat, setLat] = useState<number>(-12.1215);
   const [lng, setLng] = useState<number>(-77.0298);
 
@@ -970,6 +971,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           }
                           if (confirmedAddr) {
                             setDireccionExacta(confirmedAddr);
+                            setInitialMapAddress(confirmedAddr);
                             localStorage.setItem('incomi_saved_address', confirmedAddr);
                           }
                           setLat(newLat);
@@ -1061,31 +1063,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             required
                             value={direccionExacta}
                             onChange={e => setDireccionExacta(e.target.value)}
-                            onBlur={async () => {
-                              if (!direccionExacta.trim()) return;
-                              try {
-                                const q = encodeURIComponent(`${direccionExacta.trim()}, ${distritoQuery.trim()}, Lima, Peru`);
-                                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&countrycodes=pe&limit=1`);
-                                if (res.ok) {
-                                  const data = await res.json();
-                                  if (data && data[0]) {
-                                    setLat(parseFloat(data[0].lat));
-                                    setLng(parseFloat(data[0].lon));
-                                  }
-                                }
-                              } catch (err) {
-                                console.warn('Geocodificación de sincronización:', err);
-                              }
-                            }}
                             placeholder="Ej. Av. Larco 1234, Dpto 402 / Pasaje Los Sauces 120"
                             className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
                           />
                           
-                          {/* Mensaje de aviso cuando se edita la dirección */}
-                          <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-3 rounded-2xl border border-amber-500/25 font-medium mt-1.5">
-                            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                            <span>(Si se modifica cambiará la ubicación del Mapa)</span>
-                          </div>
+                          {/* Mensajes condicionales */}
+                          {(!initialMapAddress || direccionExacta.trim() === initialMapAddress.trim()) ? (
+                            <div className="flex items-center gap-2 text-xs text-cyan-300 bg-cyan-500/10 p-3 rounded-2xl border border-cyan-500/25 font-medium mt-1.5 animate-fadeIn">
+                              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+                              <span>Especifique más la ruta si lo ve necesario</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-3 rounded-2xl border border-amber-500/25 font-medium mt-1.5 animate-fadeIn">
+                              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                              <span>Esta dirección modificada tiene que coincidir con la ubicación del Mapa.</span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="space-y-2">

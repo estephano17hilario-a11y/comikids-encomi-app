@@ -151,7 +151,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [selectedAgencyObject, setSelectedAgencyObject] = useState<ShalomAgency | null>(null);
   const [isAgencyListOpen, setIsAgencyListOpen] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
-  const [showMotorizadoMapModal, setShowMotorizadoMapModal] = useState(false);
 
   // Motorizado Branch State
   const [motorizadoSubStep, setMotorizadoSubStep] = useState<'map' | 'form'>('map');
@@ -422,53 +421,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         </div>
       )}
 
-      {/* Modal de Mapa Apple Vision Pro para Motorizado (Pantalla Completa) */}
-      {showMotorizadoMapModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-2xl animate-fadeIn">
-          <div className="w-full max-w-5xl h-[94vh] sm:h-[90vh] bg-slate-900/98 border-2 border-white/20 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col space-y-3">
-            <div className="flex items-center justify-between shrink-0">
-              <div>
-                <h3 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2">
-                  <span>🗺️</span>
-                  <span>Ubicar Domicilio en el Mapa (Pantalla Completa)</span>
-                </h3>
-                <p className="text-xs text-slate-400">Busca tu calle o toca el mapa para fijar tu dirección exacta con zoom nivel 20</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowMotorizadoMapModal(false)}
-                className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="flex-1 min-h-0">
-              <PlacesMapPicker
-                initialLat={lat}
-                initialLng={lng}
-                initialAddress={direccionExacta}
-                initialDistrict={distritoQuery}
-                isModal={true}
-                onCloseModal={() => setShowMotorizadoMapModal(false)}
-                onConfirmLocation={({ district, address: confirmedAddr, lat: newLat, lng: newLng }) => {
-                  if (district) {
-                    setDistritoQuery(district);
-                    localStorage.setItem('incomi_saved_district', district);
-                  }
-                  if (confirmedAddr) {
-                    setDireccionExacta(confirmedAddr);
-                    localStorage.setItem('incomi_saved_address', confirmedAddr);
-                  }
-                  setLat(newLat);
-                  setLng(newLng);
-                  setShowMotorizadoMapModal(false);
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Pantalla Final: Resumen Completo + Envío Obligatorio de Comprobante por WhatsApp */}
       {createdOrder ? (

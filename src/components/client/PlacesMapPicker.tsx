@@ -75,7 +75,7 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
   }
 };
 
-// 1. Icono para el PIN de entrega seleccionado (Rojo/Cian hiper-preciso con punta inferior exacta)
+// 1. Icono para el PIN de entrega seleccionado (Punta inferior exacta)
 const createDeliveryPinIcon = () => {
   const html = `
     <div style="position: relative; width: 44px; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;">
@@ -114,12 +114,12 @@ const createDeliveryPinIcon = () => {
     className: 'delivery-pin-marker',
     html,
     iconSize: [44, 52],
-    iconAnchor: [22, 52], // Centro 22, punta inferior 52
+    iconAnchor: [22, 52],
     popupAnchor: [0, -52],
   });
 };
 
-// 2. Icono para la ubicación física GPS del usuario (Puntito azul brillante animado)
+// 2. Icono para la ubicación física GPS del usuario (Puntito azul pulsante)
 const createUserLocationDotIcon = () => {
   const html = `
     <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
@@ -182,34 +182,24 @@ function findMatchingDistrict(rawDistrict: string, fullAddressText: string = '')
   return rawDistrict.trim() || 'Lima';
 }
 
-// Extraer dirección limpia y exacta (ej: Jr. Huamanga 1586, Av. México 1580)
-function formatMilimetricAddress(addr: Record<string, string>, displayName: string, lat: number, lng: number): string {
-  let road = addr.road || addr.pedestrian || addr.street || addr.footway || addr.path || addr.residential || addr.highway || '';
-  let houseNumber = addr.house_number || '';
+function cleanStreetName(rawStreet: string, houseNumber?: string): string {
+  if (!rawStreet) return '';
 
-  // Si display_name empieza con un número municipal (ej: "1586, Jirón Huamanga..."), extraerlo
-  if (!houseNumber && displayName) {
-    const firstPart = displayName.split(',')[0]?.trim() || '';
-    if (/^\d+[a-zA-Z]?$/.test(firstPart)) {
-      houseNumber = firstPart;
-    }
+  let street = rawStreet.trim();
+
+  // Limpiar prefijos ciclovías
+  if (street.toLowerCase().startsWith('ciclovia ') || street.toLowerCase().startsWith('ciclovía ')) {
+    street = street.replace(/ciclov[ií]a\s+/i, 'Av. ');
+  } else if (street.toLowerCase().startsWith('via auxiliar ') || street.toLowerCase().startsWith('vía auxiliar ')) {
+    street = street.replace(/v[ií]a auxiliar\s+/i, 'Av. ');
   }
 
-  // Limpiar términos genéricos
-  if (road.toLowerCase().startsWith('ciclovia ') || road.toLowerCase().startsWith('ciclovía ')) {
-    road = road.replace(/ciclov[ií]a\s+/i, 'Av. ');
-  } else if (road.toLowerCase().startsWith('via auxiliar ') || road.toLowerCase().startsWith('vía auxiliar ')) {
-    road = road.replace(/v[ií]a auxiliar\s+/i, 'Av. ');
+  // Prefijos comunes en Lima
+  if (!/^(jr|jir[oó]n|av|avenida|calle|ca|pje|pasaje|prol|prolongaci[oó]n|alameda|carretera)/i.test(street)) {
+    street = `Jr. ${street}`;
   }
 
-  let fullStreet = road.trim();
-
-  // Prefijo por defecto para Lima si no tiene
-  if (fullStreet && !/^(jr|jir[oó]n|av|avenida|calle|ca|pje|pasaje|prol|prolongaci[oó]n|alameda|carretera)/i.test(fullStreet)) {
-    fullStreet = `Jr. ${fullStreet}`;
-  }
-
-  fullStreet = fullStreet
+  street = street
     .replace(/^jiron\s+/i, 'Jr. ')
     .replace(/^jirón\s+/i, 'Jr. ')
     .replace(/^avenida\s+/i, 'Av. ')
@@ -217,34 +207,11 @@ function formatMilimetricAddress(addr: Record<string, string>, displayName: stri
     .replace(/^prolongacion\s+/i, 'Prol. ')
     .replace(/^prolongación\s+/i, 'Prol. ');
 
-  if (fullStreet && houseNumber) {
-    return `${fullStreet} ${houseNumber}`;
+  if (houseNumber && !street.includes(houseNumber)) {
+    return `${street} ${houseNumber}`;
   }
 
-  if (fullStreet) {
-    return fullStreet;
-  }
-
-  // Si no hay vía detectada, limpiar display_name
-  if (displayName) {
-    const parts = displayName.split(',').map(p => p.trim());
-    const validParts = parts.filter(p => {
-      const lower = p.toLowerCase();
-      return (
-        !['perú', 'peru', 'lima', 'región lima', 'provincia de lima'].includes(lower) &&
-        !lower.startsWith('pueblo joven') &&
-        !lower.startsWith('asentamiento humano') &&
-        !lower.startsWith('asoc.') &&
-        !/^\d{5}$/.test(p)
-      );
-    });
-
-    if (validParts.length > 0) {
-      return validParts.slice(0, 2).join(', ');
-    }
-  }
-
-  return `Ubicación GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  return street;
 }
 
 export const PlacesMapPicker: React.FC<Props> = ({
@@ -280,45 +247,84 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showSearchResults, setShowSearchResults] = useState<boolean>(false);
 
-  // Geocodificación Inversa
+  // Motor Multi-API de Geocodificación Inversa Ultra-Rápido y Resistente
   const fetchAddressFromCoords = useCallback(async (latitude: number, longitude: number) => {
     setIsGeocoding(true);
     setStatusMessage('Consultando calle y numeración...');
+
+    let addressResolved = false;
+
+    // 1. Primer Intento: Photon by Komoot (Respuesta JSON instantánea con OSM)
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=19&addressdetails=1&namedetails=1`,
-        {
-          headers: {
-            'Accept-Language': 'es',
-          },
-        }
+      const photonRes = await fetch(
+        `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`,
+        { headers: { 'Accept': 'application/json' } }
       );
 
-      if (!response.ok) throw new Error('Error al geocodificar');
+      if (photonRes.ok) {
+        const photonData = await photonRes.json();
+        const firstFeature = photonData?.features?.[0]?.properties;
 
-      const data = await response.json();
-      const addr = data.address || {};
+        if (firstFeature) {
+          const street = firstFeature.street || firstFeature.name || '';
+          const houseNumber = firstFeature.housenumber || '';
+          const rawDist = firstFeature.district || firstFeature.city || firstFeature.locality || '';
 
-      const rawDistrict = addr.city_district || addr.suburb || addr.town || addr.municipality || addr.city || '';
-      const matchedDistrict = findMatchingDistrict(rawDistrict, data.display_name || '');
-      const cleanAddress = formatMilimetricAddress(addr, data.display_name || '', latitude, longitude);
+          if (street) {
+            const cleanStreet = cleanStreetName(street, houseNumber);
+            const district = findMatchingDistrict(rawDist, firstFeature.locality || '');
 
-      setDetectedAddress(cleanAddress);
-      setDetectedDistrict(matchedDistrict || rawDistrict || 'Lima');
-      setStatusMessage('');
-    } catch (err) {
-      console.warn('Geocodificación inversa:', err);
-      if (!detectedAddress) {
-        setDetectedAddress(`Ubicación GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+            setDetectedAddress(cleanStreet);
+            setDetectedDistrict(district);
+            addressResolved = true;
+          }
+        }
       }
-      setStatusMessage('');
-    } finally {
-      setIsGeocoding(false);
+    } catch (err) {
+      console.warn('Photon reverse fallback:', err);
     }
-  }, [detectedAddress]);
 
-  // Actualizar la posición de entrega (Delivery Pin) de forma instantánea
-  const updateDeliveryPosition = useCallback((newLat: number, newLng: number, skipGeocode = false) => {
+    // 2. Segundo Intento: BigDataCloud Reverse Geocoder
+    if (!addressResolved) {
+      try {
+        const bdcRes = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=es`
+        );
+
+        if (bdcRes.ok) {
+          const bdcData = await bdcRes.json();
+          const locality = bdcData.locality || bdcData.city || '';
+          const district = findMatchingDistrict(locality, bdcData.principalSubdivision || '');
+
+          // Extraer información detallada si existe
+          const adminParts = bdcData.localityInfo?.administrative || [];
+          const specificName = adminParts.find((a: any) => a.order >= 7)?.name || '';
+
+          const street = specificName && !specificName.toLowerCase().includes('distrito')
+            ? cleanStreetName(specificName)
+            : `Ubicación (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+
+          setDetectedAddress(street);
+          setDetectedDistrict(district);
+          addressResolved = true;
+        }
+      } catch (err) {
+        console.warn('BDC fallback:', err);
+      }
+    }
+
+    // 3. Fallback Seguro: Coordenadas GPS con Distrito aproximado
+    if (!addressResolved) {
+      setDetectedAddress(`Ubicación GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+      setDetectedDistrict(detectedDistrict || 'Lima');
+    }
+
+    setStatusMessage('');
+    setIsGeocoding(false);
+  }, [detectedDistrict]);
+
+  // Actualizar la posición de entrega de forma inmediata
+  const updateDeliveryPosition = useCallback((newLat: number, newLng: number, explicitAddress?: string, explicitDistrict?: string) => {
     setCoords({ lat: newLat, lng: newLng });
     setHasConfirmed(false);
     setShowSearchResults(false);
@@ -328,12 +334,15 @@ export const PlacesMapPicker: React.FC<Props> = ({
       deliveryMarkerRef.current.setLatLng([newLat, newLng]);
     }
 
-    if (!skipGeocode) {
+    if (explicitAddress) {
+      setDetectedAddress(explicitAddress);
+      if (explicitDistrict) setDetectedDistrict(explicitDistrict);
+    } else {
       fetchAddressFromCoords(newLat, newLng);
     }
   }, [fetchAddressFromCoords]);
 
-  // Búsqueda en vivo restringida a Perú
+  // Buscador Multi-API en vivo (Photon + Nominatim)
   const handleSearchAddress = async (query: string) => {
     if (!query || query.trim().length < 2) {
       setSearchResults([]);
@@ -344,34 +353,36 @@ export const PlacesMapPicker: React.FC<Props> = ({
     setIsSearching(true);
     try {
       const cleanQuery = query.trim();
-      const encoded = encodeURIComponent(`${cleanQuery}, Lima, Peru`);
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&countrycodes=pe&limit=8&addressdetails=1`,
-        {
-          headers: { 'Accept-Language': 'es' }
-        }
-      );
-
+      const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(cleanQuery)}&lat=-12.07&lon=-77.03&limit=8`;
+      
+      const response = await fetch(photonUrl);
       if (response.ok) {
         const data = await response.json();
-        const formattedList: SearchPlaceItem[] = (data || []).map((item: any) => {
-          const addr = item.address || {};
-          const main = formatMilimetricAddress(addr, item.display_name, parseFloat(item.lat), parseFloat(item.lon));
-          const district = findMatchingDistrict(addr.city_district || addr.suburb || addr.town || addr.city || '', item.display_name);
+        const formattedList: SearchPlaceItem[] = (data?.features || []).map((feat: any) => {
+          const props = feat.properties || {};
+          const coordsArr = feat.geometry?.coordinates || [-77.03, -12.07];
+          const lon = coordsArr[0]?.toString();
+          const lat = coordsArr[1]?.toString();
+
+          const street = cleanStreetName(props.street || props.name || cleanQuery, props.housenumber);
+          const rawDist = props.district || props.city || props.locality || 'Lima';
+          const district = findMatchingDistrict(rawDist, props.county || '');
           const sub = `${district}, Lima, Perú`;
 
           return {
-            display_name: item.display_name,
-            lat: item.lat,
-            lon: item.lon,
-            mainText: main,
+            display_name: `${street}, ${sub}`,
+            lat: lat,
+            lon: lon,
+            mainText: street,
             subText: sub,
             district: district,
           };
         });
 
-        setSearchResults(formattedList);
-        setShowSearchResults(true);
+        if (formattedList.length > 0) {
+          setSearchResults(formattedList);
+          setShowSearchResults(true);
+        }
       }
     } catch (err) {
       console.error('Error buscando dirección:', err);
@@ -384,14 +395,11 @@ export const PlacesMapPicker: React.FC<Props> = ({
     const newLat = parseFloat(result.lat);
     const newLng = parseFloat(result.lon);
 
-    setDetectedAddress(result.mainText);
-    setDetectedDistrict(result.district || 'Lima');
-
     if (mapInstanceRef.current) {
       mapInstanceRef.current.flyTo([newLat, newLng], 19, { duration: 1.2 });
     }
 
-    updateDeliveryPosition(newLat, newLng, true);
+    updateDeliveryPosition(newLat, newLng, result.mainText, result.district);
   };
 
   // Pedir GPS en tiempo real y mostrar el Puntito Azul
@@ -414,7 +422,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
         setIsLocating(false);
         setLocationPermissionDenied(false);
 
-        // Mostrar o mover el Puntito Azul de la ubicación física del usuario
+        // Mostrar o mover el Puntito Azul de la ubicación física
         if (mapInstanceRef.current) {
           if (!userLocationMarkerRef.current) {
             userLocationMarkerRef.current = L.marker([userLat, userLng], {
@@ -448,7 +456,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
     );
   }, [updateDeliveryPosition]);
 
-  // Inicializar Leaflet
+  // Inicializar Leaflet una sola vez
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
@@ -571,7 +579,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
             onClick={handleCenterOnUserGps}
             disabled={isLocating}
             className="absolute right-2 px-3.5 py-2.5 rounded-xl bg-cyan-500/25 hover:bg-cyan-500/35 text-cyan-300 text-xs font-black flex items-center gap-1.5 border border-cyan-500/40 transition-all cursor-pointer shadow-md"
-            title="Ubicar mi GPS"
+            title="Centrar en mi ubicación GPS"
           >
             <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
             <span>{isLocating ? 'GPS...' : 'Mi GPS'}</span>
@@ -633,7 +641,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
       )}
 
-      {/* MAPA EXTRA-LARGO EN EL EJE Y (640px - 720px) */}
+      {/* MAPA EXTRA-LARGO EN EL EJE Y (620px - 720px) */}
       <div className="relative w-full h-[620px] sm:h-[720px] min-h-[560px] rounded-3xl overflow-hidden border-2 border-white/20 bg-slate-950 shadow-2xl">
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 

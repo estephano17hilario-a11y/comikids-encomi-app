@@ -6,7 +6,7 @@ import { useShalomAgencies, formatFullAgencyName, cleanAddressText } from '../..
 import { searchDistritos } from '../../data/distritosLima';
 import { PlacesMapPicker } from './PlacesMapPicker';
 import { ShalomAgenciesMap } from './ShalomAgenciesMap';
-import { MetodoEnvio, ShalomAgency } from '../../types/database.types';
+import { MetodoEnvio, ShalomAgency, Pedido } from '../../types/database.types';
 import {
   Package,
   Truck,
@@ -22,7 +22,11 @@ import {
   Search,
   X,
   User,
-  ChevronDown
+  ChevronDown,
+  MessageCircle,
+  FileCheck2,
+  Phone,
+  RotateCcw
 } from 'lucide-react';
 
 interface Props {
@@ -30,7 +34,7 @@ interface Props {
 }
 
 /**
- * Componente que resalta y subraya las letras coincidentes con la búsqueda
+ * Componente que resalta las letras coincidentes con la búsqueda (sin subrayado)
  */
 const HighlightMatch: React.FC<{ text: string; query: string; className?: string }> = ({
   text,
@@ -53,7 +57,7 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
           regex.test(part) ? (
             <span
               key={idx}
-              className="underline decoration-cyan-400 decoration-2 underline-offset-2 font-black text-cyan-300 bg-cyan-400/15 px-0.5 rounded"
+              className="font-bold text-cyan-300 bg-cyan-400/20 px-1 py-0.5 rounded"
             >
               {part}
             </span>
@@ -69,7 +73,7 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
 };
 
 export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
-  const { createPedido, activeShippingMethods } = useOrders();
+  const { createPedido, activeShippingMethods, tallerConfig } = useOrders();
   const { currentUser, login, triggerConfetti } = useAuth();
 
   // Step state: 1 = WhatsApp, 2 = Método, 3 = Datos de Destino + Nombre
@@ -160,14 +164,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [isEmpresaUnlock, setIsEmpresaUnlock] = useState(false);
   const [empresaPassword, setEmpresaPassword] = useState('');
 
-  // Status
+  // Status & Resumen de Pedido Creado
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [createdOrderCode, setCreatedOrderCode] = useState<string | null>(null);
+  const [createdOrder, setCreatedOrder] = useState<Pedido | null>(null);
 
   const suggestedDistritos = searchDistritos(distritoQuery);
 
-  // Auto-seleccionar primera agencia por defecto
+  // Auto-seleccionar primera agencia por defecto si no hay ninguna
   useEffect(() => {
     if (shalomAgenciesList.length > 0 && !selectedAgencyObject) {
       setSelectedAgencyObject(shalomAgenciesList[0]);
@@ -334,13 +338,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       });
 
       triggerConfetti();
-      setCreatedOrderCode(newOrder.codigo_seguimiento);
-
-      setTimeout(() => {
-        setCreatedOrderCode(null);
-        setOrganicStep(1);
-        if (onSuccess) onSuccess();
-      }, 2500);
+      setCreatedOrder(newOrder);
 
     } catch (err) {
       console.error(err);
@@ -349,6 +347,30 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       setSubmitting(false);
     }
   };
+
+  // Construir mensaje predefinido para WhatsApp
+  const buildWhatsAppMessage = (order: Pedido) => {
+    let destinoTexto = order.destino_detalle;
+    if (selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject) {
+      destinoTexto = formatFullAgencyName(selectedAgencyObject);
+    }
+
+    return (
+      `¡Hola Comikids! 👋 Acabo de registrar mi envío de mercadería en la web:\n\n` +
+      `📦 *Código:* #${order.codigo_seguimiento}\n` +
+      `👤 *Destinatario:* ${nombreCompleto.trim()}\n` +
+      `📱 *WhatsApp:* +51 ${whatsapp.trim()}\n` +
+      `🪪 *DNI / CE:* ${dniShalom.trim() || 'No especificado'}\n` +
+      `🚚 *Método:* ${selectedMethod?.nombre || 'Agencia Shalom'}\n` +
+      `📍 *Destino:* ${destinoTexto}\n\n` +
+      `Adjunto aquí mi comprobante de pago para proceder con el rotulado y despacho. ¡Muchas gracias!`
+    );
+  };
+
+  const whatsappTallerNumber = (tallerConfig?.whatsapp_pedidos || '51987654321').replace(/\D/g, '');
+  const whatsappUrl = createdOrder
+    ? `https://wa.me/${whatsappTallerNumber}?text=${encodeURIComponent(buildWhatsAppMessage(createdOrder))}`
+    : '#';
 
   return (
     <div className="w-full max-w-xl mx-auto py-2 font-sans tracking-tight">
@@ -391,22 +413,112 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         </div>
       )}
 
-      {/* Success Screen */}
-      {createdOrderCode ? (
-        <div className="minimal-card p-8 sm:p-12 text-center animate-fadeIn space-y-5">
-          <div className="w-20 h-20 mx-auto rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-2xl shadow-emerald-500/20">
-            <CheckCircle className="w-10 h-10" />
+      {/* Pantalla Final: Resumen Completo + Envío Obligatorio de Comprobante por WhatsApp */}
+      {createdOrder ? (
+        <div className="minimal-card p-6 sm:p-10 text-center animate-fadeIn space-y-6">
+          <div className="w-16 h-16 mx-auto rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-2xl shadow-emerald-500/20">
+            <CheckCircle className="w-8 h-8" />
           </div>
-          <div className="space-y-2">
-            <h3 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">¡Envío Programado! 🎉</h3>
-            <p className="text-sm text-slate-400">Tu orden de mercadería ha sido registrada:</p>
+
+          <div className="space-y-1.5">
+            <h3 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">¡Envío Registrado con Éxito! 🎉</h3>
+            <p className="text-xs sm:text-sm text-slate-400">Tu orden ha sido generada en el sistema:</p>
+            <div className="inline-block font-mono text-lg font-bold px-5 py-2 rounded-2xl bg-white/[0.06] text-cyan-300 border border-white/10 shadow-inner mt-1">
+              #{createdOrder.codigo_seguimiento}
+            </div>
           </div>
-          <div className="inline-block font-mono text-lg font-bold px-6 py-3 rounded-2xl bg-white/[0.06] text-cyan-300 border border-white/10 shadow-inner">
-            {createdOrderCode}
+
+          {/* Recuadro Cupertino de Resumen Completo */}
+          <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.04] border border-white/10 text-left space-y-3.5 shadow-xl">
+            <div className="flex items-center justify-between border-b border-white/[0.08] pb-2.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <FileCheck2 className="w-4 h-4 text-cyan-400" />
+                Resumen de Envío
+              </span>
+              <span className="text-xs font-semibold text-cyan-300 bg-cyan-500/15 px-2.5 py-0.5 rounded-full border border-cyan-500/20">
+                {selectedMethod?.nombre}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-slate-400 block font-medium">Destinatario:</span>
+                <span className="text-white font-bold text-sm">{nombreCompleto}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">WhatsApp:</span>
+                <span className="text-white font-bold text-sm">+51 {whatsapp}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">DNI o CE de Recojo:</span>
+                <span className="text-white font-bold text-sm">{dniShalom || 'No especificado'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block font-medium">Tipo de Envío:</span>
+                <span className="text-white font-bold text-sm">{selectedMethod?.nombre}</span>
+              </div>
+            </div>
+
+            {/* Detalle de Agencia Shalom en Formato Optimizado */}
+            {selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject && (
+              <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
+                <span className="text-slate-400 font-medium block">Agencia Shalom de Destino:</span>
+                <p className="text-white font-bold leading-snug">
+                  {formatFullAgencyName(selectedAgencyObject)}
+                </p>
+                {selectedAgencyObject.horario && (
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1">
+                    <Clock className="w-3 h-3 text-slate-500" />
+                    <span>{selectedAgencyObject.horario}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
+              <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
+                <span className="text-slate-400 font-medium block">Dirección de Entrega:</span>
+                <p className="text-white font-bold">
+                  {distritoQuery} • {direccionExacta} {referencia ? `(Ref: ${referencia})` : ''}
+                </p>
+              </div>
+            )}
           </div>
-          <p className="text-xs text-slate-400 max-w-xs mx-auto">
-            Te estaremos contactando por WhatsApp con las actualizaciones de tu pedido.
-          </p>
+
+          {/* Aviso Importante de Envío de Comprobante */}
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-left flex items-start gap-3 text-xs text-amber-200">
+            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              <strong>Paso Obligatorio:</strong> Para confirmar y procesar tu despacho, debes enviar el comprobante de pago con este resumen al WhatsApp oficial de Comikids.
+            </p>
+          </div>
+
+          {/* Botón Grande y Llamativo de WhatsApp */}
+          <div className="space-y-3 pt-2">
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-base font-bold flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 transition-all cursor-pointer"
+            >
+              <MessageCircle className="w-6 h-6 fill-current" />
+              <span>Enviar Comprobante por WhatsApp</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCreatedOrder(null);
+                setOrganicStep(1);
+                if (onSuccess) onSuccess();
+              }}
+              className="text-xs text-slate-400 hover:text-white flex items-center justify-center gap-1.5 mx-auto py-2 cursor-pointer transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Registrar otro pedido</span>
+            </button>
+          </div>
+
         </div>
       ) : isEmpresaUnlock ? (
         /* Admin Login */
@@ -520,7 +632,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           )}
 
           {/* =====================================================================
-              PASO 2: SELECCIÓN DE MÉTODO (CUPERTINO CARDS)
+              PASO 2: SELECCIÓN DE MÉTODO (CON LOGO OFICIAL DE SHALOM)
               ===================================================================== */}
           {organicStep === 2 && (
             <div className="space-y-4 animate-fadeIn">
@@ -539,9 +651,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       className="p-5 sm:p-6 rounded-3xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-lg"
                     >
                       <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-2xl bg-white/[0.06] border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform">
-                          {isShalom ? <Package className="w-7 h-7" /> : <Truck className="w-7 h-7" />}
-                        </div>
+                        {isShalom ? (
+                          <div className="w-14 h-14 rounded-2xl bg-white/[0.08] border border-white/15 flex items-center justify-center p-2.5 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-inner">
+                            <img src="/Shalom-Courier-Logo.webp" alt="Shalom Courier" className="w-full h-full object-contain" />
+                          </div>
+                        ) : (
+                          <div className="w-14 h-14 rounded-2xl bg-white/[0.06] border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
+                            <Truck className="w-7 h-7" />
+                          </div>
+                        )}
+
                         <div>
                           <h4 className="text-base sm:text-lg font-bold text-white group-hover:text-cyan-300 transition-colors">
                             {method.nombre}
@@ -560,7 +679,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           )}
 
           {/* =====================================================================
-              PASO 3: DATOS DE ENTREGA & NOMBRE (CUPERTINO STYLE & GRANDES RECUADROS)
+              PASO 3: DATOS DE ENTREGA & NOMBRE (CUPERTINO STYLE)
               ===================================================================== */}
           {organicStep === 3 && (
             <form onSubmit={handleFinalSubmit} className="space-y-5 animate-fadeIn">

@@ -25,7 +25,8 @@ import {
   ChevronDown,
   MessageCircle,
   FileCheck2,
-  RotateCcw
+  RotateCcw,
+  Maximize2
 } from 'lucide-react';
 
 interface Props {
@@ -150,6 +151,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [selectedAgencyObject, setSelectedAgencyObject] = useState<ShalomAgency | null>(null);
   const [isAgencyListOpen, setIsAgencyListOpen] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
+  const [showMotorizadoMapModal, setShowMotorizadoMapModal] = useState(false);
 
   // Motorizado Branch Coordinates
   const [showDistritoSuggestions, setShowDistritoSuggestions] = useState(false);
@@ -410,6 +412,49 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               onClose={() => setShowMapModal(false)}
               searchQuery={agencySearchQuery}
               onSearchChange={setAgencySearchQuery}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Mapa Apple Vision Pro para Motorizado (Pantalla Completa) */}
+      {showMotorizadoMapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-2xl animate-fadeIn">
+          <div className="w-full max-w-4xl bg-slate-900/95 border border-white/15 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white tracking-tight">Ubicar Domicilio en el Mapa</h3>
+                <p className="text-xs text-slate-400">Busca tu calle o mueve el pin hasta la puerta exacta de tu domicilio</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMotorizadoMapModal(false)}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <PlacesMapPicker
+              initialLat={lat}
+              initialLng={lng}
+              initialAddress={direccionExacta}
+              initialDistrict={distritoQuery}
+              isModal={true}
+              onCloseModal={() => setShowMotorizadoMapModal(false)}
+              onConfirmLocation={({ district, address: confirmedAddr, lat: newLat, lng: newLng }) => {
+                if (district) {
+                  setDistritoQuery(district);
+                  localStorage.setItem('incomi_saved_district', district);
+                }
+                if (confirmedAddr) {
+                  setDireccionExacta(confirmedAddr);
+                  localStorage.setItem('incomi_saved_address', confirmedAddr);
+                }
+                setLat(newLat);
+                setLng(newLng);
+                setShowMotorizadoMapModal(false);
+              }}
             />
           </div>
         </div>
@@ -922,7 +967,31 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               {/* RAMA B: MOTORIZADO LOCAL LIMA */}
               {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
                 <div className="space-y-4">
-                  {/* Mapa Interactivo Grande con GPS y Geocodificación Inversa */}
+                  {/* Botón de Expansión a Pantalla Completa */}
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowMotorizadoMapModal(true)}
+                      className="w-full p-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.09] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-md"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+                          <Maximize2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="block text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
+                            Abrir Mapa en Pantalla Completa
+                          </span>
+                          <span className="block text-[10px] text-slate-400">
+                            Navega con vista amplia para fijar tu casa con precisión
+                          </span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 transition-transform group-hover:translate-x-0.5" />
+                    </button>
+                  </div>
+
+                  {/* Mapa Interactivo Integrado */}
                   <PlacesMapPicker
                     initialLat={lat}
                     initialLng={lng}

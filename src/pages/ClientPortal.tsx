@@ -34,14 +34,17 @@ export const ClientPortal: React.FC = () => {
                 📦
               </div>
               <div>
-                <h1 className="text-base font-black text-white leading-tight">Incomi</h1>
+                <h1 className="text-base font-black text-white leading-tight">Encomi</h1>
                 <p className="text-[10px] text-slate-400">Despacho de Mercadería (Shalom & Moto)</p>
               </div>
             </div>
 
-            <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-              Despacho Rápido
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1.5 rounded-2xl text-xs font-black bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-cyan-500/20 text-pink-300 border border-pink-500/30 flex items-center gap-1.5 shadow-lg shadow-pink-500/10">
+                <span className="text-sm">🧵</span>
+                <span>ComiKids</span>
+              </span>
+            </div>
           </div>
         </header>
       )}

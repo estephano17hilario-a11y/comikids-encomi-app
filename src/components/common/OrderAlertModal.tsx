@@ -25,7 +25,7 @@ export const OrderAlertModal: React.FC<Props> = ({ onViewOrder }) => {
             </div>
             <div>
               <h4 className="text-xs font-black uppercase tracking-wider text-pink-400">
-                ¡Nuevo Pedido Incomi! 🧵✨
+                ¡Nuevo Pedido Encomi! 🧵✨
               </h4>
               <p className="text-xs font-bold text-white leading-tight">
                 {latestNewOrder.usuario?.nombre_completo || 'Clienta'}

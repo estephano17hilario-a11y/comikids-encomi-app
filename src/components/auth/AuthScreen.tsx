@@ -125,10 +125,10 @@ export const AuthScreen: React.FC = () => {
             </div>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-pink-300 bg-clip-text text-transparent">
-            Incomi
+            Encomi
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Despacho y Envío de Mercadería (Shalom & Motorizado)
+            Despacho y Envío de Mercadería (Shalom & Motorizado) • ComiKids
           </p>
         </div>
 

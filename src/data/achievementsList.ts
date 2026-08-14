@@ -12,7 +12,7 @@ export const ACHIEVEMENTS_CATALOG: AchievementDefinition[] = [
   {
     codigo: 'primer_bordado',
     titulo: 'Primer Bordado ✨',
-    descripcion: 'Realizaste tu primer pedido personalizado en Incomi.',
+    descripcion: 'Realizaste tu primer pedido personalizado en Encomi.',
     icono: 'Sparkles',
     puntosXp: 50,
     badgeColor: 'from-pink-500 to-rose-500',
@@ -29,8 +29,8 @@ export const ACHIEVEMENTS_CATALOG: AchievementDefinition[] = [
   },
   {
     codigo: 'incomi_lover',
-    titulo: 'Lover de Incomi 👑',
-    descripcion: '¡10 pedidos legendarios! Eres parte de la familia Incomi.',
+    titulo: 'Lover de Encomi 👑',
+    descripcion: '¡10 pedidos legendarios! Eres parte de la familia Encomi.',
     icono: 'Crown',
     puntosXp: 300,
     badgeColor: 'from-amber-400 to-orange-500',
@@ -57,7 +57,7 @@ export const ACHIEVEMENTS_CATALOG: AchievementDefinition[] = [
 export const LEVEL_TIERS = [
   { nivel: 1, nombre: 'Novata de la Aguja 🪡', minXp: 0, maxXp: 200, color: 'text-pink-400', border: 'border-pink-500/30', bg: 'bg-pink-500/10' },
   { nivel: 2, nombre: 'Bordado Lover 💖', minXp: 200, maxXp: 500, color: 'text-purple-400', border: 'border-purple-500/30', bg: 'bg-purple-500/10' },
-  { nivel: 3, nombre: 'Embajadora Incomi ⭐', minXp: 500, maxXp: 1000, color: 'text-amber-400', border: 'border-amber-500/30', bg: 'bg-amber-500/10' },
+  { nivel: 3, nombre: 'Embajadora Encomi ⭐', minXp: 500, maxXp: 1000, color: 'text-amber-400', border: 'border-amber-500/30', bg: 'bg-amber-500/10' },
   { nivel: 4, nombre: 'Reina del Estilo 👑', minXp: 1000, maxXp: 2500, color: 'text-emerald-400', border: 'border-emerald-500/30', bg: 'bg-emerald-500/10' },
 ];
 

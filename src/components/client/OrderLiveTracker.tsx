@@ -45,7 +45,7 @@ export const OrderLiveTracker: React.FC = () => {
   const getWhatsAppEditUrl = (pedido: Pedido) => {
     const number = tallerConfig.whatsapp_pedidos || '51987654321';
     const clientName = currentUser?.nombre_completo || 'Clienta';
-    const text = `¡Hola Incomi! 📦\nSoy *${clientName}*, deseo consultar el estado de mi envío *#${pedido.codigo_seguimiento}*.\n\n*Destino:* ${pedido.destino_detalle}\n\n¿Cómo va mi despacho? ✨`;
+    const text = `¡Hola Encomi! 📦\nSoy *${clientName}*, deseo consultar el estado de mi envío *#${pedido.codigo_seguimiento}*.\n\n*Destino:* ${pedido.destino_detalle}\n\n¿Cómo va mi despacho? ✨`;
     return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
   };
 

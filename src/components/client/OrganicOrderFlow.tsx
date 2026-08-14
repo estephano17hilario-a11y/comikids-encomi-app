@@ -375,34 +375,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   return (
     <div className="w-full max-w-xl mx-auto py-2 font-sans tracking-tight space-y-4">
       
-      {/* Banner de Empresas Recientes (Comikids) */}
-      {!createdOrder && (
-        <div className="p-3.5 sm:p-4 rounded-3xl bg-gradient-to-r from-cyan-950/40 via-slate-900/60 to-blue-950/40 border border-cyan-500/20 backdrop-blur-xl shadow-lg flex items-center justify-between gap-3 animate-fadeIn">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-xl shadow-inner shrink-0">
-              🧵
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">Empresas Recientes</span>
-                <span className="text-[9px] bg-cyan-500/20 text-cyan-300 font-bold px-1.5 py-0.2 rounded-full border border-cyan-500/30">Oficial</span>
-              </div>
-              <h4 className="text-sm font-bold text-white leading-tight">Comikids</h4>
-              <p className="text-[11px] text-slate-400">Taller de Bordados & Personalizados</p>
-            </div>
-          </div>
 
-          <a
-            href={`https://wa.me/${whatsappTallerNumber}?text=${encodeURIComponent('¡Hola Comikids! 👋 Deseo realizar un nuevo pedido de bordados y mercadería. ¿Me podrían brindar atención? ✨')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/25 transition-all shrink-0 cursor-pointer"
-          >
-            <MessageCircle className="w-3.5 h-3.5 fill-current" />
-            <span>Pedir</span>
-          </a>
-        </div>
-      )}
 
       {/* Modal de Mapa Apple Vision Pro con Buscador Sincronizado */}
       {showMapModal && (
@@ -604,7 +577,19 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               <h2 className="text-lg sm:text-xl font-bold text-white mt-1.5 tracking-tight">
                 {organicStep === 1 && 'Envío de Mercadería 📦'}
                 {organicStep === 2 && '¿Cómo deseas recibir tu pedido? 🚚'}
-                {organicStep === 3 && 'Datos de Entrega & Destinatario 📍'}
+                {organicStep === 3 && (
+                  selectedMethod?.tipo_formulario === 'shalom' ? (
+                    <span className="flex items-center gap-1.5">
+                      <span>Envío</span>
+                      <span className="text-red-500 font-black tracking-wide drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]">SHALOM</span>
+                      <span>📦</span>
+                    </span>
+                  ) : selectedMethod?.tipo_formulario === 'mapa_direccion' ? (
+                    <span>Envío por Motorizado 🛵</span>
+                  ) : (
+                    <span>Datos de Entrega & Destinatario 📍</span>
+                  )
+                )}
               </h2>
             </div>
             {organicStep > 1 && (
@@ -936,85 +921,103 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
               {/* RAMA B: MOTORIZADO LOCAL LIMA */}
               {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
-                <div className="space-y-3">
-                  <div className="space-y-1.5 relative">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      🧭 Distrito de Lima *
-                    </label>
-                    <div className="relative flex items-center">
+                <div className="space-y-4">
+                  {/* Mapa Interactivo Grande con GPS y Geocodificación Inversa */}
+                  <PlacesMapPicker
+                    initialLat={lat}
+                    initialLng={lng}
+                    initialAddress={direccionExacta}
+                    initialDistrict={distritoQuery}
+                    onConfirmLocation={({ district, address: confirmedAddr, lat: newLat, lng: newLng }) => {
+                      if (district) {
+                        setDistritoQuery(district);
+                        localStorage.setItem('incomi_saved_district', district);
+                      }
+                      if (confirmedAddr) {
+                        setDireccionExacta(confirmedAddr);
+                        localStorage.setItem('incomi_saved_address', confirmedAddr);
+                      }
+                      setLat(newLat);
+                      setLng(newLng);
+                    }}
+                  />
+
+                  {/* Casillas de Distrito y Dirección que se rellenan automáticamente o permiten edición */}
+                  <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 space-y-3 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Datos de Entrega (Auto-rellenados por el mapa)
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 relative">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        🧭 Distrito de Lima *
+                      </label>
+                      <div className="relative flex items-center">
+                        <input
+                          type="text"
+                          required
+                          value={distritoQuery}
+                          onFocus={() => setShowDistritoSuggestions(true)}
+                          onChange={e => {
+                            setDistritoQuery(e.target.value);
+                            setShowDistritoSuggestions(true);
+                          }}
+                          placeholder="Escribe tu distrito (ej. Miraflores, San Isidro)..."
+                          className="w-full pl-10 pr-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                        />
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                      </div>
+
+                      {showDistritoSuggestions && suggestedDistritos.length > 0 && (
+                        <div className="absolute z-20 top-full mt-1 w-full max-h-48 overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-1.5">
+                          {suggestedDistritos.map((distNombre, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                setDistritoQuery(distNombre);
+                                setShowDistritoSuggestions(false);
+                              }}
+                              className="w-full text-left p-2.5 rounded-xl hover:bg-white/[0.08] text-xs text-white flex items-center justify-between transition-colors cursor-pointer"
+                            >
+                              <span className="font-semibold">{distNombre}</span>
+                              <span className="text-[10px] text-cyan-400 font-mono">Lima</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        📍 Dirección Exacta (Calle, Número, Dpto) *
+                      </label>
                       <input
                         type="text"
                         required
-                        value={distritoQuery}
-                        onFocus={() => setShowDistritoSuggestions(true)}
-                        onChange={e => {
-                          setDistritoQuery(e.target.value);
-                          setShowDistritoSuggestions(true);
-                        }}
-                        placeholder="Escribe tu distrito (ej. Miraflores, San Isidro)..."
-                        className="w-full pl-10 pr-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                        value={direccionExacta}
+                        onChange={e => setDireccionExacta(e.target.value)}
+                        placeholder="Ej. Av. Larco 1234, Dpto 402"
+                        className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
                       />
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
                     </div>
 
-                    {showDistritoSuggestions && suggestedDistritos.length > 0 && (
-                      <div className="absolute z-20 top-full mt-1 w-full max-h-48 overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-1.5">
-                        {suggestedDistritos.map((distNombre, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => {
-                              setDistritoQuery(distNombre);
-                              setShowDistritoSuggestions(false);
-                            }}
-                            className="w-full text-left p-2.5 rounded-xl hover:bg-white/[0.08] text-xs text-white flex items-center justify-between transition-colors cursor-pointer"
-                          >
-                            <span className="font-semibold">{distNombre}</span>
-                            <span className="text-[10px] text-cyan-400 font-mono">Lima</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        🏷️ Referencia de Entrega (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={referencia}
+                        onChange={e => setReferencia(e.target.value)}
+                        placeholder="Ej. Frente al parque, rejas negras, timbre blanco"
+                        className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
                   </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      📍 Dirección Exacta (Calle, Número, Dpto) *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={direccionExacta}
-                      onChange={e => setDireccionExacta(e.target.value)}
-                      placeholder="Ej. Av. Larco 1234, Dpto 402"
-                      className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      🏷️ Referencia de Entrega (Opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={referencia}
-                      onChange={e => setReferencia(e.target.value)}
-                      placeholder="Ej. Frente al parque, rejas negras"
-                      className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
-                    />
-                  </div>
-
-                  <PlacesMapPicker
-                    address={direccionExacta ? `${direccionExacta}, ${distritoQuery}` : distritoQuery}
-                    onAddressChange={(newAddr, newLat, newLng) => {
-                      if (newLat && newLng) {
-                        setLat(newLat);
-                        setLng(newLng);
-                      }
-                    }}
-                    lat={lat}
-                    lng={lng}
-                  />
                 </div>
               )}
 

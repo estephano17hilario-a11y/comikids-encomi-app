@@ -40,8 +40,8 @@ export const ClientPortal: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1.5 rounded-2xl text-xs font-black bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-cyan-500/20 text-pink-300 border border-pink-500/30 flex items-center gap-1.5 shadow-lg shadow-pink-500/10">
-                <span className="text-sm">🧵</span>
+              <span className="px-4 py-2 rounded-2xl text-sm sm:text-base font-black bg-gradient-to-r from-pink-500/30 via-purple-500/30 to-cyan-500/30 text-pink-200 border-2 border-pink-400/50 flex items-center gap-2 shadow-xl shadow-pink-500/25 tracking-wide">
+                <span className="text-base sm:text-lg">🧵</span>
                 <span>ComiKids</span>
               </span>
             </div>
@@ -49,8 +49,8 @@ export const ClientPortal: React.FC = () => {
         </header>
       )}
 
-      {/* Main Container */}
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:pb-12 space-y-6">
+      {/* Main Container con Espacios Optimizados */}
+      <main className="flex-1 w-full max-w-4xl mx-auto px-3 sm:px-6 py-2 sm:py-3 pb-20 sm:pb-10 space-y-3.5">
         
         {/* Desktop Section Switcher Tabs */}
         {currentUser && (

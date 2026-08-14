@@ -375,7 +375,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     : '#';
 
   return (
-    <div className="w-full max-w-xl mx-auto py-2 font-sans tracking-tight space-y-4">
+    <div className="w-full max-w-2xl mx-auto py-1 font-sans tracking-tight space-y-3.5">
       
 
 
@@ -419,43 +419,48 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
       {/* Modal de Mapa Apple Vision Pro para Motorizado (Pantalla Completa) */}
       {showMotorizadoMapModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-2xl animate-fadeIn">
-          <div className="w-full max-w-4xl bg-slate-900/95 border border-white/15 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-2xl animate-fadeIn">
+          <div className="w-full max-w-5xl h-[94vh] sm:h-[90vh] bg-slate-900/98 border-2 border-white/20 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col space-y-3">
+            <div className="flex items-center justify-between shrink-0">
               <div>
-                <h3 className="text-lg font-bold text-white tracking-tight">Ubicar Domicilio en el Mapa</h3>
-                <p className="text-xs text-slate-400">Busca tu calle o mueve el pin hasta la puerta exacta de tu domicilio</p>
+                <h3 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2">
+                  <span>🗺️</span>
+                  <span>Ubicar Domicilio en el Mapa (Pantalla Completa)</span>
+                </h3>
+                <p className="text-xs text-slate-400">Busca tu calle o toca el mapa para fijar tu dirección exacta con zoom nivel 20</p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowMotorizadoMapModal(false)}
-                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <PlacesMapPicker
-              initialLat={lat}
-              initialLng={lng}
-              initialAddress={direccionExacta}
-              initialDistrict={distritoQuery}
-              isModal={true}
-              onCloseModal={() => setShowMotorizadoMapModal(false)}
-              onConfirmLocation={({ district, address: confirmedAddr, lat: newLat, lng: newLng }) => {
-                if (district) {
-                  setDistritoQuery(district);
-                  localStorage.setItem('incomi_saved_district', district);
-                }
-                if (confirmedAddr) {
-                  setDireccionExacta(confirmedAddr);
-                  localStorage.setItem('incomi_saved_address', confirmedAddr);
-                }
-                setLat(newLat);
-                setLng(newLng);
-                setShowMotorizadoMapModal(false);
-              }}
-            />
+            <div className="flex-1 min-h-0">
+              <PlacesMapPicker
+                initialLat={lat}
+                initialLng={lng}
+                initialAddress={direccionExacta}
+                initialDistrict={distritoQuery}
+                isModal={true}
+                onCloseModal={() => setShowMotorizadoMapModal(false)}
+                onConfirmLocation={({ district, address: confirmedAddr, lat: newLat, lng: newLng }) => {
+                  if (district) {
+                    setDistritoQuery(district);
+                    localStorage.setItem('incomi_saved_district', district);
+                  }
+                  if (confirmedAddr) {
+                    setDireccionExacta(confirmedAddr);
+                    localStorage.setItem('incomi_saved_address', confirmedAddr);
+                  }
+                  setLat(newLat);
+                  setLng(newLng);
+                  setShowMotorizadoMapModal(false);
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -654,14 +659,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               ===================================================================== */}
           {organicStep === 1 && (
             <form onSubmit={handleWhatsappSubmit} className="space-y-5 animate-fadeIn">
-              <div className="space-y-2.5">
-                <p className="text-xs sm:text-sm text-slate-400">
+              <div className="space-y-3">
+                <p className="text-xs sm:text-sm text-slate-300 font-medium">
                   Ingresa tu número de WhatsApp para enviarte las fotos del paquete y el código de seguimiento:
                 </p>
                 
-                <div className="flex items-center rounded-2xl bg-white/[0.04] border border-white/10 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/20 transition-all p-1.5 shadow-inner">
-                  <div className="flex items-center gap-2 px-3.5 py-2.5 bg-white/[0.06] rounded-xl text-white font-bold text-base border border-white/10 shrink-0 select-none">
-                    <span className="text-lg">🇵🇪</span>
+                <div className="flex items-center rounded-2xl bg-white/[0.05] border-2 border-white/15 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/25 transition-all p-2 shadow-inner">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-white/[0.08] rounded-xl text-white font-bold text-base sm:text-lg border border-white/10 shrink-0 select-none">
+                    <span className="text-xl">🇵🇪</span>
                     <span className="font-mono text-cyan-300 font-bold">+51</span>
                   </div>
                   <input
@@ -671,21 +676,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     value={whatsapp}
                     onChange={e => setWhatsapp(e.target.value)}
                     placeholder="987 654 321"
-                    className="w-full bg-transparent px-3 py-2.5 text-base sm:text-lg font-bold font-mono text-white placeholder-slate-500 focus:outline-none tracking-wider"
+                    className="w-full bg-transparent px-4 py-3 text-lg sm:text-2xl font-bold font-mono text-white placeholder-slate-500 focus:outline-none tracking-wider"
                   />
                 </div>
               </div>
 
               {errorMsg && (
-                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3 rounded-2xl border border-rose-500/20">
+                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3.5 rounded-2xl border border-rose-500/20">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{errorMsg}</span>
                 </div>
               )}
 
-              <button type="submit" className="big-btn-primary py-3.5">
+              <button type="submit" className="big-btn-primary py-4.5 sm:py-5 text-base sm:text-lg font-black shadow-xl">
                 <span>Continuar</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-5 h-5" />
               </button>
             </form>
           )}
@@ -947,8 +952,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   </div>
 
                   {/* DNI o CE con Emoji */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="space-y-2">
+                    <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
                       🪪 DNI o Carnet de Extranjería (CE) de quien recibirá *
                     </label>
                     <input
@@ -957,7 +962,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       value={dniShalom}
                       onChange={e => setDniShalom(e.target.value)}
                       placeholder="Número de DNI o Carnet de Extranjería"
-                      className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm font-mono text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 tracking-wider"
+                      className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
                     />
                   </div>
 
@@ -967,36 +972,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               {/* RAMA B: MOTORIZADO LOCAL LIMA */}
               {selectedMethod?.tipo_formulario === 'mapa_direccion' && (
                 <div className="space-y-4">
-                  {/* Botón de Expansión a Pantalla Completa */}
-                  <div className="flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowMotorizadoMapModal(true)}
-                      className="w-full p-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.09] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-md"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
-                          <Maximize2 className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <span className="block text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
-                            Abrir Mapa en Pantalla Completa
-                          </span>
-                          <span className="block text-[10px] text-slate-400">
-                            Navega con vista amplia para fijar tu casa con precisión
-                          </span>
-                        </div>
-                      </div>
-                      <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  </div>
-
-                  {/* Mapa Interactivo Integrado */}
+                  {/* Mapa Interactivo Integrado con botón para abrir pantalla completa */}
                   <PlacesMapPicker
                     initialLat={lat}
                     initialLng={lng}
                     initialAddress={direccionExacta}
                     initialDistrict={distritoQuery}
+                    onOpenModal={() => setShowMotorizadoMapModal(true)}
                     onConfirmLocation={({ district, address: confirmedAddr, lat: newLat, lng: newLng }) => {
                       if (district) {
                         setDistritoQuery(district);
@@ -1011,17 +993,17 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     }}
                   />
 
-                  {/* Casillas de Distrito y Dirección que se rellenan automáticamente o permiten edición */}
-                  <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 space-y-3 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        Datos de Entrega (Auto-rellenados por el mapa)
+                  {/* Casillas de Distrito y Dirección en el formulario principal (Más grandes en eje Y) */}
+                  <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.05] border-2 border-white/10 space-y-4 shadow-xl">
+                    <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                      <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-cyan-400" />
+                        Dirección Confirmada para Despacho
                       </span>
                     </div>
 
-                    <div className="space-y-1.5 relative">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <div className="space-y-2 relative">
+                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
                         🧭 Distrito de Lima *
                       </label>
                       <div className="relative flex items-center">
@@ -1035,13 +1017,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             setShowDistritoSuggestions(true);
                           }}
                           placeholder="Escribe tu distrito (ej. Miraflores, San Isidro)..."
-                          className="w-full pl-10 pr-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                          className="w-full pl-12 pr-4 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
                         />
-                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                        <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
                       </div>
 
                       {showDistritoSuggestions && suggestedDistritos.length > 0 && (
-                        <div className="absolute z-20 top-full mt-1 w-full max-h-48 overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-1.5">
+                        <div className="absolute z-20 top-full mt-1.5 w-full max-h-56 overflow-y-auto bg-slate-900/98 backdrop-blur-2xl border border-white/15 rounded-2xl shadow-2xl p-2">
                           {suggestedDistritos.map((distNombre, idx) => (
                             <button
                               key={idx}
@@ -1050,32 +1032,32 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                 setDistritoQuery(distNombre);
                                 setShowDistritoSuggestions(false);
                               }}
-                              className="w-full text-left p-2.5 rounded-xl hover:bg-white/[0.08] text-xs text-white flex items-center justify-between transition-colors cursor-pointer"
+                              className="w-full text-left p-3.5 rounded-xl hover:bg-white/[0.08] text-xs sm:text-sm text-white flex items-center justify-between transition-colors cursor-pointer"
                             >
-                              <span className="font-semibold">{distNombre}</span>
-                              <span className="text-[10px] text-cyan-400 font-mono">Lima</span>
+                              <span className="font-bold">{distNombre}</span>
+                              <span className="text-xs text-cyan-400 font-mono">Lima</span>
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        📍 Dirección Exacta (Calle, Número, Dpto) *
+                    <div className="space-y-2">
+                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                        📍 Dirección Exacta (Calle, Pasaje, Número, Dpto) *
                       </label>
                       <input
                         type="text"
                         required
                         value={direccionExacta}
                         onChange={e => setDireccionExacta(e.target.value)}
-                        placeholder="Ej. Av. Larco 1234, Dpto 402"
-                        className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                        placeholder="Ej. Av. Larco 1234, Dpto 402 / Pasaje Los Sauces 120"
+                        className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
                       />
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <div className="space-y-2">
+                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
                         🏷️ Referencia de Entrega (Opcional)
                       </label>
                       <input
@@ -1083,7 +1065,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         value={referencia}
                         onChange={e => setReferencia(e.target.value)}
                         placeholder="Ej. Frente al parque, rejas negras, timbre blanco"
-                        className="w-full px-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                        className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
                       />
                     </div>
                   </div>
@@ -1102,14 +1084,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     value={customDestinoText}
                     onChange={e => setCustomDestinoText(e.target.value)}
                     placeholder="Indica las instrucciones de entrega..."
-                    className="w-full p-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
+                    className="w-full p-4 bg-white/[0.05] border border-white/10 rounded-2xl text-base text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
                   />
                 </div>
               )}
 
               {/* NOMBRE COMPLETO CON EMOJI */}
-              <div className="space-y-1.5 pt-2 border-t border-white/[0.08]">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <div className="space-y-2 pt-2 border-t border-white/[0.08]">
+                <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
                   👤 Tu Nombre Completo (Destinatario) *
                 </label>
                 <div className="relative flex items-center">
@@ -1119,14 +1101,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     value={nombreCompleto}
                     onChange={e => setNombreCompleto(e.target.value)}
                     placeholder="Ej. Carlos Mendoza Ramos"
-                    className="w-full pl-10 pr-3.5 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                    className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
                   />
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                  <User className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
                 </div>
               </div>
 
               {errorMsg && (
-                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-2.5 rounded-2xl border border-rose-500/20">
+                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3 rounded-2xl border border-rose-500/20">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{errorMsg}</span>
                 </div>
@@ -1135,14 +1117,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               <button
                 type="submit"
                 disabled={submitting}
-                className="big-btn-primary py-3.5 mt-2"
+                className="big-btn-primary py-4.5 sm:py-5 text-base sm:text-lg font-black mt-2 shadow-2xl"
               >
                 {submitting ? (
                   <span>Registrando Envío...</span>
                 ) : (
                   <>
                     <span>Confirmar y Finalizar Pedido</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="w-5 h-5" />
                   </>
                 )}
               </button>

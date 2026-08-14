@@ -45,8 +45,8 @@ export const ClientHUD: React.FC = () => {
 
           {/* Brand & XP & Logout */}
           <div className="flex items-center gap-2.5">
-            <span className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-black bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-cyan-500/20 text-pink-300 border border-pink-500/30 shadow-md">
-              <span className="text-sm">🧵</span>
+            <span className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl text-sm sm:text-base font-black bg-gradient-to-r from-pink-500/30 via-purple-500/30 to-cyan-500/30 text-pink-200 border-2 border-pink-400/50 shadow-xl shadow-pink-500/25">
+              <span className="text-base sm:text-lg">🧵</span>
               <span>ComiKids</span>
             </span>
 

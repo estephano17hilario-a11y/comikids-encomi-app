@@ -64,10 +64,10 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+    <div className="bulk-print-overlay fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       
       {/* Contenedor Principal en Pantalla */}
-      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-slate-900 border border-white/15 rounded-3xl overflow-hidden shadow-2xl">
+      <div className="bulk-print-modal-box w-full max-w-4xl max-h-[92vh] flex flex-col bg-slate-900 border border-white/15 rounded-3xl overflow-hidden shadow-2xl">
         
         {/* Header de Controles (No imprimible) */}
         <div className="print:hidden p-4 sm:p-5 border-b border-white/10 flex items-center justify-between bg-slate-950/90 shrink-0" data-no-print="true">

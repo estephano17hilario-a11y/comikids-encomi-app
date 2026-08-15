@@ -110,7 +110,7 @@
 }
 
 /* ==========================================================================
-   PRINT STYLES: A4 SHEET EXACT 4-LABELS PER PAGE (BLACK & WHITE)
+   PRINT STYLES: A4 SHEET EXACT 6-LABELS PER PAGE (BLACK & WHITE)
    ========================================================================== */
 @media print {
   @page {
@@ -128,11 +128,38 @@
     overflow: visible !important;
   }
 
-  /* Hide everything with data-no-print or fixed app navigation */
+  /* Hide entire React root, header, nav, main and non-print elements */
+  #root,
   header,
   nav,
+  main,
   [data-no-print="true"] {
     display: none !important;
+  }
+
+  /* Make print portal container take over full page */
+  .bulk-print-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .bulk-print-modal-box {
+    position: static !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-height: none !important;
+    width: 100% !important;
+    overflow: visible !important;
+    display: block !important;
   }
 
   .a4-print-page {
@@ -156,10 +183,18 @@
   }
 
   .a4-rotulo-card {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
     height: 86mm !important;
     max-height: 86mm !important;
     min-height: 86mm !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
+    border: 2px dashed #000000 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 2.5mm !important;
+    border-radius: 8px !important;
   }
 }

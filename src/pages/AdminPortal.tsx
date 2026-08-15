@@ -78,7 +78,7 @@ export const AdminPortal: React.FC = () => {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 space-y-6 pb-28">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 space-y-6 pb-28 print:hidden" data-no-print="true">
         
         {/* Dynamic Section Rendering */}
         <div className="transition-all duration-300">

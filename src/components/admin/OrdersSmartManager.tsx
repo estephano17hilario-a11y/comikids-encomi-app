@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
 import { useOrders } from '../../context/OrderContext';
 import { BulkPrintModal } from './BulkPrintModal';
@@ -19,7 +19,9 @@ import {
   MapPin,
   Filter,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  MoveRight,
+  X
 } from 'lucide-react';
 
 export const OrdersSmartManager: React.FC = () => {
@@ -30,6 +32,8 @@ export const OrdersSmartManager: React.FC = () => {
     deleteMultiplePedidos,
     deletePedido,
     updatePedido,
+    updateEstadoEnvio,
+    updateEstadoProduccion,
   } = useOrders();
 
   // Search & Filter State
@@ -44,7 +48,12 @@ export const OrdersSmartManager: React.FC = () => {
   const [showBulkPrint, setShowBulkPrint] = useState(false);
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [swipeTargetOrder, setSwipeTargetOrder] = useState<Pedido | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Swipe detection touch state
+  const touchStartX = useRef<number>(0);
+  const touchEndX = useRef<number>(0);
 
   // Filtered Orders
   const filteredOrders = useMemo(() => {
@@ -121,12 +130,126 @@ export const OrdersSmartManager: React.FC = () => {
     }
   };
 
+  // Swipe handlers for moving status
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = (order: Pedido) => {
+    if (!touchStartX.current || !touchEndX.current) return;
+    const distance = touchStartX.current - touchEndX.current;
+    if (Math.abs(distance) > 60) {
+      // Swiped left or right!
+      setSwipeTargetOrder(order);
+    }
+    touchStartX.current = 0;
+    touchEndX.current = 0;
+  };
+
+  const handleSingleOrderMove = async (orderId: string, envio: EstadoEnvio, prod?: EstadoProduccion) => {
+    setIsProcessing(true);
+    try {
+      if (prod) await updateEstadoProduccion(orderId, prod);
+      await updateEstadoEnvio(orderId, envio);
+      setSwipeTargetOrder(null);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const selectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-28">
+    <div className="space-y-6 animate-fadeIn pb-32">
       
-      {/* Header & Controls */}
+      {/* --- TOP FLOATING ACTION BAR FOR MASS ACTIONS (ITEM 7: FOLLOWS SCROLL AT TOP) --- */}
+      {selectedIds.length > 0 && (
+        <div className="fixed top-4 sm:top-6 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-3xl animate-slideDown">
+          <div className="p-3.5 sm:p-4 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/60 backdrop-blur-3xl shadow-2xl shadow-cyan-500/25 flex flex-wrap items-center justify-between gap-3">
+            
+            {/* Counter */}
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-xl bg-cyan-500 text-slate-950 font-black text-sm flex items-center justify-center shadow-md">
+                {selectedIds.length}
+              </span>
+              <div>
+                <strong className="text-xs font-black text-white block">
+                  {selectedIds.length} {selectedIds.length === 1 ? 'pedido seleccionado' : 'pedidos seleccionados'}
+                </strong>
+                <button
+                  onClick={clearSelection}
+                  className="text-[10px] text-cyan-400 hover:text-white underline cursor-pointer"
+                >
+                  Cancelar selección
+                </button>
+              </div>
+            </div>
+
+            {/* Mass Actions */}
+            <div className="flex items-center gap-2 flex-wrap">
+              
+              {/* Mover a Embalando */}
+              <button
+                disabled={isProcessing}
+                onClick={() => handleMassStatusUpdate('pendiente', 'bordando')}
+                className="py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
+                title="Mover a Embalaje"
+              >
+                <span>📦 Embalar</span>
+              </button>
+
+              {/* Mover a Por Despachar / Enviar */}
+              <button
+                disabled={isProcessing}
+                onClick={() => handleMassStatusUpdate('en_camino', 'completado')}
+                className="py-2 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-cyan-600/30 transition-all cursor-pointer"
+                title="Mover a En Camino"
+              >
+                <span>🚚 Enviar</span>
+              </button>
+
+              {/* Mover a Entregado */}
+              <button
+                disabled={isProcessing}
+                onClick={() => handleMassStatusUpdate('entregado', 'completado')}
+                className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
+                title="Marcar como Entregado"
+              >
+                <span>✓ Entregar</span>
+              </button>
+
+              {/* Imprimir en Lote */}
+              <button
+                disabled={isProcessing}
+                onClick={() => setShowBulkPrint(true)}
+                className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 border border-white/10 transition-all cursor-pointer"
+                title="Imprimir Rótulos"
+              >
+                <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Rótulos</span>
+              </button>
+
+              {/* Borrar en masa */}
+              <button
+                disabled={isProcessing}
+                onClick={() => setShowDeleteConfirm(true)}
+                className="p-2 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white transition-all cursor-pointer"
+                title="Borrar seleccionados"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Header & Search Bar */}
       <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-white/10 space-y-4 shadow-xl">
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -236,7 +359,7 @@ export const OrdersSmartManager: React.FC = () => {
 
       </div>
 
-      {/* Orders Grid / Cards List */}
+      {/* Orders Grid / Cards List with Swipe Gesture Support */}
       {filteredOrders.length === 0 ? (
         <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
           <p className="text-4xl">📭</p>
@@ -253,7 +376,10 @@ export const OrdersSmartManager: React.FC = () => {
               <div
                 key={order.id}
                 onClick={() => toggleSelect(order.id)}
-                className={`relative rounded-3xl p-5 border transition-all duration-200 cursor-pointer select-none space-y-3.5 ${
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={() => handleTouchEnd(order)}
+                className={`relative rounded-3xl p-5 border transition-all duration-200 cursor-pointer select-none space-y-3.5 group ${
                   isSelected
                     ? 'bg-cyan-500/10 border-cyan-400/60 shadow-xl shadow-cyan-500/15 ring-2 ring-cyan-500/30'
                     : 'bg-slate-900/80 hover:bg-slate-900 border-white/[0.08] hover:border-white/20'
@@ -327,8 +453,13 @@ export const OrdersSmartManager: React.FC = () => {
                 {/* Status Badges & Quick Action Pills */}
                 <div className="pt-2 border-t border-white/[0.08] flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
                   
-                  {/* Status Indicator */}
-                  <div className="flex items-center gap-1.5">
+                  {/* Status Indicator & Swipe Hint */}
+                  <button
+                    type="button"
+                    onClick={() => setSwipeTargetOrder(order)}
+                    className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+                    title="Clic o desliza para cambiar estado"
+                  >
                     {order.estado_envio === 'entregado' ? (
                       <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                         ✓ Entregado
@@ -346,14 +477,14 @@ export const OrdersSmartManager: React.FC = () => {
                         🕒 En Almacén
                       </span>
                     )}
-                  </div>
+                  </button>
 
                   {/* Individual Actions */}
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setEditingPedido(order)}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
                       title="Editar Pedido"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -366,7 +497,7 @@ export const OrdersSmartManager: React.FC = () => {
                           await deletePedido(order.id);
                         }
                       }}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
                       title="Eliminar Pedido"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -381,84 +512,85 @@ export const OrdersSmartManager: React.FC = () => {
         </div>
       )}
 
-      {/* Floating Action Bar Apple Vision Pro (When 1+ selected) */}
-      {selectedIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-2xl animate-slideUp">
-          <div className="p-3 sm:p-4 rounded-3xl bg-slate-900/90 border border-cyan-500/40 backdrop-blur-2xl shadow-2xl shadow-cyan-500/20 flex flex-wrap items-center justify-between gap-3">
+      {/* --- SWIPE / MOVE STATUS ACTION DIALOG (ITEM 5) --- */}
+      {swipeTargetOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-cyan-500/30 p-6 space-y-5 shadow-2xl animate-scaleUp">
             
-            {/* Counter */}
-            <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-xl bg-cyan-500 text-slate-950 font-black text-sm flex items-center justify-center">
-                {selectedIds.length}
-              </span>
-              <div>
-                <strong className="text-xs font-black text-white block">
-                  {selectedIds.length} {selectedIds.length === 1 ? 'paquete seleccionado' : 'paquetes seleccionados'}
-                </strong>
-                <button
-                  onClick={clearSelection}
-                  className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
-                >
-                  Cancelar selección
-                </button>
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-black">
+                  🚚
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">¿A dónde deseas mover el paquete?</h3>
+                  <p className="text-xs text-cyan-400 font-mono">#{swipeTargetOrder.codigo_seguimiento}</p>
+                </div>
               </div>
+              <button
+                onClick={() => setSwipeTargetOrder(null)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* Mass Actions */}
-            <div className="flex items-center gap-2 flex-wrap">
-              
-              {/* Mover a Embalando */}
+            <div className="space-y-2.5">
               <button
                 disabled={isProcessing}
-                onClick={() => handleMassStatusUpdate('pendiente', 'bordando')}
-                className="py-2 px-3 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Mover a Embalaje"
+                onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'pendiente', 'bordando')}
+                className="w-full p-3.5 rounded-2xl bg-purple-600/20 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/30 text-xs font-black flex items-center justify-between transition-all cursor-pointer"
               >
-                <span>📦 Embalar</span>
+                <div className="flex items-center gap-2">
+                  <span>⚡</span>
+                  <span>Embalando / En Preparación</span>
+                </div>
+                <MoveRight className="w-4 h-4" />
               </button>
 
-              {/* Mover a Por Despachar / Enviar */}
               <button
                 disabled={isProcessing}
-                onClick={() => handleMassStatusUpdate('en_camino', 'completado')}
-                className="py-2 px-3 rounded-xl bg-cyan-600/80 hover:bg-cyan-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Mover a En Camino"
+                onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'pendiente', 'completado')}
+                className="w-full p-3.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500 text-amber-200 hover:text-slate-950 border border-amber-500/30 text-xs font-black flex items-center justify-between transition-all cursor-pointer"
               >
-                <span>🚚 Enviar</span>
+                <div className="flex items-center gap-2">
+                  <span>🏢</span>
+                  <span>Listo para Despacho / Mandando a Agencia</span>
+                </div>
+                <MoveRight className="w-4 h-4" />
               </button>
 
-              {/* Mover a Entregado */}
               <button
                 disabled={isProcessing}
-                onClick={() => handleMassStatusUpdate('entregado', 'completado')}
-                className="py-2 px-3 rounded-xl bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Marcar como Entregado"
+                onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'en_camino', 'completado')}
+                className="w-full p-3.5 rounded-2xl bg-blue-600/20 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-500/30 text-xs font-black flex items-center justify-between transition-all cursor-pointer"
               >
-                <span>✓ Entregar</span>
+                <div className="flex items-center gap-2">
+                  <span>🚀</span>
+                  <span>Recibido en Shalom / Motorizado en Ruta</span>
+                </div>
+                <MoveRight className="w-4 h-4" />
               </button>
 
-              {/* Imprimir en Lote */}
               <button
                 disabled={isProcessing}
-                onClick={() => setShowBulkPrint(true)}
-                className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Imprimir Rótulos"
+                onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'entregado', 'completado')}
+                className="w-full p-3.5 rounded-2xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-500/30 text-xs font-black flex items-center justify-between transition-all cursor-pointer"
               >
-                <Printer className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Rótulos</span>
+                <div className="flex items-center gap-2">
+                  <span>✓</span>
+                  <span>Entregado con Éxito al Cliente</span>
+                </div>
+                <MoveRight className="w-4 h-4" />
               </button>
-
-              {/* Borrar en masa */}
-              <button
-                disabled={isProcessing}
-                onClick={() => setShowDeleteConfirm(true)}
-                className="p-2 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white transition-all cursor-pointer"
-                title="Borrar seleccionados"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-
             </div>
+
+            <button
+              onClick={() => setSwipeTargetOrder(null)}
+              className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs font-bold transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
 
           </div>
         </div>
@@ -473,7 +605,7 @@ export const OrdersSmartManager: React.FC = () => {
         />
       )}
 
-      {/* Edit Single Order Modal */}
+      {/* Edit Single Order Modal (Centered & Locked) */}
       {editingPedido && (
         <EditOrderModal
           pedido={editingPedido}

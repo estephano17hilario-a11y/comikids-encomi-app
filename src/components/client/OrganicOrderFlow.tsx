@@ -322,20 +322,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     try {
       let activeUser = currentUser;
       if (!activeUser) {
+        const userIdentifier = dniShalom.trim() || whatsapp.trim();
         const regRes = await ordersService.registerUser(
           nombreCompleto.trim(),
-          whatsapp.trim(),
+          userIdentifier,
           20,
-          'incomi2026'
+          'incomi2026',
+          whatsapp.trim()
         );
         if (regRes.user) {
           activeUser = regRes.user;
         } else {
-          const logRes = await ordersService.loginUser(whatsapp.trim(), 'incomi2026');
+          const logRes = await ordersService.loginUser(userIdentifier, 'incomi2026');
           activeUser = logRes.user || null;
         }
         if (activeUser) {
-          await login(whatsapp.trim(), 'incomi2026');
+          await login(userIdentifier, 'incomi2026');
         }
       }
 

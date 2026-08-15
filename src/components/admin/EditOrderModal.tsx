@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
 import { X, Save, Package, MapPin, User, FileText } from 'lucide-react';
 
@@ -15,6 +15,13 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   const [estadoEnvio, setEstadoEnvio] = useState<EstadoEnvio>(pedido.estado_envio);
   const [estadoProduccion, setEstadoProduccion] = useState<EstadoProduccion>(pedido.estado_produccion);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

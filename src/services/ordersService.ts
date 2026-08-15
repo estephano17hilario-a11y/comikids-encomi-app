@@ -105,8 +105,9 @@ class OrdersService {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
   }
 
-  async registerUser(nombreCompleto: string, dni: string, edad?: number, password?: string): Promise<{ user: Usuario | null; error?: string }> {
+  async registerUser(nombreCompleto: string, dni: string, edad?: number, password?: string, telefono?: string): Promise<{ user: Usuario | null; error?: string }> {
     const cleanDni = dni.trim().toUpperCase();
+    const cleanPhone = (telefono || '').trim().replace(/\D/g, '');
     const users = this.getUsers();
 
     if (users.some(u => u.dni.toUpperCase() === cleanDni)) {
@@ -116,6 +117,7 @@ class OrdersService {
     const newUser: Usuario = {
       id: 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
       dni: cleanDni,
+      telefono_default: cleanPhone || (cleanDni.length === 9 && cleanDni.startsWith('9') ? cleanDni : undefined),
       nombre_completo: nombreCompleto.trim(),
       edad: edad || 20,
       password_hash: password || '',

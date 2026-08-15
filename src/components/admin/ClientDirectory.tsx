@@ -89,7 +89,23 @@ export const ClientDirectory: React.FC = () => {
           {filteredClients.map((client) => {
             const clientOrders = getClientOrders(client.id);
             const levelInfo = calculateLevel(client.puntos_xp || 0);
-            const rawPhone = (client.telefono_default || client.dni || '').replace(/\D/g, '');
+
+            // Determinar teléfono y DNI de manera inteligente
+            const isPhoneDni = client.dni && client.dni.length === 9 && client.dni.startsWith('9');
+            const displayPhone = client.telefono_default || (isPhoneDni ? client.dni : '');
+
+            let displayDni = client.dni_default || (!isPhoneDni ? client.dni : '');
+            if (!displayDni) {
+              const matchedOrder = clientOrders.find(o => o.destino_detalle && o.destino_detalle.includes('DNI/CE Recojo:'));
+              if (matchedOrder) {
+                const match = matchedOrder.destino_detalle.match(/DNI\/CE Recojo:\s*([A-Za-z0-9]+)/i);
+                if (match && match[1]) {
+                  displayDni = match[1];
+                }
+              }
+            }
+
+            const rawPhone = (displayPhone || '').replace(/\D/g, '');
             const whatsappChatUrl = rawPhone.length >= 9
               ? `https://wa.me/51${rawPhone.slice(-9)}?text=${encodeURIComponent(`¡Hola ${client.nombre_completo}! 👋 Te saluda ComiKids. ¿Cómo podemos ayudarte hoy con tus pedidos?`)}`
               : `https://wa.me/message/FSEGUIYKFKYKA1`;
@@ -140,16 +156,18 @@ export const ClientDirectory: React.FC = () => {
                   <div className="p-3 bg-slate-950/70 rounded-2xl border border-slate-800/80 space-y-2 text-xs">
                     
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400 text-[11px]">🆔 DNI / Doc:</span>
-                      <strong className="font-mono text-white font-bold">{client.dni}</strong>
+                      <span className="text-slate-400 text-[11px]">📱 WhatsApp:</span>
+                      <strong className="font-mono text-cyan-300 font-bold">
+                        {displayPhone ? `+51 ${displayPhone}` : 'No registrado'}
+                      </strong>
                     </div>
 
-                    {client.telefono_default && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400 text-[11px]">📱 WhatsApp:</span>
-                        <strong className="font-mono text-cyan-300 font-bold">+51 {client.telefono_default}</strong>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 text-[11px]">🆔 DNI / Doc:</span>
+                      <strong className="font-mono text-white font-bold">
+                        {displayDni || 'No registrado'}
+                      </strong>
+                    </div>
 
                     <div className="flex items-center justify-between pt-1 border-t border-slate-800">
                       <span className="text-slate-400 text-[11px]">🎯 Motivo:</span>
@@ -196,63 +214,80 @@ export const ClientDirectory: React.FC = () => {
       )}
 
       {/* 360° Profile Modal */}
-      {selectedClient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border border-white/15 p-6 sm:p-8 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500 to-cyan-500 flex items-center justify-center text-white text-xl font-black shadow-lg">
-                  {(selectedClient.nombre_completo || 'C').charAt(0).toUpperCase()}
+      {selectedClient && (() => {
+        const clientOrders = getClientOrders(selectedClient.id);
+        const isPhoneDni = selectedClient.dni && selectedClient.dni.length === 9 && selectedClient.dni.startsWith('9');
+        const modalPhone = selectedClient.telefono_default || (isPhoneDni ? selectedClient.dni : '');
+        let modalDni = selectedClient.dni_default || (!isPhoneDni ? selectedClient.dni : '');
+        if (!modalDni) {
+          const matchedOrder = clientOrders.find(o => o.destino_detalle && o.destino_detalle.includes('DNI/CE Recojo:'));
+          if (matchedOrder) {
+            const match = matchedOrder.destino_detalle.match(/DNI\/CE Recojo:\s*([A-Za-z0-9]+)/i);
+            if (match && match[1]) {
+              modalDni = match[1];
+            }
+          }
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+            <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border border-white/15 p-6 sm:p-8 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500 to-cyan-500 flex items-center justify-center text-white text-xl font-black shadow-lg">
+                    {(selectedClient.nombre_completo || 'C').charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-white">{selectedClient.nombre_completo}</h3>
+                    <p className="text-xs text-purple-400 font-bold">
+                      {calculateLevel(selectedClient.puntos_xp || 0).nombre} • {selectedClient.puntos_xp || 0} XP
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-white">{selectedClient.nombre_completo}</h3>
-                  <p className="text-xs text-purple-400 font-bold">
-                    {calculateLevel(selectedClient.puntos_xp || 0).nombre} • {selectedClient.puntos_xp || 0} XP
+                <button
+                  onClick={() => setSelectedClient(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Profile 360 Details */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">WhatsApp Oficial</span>
+                  <p className="text-sm font-mono font-bold text-cyan-300">
+                    {modalPhone ? `+51 ${modalPhone}` : 'No registrado'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">DNI / Documento</span>
+                  <p className="text-sm font-mono font-bold text-white">
+                    {modalDni || 'No registrado'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">Motivo de Compra</span>
+                  <p className="text-xs font-bold text-slate-200">
+                    {selectedClient.motivo_compra === 'emprender'
+                      ? '💼 Para Venta / Negocio'
+                      : selectedClient.motivo_compra === 'empresa'
+                      ? '🏢 Empresa'
+                      : '💖 Uso Personal'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">Edad Registrada</span>
+                  <p className="text-xs font-bold text-slate-200">
+                    {selectedClient.edad ? `${selectedClient.edad} años` : 'No especificada'}
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedClient(null)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Profile 360 Details */}
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase font-bold">DNI / Documento</span>
-                <p className="text-sm font-mono font-bold text-white">{selectedClient.dni}</p>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase font-bold">WhatsApp Oficial</span>
-                <p className="text-sm font-mono font-bold text-cyan-300">
-                  {selectedClient.telefono_default ? `+51 ${selectedClient.telefono_default}` : 'No registrado'}
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase font-bold">Motivo de Compra</span>
-                <p className="text-xs font-bold text-slate-200">
-                  {selectedClient.motivo_compra === 'emprender'
-                    ? '💼 Para Venta / Negocio'
-                    : selectedClient.motivo_compra === 'empresa'
-                    ? '🏢 Empresa'
-                    : '💖 Uso Personal'}
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase font-bold">Edad Registrada</span>
-                <p className="text-xs font-bold text-slate-200">
-                  {selectedClient.edad ? `${selectedClient.edad} años` : 'No especificada'}
-                </p>
-              </div>
-            </div>
 
             {/* Historical Orders */}
             <div className="space-y-3">
@@ -282,9 +317,10 @@ export const ClientDirectory: React.FC = () => {
               </div>
             </div>
 
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );

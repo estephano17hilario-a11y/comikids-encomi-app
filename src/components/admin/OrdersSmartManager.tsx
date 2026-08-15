@@ -43,7 +43,7 @@ export const OrdersSmartManager: React.FC = () => {
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'cola' | 'embalando' | 'despachar' | 'camino' | 'entregado'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'almacen' | 'alistando' | 'dejando_shalom' | 'entregado'>('all');
   const [transportFilter, setTransportFilter] = useState<'all' | 'shalom' | 'motorizado'>('all');
 
   // Multi-select State
@@ -82,10 +82,9 @@ export const OrdersSmartManager: React.FC = () => {
       }
 
       // Status
-      if (statusFilter === 'cola') return order.estado_produccion === 'en_cola' && order.estado_envio === 'pendiente';
-      if (statusFilter === 'embalando') return order.estado_produccion === 'bordando' && order.estado_envio === 'pendiente';
-      if (statusFilter === 'despachar') return order.estado_produccion === 'completado' && order.estado_envio === 'pendiente';
-      if (statusFilter === 'camino') return order.estado_envio === 'en_camino';
+      if (statusFilter === 'almacen') return order.estado_produccion === 'en_cola' && order.estado_envio === 'pendiente';
+      if (statusFilter === 'alistando') return order.estado_produccion === 'bordando' && order.estado_envio === 'pendiente';
+      if (statusFilter === 'dejando_shalom') return order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente');
       if (statusFilter === 'entregado') return order.estado_envio === 'entregado';
 
       return true;
@@ -238,14 +237,14 @@ export const OrdersSmartManager: React.FC = () => {
                 <span>📦 Alistar</span>
               </button>
 
-              {/* Mover a Por Despachar / Enviar */}
+              {/* Mover a Dejando en Shalom */}
               <button
                 disabled={isProcessing}
                 onClick={() => handleMassStatusUpdate('en_camino', 'completado')}
                 className="py-2 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-cyan-600/30 transition-all cursor-pointer"
-                title="Mover a En Camino"
+                title="Mover a Dejando en Shalom"
               >
-                <span>🚚 Enviar</span>
+                <span>🚚 Dejando en Shalom</span>
               </button>
 
               {/* Mover a Entregado */}
@@ -346,7 +345,7 @@ export const OrdersSmartManager: React.FC = () => {
             />
           </div>
 
-          {/* Status Tabs */}
+          {/* Status Tabs (5 Estados Requeridos) */}
           <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 overflow-x-auto text-[11px] font-bold">
             <button
               onClick={() => setStatusFilter('all')}
@@ -355,28 +354,28 @@ export const OrdersSmartManager: React.FC = () => {
               Todos
             </button>
             <button
-              onClick={() => setStatusFilter('embalando')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'embalando' ? 'bg-purple-600 text-white font-black' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => setStatusFilter('almacen')}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'almacen' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'}`}
+            >
+              En Almacén
+            </button>
+            <button
+              onClick={() => setStatusFilter('alistando')}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'alistando' ? 'bg-purple-600 text-white font-black' : 'text-slate-400 hover:text-white'}`}
             >
               Alistándolo
             </button>
             <button
-              onClick={() => setStatusFilter('despachar')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'despachar' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => setStatusFilter('dejando_shalom')}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'dejando_shalom' ? 'bg-blue-500 text-white font-black' : 'text-slate-400 hover:text-white'}`}
             >
-              Por Enviar
-            </button>
-            <button
-              onClick={() => setStatusFilter('camino')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'camino' ? 'bg-blue-500 text-white font-black' : 'text-slate-400 hover:text-white'}`}
-            >
-              En Camino
+              Dejando en Shalom
             </button>
             <button
               onClick={() => setStatusFilter('entregado')}
               className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'entregado' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'}`}
             >
-              Entregados
+              Entregado
             </button>
           </div>
 
@@ -408,18 +407,24 @@ export const OrdersSmartManager: React.FC = () => {
 
       </div>
 
-      {/* Orders Grid / Cards List with Swipe Gesture Support */}
+      {/* --- CARDS LIST VIEW --- */}
       {filteredOrders.length === 0 ? (
         <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
-          <p className="text-4xl">📭</p>
-          <h3 className="text-lg font-bold text-white">No hay pedidos en esta clasificación</h3>
-          <p className="text-xs text-slate-400">Intenta cambiar los filtros de búsqueda o estado.</p>
+          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-slate-400 mx-auto text-xl">
+            📦
+          </div>
+          <h3 className="text-base font-black text-white">No se encontraron pedidos</h3>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            {searchTerm || statusFilter !== 'all' || transportFilter !== 'all'
+              ? 'Prueba ajustando los filtros de búsqueda o estado.'
+              : 'No hay pedidos registrados en este momento.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredOrders.map(order => {
             const isSelected = selectedIds.includes(order.id);
-            const isShalom = order.metodo_envio_codigo === 'shalom';
+            const dni = order.usuario?.dni || order.usuario?.dni_default || '';
 
             return (
               <div
@@ -428,14 +433,15 @@ export const OrdersSmartManager: React.FC = () => {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={() => handleTouchEnd(order)}
-                className={`relative rounded-3xl p-5 border transition-all duration-200 cursor-pointer select-none space-y-3.5 group ${
+                className={`p-4 sm:p-5 rounded-3xl border transition-all space-y-3 cursor-pointer select-none relative ${
                   isSelected
-                    ? 'bg-cyan-500/10 border-cyan-400/60 shadow-xl shadow-cyan-500/15 ring-2 ring-cyan-500/30'
-                    : 'bg-slate-900/80 hover:bg-slate-900 border-white/[0.08] hover:border-white/20'
+                    ? 'bg-cyan-950/40 border-cyan-400/80 shadow-lg shadow-cyan-500/10'
+                    : 'bg-slate-900/80 border-white/10 hover:border-white/20 hover:bg-slate-900/95 shadow-md'
                 }`}
               >
-                {/* Selection Checkbox & Method Badge */}
-                <div className="flex items-center justify-between">
+                
+                {/* Top Row: Checkbox, Code & Method Badge */}
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5">
                     <button
                       type="button"
@@ -449,38 +455,46 @@ export const OrdersSmartManager: React.FC = () => {
                     >
                       ✓
                     </button>
-
-                    <span className="font-mono text-xs font-black text-white">
-                      {order.codigo_seguimiento}
+                    
+                    <span className="font-mono text-xs font-black text-white tracking-wider">
+                      #{order.codigo_seguimiento}
                     </span>
                   </div>
 
-                  <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5 ${
-                    isShalom
+                  <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                    order.metodo_envio_codigo === 'shalom'
                       ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                       : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                   }`}>
-                    {isShalom ? '📦 Shalom' : '🛵 Moto'}
+                    {order.metodo_envio_codigo === 'shalom' ? '📦 Shalom' : '🛵 Motorizado'}
                   </span>
                 </div>
 
-                {/* Recipient info */}
+                {/* Client Info */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <strong className="text-sm font-black text-white line-clamp-1">
+                    <h4 className="text-sm font-black text-white tracking-tight truncate">
                       {order.usuario?.nombre_completo || 'Cliente'}
-                    </strong>
-                    {order.usuario?.dni && (
-                      <span className="text-[10px] font-mono text-slate-400">
-                        {order.usuario.dni}
+                    </h4>
+                    {dni && (
+                      <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+                        {dni}
                       </span>
                     )}
                   </div>
 
-                  <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed flex items-start gap-1.5">
+                  <div className="flex items-start gap-1.5 text-xs text-slate-300">
                     <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
-                    <span>{order.destino_detalle}</span>
-                  </p>
+                    <p className="leading-snug text-[11px] line-clamp-2 text-slate-300">
+                      {order.destino_detalle}
+                    </p>
+                  </div>
+
+                  {order.observaciones_cliente && (
+                    <p className="text-[10px] text-slate-400 italic line-clamp-1 bg-white/5 p-1.5 rounded-lg">
+                      Ref: {order.observaciones_cliente}
+                    </p>
+                  )}
                 </div>
 
                 {/* Google Maps External URL (if Motorizado coordinates available) */}
@@ -514,13 +528,13 @@ export const OrdersSmartManager: React.FC = () => {
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                           ✓ Entregado
                         </span>
-                      ) : order.estado_envio === 'en_camino' ? (
+                      ) : order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente') ? (
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                          🚚 En Camino
+                          🚚 Dejando en Shalom
                         </span>
                       ) : order.estado_produccion === 'bordando' ? (
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                          ⚡ Embalando
+                          ⚡ Alistándolo
                         </span>
                       ) : (
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">

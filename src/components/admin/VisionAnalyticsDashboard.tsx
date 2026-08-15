@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import {
   TrendingUp,
@@ -18,10 +18,75 @@ import {
   ChevronDown,
   Clock,
   Layers,
-  Filter
+  Filter,
+  Check
 } from 'lucide-react';
 
 export type TimeFrame = 'dia' | 'semana' | 'mes' | 'trimestre' | 'ano';
+
+/**
+ * Custom Dark Glassmorphic Select Component
+ */
+const CustomSelect: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  icon: React.ReactNode;
+}> = ({ value, onChange, options, icon }) => {
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find(o => o.value === value) || options[0];
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 bg-slate-900/90 hover:bg-slate-800 text-xs text-cyan-300 font-bold px-3.5 py-2 rounded-2xl border border-cyan-500/40 shadow-lg shadow-cyan-500/10 transition-all cursor-pointer select-none active:scale-95"
+      >
+        <span className="text-cyan-400">{icon}</span>
+        <span className="truncate max-w-[200px]">{selectedOption?.label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-cyan-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-50 min-w-[230px] rounded-2xl bg-slate-900/95 border border-cyan-500/40 p-1.5 shadow-2xl shadow-cyan-500/25 backdrop-blur-3xl space-y-1 animate-scaleUp">
+          {options.map(opt => {
+            const isSelected = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                  isSelected
+                    ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <span>{opt.label}</span>
+                {isSelected && <Check className="w-3.5 h-3.5 text-slate-950" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const VisionAnalyticsDashboard: React.FC = () => {
   const { pedidos } = useOrders();
@@ -345,81 +410,73 @@ export const VisionAnalyticsDashboard: React.FC = () => {
             )}
 
             {timeFrame === 'semana' && (
-              <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-cyan-500/30">
-                <Calendar className="w-4 h-4 text-cyan-400" />
-                <select
-                  value={selectedWeek}
-                  onChange={e => {
-                    setSelectedWeek(e.target.value);
-                    handleModifierChange();
-                  }}
-                  className="bg-transparent text-xs text-cyan-300 font-bold focus:outline-none cursor-pointer"
-                >
-                  <option value="sem-actual" className="bg-slate-900 text-white">Semana Actual (Lunes a Domingo)</option>
-                  <option value="sem-previa" className="bg-slate-900 text-white">Semana Anterior</option>
-                  <option value="sem-2-prev" className="bg-slate-900 text-white">Hace 2 Semanas</option>
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedWeek}
+                onChange={val => {
+                  setSelectedWeek(val);
+                  handleModifierChange();
+                }}
+                icon={<Calendar className="w-4 h-4" />}
+                options={[
+                  { value: 'sem-actual', label: 'Semana Actual (Lun - Dom)' },
+                  { value: 'sem-previa', label: 'Semana Anterior' },
+                  { value: 'sem-2-prev', label: 'Hace 2 Semanas' },
+                ]}
+              />
             )}
 
             {timeFrame === 'mes' && (
-              <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-cyan-500/30">
-                <Calendar className="w-4 h-4 text-cyan-400" />
-                <select
-                  value={selectedMonth}
-                  onChange={e => {
-                    setSelectedMonth(e.target.value);
-                    handleModifierChange();
-                  }}
-                  className="bg-transparent text-xs text-cyan-300 font-bold focus:outline-none cursor-pointer"
-                >
-                  <option value="08" className="bg-slate-900 text-white">Agosto 2026</option>
-                  <option value="07" className="bg-slate-900 text-white">Julio 2026</option>
-                  <option value="06" className="bg-slate-900 text-white">Junio 2026</option>
-                  <option value="05" className="bg-slate-900 text-white">Mayo 2026</option>
-                  <option value="04" className="bg-slate-900 text-white">Abril 2026</option>
-                  <option value="03" className="bg-slate-900 text-white">Marzo 2026</option>
-                  <option value="02" className="bg-slate-900 text-white">Febrero 2026</option>
-                  <option value="01" className="bg-slate-900 text-white">Enero 2026</option>
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedMonth}
+                onChange={val => {
+                  setSelectedMonth(val);
+                  handleModifierChange();
+                }}
+                icon={<Calendar className="w-4 h-4" />}
+                options={[
+                  { value: '08', label: 'Agosto 2026' },
+                  { value: '07', label: 'Julio 2026' },
+                  { value: '06', label: 'Junio 2026' },
+                  { value: '05', label: 'Mayo 2026' },
+                  { value: '04', label: 'Abril 2026' },
+                  { value: '03', label: 'Marzo 2026' },
+                  { value: '02', label: 'Febrero 2026' },
+                  { value: '01', label: 'Enero 2026' },
+                ]}
+              />
             )}
 
             {timeFrame === 'trimestre' && (
-              <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-cyan-500/30">
-                <TrendingUp className="w-4 h-4 text-cyan-400" />
-                <select
-                  value={selectedQuarter}
-                  onChange={e => {
-                    setSelectedQuarter(e.target.value);
-                    handleModifierChange();
-                  }}
-                  className="bg-transparent text-xs text-cyan-300 font-bold focus:outline-none cursor-pointer"
-                >
-                  <option value="T3" className="bg-slate-900 text-white">T3: Julio - Septiembre 2026</option>
-                  <option value="T2" className="bg-slate-900 text-white">T2: Abril - Junio 2026</option>
-                  <option value="T1" className="bg-slate-900 text-white">T1: Enero - Marzo 2026</option>
-                  <option value="T4" className="bg-slate-900 text-white">T4: Octubre - Diciembre 2025</option>
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedQuarter}
+                onChange={val => {
+                  setSelectedQuarter(val);
+                  handleModifierChange();
+                }}
+                icon={<TrendingUp className="w-4 h-4" />}
+                options={[
+                  { value: 'T3', label: 'T3: Julio - Septiembre 2026' },
+                  { value: 'T2', label: 'T2: Abril - Junio 2026' },
+                  { value: 'T1', label: 'T1: Enero - Marzo 2026' },
+                  { value: 'T4', label: 'T4: Octubre - Diciembre 2025' },
+                ]}
+              />
             )}
 
             {timeFrame === 'ano' && (
-              <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-cyan-500/30">
-                <Store className="w-4 h-4 text-cyan-400" />
-                <select
-                  value={selectedYear}
-                  onChange={e => {
-                    setSelectedYear(e.target.value);
-                    handleModifierChange();
-                  }}
-                  className="bg-transparent text-xs text-cyan-300 font-bold focus:outline-none cursor-pointer"
-                >
-                  <option value="2026" className="bg-slate-900 text-white">Año 2026 (Actual)</option>
-                  <option value="2025" className="bg-slate-900 text-white">Año 2025</option>
-                  <option value="2024" className="bg-slate-900 text-white">Año 2024</option>
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedYear}
+                onChange={val => {
+                  setSelectedYear(val);
+                  handleModifierChange();
+                }}
+                icon={<Store className="w-4 h-4" />}
+                options={[
+                  { value: '2026', label: 'Año 2026 (Actual)' },
+                  { value: '2025', label: 'Año 2025' },
+                  { value: '2024', label: 'Año 2024' },
+                ]}
+              />
             )}
 
           </div>

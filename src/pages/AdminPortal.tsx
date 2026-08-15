@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOrders } from '../context/OrderContext';
 import { useAuth } from '../context/AuthContext';
 import { OrdersSmartManager } from '../components/admin/OrdersSmartManager';
@@ -6,6 +6,7 @@ import { ClientDirectory } from '../components/admin/ClientDirectory';
 import { VisionAnalyticsDashboard } from '../components/admin/VisionAnalyticsDashboard';
 import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettings';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
+import { ExecutiveBriefingModal } from '../components/admin/ExecutiveBriefingModal';
 import { LogoutConfirmModal } from '../components/common/LogoutConfirmModal';
 import {
   ClipboardList,
@@ -14,7 +15,8 @@ import {
   Store,
   Settings,
   LogOut,
-  Sparkles
+  Sparkles,
+  FileBarChart
 } from 'lucide-react';
 
 export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'cuenta';
@@ -25,6 +27,16 @@ export const AdminPortal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  
+  // Informe completo y profesional al entrar (una vez por sesión)
+  const [showBriefingModal, setShowBriefingModal] = useState(() => {
+    const hasSeen = sessionStorage.getItem('incomi_briefing_seen_v1');
+    if (!hasSeen) {
+      sessionStorage.setItem('incomi_briefing_seen_v1', 'true');
+      return true;
+    }
+    return false;
+  });
 
   const pendingOrdersCount = pedidos.filter(p => p.estado_envio !== 'entregado').length;
 
@@ -57,6 +69,15 @@ export const AdminPortal: React.FC = () => {
 
           {/* Quick Header Actions */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowBriefingModal(true)}
+              className="py-2 px-3 rounded-2xl bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Ver Informe Ejecutivo de Despachos"
+            >
+              <FileBarChart className="w-4 h-4 text-cyan-400" />
+              <span className="hidden sm:inline">Informe del Día</span>
+            </button>
+
             <button
               onClick={() => setShowConfigModal(true)}
               className="p-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/10 transition-colors cursor-pointer"
@@ -159,6 +180,22 @@ export const AdminPortal: React.FC = () => {
       {/* Taller Config Modal */}
       {showConfigModal && (
         <TallerConfigModal onClose={() => setShowConfigModal(false)} />
+      )}
+
+      {/* Executive Briefing Modal (Al entrar o bajo demanda) */}
+      {showBriefingModal && (
+        <ExecutiveBriefingModal
+          pedidos={pedidos}
+          onClose={() => setShowBriefingModal(false)}
+          onNavigateToOrders={() => {
+            setShowBriefingModal(false);
+            setActiveTab('pedidos');
+          }}
+          onNavigateToStats={() => {
+            setShowBriefingModal(false);
+            setActiveTab('estadisticas');
+          }}
+        />
       )}
 
       {/* Logout Confirm Modal */}

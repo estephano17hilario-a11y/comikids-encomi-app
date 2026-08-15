@@ -15,6 +15,7 @@ import { soundService } from '../services/soundService';
 import { NativeNotificationService } from '../services/nativeNotificationService';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { useAuth } from './AuthContext';
+import { notificarEstadoPedido, notificarEstadosPedidos } from '../services/whatsappNotifyService';
 
 interface OrderContextType {
   pedidos: Pedido[];
@@ -200,6 +201,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     await ordersService.updateMultipleEstados(pedidoIds, estadoEnvio, estadoProduccion);
     soundService.playStatusChangeSuccess();
     await refreshData();
+    // Notificar a cada cliente afectado via WhatsApp (fire-and-forget)
+    const pedidosAfectados = pedidos.filter(p => pedidoIds.includes(p.id));
+    if (estadoProduccion) {
+      notificarEstadosPedidos(pedidosAfectados, estadoEnvio, estadoProduccion).catch(() => {});
+    }
   };
 
   const handleUpdateEstadoProduccion = async (pedidoId: string, nuevoEstado: EstadoProduccion) => {
@@ -207,6 +213,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (updated) {
       soundService.playStatusChangeSuccess();
       await refreshData();
+      // Notificar al cliente via WhatsApp (fire-and-forget)
+      notificarEstadoPedido(updated, updated.estado_envio, nuevoEstado).catch(() => {});
     }
     return updated;
   };
@@ -216,6 +224,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (updated) {
       soundService.playStatusChangeSuccess();
       await refreshData();
+      // Notificar al cliente via WhatsApp (fire-and-forget)
+      notificarEstadoPedido(updated, nuevoEstado, updated.estado_produccion).catch(() => {});
     }
     return updated;
   };

@@ -99,6 +99,31 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
             />
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Ciudad Origen Shalom</label>
+              <input
+                type="text"
+                required
+                value={formData.ciudad_origen || 'LIMA'}
+                onChange={e => setFormData({ ...formData, ciudad_origen: e.target.value.toUpperCase() })}
+                placeholder="LIMA"
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Agencia Shalom Origen</label>
+              <input
+                type="text"
+                required
+                value={formData.agencia_shalom_origen || 'LA VICTORIA - AV 28 DE JULIO'}
+                onChange={e => setFormData({ ...formData, agencia_shalom_origen: e.target.value.toUpperCase() })}
+                placeholder="LA VICTORIA - AV 28 DE JULIO"
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">WhatsApp para Pedidos y Clientes</label>
             <input

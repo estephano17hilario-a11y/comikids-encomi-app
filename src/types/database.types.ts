@@ -75,6 +75,7 @@ export interface TallerConfig {
   whatsapp_pedidos: string;
   direccion_taller: string;
   ciudad_origen: string;
+  agencia_shalom_origen?: string;
 }
 
 export interface ShalomAgency {

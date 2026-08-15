@@ -168,14 +168,21 @@ export const OrdersSmartManager: React.FC = () => {
   };
 
   const selectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
+  
+  // Filtrar exclusivamente los pedidos con método Shalom (destildando motorizados)
+  const selectedShalomOrders = useMemo(() => {
+    return selectedOrders.filter(
+      p => p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom')
+    );
+  }, [selectedOrders]);
 
   // Handler para exportar Excel oficial masivo de Shalom y marcar como registrados
   const handleRegisterShalomExcel = async () => {
-    if (selectedOrders.length === 0) return;
+    if (selectedShalomOrders.length === 0) return;
     setIsProcessing(true);
     try {
-      downloadShalomExcel(selectedOrders, tallerConfig);
-      for (const order of selectedOrders) {
+      downloadShalomExcel(selectedShalomOrders, tallerConfig);
+      for (const order of selectedShalomOrders) {
         await updatePedido(order.id, { registrado_shalom: true });
       }
     } catch (err) {
@@ -254,7 +261,13 @@ export const OrdersSmartManager: React.FC = () => {
               {/* Descargar Excel Plantilla Oficial Shalom con validaciones */}
               <button
                 disabled={isProcessing}
-                onClick={() => setShowShalomRegister(true)}
+                onClick={() => {
+                  if (selectedShalomOrders.length === 0) {
+                    alert('Los pedidos seleccionados son de Motorizado. Selecciona al menos un pedido con envío por Agencia Shalom.');
+                    return;
+                  }
+                  setShowShalomRegister(true);
+                }}
                 className="py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
                 title="Abrir asistente de registro oficial en Shalom con validaciones"
               >
@@ -676,7 +689,8 @@ export const OrdersSmartManager: React.FC = () => {
       {/* Shalom Mass Registration Confirmation Modal */}
       {showShalomRegister && (
         <ShalomRegisterModal
-          pedidos={selectedOrders}
+          pedidos={selectedShalomOrders}
+          totalSelectedCount={selectedOrders.length}
           tallerConfig={tallerConfig}
           onClose={() => setShowShalomRegister(false)}
           onRegistered={async (registeredIds) => {

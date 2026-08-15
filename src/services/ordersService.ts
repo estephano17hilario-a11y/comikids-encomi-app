@@ -72,7 +72,7 @@ export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   whatsapp_pedidos: '51987654321',
   direccion_taller: 'Av. Gamarra 1234, Taller 402, La Victoria, Lima',
   ciudad_origen: 'LIMA',
-  agencia_shalom_origen: 'LA VICTORIA - AV 28 DE JULIO',
+  agencia_shalom_origen: 'CENTRAL',
 };
 
 class OrdersService {

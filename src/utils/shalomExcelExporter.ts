@@ -94,17 +94,7 @@ export const extractShalomOrigen = (tallerConfig: TallerConfig): string => {
   if (tallerConfig.agencia_shalom_origen && tallerConfig.agencia_shalom_origen.trim()) {
     return tallerConfig.agencia_shalom_origen.trim().toUpperCase();
   }
-  if (tallerConfig.direccion_taller) {
-    const dirUpper = tallerConfig.direccion_taller.toUpperCase();
-    if (dirUpper.includes('VICTORIA')) return 'LA VICTORIA - AV 28 DE JULIO';
-    if (dirUpper.includes('TINGO MARIA')) return 'LIMA TINGO MARIA';
-    if (dirUpper.includes('TACNA')) return 'LIMA AV TACNA';
-  }
-  if (tallerConfig.ciudad_origen && tallerConfig.ciudad_origen.trim()) {
-    const clean = tallerConfig.ciudad_origen.replace(/,.*$/, '').trim().toUpperCase();
-    return clean || 'LA VICTORIA - AV 28 DE JULIO';
-  }
-  return 'LA VICTORIA - AV 28 DE JULIO';
+  return 'CENTRAL';
 };
 
 export const downloadShalomExcel = (pedidos: Pedido[], tallerConfig: TallerConfig) => {

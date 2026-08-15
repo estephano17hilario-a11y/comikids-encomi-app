@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { ClientHUD } from '../components/client/ClientHUD';
 import { ClientBottomNav, ClientSection } from '../components/client/ClientBottomNav';
 import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
+import { OrderWizard } from '../components/client/OrderWizard';
 import { OrderLiveTracker } from '../components/client/OrderLiveTracker';
 import { GamificationCard } from '../components/client/GamificationCard';
 import {
@@ -105,7 +106,11 @@ export const ClientPortal: React.FC = () => {
         {/* Dynamic Section Content */}
         <div className="transition-all duration-300">
           {activeSection === 'crear_pedido' && (
-            <OrganicOrderFlow onSuccess={() => setActiveSection('mis_pedidos')} />
+            myOrdersCount === 0 ? (
+              <OrganicOrderFlow onSuccess={() => setActiveSection('mis_pedidos')} />
+            ) : (
+              <OrderWizard onSuccess={() => setActiveSection('mis_pedidos')} />
+            )
           )}
 
           {activeSection === 'mis_pedidos' && (

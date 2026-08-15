@@ -1,13 +1,35 @@
-import React from 'react';
-import { MessageCircle, Building2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { MessageCircle, Building2, PackagePlus } from 'lucide-react';
 import { getWhatsAppBusinessChatUrl } from '../../services/whatsappService';
+import { OrganicOrderFlow } from './OrganicOrderFlow';
 
 interface Props {
   onSuccess?: () => void;
 }
 
-export const OrderWizard: React.FC<Props> = () => {
+export const OrderWizard: React.FC<Props> = ({ onSuccess }) => {
+  const [showDirectForm, setShowDirectForm] = useState(false);
   const whatsappUrl = getWhatsAppBusinessChatUrl('¡Hola Comikids! 👋 Deseo hacer un nuevo pedido de mercadería.');
+
+  if (showDirectForm) {
+    return (
+      <div className="space-y-4 animate-fadeIn">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowDirectForm(false)}
+            className="px-3.5 py-1.5 rounded-xl bg-white/6 hover:bg-white/12 text-slate-300 text-xs font-bold border border-white/10 transition-all cursor-pointer"
+          >
+            ← Volver a Atención
+          </button>
+        </div>
+        <OrganicOrderFlow onSuccess={() => {
+          setShowDirectForm(false);
+          if (onSuccess) onSuccess();
+        }} />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-xl mx-auto space-y-6 animate-fadeIn">
@@ -36,8 +58,8 @@ export const OrderWizard: React.FC<Props> = () => {
           </p>
         </div>
 
-        {/* Botón Principal de WhatsApp */}
-        <div className="pt-2">
+        {/* Botón Principal de WhatsApp + Opción de registrar despacho */}
+        <div className="pt-2 space-y-3">
           <a
             href={whatsappUrl}
             target="_blank"
@@ -47,6 +69,15 @@ export const OrderWizard: React.FC<Props> = () => {
             <MessageCircle className="w-6 h-6 fill-current" />
             <span>Hacer un nuevo pedido</span>
           </a>
+
+          <button
+            type="button"
+            onClick={() => setShowDirectForm(true)}
+            className="w-full py-3 px-4 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-[0.98] text-cyan-300 text-xs font-bold flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer"
+          >
+            <PackagePlus className="w-4 h-4" />
+            <span>Registrar otro despacho de mercadería</span>
+          </button>
         </div>
 
       </div>

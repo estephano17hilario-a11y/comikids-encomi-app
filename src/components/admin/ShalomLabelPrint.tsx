@@ -17,9 +17,11 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
       {/* Top Header ComiKids & Disney / Comic Elements */}
       <div className="flex items-center justify-between border-b-2 border-dashed border-pink-500 pb-3 mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-2xl bg-pink-500 text-white font-black flex items-center justify-center text-xl shadow">
-            🧸
-          </div>
+          <img
+            src="/Comikids.png"
+            alt="ComiKids"
+            className="w-10 h-10 object-contain rounded-xl shadow"
+          />
           <div>
             <h2 className="text-base font-black uppercase tracking-tight text-slate-900 leading-none">
               {tallerConfig.nombre_taller || 'ComiKids'}
@@ -30,10 +32,17 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
           </div>
         </div>
 
-        <div className="text-right">
-          <span className="px-2 py-0.5 bg-yellow-300 text-slate-950 font-black text-[9px] uppercase rounded border border-black">
-            ⭐ DESPACHO VIP
-          </span>
+        <div className="text-right flex flex-col items-end">
+          <div className="flex items-center gap-1 px-2 py-0.5 bg-yellow-300 rounded border border-black mb-1">
+            <img
+              src="/Shalom-Courier-Logo.webp"
+              alt="Shalom"
+              className="h-3.5 w-auto object-contain"
+            />
+            <span className="text-slate-950 font-black text-[9px] uppercase">
+              SHALOM VIP
+            </span>
+          </div>
           <p className="font-mono font-black text-xs text-slate-900 pt-0.5">
             {pedido.codigo_seguimiento}
           </p>

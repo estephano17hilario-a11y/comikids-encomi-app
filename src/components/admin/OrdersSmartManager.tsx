@@ -5,6 +5,7 @@ import { useOrders } from '../../context/OrderContext';
 import { BulkPrintModal } from './BulkPrintModal';
 import { EditOrderModal } from './EditOrderModal';
 import { ShalomRegisterModal } from './ShalomRegisterModal';
+import { OrderStatusNotifyModal } from './OrderStatusNotifyModal';
 import { downloadShalomExcel } from '../../utils/shalomExcelExporter';
 import {
   CheckSquare,
@@ -55,7 +56,19 @@ export const OrdersSmartManager: React.FC = () => {
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [swipeTargetOrder, setSwipeTargetOrder] = useState<Pedido | null>(null);
+  const [notifyModalData, setNotifyModalData] = useState<{
+    orders: Pedido[];
+    statusName: string;
+  } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Helper para nombre legible del estado
+  const getStatusLabel = (envio: EstadoEnvio, prod?: EstadoProduccion): string => {
+    if (envio === 'entregado') return 'Entregado';
+    if (envio === 'en_camino' || (prod === 'completado' && envio === 'pendiente')) return 'Dejando en Shalom / En Ruta';
+    if (prod === 'bordando') return 'Alistándolo';
+    return 'En Almacén';
+  };
 
   // Swipe detection touch state - track BOTH axes to avoid false positives during scroll
   const touchStartX = useRef<number>(0);
@@ -119,9 +132,17 @@ export const OrdersSmartManager: React.FC = () => {
   const handleMassStatusUpdate = async (envio: EstadoEnvio, prod?: EstadoProduccion) => {
     if (selectedIds.length === 0) return;
     setIsProcessing(true);
+    const affectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
+    const statusName = getStatusLabel(envio, prod);
     try {
       await updateMultipleEstados(selectedIds, envio, prod);
       clearSelection();
+      if (affectedOrders.length > 0) {
+        setNotifyModalData({
+          orders: affectedOrders,
+          statusName,
+        });
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -182,10 +203,18 @@ export const OrdersSmartManager: React.FC = () => {
 
   const handleSingleOrderMove = async (orderId: string, envio: EstadoEnvio, prod?: EstadoProduccion) => {
     setIsProcessing(true);
+    const targetOrder = pedidos.find(p => p.id === orderId);
+    const statusName = getStatusLabel(envio, prod);
     try {
       if (prod) await updateEstadoProduccion(orderId, prod);
       await updateEstadoEnvio(orderId, envio);
       setSwipeTargetOrder(null);
+      if (targetOrder) {
+        setNotifyModalData({
+          orders: [targetOrder],
+          statusName,
+        });
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -818,6 +847,15 @@ export const OrdersSmartManager: React.FC = () => {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* WhatsApp Status Change To-Do Notify Modal */}
+      {notifyModalData && (
+        <OrderStatusNotifyModal
+          orders={notifyModalData.orders}
+          statusName={notifyModalData.statusName}
+          onClose={() => setNotifyModalData(null)}
+        />
       )}
 
     </div>

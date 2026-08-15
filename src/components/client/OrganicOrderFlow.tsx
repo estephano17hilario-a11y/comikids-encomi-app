@@ -12,7 +12,8 @@ import {
   DatosComprobante,
   enviarComprobanteAWhatsapp,
   buildWhatsAppComprobanteUrl,
-  getWhatsAppBusinessChatUrl
+  getWhatsAppBusinessChatUrl,
+  getJoinEncomiWhatsAppUrl
 } from '../../services/whatsappService';
 import {
   Package,
@@ -661,6 +662,19 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               </button>
             </div>
           )}
+
+          {/* Botón Promocional: Únete a Encomi y envía 10 veces más rápido */}
+          <div className="pt-2">
+            <a
+              href={getJoinEncomiWhatsAppUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 px-4 rounded-2xl bg-linear-to-r from-cyan-500/20 via-blue-600/20 to-purple-600/20 hover:from-cyan-500/30 hover:to-purple-600/30 border-2 border-cyan-400/50 hover:border-cyan-300 text-cyan-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all active:scale-[0.98] cursor-pointer group"
+            >
+              <span className="text-base group-hover:scale-110 transition-transform">🚀</span>
+              <span>¡Únete a Encomi y envía 10 veces más rápido!</span>
+            </a>
+          </div>
 
         </div>
       ) : isEmpresaUnlock ? (

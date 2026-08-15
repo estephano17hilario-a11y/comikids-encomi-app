@@ -351,14 +351,24 @@ Presiona el botón de abajo para consultar el **tiempo estimado de llegada** a t
             </button>
           </div>
         ) : (
-          /* ÚNICA Pregunta para Clientes */
-          <div className="p-3 bg-slate-950/90 border-t border-white/10 shrink-0">
+          /* Preguntas Rápidas para Clientes */
+          <div className="p-2.5 sm:p-3 bg-slate-950/90 border-t border-white/10 shrink-0 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
+              type="button"
               onClick={handleTriggerTransitQuestion}
-              className="w-full py-2.5 px-4 rounded-2xl bg-linear-to-r from-purple-600/30 via-indigo-600/30 to-cyan-600/30 hover:from-purple-600/40 hover:to-cyan-600/40 border border-purple-500/40 text-purple-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer shadow-lg shadow-purple-950/20"
+              className="w-full py-2 px-3 rounded-2xl bg-linear-to-r from-purple-600/30 via-indigo-600/30 to-cyan-600/30 hover:from-purple-600/40 hover:to-cyan-600/40 border border-purple-500/40 text-purple-200 hover:text-white text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer shadow-lg shadow-purple-950/20 truncate"
             >
-              <Clock className="w-4 h-4 text-cyan-300 animate-pulse" />
-              <span>¿Cuánto tiempo demorará mi paquete en llegarme?</span>
+              <Clock className="w-3.5 h-3.5 text-cyan-300 animate-pulse shrink-0" />
+              <span className="truncate">¿Cuándo llegará mi pedido?</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSendMessage('¿Qué es Encomi y cómo asociarse con ellos para enviar 10 veces más rápido?')}
+              className="w-full py-2 px-3 rounded-2xl bg-linear-to-r from-cyan-600/30 via-blue-600/30 to-purple-600/30 hover:from-cyan-600/40 hover:to-purple-600/40 border border-cyan-500/40 text-cyan-200 hover:text-white text-[11px] sm:text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer shadow-lg shadow-cyan-950/20 truncate"
+            >
+              <span className="shrink-0">🚀</span>
+              <span className="truncate">¿Qué es Encomi y asociarse?</span>
             </button>
           </div>
         )}

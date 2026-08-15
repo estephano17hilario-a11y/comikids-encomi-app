@@ -166,7 +166,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
         <button
           type="button"
           onClick={onBackToList}
-          className="px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 border border-white/10 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+          className="px-4 py-2.5 rounded-xl bg-white/6 hover:bg-white/12 text-slate-200 border border-white/10 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer active:scale-95"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span>Ver en Lista</span>
@@ -185,7 +185,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
           <button
             type="button"
             onClick={handlePrevMonth}
-            className="p-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.12] text-slate-200 border border-white/10 transition-all active:scale-95 cursor-pointer flex items-center gap-1 text-xs font-bold"
+            className="p-3 rounded-2xl bg-white/5 hover:bg-white/12 text-slate-200 border border-white/10 transition-all active:scale-95 cursor-pointer flex items-center gap-1 text-xs font-bold"
             title="Mes Anterior"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -210,7 +210,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
           <button
             type="button"
             onClick={handleNextMonth}
-            className="p-3 rounded-2xl bg-white/[0.05] hover:bg-white/[0.12] text-slate-200 border border-white/10 transition-all active:scale-95 cursor-pointer flex items-center gap-1 text-xs font-bold"
+            className="p-3 rounded-2xl bg-white/5 hover:bg-white/12 text-slate-200 border border-white/10 transition-all active:scale-95 cursor-pointer flex items-center gap-1 text-xs font-bold"
             title="Mes Siguiente"
           >
             <span className="hidden sm:inline">Siguiente</span>
@@ -239,7 +239,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
               return (
                 <div
                   key={`empty-${idx}`}
-                  className="min-h-[52px] sm:min-h-[64px] rounded-2xl bg-white/[0.01] border border-transparent"
+                  className="min-h-13 sm:min-h-16 rounded-2xl bg-white/1 border border-transparent"
                 />
               );
             }
@@ -256,12 +256,12 @@ export const OrdersCalendarView: React.FC<Props> = ({
                 key={cell.dateStr}
                 type="button"
                 onClick={() => setSelectedDateStr(cell.dateStr)}
-                className={`min-h-[52px] sm:min-h-[64px] p-1.5 sm:p-2 rounded-2xl border transition-all flex flex-col items-center justify-between text-left cursor-pointer relative ${
+                className={`min-h-13 sm:min-h-16 p-1.5 sm:p-2 rounded-2xl border transition-all flex flex-col items-center justify-between text-left cursor-pointer relative ${
                   isSelected
                     ? 'bg-cyan-500/25 border-cyan-400 ring-2 ring-cyan-400/30 shadow-lg shadow-cyan-500/20'
                     : hasOrders
                     ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 shadow-md'
-                    : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-slate-400'
+                    : 'bg-white/3 hover:bg-white/6 border-white/5 text-slate-400'
                 }`}
               >
                 <div className="w-full flex items-center justify-between">
@@ -341,12 +341,12 @@ export const OrdersCalendarView: React.FC<Props> = ({
 
                 return (
                   <div key={pedido.id} className="minimal-card p-5 sm:p-6 space-y-5 border-cyan-500/30">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 pb-3.5">
                       <div className="flex items-center gap-2.5">
                         <span className="font-mono text-base font-black text-cyan-400">
                           #{pedido.codigo_seguimiento}
                         </span>
-                        <span className="px-3 py-1 rounded-xl text-xs font-bold bg-white/[0.06] text-slate-200 border border-white/10">
+                        <span className="px-3 py-1 rounded-xl text-xs font-bold bg-white/6 text-slate-200 border border-white/10">
                           {pedido.metodo_envio_nombre}
                         </span>
                       </div>
@@ -377,7 +377,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-white/[0.08]">
+                    <div className="pt-2 border-t border-white/8">
                       <div className="grid grid-cols-4 gap-2">
                         {steps.map((step) => {
                           const isPast = currentStep > step.num;
@@ -392,7 +392,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
                                     ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
                                     : isCurrent
                                     ? 'bg-cyan-500 text-white animate-pulse shadow-xl shadow-cyan-500/40 ring-2 ring-cyan-400/20'
-                                    : 'bg-white/[0.04] text-slate-600 border border-white/10'
+                                    : 'bg-white/4 text-slate-600 border border-white/10'
                                 }`}
                               >
                                 <StepIcon className="w-4 h-4" />

@@ -474,14 +474,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           <div className="space-y-1.5">
             <h3 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">¡Envío Registrado con Éxito! 🎉</h3>
             <p className="text-xs sm:text-sm text-slate-400">Tu orden ha sido generada en el sistema:</p>
-            <div className="inline-block font-mono text-lg font-bold px-5 py-2 rounded-2xl bg-white/[0.06] text-cyan-300 border border-white/10 shadow-inner mt-1">
+            <div className="inline-block font-mono text-lg font-bold px-5 py-2 rounded-2xl bg-white/6 text-cyan-300 border border-white/10 shadow-inner mt-1">
               #{createdOrder.codigo_seguimiento}
             </div>
           </div>
 
           {/* Recuadro Cupertino de Resumen Completo */}
-          <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.04] border border-white/10 text-left space-y-3.5 shadow-xl">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-2.5">
+          <div className="p-5 sm:p-6 rounded-3xl bg-white/4 border border-white/10 text-left space-y-3.5 shadow-xl">
+            <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 <FileCheck2 className="w-4 h-4 text-cyan-400" />
                 Resumen de Envío
@@ -505,7 +505,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
+                <div className="pt-2 border-t border-white/6 text-xs space-y-1">
                   <span className="text-slate-400 font-medium block">📍 Dirección Exacta de Destino:</span>
                   <p className="text-white font-bold text-sm">
                     {distritoQuery} • {direccionExacta}
@@ -515,14 +515,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 {referencia.trim() && (
                   <div className="pt-1.5 text-xs space-y-0.5">
                     <span className="text-cyan-400 font-bold block text-[11px]">🏷️ Referencia:</span>
-                    <p className="text-white font-medium text-xs bg-white/[0.04] p-2 rounded-xl border border-white/10">
+                    <p className="text-white font-medium text-xs bg-white/4 p-2 rounded-xl border border-white/10">
                       {referencia}
                     </p>
                   </div>
                 )}
 
                 {(createdOrder?.latitud || lat) && (createdOrder?.longitud || lng) && (
-                  <div className="pt-2.5 border-t border-white/[0.06] space-y-1.5">
+                  <div className="pt-2.5 border-t border-white/6 space-y-1.5">
                     <span className="text-[11px] font-bold text-slate-400 block">
                       🗺️ Coordenadas exactas fijadas en el mapa:
                     </span>
@@ -563,7 +563,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
 
                 {selectedAgencyObject && (
-                  <div className="pt-2 border-t border-white/[0.06] text-xs space-y-1">
+                  <div className="pt-2 border-t border-white/6 text-xs space-y-1">
                     <span className="text-slate-400 font-medium block">📦 Agencia Shalom de Destino:</span>
                     <p className="text-white font-bold leading-snug">
                       {formatFullAgencyName(selectedAgencyObject)}
@@ -662,9 +662,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         <div className="minimal-card p-5 sm:p-7 space-y-5">
           
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/[0.08] pb-3.5">
+          <div className="flex items-center justify-between border-b border-white/8 pb-3.5">
             <div>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 bg-white/[0.06] px-3 py-1 rounded-full border border-white/10">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 bg-white/6 px-3 py-1 rounded-full border border-white/10">
                 Paso {organicStep} de 3
               </span>
               <h2 className="text-lg sm:text-xl font-bold text-white mt-1.5 tracking-tight">
@@ -708,7 +708,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   }
                   setOrganicStep((prev) => (prev - 1) as 1 | 2);
                 }}
-                className="p-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
                 title="Volver"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -726,8 +726,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   Ingresa tu número de WhatsApp para enviarte las fotos del paquete 📦 y el código de seguimiento:
                 </p>
                 
-                <div className="flex items-center rounded-2xl bg-white/[0.05] border-2 border-white/15 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/25 transition-all p-2 shadow-inner">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-white/[0.08] rounded-xl text-white font-bold text-base sm:text-lg border border-white/10 shrink-0 select-none">
+                <div className="flex items-center rounded-2xl bg-white/5 border-2 border-white/15 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/25 transition-all p-2 shadow-inner">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-white/8 rounded-xl text-white font-bold text-base sm:text-lg border border-white/10 shrink-0 select-none">
                     <span className="text-xl">🇵🇪</span>
                     <span className="font-mono text-cyan-300 font-bold">+51</span>
                   </div>
@@ -775,15 +775,15 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       key={method.id}
                       type="button"
                       onClick={() => handleMethodSelect(method.id)}
-                      className="p-4 sm:p-5 rounded-3xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-lg"
+                      className="p-4 sm:p-5 rounded-3xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-lg"
                     >
                       <div className="flex items-center gap-3.5">
                         {isShalom ? (
-                          <div className="w-12 h-12 rounded-2xl bg-white/[0.08] border border-white/15 flex items-center justify-center p-2 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-inner">
+                          <div className="w-12 h-12 rounded-2xl bg-white/8 border border-white/15 flex items-center justify-center p-2 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-inner">
                             <img src="/Shalom-Courier-Logo.webp" alt="Shalom Courier" className="w-full h-full object-contain" />
                           </div>
                         ) : (
-                          <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
+                          <div className="w-12 h-12 rounded-2xl bg-white/6 border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
                             <Truck className="w-6 h-6" />
                           </div>
                         )}
@@ -821,7 +821,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       type="button"
                       onClick={handleQuickNearest5}
                       disabled={isLocating}
-                      className="p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
+                      className="p-3 rounded-2xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
                     >
                       <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
                         <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
@@ -835,7 +835,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     <button
                       type="button"
                       onClick={() => setShowMapModal(true)}
-                      className="p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
+                      className="p-3 rounded-2xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
                     >
                       <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
                         <MapPin className="w-4 h-4" />
@@ -873,7 +873,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
                     {/* Tarjeta Principal de la Agencia Seleccionada */}
                     {selectedAgencyObject && !isAgencyListOpen && (
-                      <div className="p-4 rounded-2xl bg-white/[0.05] border border-white/10 backdrop-blur-2xl shadow-lg space-y-2.5">
+                      <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-2xl shadow-lg space-y-2.5">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
@@ -896,7 +896,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           )}
                         </div>
 
-                        <div className="pt-2 border-t border-white/[0.06] space-y-1 text-xs text-slate-300">
+                        <div className="pt-2 border-t border-white/6 space-y-1 text-xs text-slate-300">
                           <p className="leading-snug text-[11px]">
                             <strong className="text-white">📍 Dirección:</strong> {cleanAddressText(selectedAgencyObject.direccion, selectedAgencyObject.provincia, selectedAgencyObject.departamento)}
                           </p>
@@ -911,7 +911,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         <button
                           type="button"
                           onClick={() => setIsAgencyListOpen(true)}
-                          className="w-full py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-xs font-bold text-cyan-300 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                          className="w-full py-2 rounded-xl bg-white/6 hover:bg-white/12 text-xs font-bold text-cyan-300 transition-colors flex items-center justify-center gap-1 cursor-pointer"
                         >
                           <span>Buscar / Cambiar de Sede</span>
                           <ChevronDown className="w-3.5 h-3.5" />
@@ -933,7 +933,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               if (showOnlyNearest5) setShowOnlyNearest5(false);
                             }}
                             placeholder="Buscar por distrito o provincia (ej. Gamarra, San Isidro, Trujillo)..."
-                            className="w-full pl-10 pr-9 py-3 bg-white/[0.05] border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all font-medium"
+                            className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all font-medium"
                           />
                           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
                           {agencySearchQuery && (
@@ -947,7 +947,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           )}
                         </div>
 
-                        <div className="max-h-[360px] overflow-y-auto space-y-2 p-2 rounded-2xl bg-slate-950/90 border border-white/10 shadow-2xl">
+                        <div className="max-h-90 overflow-y-auto space-y-2 p-2 rounded-2xl bg-slate-950/90 border border-white/10 shadow-2xl">
                           {shalomAgenciesList.length === 0 ? (
                             <p className="text-center text-xs text-slate-400 py-6">
                               No se encontraron agencias con &quot;{agencySearchQuery}&quot;
@@ -974,7 +974,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                   className={`w-full text-left p-3.5 rounded-xl transition-all flex flex-col gap-1.5 cursor-pointer ${
                                     isSelected
                                       ? 'bg-cyan-500/20 border border-cyan-500/50 text-white shadow-md'
-                                      : 'bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-300'
+                                      : 'bg-white/4 hover:bg-white/8 border border-white/8 text-slate-300'
                                   }`}
                                 >
                                   <div className="flex items-start justify-between gap-2">
@@ -1025,7 +1025,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       value={dniShalom}
                       onChange={e => setDniShalom(e.target.value)}
                       placeholder="Número de DNI o Carnet de Extranjería"
-                      className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
+                      className="w-full px-5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
                     />
                   </div>
 
@@ -1092,7 +1092,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </div>
 
                       {/* Casillas de Distrito y Dirección */}
-                      <div className="p-5 sm:p-6 rounded-3xl bg-white/[0.05] border-2 border-white/10 space-y-4 shadow-xl">
+                      <div className="p-5 sm:p-6 rounded-3xl bg-white/5 border-2 border-white/10 space-y-4 shadow-xl">
                         
                         <div className="space-y-2 relative">
                           <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
@@ -1109,7 +1109,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                 setShowDistritoSuggestions(true);
                               }}
                               placeholder="Escribe tu distrito (ej. Miraflores, San Isidro)..."
-                              className="w-full pl-12 pr-4 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
+                              className="w-full pl-12 pr-4 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
                             />
                             <Search className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
                           </div>
@@ -1124,7 +1124,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                     setDistritoQuery(distNombre);
                                     setShowDistritoSuggestions(false);
                                   }}
-                                  className="w-full text-left p-3.5 rounded-xl hover:bg-white/[0.08] text-xs sm:text-sm text-white flex items-center justify-between transition-colors cursor-pointer"
+                                  className="w-full text-left p-3.5 rounded-xl hover:bg-white/8 text-xs sm:text-sm text-white flex items-center justify-between transition-colors cursor-pointer"
                                 >
                                   <span className="font-bold">{distNombre}</span>
                                   <span className="text-xs text-cyan-400 font-mono">Lima</span>
@@ -1144,7 +1144,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             value={direccionExacta}
                             onChange={e => setDireccionExacta(e.target.value)}
                             placeholder="Ej. Av. Larco 1234, Dpto 402 / Pasaje Los Sauces 120"
-                            className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
+                            className="w-full px-5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 shadow-inner"
                           />
                           
                           {/* Mensajes condicionales con recuadro azul para sugerencia y verde para recordatorio */}
@@ -1170,7 +1170,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             value={referencia}
                             onChange={e => setReferencia(e.target.value)}
                             placeholder="Ej. Frente al parque, rejas negras, timbre blanco"
-                            className="w-full px-5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
+                            className="w-full px-5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-semibold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
                           />
                         </div>
                       </div>
@@ -1192,7 +1192,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     value={customDestinoText}
                     onChange={e => setCustomDestinoText(e.target.value)}
                     placeholder="Indica las instrucciones de entrega..."
-                    className="w-full p-4 bg-white/[0.05] border border-white/10 rounded-2xl text-base text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
+                    className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-base text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
                   />
                 </div>
               )}
@@ -1200,7 +1200,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               {/* NOMBRE COMPLETO CON EMOJI (Solo se muestra cuando no estamos en la selección del mapa de motorizado) */}
               {(selectedMethod?.tipo_formulario !== 'mapa_direccion' || motorizadoSubStep === 'form') && (
                 <>
-                  <div className="space-y-2 pt-2 border-t border-white/[0.08]">
+                  <div className="space-y-2 pt-2 border-t border-white/8">
                     <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
                       👤 Tu Nombre Completo (Destinatario) *
                     </label>
@@ -1211,7 +1211,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         value={nombreCompleto}
                         onChange={e => setNombreCompleto(e.target.value)}
                         placeholder="Ej. Carlos Mendoza Ramos"
-                        className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
+                        className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
                       />
                       <User className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
                     </div>

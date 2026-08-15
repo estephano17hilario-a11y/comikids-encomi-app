@@ -87,7 +87,7 @@ export const ClientDirectory: React.FC = () => {
                         className="w-12 h-12 rounded-2xl object-cover border border-cyan-500/30 bg-slate-900"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 border border-cyan-500/30 flex items-center justify-center text-white font-black text-base shadow-md shadow-cyan-500/20 shrink-0">
+                      <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-indigo-600 border border-cyan-500/30 flex items-center justify-center text-white font-black text-base shadow-md shadow-cyan-500/20 shrink-0">
                         {(client.nombre_completo || 'C').charAt(0).toUpperCase()}
                       </div>
                     )}
@@ -146,7 +146,7 @@ export const ClientDirectory: React.FC = () => {
                     className="w-10 h-10 rounded-xl object-cover bg-slate-900"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-md">
+                  <div className="w-10 h-10 rounded-xl bg-linear-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-md">
                     {(selectedClient.nombre_completo || 'C').charAt(0).toUpperCase()}
                   </div>
                 )}

@@ -307,13 +307,13 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
       )}
 
       {/* Contenedor del Mapa Leaflet Amplio en el Eje Y */}
-      <div className="relative w-full h-[500px] sm:h-[600px] rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-slate-950">
+      <div className="relative w-full h-125 sm:h-150 rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-slate-950">
         
         {/* Contenedor del Mapa */}
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
         {/* Barra Flotante Superior */}
-        <div className="absolute top-3 left-3 right-3 z-[400] flex items-center justify-between pointer-events-none gap-2">
+        <div className="absolute top-3 left-3 right-3 z-400 flex items-center justify-between pointer-events-none gap-2">
           
           {/* Botón interactivo de sedes encontradas: al presionarlo encuadra todas las sedes (igual que la brújula) */}
           <button

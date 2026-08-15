@@ -605,11 +605,11 @@ export const PlacesMapPicker: React.FC<Props> = ({
       )}
 
       {/* MAPA MOTORIZADO CON ALTURA OPTIMIZADA */}
-      <div className="relative w-full h-[470px] sm:h-[510px] min-h-[420px] rounded-3xl overflow-hidden border-2 border-white/20 bg-slate-950 shadow-2xl">
+      <div className="relative w-full h-117.5 sm:h-127.5 min-h-105 rounded-3xl overflow-hidden border-2 border-white/20 bg-slate-950 shadow-2xl">
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
         {/* Leyenda sutil: Puntito Azul = Tu ubicación física | Pin = Punto de entrega */}
-        <div className="absolute bottom-24 left-4 z-[400] pointer-events-none hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/15 text-[11px] text-slate-300 shadow-xl">
+        <div className="absolute bottom-24 left-4 z-400 pointer-events-none hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/15 text-[11px] text-slate-300 shadow-xl">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 border border-white shadow-[0_0_8px_rgba(6,182,212,1)] inline-block"></span>
             <span className="font-semibold text-white">Tu ubicación GPS</span>
@@ -622,7 +622,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
 
         {/* Banner Superior Flotante: Dirección en Tiempo Real Completa */}
-        <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 z-[400]">
+        <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 z-400">
           <div className="p-3 sm:p-4 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border-2 border-white/25 shadow-2xl flex items-center justify-between gap-2.5 text-xs text-white">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-cyan-500/25 text-cyan-400 flex items-center justify-center shrink-0 shadow-md">
@@ -635,7 +635,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
                   </span>
                   {isGeocoding && <Loader2 className="w-3 h-3 text-cyan-400 animate-spin" />}
                 </div>
-                <p className="font-black text-white text-xs sm:text-sm leading-snug line-clamp-2 break-words mt-0.5">
+                <p className="font-black text-white text-xs sm:text-sm leading-snug line-clamp-2 wrap-break-word mt-0.5">
                   {detectedAddress || statusMessage || 'Mueve o toca el mapa en la puerta de entrega...'}
                 </p>
               </div>
@@ -655,7 +655,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
 
         {/* Controles Flotantes de Zoom & GPS reubicados debajo del banner */}
-        <div className="absolute right-3.5 top-28 sm:top-28 z-[400] flex flex-col gap-2">
+        <div className="absolute right-3.5 top-28 sm:top-28 z-400 flex flex-col gap-2">
           <button
             type="button"
             onClick={() => {
@@ -695,14 +695,14 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
 
         {/* Panel Inferior Flotante: Botón Confirmar Ubicación */}
-        <div className="absolute bottom-4 left-4 right-4 z-[400]">
+        <div className="absolute bottom-4 left-4 right-4 z-400">
           <button
             type="button"
             onClick={handleConfirm}
             className={`w-full py-4.5 sm:py-5 px-6 rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-3 shadow-2xl transition-all cursor-pointer active:scale-[0.98] ${
               hasConfirmed
                 ? 'bg-emerald-500 text-white shadow-emerald-500/50 border-2 border-emerald-400'
-                : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white shadow-cyan-500/50 hover:brightness-110 border-2 border-cyan-400'
+                : 'bg-linear-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white shadow-cyan-500/50 hover:brightness-110 border-2 border-cyan-400'
             }`}
           >
             {hasConfirmed ? (

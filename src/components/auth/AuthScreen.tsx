@@ -119,12 +119,12 @@ export const AuthScreen: React.FC = () => {
         
         {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="relative inline-flex items-center justify-center w-14 h-14 rounded-3xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-pink-500 p-[2px] shadow-xl shadow-cyan-500/30 mb-2.5">
+          <div className="relative inline-flex items-center justify-center w-14 h-14 rounded-3xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 p-0.5 shadow-xl shadow-cyan-500/30 mb-2.5">
             <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center text-2xl">
               📦
             </div>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-pink-300 bg-clip-text text-transparent">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight bg-linear-to-r from-cyan-400 via-sky-300 to-pink-300 bg-clip-text text-transparent">
             Encomi
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -162,7 +162,7 @@ export const AuthScreen: React.FC = () => {
 
               <div className="w-full h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden p-0.5">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-pink-500 transition-all duration-500 shadow-md"
+                  className="h-full rounded-full bg-linear-to-r from-cyan-500 to-pink-500 transition-all duration-500 shadow-md"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
@@ -280,7 +280,7 @@ export const AuthScreen: React.FC = () => {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-pink-500 hover:opacity-95 active:scale-95 text-white font-black text-xs sm:text-sm shadow-xl shadow-cyan-500/25 transition-all flex items-center justify-center gap-2"
+                  className="flex-1 py-3.5 px-5 rounded-2xl bg-linear-to-r from-cyan-500 via-blue-600 to-pink-500 hover:opacity-95 active:scale-95 text-white font-black text-xs sm:text-sm shadow-xl shadow-cyan-500/25 transition-all flex items-center justify-center gap-2"
                 >
                   {submitting ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -363,7 +363,7 @@ export const AuthScreen: React.FC = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-95 active:scale-95 text-white font-extrabold text-sm shadow-xl shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 mt-2"
+              className="w-full py-3.5 px-4 rounded-2xl bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-95 active:scale-95 text-white font-extrabold text-sm shadow-xl shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 mt-2"
             >
               {submitting ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

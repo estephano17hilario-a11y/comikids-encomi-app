@@ -47,7 +47,7 @@ export const GamificationCard: React.FC = () => {
 
           <button
             onClick={triggerConfetti}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/10 text-amber-300 text-sm font-black transition-all active:scale-95 shadow-sm cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-white/9 border border-white/10 text-amber-300 text-sm font-black transition-all active:scale-95 shadow-sm cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
             <span className="font-mono">{xp} XP</span>
@@ -62,9 +62,9 @@ export const GamificationCard: React.FC = () => {
               {levelInfo.progressPercent}% ({levelInfo.xpToNext > 0 ? `Faltan ${levelInfo.xpToNext} XP` : '¡Rango Máximo!'})
             </span>
           </div>
-          <div className="w-full h-3 rounded-full bg-white/[0.05] overflow-hidden p-0.5 border border-white/10">
+          <div className="w-full h-3 rounded-full bg-white/5 overflow-hidden p-0.5 border border-white/10">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-pink-500 transition-all duration-700 shadow-md shadow-cyan-500/30"
+              className="h-full rounded-full bg-linear-to-r from-cyan-500 via-blue-500 to-pink-500 transition-all duration-700 shadow-md shadow-cyan-500/30"
               style={{ width: `${levelInfo.progressPercent}%` }}
             />
           </div>
@@ -96,15 +96,15 @@ export const GamificationCard: React.FC = () => {
               <div
                 key={ach.codigo}
                 className={`minimal-card p-5 transition-all flex flex-col sm:flex-row sm:items-center gap-4 ${
-                  isUnlocked ? 'border-cyan-500/30 shadow-lg bg-cyan-500/[0.03]' : 'opacity-65'
+                  isUnlocked ? 'border-cyan-500/30 shadow-lg bg-cyan-500/3' : 'opacity-65'
                 }`}
               >
                 <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div
                     className={`w-13 h-13 rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${
                       isUnlocked
-                        ? `bg-gradient-to-tr ${ach.badgeColor} text-white shadow-cyan-500/25`
-                        : 'bg-white/[0.05] text-slate-500 border border-white/10'
+                        ? `bg-linear-to-tr ${ach.badgeColor} text-white shadow-cyan-500/25`
+                        : 'bg-white/5 text-slate-500 border border-white/10'
                     }`}
                   >
                     {isUnlocked ? <IconComponent className="w-6 h-6" /> : <Lock className="w-5 h-5" />}

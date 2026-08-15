@@ -28,7 +28,7 @@ export const OrderWizard: React.FC<Props> = () => {
 
         {/* Hero Visual / Message */}
         <div className="space-y-2 max-w-md mx-auto">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white flex items-center justify-center mx-auto text-2xl shadow-xl shadow-cyan-500/30">
+          <div className="w-16 h-16 rounded-3xl bg-linear-to-tr from-cyan-500 to-blue-600 text-white flex items-center justify-center mx-auto text-2xl shadow-xl shadow-cyan-500/30">
             💬
           </div>
           <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">

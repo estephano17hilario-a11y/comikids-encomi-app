@@ -78,7 +78,7 @@ export const OrderLiveTracker: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex p-1 bg-white/[0.05] rounded-2xl border border-white/10">
+          <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10">
             <button
               onClick={() => setFilter('activos')}
               className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
@@ -115,7 +115,7 @@ export const OrderLiveTracker: React.FC = () => {
 
       {displayedOrders.length === 0 ? (
         <div className="minimal-card p-12 text-center space-y-3">
-          <div className="w-16 h-16 mx-auto rounded-3xl bg-white/[0.04] flex items-center justify-center text-slate-600 border border-white/[0.08]">
+          <div className="w-16 h-16 mx-auto rounded-3xl bg-white/4 flex items-center justify-center text-slate-600 border border-white/8">
             <Package className="w-8 h-8 text-slate-400" />
           </div>
           <h4 className="text-base font-bold text-white">Sin envíos en esta sección</h4>
@@ -135,9 +135,9 @@ export const OrderLiveTracker: React.FC = () => {
               return (
                 <div
                   key={pedido.id}
-                  className="minimal-card p-4 sm:p-5 space-y-3 animate-fadeIn border-emerald-500/20 bg-emerald-500/[0.02]"
+                  className="minimal-card p-4 sm:p-5 space-y-3 animate-fadeIn border-emerald-500/20 bg-emerald-500/2"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] pb-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/6 pb-2.5">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-sm sm:text-base font-black text-cyan-400">
                         #{pedido.codigo_seguimiento}
@@ -145,7 +145,7 @@ export const OrderLiveTracker: React.FC = () => {
                       <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                         ✓ Entregado
                       </span>
-                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white/[0.05] text-slate-300">
+                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white/5 text-slate-300">
                         {pedido.metodo_envio_nombre}
                       </span>
                     </div>
@@ -193,12 +193,12 @@ export const OrderLiveTracker: React.FC = () => {
                 className="minimal-card p-6 sm:p-7 space-y-6 animate-fadeIn"
               >
                 {/* Top Info */}
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 pb-4">
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-base sm:text-lg font-black text-cyan-400">
                       #{pedido.codigo_seguimiento}
                     </span>
-                    <span className="px-3 py-1 rounded-xl text-xs font-bold bg-white/[0.06] text-slate-200 border border-white/10">
+                    <span className="px-3 py-1 rounded-xl text-xs font-bold bg-white/6 text-slate-200 border border-white/10">
                       {pedido.metodo_envio_nombre}
                     </span>
                   </div>
@@ -232,7 +232,7 @@ export const OrderLiveTracker: React.FC = () => {
                 </div>
 
                 {/* 4-Step Visual Timeline */}
-                <div className="pt-3 border-t border-white/[0.08]">
+                <div className="pt-3 border-t border-white/8">
                   <div className="grid grid-cols-4 gap-2">
                     {steps.map((step) => {
                       const isPast = currentStep > step.num;
@@ -247,7 +247,7 @@ export const OrderLiveTracker: React.FC = () => {
                                 ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
                                 : isCurrent
                                 ? 'bg-cyan-500 text-white animate-pulse shadow-xl shadow-cyan-500/40 ring-4 ring-cyan-400/20'
-                                : 'bg-white/[0.04] text-slate-600 border border-white/10'
+                                : 'bg-white/4 text-slate-600 border border-white/10'
                             }`}
                           >
                             <StepIcon className="w-5 h-5" />

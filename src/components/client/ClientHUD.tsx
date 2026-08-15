@@ -20,7 +20,7 @@ export const ClientHUD: React.FC = () => {
 
   return (
     <>
-      <header className="w-full bg-slate-950/80 border-b border-white/[0.08] px-3.5 py-3.5 sm:px-8 sticky top-0 z-40 backdrop-blur-2xl">
+      <header className="w-full bg-slate-950/80 border-b border-white/8 px-3.5 py-3.5 sm:px-8 sticky top-0 z-40 backdrop-blur-2xl">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
           
           {/* Avatar + Name (Clickeable para editar perfil y predeterminados) */}
@@ -38,7 +38,7 @@ export const ClientHUD: React.FC = () => {
                   className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl object-cover border border-cyan-400/40 group-hover:border-cyan-400 shadow-xl transition-colors bg-slate-900"
                 />
               ) : (
-                <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 border border-cyan-400/40 flex items-center justify-center text-white font-black text-base sm:text-lg shadow-xl shadow-cyan-500/20 group-hover:border-cyan-400 transition-all">
+                <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-indigo-600 border border-cyan-400/40 flex items-center justify-center text-white font-black text-base sm:text-lg shadow-xl shadow-cyan-500/20 group-hover:border-cyan-400 transition-all">
                   {(currentUser.nombre_completo || 'C').charAt(0).toUpperCase()}
                 </div>
               )}
@@ -81,7 +81,7 @@ export const ClientHUD: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowAdditionalDataModal(true)}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-cyan-300 text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-300 text-xs font-bold transition-all active:scale-95 cursor-pointer"
                 title="Editar mis datos adicionales"
               >
                 <span className="text-xs">📋</span>
@@ -93,7 +93,7 @@ export const ClientHUD: React.FC = () => {
             <button
               type="button"
               onClick={triggerConfetti}
-              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/10 text-amber-300 text-xs sm:text-sm font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/9 border border-white/10 text-amber-300 text-xs sm:text-sm font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
               title="Celebrar mis puntos XP"
             >
               <Sparkles className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
@@ -104,7 +104,7 @@ export const ClientHUD: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowLogoutModal(true)}
-              className="p-2.5 rounded-2xl bg-white/[0.05] hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors cursor-pointer"
+              className="p-2.5 rounded-2xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors cursor-pointer"
               title="Cerrar Sesión"
             >
               <LogOut className="w-4 h-4" />

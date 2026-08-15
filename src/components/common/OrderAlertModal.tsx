@@ -20,7 +20,7 @@ export const OrderAlertModal: React.FC<Props> = ({ onViewOrder }) => {
         
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-500 text-white flex items-center justify-center shadow-lg shadow-pink-500/40">
+            <div className="w-9 h-9 rounded-2xl bg-linear-to-tr from-pink-500 to-rose-500 text-white flex items-center justify-center shadow-lg shadow-pink-500/40">
               <Bell className="w-5 h-5 animate-spin" style={{ animationDuration: '3s' }} />
             </div>
             <div>
@@ -59,7 +59,7 @@ export const OrderAlertModal: React.FC<Props> = ({ onViewOrder }) => {
               clearLatestOrderAlert();
               if (onViewOrder) onViewOrder();
             }}
-            className="flex-1 py-1.5 px-3 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1 cursor-pointer"
+            className="flex-1 py-1.5 px-3 rounded-xl bg-linear-to-r from-pink-500 to-rose-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1 cursor-pointer"
           >
             <span>Ver Pedido</span>
             <ArrowRight className="w-3 h-3" />

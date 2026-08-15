@@ -30,7 +30,7 @@ export const ClientPortal: React.FC = () => {
         <header className="glass-panel border-b border-cyan-500/20 px-4 py-3 sm:px-6 sticky top-0 z-40 backdrop-blur-xl shadow-lg">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-lg shadow-md shadow-cyan-500/20">
+              <div className="w-9 h-9 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-lg shadow-md shadow-cyan-500/20">
                 📦
               </div>
               <div>
@@ -40,7 +40,7 @@ export const ClientPortal: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="px-4 py-2 rounded-2xl text-sm sm:text-base font-black bg-gradient-to-r from-pink-500/30 via-purple-500/30 to-cyan-500/30 text-pink-200 border-2 border-pink-400/50 flex items-center gap-2 shadow-xl shadow-pink-500/25 tracking-wide">
+              <span className="px-4 py-2 rounded-2xl text-sm sm:text-base font-black bg-linear-to-r from-pink-500/30 via-purple-500/30 to-cyan-500/30 text-pink-200 border-2 border-pink-400/50 flex items-center gap-2 shadow-xl shadow-pink-500/25 tracking-wide">
                 <span className="text-base sm:text-lg">📦</span>
                 <span>ComiKids</span>
               </span>

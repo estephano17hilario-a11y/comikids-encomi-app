@@ -81,7 +81,7 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
                   className="w-12 h-12 rounded-2xl object-cover border-2 border-cyan-400 shadow-md bg-slate-950"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 border-2 border-cyan-400 flex items-center justify-center text-white font-black text-lg shadow-md shadow-cyan-500/25">
+                <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-indigo-600 border-2 border-cyan-400 flex items-center justify-center text-white font-black text-lg shadow-md shadow-cyan-500/25">
                   {(currentUser?.nombre_completo || 'C').charAt(0).toUpperCase()}
                 </div>
               )}
@@ -122,7 +122,7 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
           
           {/* Nombre Completo */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-cyan-400" />
               <span>Nombre Completo Predeterminado *</span>
             </label>
@@ -132,14 +132,14 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
               value={nombreCompleto}
               onChange={(e) => setNombreCompleto(e.target.value)}
               placeholder="Ej. María Elena Pérez Torres"
-              className="w-full px-4 py-3 bg-white/[0.06] border border-white/15 rounded-2xl text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+              className="w-full px-4 py-3 bg-white/6 border border-white/15 rounded-2xl text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
             />
           </div>
 
           {/* Celular / WhatsApp */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5 text-emerald-400" />
                 <span>WhatsApp Predeterminado *</span>
               </label>
@@ -149,13 +149,13 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
                 value={telefonoDefault}
                 onChange={(e) => setTelefonoDefault(e.target.value)}
                 placeholder="Ej. 987654321"
-                className="w-full px-4 py-3 bg-white/[0.06] border border-white/15 rounded-2xl text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                className="w-full px-4 py-3 bg-white/6 border border-white/15 rounded-2xl text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
               />
             </div>
 
             {/* DNI Predeterminado */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                 <CreditCard className="w-3.5 h-3.5 text-cyan-400" />
                 <span>DNI / CE Predeterminado *</span>
               </label>
@@ -165,7 +165,7 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
                 value={dniDefault}
                 onChange={(e) => setDniDefault(e.target.value)}
                 placeholder="Ej. 72345678"
-                className="w-full px-4 py-3 bg-white/[0.06] border border-white/15 rounded-2xl text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                className="w-full px-4 py-3 bg-white/6 border border-white/15 rounded-2xl text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
               />
             </div>
           </div>
@@ -185,7 +185,7 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
                 value={distritoDefault}
                 onChange={(e) => setDistritoDefault(e.target.value)}
                 placeholder="Ej. Miraflores / San Isidro / Los Olivos"
-                className="w-full px-4 py-2.5 bg-white/[0.06] border border-white/15 rounded-2xl text-sm font-medium text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                className="w-full px-4 py-2.5 bg-white/6 border border-white/15 rounded-2xl text-sm font-medium text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
               />
             </div>
 
@@ -198,7 +198,7 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
                 value={direccionDefault}
                 onChange={(e) => setDireccionDefault(e.target.value)}
                 placeholder="Ej. Av. Larco 1234, Dpto 402"
-                className="w-full px-4 py-2.5 bg-white/[0.06] border border-white/15 rounded-2xl text-sm font-medium text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                className="w-full px-4 py-2.5 bg-white/6 border border-white/15 rounded-2xl text-sm font-medium text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
               />
             </div>
 
@@ -211,7 +211,7 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
                 value={referenciaDefault}
                 onChange={(e) => setReferenciaDefault(e.target.value)}
                 placeholder="Ej. Timbre blanco, rejas negras"
-                className="w-full px-4 py-2.5 bg-white/[0.06] border border-white/15 rounded-2xl text-sm font-medium text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+                className="w-full px-4 py-2.5 bg-white/6 border border-white/15 rounded-2xl text-sm font-medium text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
               />
             </div>
           </div>
@@ -236,7 +236,7 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="flex-1 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 active:scale-95 text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50"
+                  className="flex-1 py-3.5 px-6 rounded-2xl bg-linear-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 active:scale-95 text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/25 transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
                   <span>{isSaving ? 'Guardando...' : 'Guardar Datos Predeterminados'}</span>

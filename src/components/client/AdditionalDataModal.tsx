@@ -90,7 +90,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
         {/* Barra de Progreso */}
         <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-amber-400 to-cyan-400 transition-all duration-300 rounded-full"
+            className="h-full bg-linear-to-r from-amber-400 to-cyan-400 transition-all duration-300 rounded-full"
             style={{ width: `${(step / 3) * 100}%` }}
           />
         </div>
@@ -115,7 +115,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
                 className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between transition-all text-left cursor-pointer ${
                   genero === 'femenino'
                     ? 'bg-pink-500/15 border-pink-500 text-white shadow-lg shadow-pink-500/20'
-                    : 'bg-white/[0.04] border-white/10 text-slate-300 hover:border-white/20'
+                    : 'bg-white/4 border-white/10 text-slate-300 hover:border-white/20'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -134,7 +134,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
                 className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between transition-all text-left cursor-pointer ${
                   genero === 'masculino'
                     ? 'bg-cyan-500/15 border-cyan-500 text-white shadow-lg shadow-cyan-500/20'
-                    : 'bg-white/[0.04] border-white/10 text-slate-300 hover:border-white/20'
+                    : 'bg-white/4 border-white/10 text-slate-300 hover:border-white/20'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -153,7 +153,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
                 className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between transition-all text-left cursor-pointer ${
                   genero === 'otro'
                     ? 'bg-purple-500/15 border-purple-500 text-white shadow-lg shadow-purple-500/20'
-                    : 'bg-white/[0.04] border-white/10 text-slate-300 hover:border-white/20'
+                    : 'bg-white/4 border-white/10 text-slate-300 hover:border-white/20'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -182,7 +182,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2">
+            <div className="p-4 rounded-2xl bg-white/4 border border-white/10 space-y-2">
               <input
                 type="number"
                 min="10"
@@ -190,7 +190,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
                 value={edad || ''}
                 onChange={(e) => setEdad(e.target.value ? Number(e.target.value) : 0)}
                 placeholder="Ej. 24"
-                className="w-full px-5 py-4 bg-white/[0.06] border-2 border-white/15 rounded-2xl text-center text-3xl font-mono font-black text-amber-400 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 shadow-inner"
+                className="w-full px-5 py-4 bg-white/6 border-2 border-white/15 rounded-2xl text-center text-3xl font-mono font-black text-amber-400 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 shadow-inner"
               />
             </div>
           </div>
@@ -216,7 +216,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
                 className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all text-left cursor-pointer ${
                   motivoCompra === 'uso_personal'
                     ? 'bg-cyan-500/15 border-cyan-500 text-white shadow-lg shadow-cyan-500/20'
-                    : 'bg-white/[0.04] border-white/10 text-slate-300 hover:border-white/20'
+                    : 'bg-white/4 border-white/10 text-slate-300 hover:border-white/20'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -237,7 +237,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
                 className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all text-left cursor-pointer ${
                   motivoCompra === 'emprender'
                     ? 'bg-amber-500/15 border-amber-500 text-white shadow-lg shadow-amber-500/20'
-                    : 'bg-white/[0.04] border-white/10 text-slate-300 hover:border-white/20'
+                    : 'bg-white/4 border-white/10 text-slate-300 hover:border-white/20'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -274,7 +274,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
             <button
               type="button"
               onClick={handleNext}
-              className="px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all active:scale-95 ml-auto cursor-pointer"
+              className="px-5 py-3 rounded-xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all active:scale-95 ml-auto cursor-pointer"
             >
               <span>Siguiente</span>
               <ArrowRight className="w-4 h-4" />
@@ -284,7 +284,7 @@ export const AdditionalDataModal: React.FC<Props> = ({ onClose }) => {
               type="button"
               disabled={isSaving}
               onClick={handleFinish}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all active:scale-95 ml-auto disabled:opacity-50 cursor-pointer"
+              className="px-6 py-3 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all active:scale-95 ml-auto disabled:opacity-50 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
               <span>{isSaving ? 'Guardando...' : 'Finalizar y Guardar'}</span>

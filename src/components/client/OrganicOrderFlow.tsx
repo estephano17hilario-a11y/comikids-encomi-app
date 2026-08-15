@@ -378,41 +378,44 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     }
   };
 
-  // Construir mensaje predefinido para WhatsApp
+  // Construir mensaje predefinido para WhatsApp con todos los datos y emojis
   const buildWhatsAppMessage = (order: Pedido) => {
-    // Plantilla especial para Motorizado (sin DNI ni WhatsApp repetido, con enlace directo completo a Google Maps)
+    // 1. Plantilla para Motorizado
     if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
       const orderLat = order.latitud || lat;
       const orderLng = order.longitud || lng;
       const googleMapsUrl = (orderLat && orderLng) ? `https://www.google.com/maps?q=${orderLat},${orderLng}` : '';
 
       return (
-        `¡Hola Comikids! 👋 Acabo de registrar mi despacho por Motorizado:\n\n` +
-        `📦 *Código:* #${order.codigo_seguimiento}\n` +
+        `¡Hola Comikids! 👋✨\n` +
+        `Acabo de registrar mi despacho por Motorizado en la web:\n\n` +
+        `📦 *Código de Envío:* #${order.codigo_seguimiento}\n` +
         `👤 *Destinatario:* ${nombreCompleto.trim()}\n` +
-        `🚚 *Tipo de Envío:* ${selectedMethod?.nombre || 'Motorizado Local Lima'}\n` +
+        `📱 *WhatsApp:* +51 ${whatsapp.trim()}\n` +
+        `🛵 *Tipo de Envío:* ${selectedMethod?.nombre || 'Motorizado Local Lima'}\n` +
         `📍 *Dirección Exacta:* ${distritoQuery.trim()} • ${direccionExacta.trim()}\n` +
         (referencia.trim() ? `🏷️ *Referencia:* ${referencia.trim()}\n` : '') +
         (googleMapsUrl ? `\n🗺️ *Ubicación en Google Maps:*\n${googleMapsUrl}\n` : '') +
-        `\nAdjunto aquí mi comprobante de pago para proceder con el despacho. ¡Muchas gracias!`
+        `\nAdjunto aquí mi comprobante de pago 🧾 para proceder con el despacho. ¡Muchas gracias!`
       );
     }
 
-    // Plantilla para Shalom / Otros métodos
+    // 2. Plantilla para Agencia Shalom
     let destinoTexto = order.destino_detalle;
     if (selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject) {
       destinoTexto = formatFullAgencyName(selectedAgencyObject);
     }
 
     return (
-      `¡Hola Comikids! 👋 Acabo de registrar mi envío de mercadería en la web:\n\n` +
-      `📦 *Código:* #${order.codigo_seguimiento}\n` +
+      `¡Hola Comikids! 👋✨\n` +
+      `Acabo de registrar mi envío de mercadería en la web:\n\n` +
+      `📦 *Código de Envío:* #${order.codigo_seguimiento}\n` +
       `👤 *Destinatario:* ${nombreCompleto.trim()}\n` +
       `📱 *WhatsApp:* +51 ${whatsapp.trim()}\n` +
-      `🪪 *DNI / CE:* ${dniShalom.trim() || 'No especificado'}\n` +
-      `🚚 *Método:* ${selectedMethod?.nombre || 'Agencia Shalom'}\n` +
-      `📍 *Destino:* ${destinoTexto}\n\n` +
-      `Adjunto aquí mi comprobante de pago para proceder con el rotulado y despacho. ¡Muchas gracias!`
+      `🪪 *DNI o CE:* ${dniShalom.trim() || 'No especificado'}\n` +
+      `🚚 *Tipo de Envío:* ${selectedMethod?.nombre || 'Agencia Shalom Nacional'}\n` +
+      `📦 *Agencia Shalom de Destino:*\n${destinoTexto}\n\n` +
+      `Adjunto aquí mi comprobante de pago 🧾 para proceder con el rotulado y despacho. ¡Muchas gracias!`
     );
   };
 
@@ -591,8 +594,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             </p>
           </div>
 
-          {/* Botón Principal de WhatsApp + Registrar Otro */}
-          <div className="space-y-3 pt-2">
+          {/* Botón Principal de WhatsApp */}
+          <div className="pt-2">
             <a
               href={whatsappUrl}
               target="_blank"
@@ -602,19 +605,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               <MessageCircle className="w-6 h-6 fill-current" />
               <span>Enviar Comprobante por WhatsApp</span>
             </a>
-
-            <button
-              type="button"
-              onClick={() => {
-                setCreatedOrder(null);
-                setOrganicStep(1);
-                if (onSuccess) onSuccess();
-              }}
-              className="text-xs text-slate-400 hover:text-white flex items-center justify-center gap-1.5 mx-auto py-2 cursor-pointer transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Registrar otro paquete de despacho</span>
-            </button>
           </div>
 
         </div>

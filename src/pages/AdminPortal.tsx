@@ -32,7 +32,7 @@ export const AdminPortal: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
       
       {/* Top Vision Header */}
-      <header className="w-full bg-slate-950/80 border-b border-white/[0.08] px-4 py-3 sm:px-8 sticky top-0 z-30 backdrop-blur-2xl">
+      <header className="w-full bg-slate-950/80 border-b border-white/[0.08] px-4 py-3 sm:px-8 sticky top-0 z-30 backdrop-blur-2xl print:hidden" data-no-print="true">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           
           {/* Brand */}
@@ -91,7 +91,7 @@ export const AdminPortal: React.FC = () => {
       </main>
 
       {/* --- FLOATING APPLE VISION BOTTOM DOCK (ITEM 4: DASHBOARD EN LA FRANJA DE ABAJO) --- */}
-      <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-xl animate-slideUp">
+      <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-xl animate-slideUp print:hidden" data-no-print="true">
         <div className="p-2 rounded-3xl bg-slate-900/90 border-2 border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-around gap-1.5 sm:gap-2">
           
           {/* 1. Pedidos To-Do */}

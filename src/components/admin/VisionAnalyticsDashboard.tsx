@@ -26,21 +26,24 @@ export type TimeFrame = 'dia' | 'semana' | 'mes' | 'trimestre' | 'ano';
 export const VisionAnalyticsDashboard: React.FC = () => {
   const { pedidos } = useOrders();
   
-  // Timeframe and custom sub-modifier state
+  // Default to today's real date
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // Timeframe and sub-modifiers
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('mes');
-  const [selectedDay, setSelectedDay] = useState<string>('2026-08-15');
-  const [selectedWeek, setSelectedWeek] = useState<string>('sem-33');
+  const [selectedDay, setSelectedDay] = useState<string>(todayStr);
+  const [selectedWeek, setSelectedWeek] = useState<string>('sem-actual');
   const [selectedMonth, setSelectedMonth] = useState<string>('08');
   const [selectedQuarter, setSelectedQuarter] = useState<string>('T3');
   const [selectedYear, setSelectedYear] = useState<string>('2026');
 
-  // Animation trigger on change
+  // Animation trigger on modifier change
   const [animKey, setAnimKey] = useState(0);
   const handleModifierChange = () => {
     setAnimKey(prev => prev + 1);
   };
 
-  // Extract unique clients
+  // --- 1. UNIQUE CLIENTS FROM REAL ORDERS & USERS ---
   const uniqueClients = useMemo(() => {
     const map = new Map<string, any>();
     pedidos.forEach(p => {
@@ -51,7 +54,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
     return Array.from(map.values());
   }, [pedidos]);
 
-  // --- 1. AGE DEMOGRAPHICS ---
+  // --- 2. REAL AGE DEMOGRAPHICS ---
   const ageStats = useMemo(() => {
     const brackets = {
       '18 - 24': 0,
@@ -62,7 +65,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
     };
 
     uniqueClients.forEach(c => {
-      const age = c.edad || 24;
+      const age = Number(c.edad) || 24;
       if (age >= 18 && age <= 24) brackets['18 - 24']++;
       else if (age >= 25 && age <= 34) brackets['25 - 34']++;
       else if (age >= 35 && age <= 44) brackets['35 - 44']++;
@@ -74,11 +77,11 @@ export const VisionAnalyticsDashboard: React.FC = () => {
     return Object.entries(brackets).map(([range, count]) => ({
       range,
       count,
-      percent: Math.round((count / total) * 100),
+      percent: uniqueClients.length > 0 ? Math.round((count / total) * 100) : 0,
     }));
   }, [uniqueClients, animKey]);
 
-  // --- 2. MOTIVOS DE COMPRA ---
+  // --- 3. REAL MOTIVOS DE COMPRA ---
   const motiveStats = useMemo(() => {
     let paraVenta = 0;
     let usoPersonal = 0;
@@ -92,85 +95,207 @@ export const VisionAnalyticsDashboard: React.FC = () => {
 
     const total = uniqueClients.length || 1;
     return [
-      { id: 'emprender', label: 'Para Venta / Emprendimiento 💼', count: paraVenta, percent: Math.round((paraVenta / total) * 100) || 60, color: '#06b6d4', ringColor: 'stroke-cyan-400' },
-      { id: 'uso_personal', label: 'Uso Personal / Familia 💖', count: usoPersonal, percent: Math.round((usoPersonal / total) * 100) || 30, color: '#ec4899', ringColor: 'stroke-pink-400' },
-      { id: 'empresa', label: 'Empresa / Institucional 🏢', count: empresa, percent: Math.round((empresa / total) * 100) || 10, color: '#f59e0b', ringColor: 'stroke-amber-400' },
+      {
+        id: 'emprender',
+        label: 'Para Venta / Emprendimiento 💼',
+        count: paraVenta,
+        percent: uniqueClients.length > 0 ? Math.round((paraVenta / total) * 100) : 0,
+        color: '#06b6d4'
+      },
+      {
+        id: 'uso_personal',
+        label: 'Uso Personal / Familia 💖',
+        count: usoPersonal,
+        percent: uniqueClients.length > 0 ? Math.round((usoPersonal / total) * 100) : 0,
+        color: '#ec4899'
+      },
+      {
+        id: 'empresa',
+        label: 'Empresa / Institucional 🏢',
+        count: empresa,
+        percent: uniqueClients.length > 0 ? Math.round((empresa / total) * 100) : 0,
+        color: '#f59e0b'
+      },
     ];
   }, [uniqueClients, animKey]);
 
-  // --- 3. DYNAMIC TIME-BASED CHART DATA ---
+  // --- 4. REAL DYNAMIC TIME-BASED CHART DATA ---
   const chartData = useMemo(() => {
+    // 4.1. DÍA: Real grouping by hours of the selected day
     if (timeFrame === 'dia') {
-      const seed = selectedDay.charCodeAt(selectedDay.length - 1) % 5;
-      return [
-        { label: '08:00 AM', orders: 3 + seed, percent: 35 },
-        { label: '10:00 AM', orders: 7 + seed, percent: 70 },
-        { label: '12:00 PM', orders: 10 + seed, percent: 95 },
-        { label: '02:00 PM', orders: 6 + seed, percent: 60 },
-        { label: '04:00 PM', orders: 8 + seed, percent: 80 },
-        { label: '06:00 PM', orders: 5 + seed, percent: 50 },
-        { label: '08:00 PM', orders: 4 + seed, percent: 40 },
+      const dayOrders = pedidos.filter(p => {
+        try {
+          const d = new Date(p.created_at).toISOString().split('T')[0];
+          return d === selectedDay;
+        } catch {
+          return false;
+        }
+      });
+
+      const slots = [
+        { label: '08:00 AM', hourStart: 8, hourEnd: 10, orders: 0 },
+        { label: '10:00 AM', hourStart: 10, hourEnd: 12, orders: 0 },
+        { label: '12:00 PM', hourStart: 12, hourEnd: 14, orders: 0 },
+        { label: '02:00 PM', hourStart: 14, hourEnd: 16, orders: 0 },
+        { label: '04:00 PM', hourStart: 16, hourEnd: 18, orders: 0 },
+        { label: '06:00 PM', hourStart: 18, hourEnd: 20, orders: 0 },
+        { label: '08:00 PM', hourStart: 20, hourEnd: 24, orders: 0 },
       ];
+
+      dayOrders.forEach(p => {
+        try {
+          const h = new Date(p.created_at).getHours();
+          const target = slots.find(s => h >= s.hourStart && h < s.hourEnd);
+          if (target) target.orders++;
+          else if (h < 8) slots[0].orders++;
+        } catch {}
+      });
+
+      const maxVal = Math.max(...slots.map(s => s.orders), 1);
+      return slots.map(s => ({
+        label: s.label,
+        orders: s.orders,
+        percent: Math.round((s.orders / maxVal) * 100),
+      }));
     }
+
+    // 4.2. SEMANA: Real grouping by days of the week (Lun to Dom)
     if (timeFrame === 'semana') {
-      const weekMultiplier = selectedWeek === 'sem-33' ? 1.2 : 0.9;
-      return [
-        { label: 'Lun', orders: Math.round(14 * weekMultiplier), percent: 65 },
-        { label: 'Mar', orders: Math.round(18 * weekMultiplier), percent: 80 },
-        { label: 'Mié', orders: Math.round(22 * weekMultiplier), percent: 95 },
-        { label: 'Jue', orders: Math.round(16 * weekMultiplier), percent: 75 },
-        { label: 'Vie', orders: Math.round(25 * weekMultiplier), percent: 100 },
-        { label: 'Sáb', orders: Math.round(19 * weekMultiplier), percent: 85 },
-        { label: 'Dom', orders: Math.round(8 * weekMultiplier), percent: 35 },
-      ];
+      const dayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+      const counts = [0, 0, 0, 0, 0, 0, 0];
+
+      pedidos.forEach(p => {
+        try {
+          const d = new Date(p.created_at);
+          // getDay: 0 is Sun, 1 is Mon... convert to 0=Mon..6=Sun
+          const dayIndex = (d.getDay() + 6) % 7;
+          counts[dayIndex]++;
+        } catch {}
+      });
+
+      const maxVal = Math.max(...counts, 1);
+      return dayLabels.map((label, idx) => ({
+        label,
+        orders: counts[idx],
+        percent: Math.round((counts[idx] / maxVal) * 100),
+      }));
     }
+
+    // 4.3. MES: Real grouping by week ranges (01-07, 08-14, 15-21, 22-28, 29-31)
     if (timeFrame === 'mes') {
-      const monthSeed = parseInt(selectedMonth) || 8;
-      return [
-        { label: 'Semana 1 (01-07)', orders: 38 + monthSeed * 2, percent: 65 },
-        { label: 'Semana 2 (08-14)', orders: 48 + monthSeed * 2, percent: 85 },
-        { label: 'Semana 3 (15-21)', orders: 56 + monthSeed * 2, percent: 100 },
-        { label: 'Semana 4 (22-28)', orders: 44 + monthSeed * 2, percent: 78 },
-        { label: 'Semana 5 (29-31)', orders: 20 + monthSeed, percent: 45 },
+      const targetMonth = parseInt(selectedMonth, 10);
+      const monthOrders = pedidos.filter(p => {
+        try {
+          const d = new Date(p.created_at);
+          return d.getMonth() + 1 === targetMonth;
+        } catch {
+          return true;
+        }
+      });
+
+      const weeks = [
+        { label: 'Sem 1 (01-07)', start: 1, end: 7, orders: 0 },
+        { label: 'Sem 2 (08-14)', start: 8, end: 14, orders: 0 },
+        { label: 'Sem 3 (15-21)', start: 15, end: 21, orders: 0 },
+        { label: 'Sem 4 (22-28)', start: 22, end: 28, orders: 0 },
+        { label: 'Sem 5 (29-31)', start: 29, end: 31, orders: 0 },
       ];
+
+      monthOrders.forEach(p => {
+        try {
+          const dayNum = new Date(p.created_at).getDate();
+          const target = weeks.find(w => dayNum >= w.start && dayNum <= w.end);
+          if (target) target.orders++;
+        } catch {}
+      });
+
+      // If month orders are currently in testing state, populate real totals
+      const maxVal = Math.max(...weeks.map(w => w.orders), 1);
+      return weeks.map(w => ({
+        label: w.label,
+        orders: w.orders,
+        percent: Math.round((w.orders / maxVal) * 100),
+      }));
     }
+
+    // 4.4. TRIMESTRE: Real grouping by 3 months
     if (timeFrame === 'trimestre') {
-      const qLabels = selectedQuarter === 'T1'
-        ? ['Enero', 'Febrero', 'Marzo']
+      const qMonths = selectedQuarter === 'T1'
+        ? [{ m: 1, name: 'Enero' }, { m: 2, name: 'Febrero' }, { m: 3, name: 'Marzo' }]
         : selectedQuarter === 'T2'
-        ? ['Abril', 'Mayo', 'Junio']
+        ? [{ m: 4, name: 'Abril' }, { m: 5, name: 'Mayo' }, { m: 6, name: 'Junio' }]
         : selectedQuarter === 'T3'
-        ? ['Julio', 'Agosto', 'Septiembre']
-        : ['Octubre', 'Noviembre', 'Diciembre'];
+        ? [{ m: 7, name: 'Julio' }, { m: 8, name: 'Agosto' }, { m: 9, name: 'Septiembre' }]
+        : [{ m: 10, name: 'Octubre' }, { m: 11, name: 'Noviembre' }, { m: 12, name: 'Diciembre' }];
 
-      return [
-        { label: qLabels[0], orders: 175, percent: 75 },
-        { label: qLabels[1], orders: 215, percent: 90 },
-        { label: qLabels[2], orders: 250, percent: 100 },
-      ];
+      const qResults = qMonths.map(qm => {
+        const count = pedidos.filter(p => {
+          try {
+            return new Date(p.created_at).getMonth() + 1 === qm.m;
+          } catch {
+            return false;
+          }
+        }).length;
+        return { label: qm.name, orders: count };
+      });
+
+      const maxVal = Math.max(...qResults.map(r => r.orders), 1);
+      return qResults.map(r => ({
+        label: r.label,
+        orders: r.orders,
+        percent: Math.round((r.orders / maxVal) * 100),
+      }));
     }
-    // Año
-    return [
-      { label: 'T1: Ene - Mar', orders: 480, percent: 65 },
-      { label: 'T2: Abr - Jun', orders: 640, percent: 85 },
-      { label: 'T3: Jul - Sep', orders: 790, percent: 95 },
-      { label: 'T4: Oct - Dic', orders: 860, percent: 100 },
-    ];
-  }, [timeFrame, selectedDay, selectedWeek, selectedMonth, selectedQuarter, selectedYear]);
 
-  // Overall totals
+    // 4.5. AÑO: Real grouping by quarters (T1, T2, T3, T4)
+    const targetYr = parseInt(selectedYear, 10);
+    const yrOrders = pedidos.filter(p => {
+      try {
+        return new Date(p.created_at).getFullYear() === targetYr;
+      } catch {
+        return true;
+      }
+    });
+
+    const quarters = [
+      { label: 'T1: Ene - Mar', q: [1, 2, 3], orders: 0 },
+      { label: 'T2: Abr - Jun', q: [4, 5, 6], orders: 0 },
+      { label: 'T3: Jul - Sep', q: [7, 8, 9], orders: 0 },
+      { label: 'T4: Oct - Dic', q: [10, 11, 12], orders: 0 },
+    ];
+
+    yrOrders.forEach(p => {
+      try {
+        const m = new Date(p.created_at).getMonth() + 1;
+        const target = quarters.find(q => q.q.includes(m));
+        if (target) target.orders++;
+      } catch {}
+    });
+
+    const maxVal = Math.max(...quarters.map(q => q.orders), 1);
+    return quarters.map(q => ({
+      label: q.label,
+      orders: q.orders,
+      percent: Math.round((q.orders / maxVal) * 100),
+    }));
+
+  }, [timeFrame, selectedDay, selectedWeek, selectedMonth, selectedQuarter, selectedYear, pedidos]);
+
+  // Overall Real Totals
   const totalVolumeInPeriod = chartData.reduce((acc, curr) => acc + curr.orders, 0);
   const shalomCount = pedidos.filter(p => p.metodo_envio_codigo === 'shalom').length;
   const motoCount = pedidos.filter(p => p.metodo_envio_codigo === 'motorizado').length;
   const totalOrdersCount = pedidos.length || 1;
   const shalomPercent = Math.round((shalomCount / totalOrdersCount) * 100);
   const motoPercent = Math.round((motoCount / totalOrdersCount) * 100);
+  const deliveredCount = pedidos.filter(p => p.estado_envio === 'entregado').length;
+  const deliveryEffectiveness = pedidos.length > 0 ? Math.round((deliveredCount / pedidos.length) * 100) : 100;
 
   return (
     <div className="space-y-6 animate-fadeIn pb-28 text-slate-100">
       
       {/* --- STICKY APPLE VISION TIMEFRAME & MODIFIERS BAR (FOLLOWS SCROLL) --- */}
-      <div className="sticky top-20 z-30 p-3 sm:p-4 rounded-3xl bg-slate-900/85 border border-white/15 backdrop-blur-2xl shadow-2xl space-y-3">
+      <div className="sticky top-20 z-30 p-3 sm:p-4 rounded-3xl bg-slate-900/85 border border-white/15 backdrop-blur-2xl shadow-2xl space-y-3 print:hidden" data-no-print="true">
         
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
           
@@ -230,10 +355,9 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                   }}
                   className="bg-transparent text-xs text-cyan-300 font-bold focus:outline-none cursor-pointer"
                 >
-                  <option value="sem-33" className="bg-slate-900 text-white">Semana Actual (11 Ago - 17 Ago)</option>
-                  <option value="sem-32" className="bg-slate-900 text-white">Semana Previa (04 Ago - 10 Ago)</option>
-                  <option value="sem-31" className="bg-slate-900 text-white">Semana 31 (28 Jul - 03 Ago)</option>
-                  <option value="sem-30" className="bg-slate-900 text-white">Semana 30 (21 Jul - 27 Jul)</option>
+                  <option value="sem-actual" className="bg-slate-900 text-white">Semana Actual (Lunes a Domingo)</option>
+                  <option value="sem-previa" className="bg-slate-900 text-white">Semana Anterior</option>
+                  <option value="sem-2-prev" className="bg-slate-900 text-white">Hace 2 Semanas</option>
                 </select>
               </div>
             )}
@@ -304,7 +428,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
 
       </div>
 
-      {/* KPI Cards Row */}
+      {/* KPI Cards Row (100% Real Values) */}
       <div key={`kpi-${animKey}`} className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fadeIn">
         
         <div className="p-5 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-2 shadow-xl hover:border-cyan-500/40 transition-all">
@@ -315,49 +439,55 @@ export const VisionAnalyticsDashboard: React.FC = () => {
             </div>
           </div>
           <p className="text-2xl sm:text-3xl font-black text-white font-mono">{totalVolumeInPeriod}</p>
-          <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
-            <ArrowUpRight className="w-3.5 h-3.5" /> +28% vs periodo anterior
+          <span className="text-[11px] text-cyan-300 font-bold flex items-center gap-1">
+            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" /> Total histórico: {pedidos.length} pedidos
           </span>
         </div>
 
         <div className="p-5 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-2 shadow-xl hover:border-purple-500/40 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Clientas Totales</span>
+            <span className="text-xs font-bold text-slate-400">Clientas Registradas</span>
             <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
               <Users className="w-4 h-4" />
             </div>
           </div>
           <p className="text-2xl sm:text-3xl font-black text-white font-mono">{uniqueClients.length}</p>
-          <span className="text-[11px] text-purple-400 font-bold">Base de clientas activas</span>
+          <span className="text-[11px] text-purple-400 font-bold">Caseras en base de datos</span>
         </div>
 
         <div className="p-5 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-2 shadow-xl hover:border-emerald-500/40 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Efectividad de Envío</span>
+            <span className="text-xs font-bold text-slate-400">Tasa de Entrega</span>
             <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
               <ShieldCheck className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">99.4%</p>
-          <span className="text-[11px] text-slate-400">Entregas sin demoras</span>
+          <p className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">
+            {deliveredCount} / {pedidos.length}
+          </p>
+          <span className="text-[11px] text-slate-400">
+            {deliveryEffectiveness}% entregados con éxito
+          </span>
         </div>
 
         <div className="p-5 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-2 shadow-xl hover:border-pink-500/40 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Cuota Shalom / Moto</span>
+            <span className="text-xs font-bold text-slate-400">Shalom vs Motorizado</span>
             <div className="w-8 h-8 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center">
               <Truck className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-base sm:text-lg font-black text-white">
-            {shalomPercent}% Shalom • {motoPercent}% Moto
+          <p className="text-base sm:text-lg font-black text-white font-mono">
+            {shalomCount} Shalom • {motoCount} Moto
           </p>
-          <span className="text-[11px] text-cyan-400 font-bold">Cobertura Lima & Nacional</span>
+          <span className="text-[11px] text-cyan-400 font-bold">
+            {shalomPercent}% Nacional / {motoPercent}% Lima
+          </span>
         </div>
 
       </div>
 
-      {/* --- GRÁFICA PRINCIPAL DE FLUJO VISUAL (CENTRADÍSIMA AL EJE X CON BARRAS ILUMINADAS) --- */}
+      {/* --- GRÁFICA PRINCIPAL DE FLUJO VISUAL REAL (CENTRADÍSIMA AL EJE X) --- */}
       <div key={`chart-${animKey}`} className="p-6 sm:p-8 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-6 shadow-2xl animate-fadeIn">
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
@@ -367,17 +497,17 @@ export const VisionAnalyticsDashboard: React.FC = () => {
             </div>
             <div>
               <h3 className="text-lg font-black text-white">
-                Flujo Dinámico de Pedidos ({timeFrame.toUpperCase()})
+                Flujo Dinámico Real de Pedidos ({timeFrame.toUpperCase()})
               </h3>
               <p className="text-xs text-slate-400">
-                Visualización de volumen y picos de despacho en el periodo seleccionado
+                Visualización calculada 100% de la base de datos de envíos
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3 text-xs font-mono">
             <span className="px-3 py-1 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold">
-              Total: {totalVolumeInPeriod} pedidos
+              Total en Vista: {totalVolumeInPeriod} pedidos
             </span>
           </div>
         </div>
@@ -398,7 +528,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                 <div className="w-full max-w-[50px] bg-slate-900 rounded-2xl p-1 h-full flex flex-col justify-end">
                   <div
                     className="w-full rounded-xl bg-gradient-to-t from-cyan-600 via-blue-500 to-indigo-400 group-hover:from-cyan-400 group-hover:to-pink-500 shadow-lg shadow-cyan-500/25 transition-all duration-700 group-hover:scale-y-105"
-                    style={{ height: `${Math.max(item.percent, 12)}%` }}
+                    style={{ height: `${item.orders > 0 ? Math.max(item.percent, 16) : 6}%` }}
                   />
                 </div>
 
@@ -415,10 +545,10 @@ export const VisionAnalyticsDashboard: React.FC = () => {
 
       </div>
 
-      {/* --- DEMOGRAFÍA DE EDADES & MOTIVOS DE COMPRA --- */}
+      {/* --- DEMOGRAFÍA REAL DE EDADES & MOTIVOS DE COMPRA --- */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Motivos de Compra (Donut Visual Representation) */}
+        {/* Motivos de Compra (Real Percentages) */}
         <div className="p-6 sm:p-7 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-5 shadow-2xl">
           <div className="flex items-center gap-3 border-b border-white/10 pb-4">
             <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center text-lg">
@@ -426,7 +556,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
             </div>
             <div>
               <h3 className="text-base font-black text-white">¿Por Qué Compran en ComiKids?</h3>
-              <p className="text-xs text-slate-400">Finalidad y destino comercial de las prendas</p>
+              <p className="text-xs text-slate-400">Cálculo real sobre las caseras registradas</p>
             </div>
           </div>
 
@@ -439,7 +569,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black text-white">{motive.label}</span>
                   <span className="text-sm font-black font-mono" style={{ color: motive.color }}>
-                    {motive.percent}%
+                    {motive.count} clientas ({motive.percent}%)
                   </span>
                 </div>
 
@@ -447,7 +577,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                   <div
                     className="h-full rounded-full transition-all duration-700 shadow-md"
                     style={{
-                      width: `${Math.max(motive.percent, 8)}%`,
+                      width: `${Math.max(motive.percent, motive.count > 0 ? 8 : 2)}%`,
                       backgroundColor: motive.color,
                     }}
                   />
@@ -457,7 +587,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Demografía de Edades (Centered Bars) */}
+        {/* Demografía de Edades (Real Ages) */}
         <div className="p-6 sm:p-7 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-5 shadow-2xl">
           <div className="flex items-center gap-3 border-b border-white/10 pb-4">
             <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-lg">
@@ -465,7 +595,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
             </div>
             <div>
               <h3 className="text-base font-black text-white">Segmentación por Edades de Clientas</h3>
-              <p className="text-xs text-slate-400">Distribución de edades de las caseras</p>
+              <p className="text-xs text-slate-400">Edades reales ingresadas en los pedidos</p>
             </div>
           </div>
 
@@ -483,7 +613,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                 <div className="w-full h-3 rounded-full bg-slate-950 overflow-hidden p-0.5 border border-slate-800">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 transition-all duration-700 shadow-md"
-                    style={{ width: `${Math.max(stat.percent, 6)}%` }}
+                    style={{ width: `${Math.max(stat.percent, stat.count > 0 ? 6 : 2)}%` }}
                   />
                 </div>
               </div>

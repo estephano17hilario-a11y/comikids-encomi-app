@@ -168,7 +168,7 @@ export const OrdersSmartManager: React.FC = () => {
       
       {/* --- TOP FLOATING ACTION BAR FOR MASS ACTIONS (ITEM 7: FOLLOWS SCROLL AT TOP) --- */}
       {selectedIds.length > 0 && (
-        <div className="fixed top-4 sm:top-6 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-3xl animate-slideDown">
+        <div className="fixed top-4 sm:top-6 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-3xl animate-slideDown print:hidden" data-no-print="true">
           <div className="p-3.5 sm:p-4 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/60 backdrop-blur-3xl shadow-2xl shadow-cyan-500/25 flex flex-wrap items-center justify-between gap-3">
             
             {/* Counter */}

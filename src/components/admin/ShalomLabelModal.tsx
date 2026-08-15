@@ -72,7 +72,7 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
       <div className="relative w-full max-w-lg rounded-3xl glass-panel p-6 border border-cyan-500/40 shadow-2xl shadow-cyan-500/10 my-8">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4 print:hidden" data-no-print="true">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
               <FileText className="w-6 h-6" />
@@ -95,12 +95,12 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
         </div>
 
         {/* Label Preview */}
-        <div className="mb-6 p-3 bg-slate-950/90 rounded-2xl border border-slate-800 flex justify-center overflow-x-auto">
+        <div className="mb-6 p-3 bg-slate-950/90 rounded-2xl border border-slate-800 flex justify-center overflow-x-auto print:p-0 print:m-0 print:border-none print:bg-white">
           <ShalomLabelPrint pedido={pedido} tallerConfig={tallerConfig} />
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 print:hidden" data-no-print="true">
           
           <button
             onClick={handlePrint}

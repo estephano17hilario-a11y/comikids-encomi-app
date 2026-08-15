@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { ShalomLabelPrint } from './ShalomLabelPrint';
 import html2canvas from 'html2canvas';
@@ -20,6 +21,13 @@ interface Props {
 export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClose }) => {
   const [downloading, setDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
 
   const handlePrint = () => {
     window.print();
@@ -67,8 +75,8 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
     ? `https://wa.me/51${clientPhone.slice(-9)}?text=${encodeURIComponent(whatsappNotifyText)}`
     : `https://wa.me/message/FSEGUIYKFKYKA1?text=${encodeURIComponent(whatsappNotifyText)}`;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto" data-no-print="true">
       <div className="relative w-full max-w-lg rounded-3xl glass-panel p-6 border border-cyan-500/40 shadow-2xl shadow-cyan-500/10 my-8">
         
         {/* Modal Header */}
@@ -136,6 +144,7 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

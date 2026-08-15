@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
 import { useOrders } from '../../context/OrderContext';
 import { BulkPrintModal } from './BulkPrintModal';
@@ -167,9 +168,9 @@ export const OrdersSmartManager: React.FC = () => {
     <div className="space-y-6 animate-fadeIn pb-32">
       
       {/* --- TOP FLOATING ACTION BAR FOR MASS ACTIONS (ITEM 7: FOLLOWS SCROLL AT TOP) --- */}
-      {selectedIds.length > 0 && (
-        <div className="fixed top-4 sm:top-6 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-3xl animate-slideDown print:hidden" data-no-print="true">
-          <div className="p-3.5 sm:p-4 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/60 backdrop-blur-3xl shadow-2xl shadow-cyan-500/25 flex flex-wrap items-center justify-between gap-3">
+      {selectedIds.length > 0 && createPortal(
+        <div className="fixed top-4 sm:top-5 left-1/2 -translate-x-1/2 z-[9990] w-11/12 max-w-3xl animate-slideDown print:hidden" data-no-print="true">
+          <div className="p-3.5 sm:p-4 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/70 backdrop-blur-3xl shadow-2xl shadow-cyan-500/30 flex flex-wrap items-center justify-between gap-3">
             
             {/* Counter */}
             <div className="flex items-center gap-2.5">
@@ -246,7 +247,8 @@ export const OrdersSmartManager: React.FC = () => {
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Header & Search Bar */}
@@ -513,9 +515,9 @@ export const OrdersSmartManager: React.FC = () => {
       )}
 
       {/* --- SWIPE / MOVE STATUS ACTION DIALOG (ITEM 5) --- */}
-      {swipeTargetOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-cyan-500/30 p-6 space-y-5 shadow-2xl animate-scaleUp">
+      {swipeTargetOrder && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-cyan-500/40 p-6 space-y-5 shadow-2xl animate-scaleUp">
             
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
@@ -529,7 +531,7 @@ export const OrdersSmartManager: React.FC = () => {
               </div>
               <button
                 onClick={() => setSwipeTargetOrder(null)}
-                className="text-slate-400 hover:text-white p-1"
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -593,7 +595,8 @@ export const OrdersSmartManager: React.FC = () => {
             </button>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Bulk Print Modal */}
@@ -618,8 +621,8 @@ export const OrdersSmartManager: React.FC = () => {
       )}
 
       {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+      {showDeleteConfirm && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
           <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-rose-500/40 p-6 space-y-4 text-center shadow-2xl">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-xl">
               <AlertTriangle className="w-6 h-6" />
@@ -633,19 +636,20 @@ export const OrdersSmartManager: React.FC = () => {
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="w-1/2 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs"
+                className="w-1/2 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleConfirmDelete}
-                className="w-1/2 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-600/30"
+                className="w-1/2 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-600/30 cursor-pointer"
               >
                 Sí, Eliminar
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

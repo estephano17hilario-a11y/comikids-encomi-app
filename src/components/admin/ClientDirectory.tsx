@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useOrders } from '../../context/OrderContext';
 import { Usuario, Pedido } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
@@ -229,8 +230,8 @@ export const ClientDirectory: React.FC = () => {
           }
         }
 
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+        return createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
             <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border border-white/15 p-6 sm:p-8 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
               
               {/* Modal Header */}
@@ -318,7 +319,8 @@ export const ClientDirectory: React.FC = () => {
             </div>
 
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 

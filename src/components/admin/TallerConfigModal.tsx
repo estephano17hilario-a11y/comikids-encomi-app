@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useOrders } from '../../context/OrderContext';
 import { TallerConfig } from '../../types/database.types';
 import { X, Settings, Save, Store, Phone, MapPin, Check } from 'lucide-react';
@@ -12,6 +13,13 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
   const [formData, setFormData] = useState<TallerConfig>(tallerConfig);
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     updateTallerConfig(formData);
@@ -22,8 +30,8 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
     }, 1500);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
       <div className="relative w-full max-w-md rounded-3xl glass-panel p-6 border border-slate-700 shadow-2xl">
         
         {/* Header */}
@@ -123,6 +131,7 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
         </form>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

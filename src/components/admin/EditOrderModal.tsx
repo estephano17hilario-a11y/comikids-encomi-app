@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
 import { X, Save, Package, MapPin, User, FileText } from 'lucide-react';
 
@@ -40,8 +41,8 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
       <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-white/10 p-6 sm:p-8 shadow-2xl shadow-cyan-500/10 space-y-6 max-h-[90vh] overflow-y-auto">
         
         {/* Header */}
@@ -168,6 +169,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
         </form>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { X, Printer } from 'lucide-react';
 
@@ -20,7 +21,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
     window.print();
   };
 
-  // Chunk orders in groups of 4 for A4 pages (2x2 grid per page)
+  // Divide en grupos de 4 pedidos por cada hoja A4
   const chunkArray = <T,>(arr: T[], size: number): T[][] => {
     const chunks: T[][] = [];
     for (let i = 0; i < arr.length; i += size) {
@@ -31,10 +32,8 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
 
   const pages = chunkArray(pedidos, 4);
 
-  // Helper to extract clean Shalom agency or Motorizado address without noise
   const getShalomAgencyOnly = (fullDestino: string) => {
-    // If it has "Agencia Shalom: ... (DNI/CE...)", extract the clean agency name
-    let clean = fullDestino;
+    let clean = fullDestino || '';
     clean = clean.replace(/Agencia Shalom:\s*/i, '');
     clean = clean.replace(/\(DNI\/CE.*?\)/i, '').trim();
     return clean;
@@ -47,21 +46,20 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
     if (pedido.usuario?.dni_default) {
       return pedido.usuario.dni_default;
     }
-    // Extract from destino_detalle if exists e.g. "(DNI/CE Recojo: 74561234)"
     const match = pedido.destino_detalle?.match(/DNI\/CE.*?:?\s*([A-Za-z0-9]+)/i);
     if (match && match[1]) {
       return match[1];
     }
-    return pedido.usuario?.dni || 'No registrado';
+    return pedido.usuario?.dni || 'No especificado';
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       
-      {/* Contenedor Principal */}
-      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-slate-900 border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+      {/* Contenedor Principal en Pantalla */}
+      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-slate-900 border border-white/15 rounded-3xl overflow-hidden shadow-2xl">
         
-        {/* Header no imprimible */}
+        {/* Header de Controles (No imprimible) */}
         <div className="print:hidden p-4 sm:p-5 border-b border-white/10 flex items-center justify-between bg-slate-950/90 shrink-0" data-no-print="true">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white/10 text-white flex items-center justify-center text-xl font-bold border border-white/20">
@@ -71,11 +69,11 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
               <h3 className="text-base font-black text-white flex items-center gap-2">
                 <span>Rótulos A4 Blanco y Negro (4 por Hoja)</span>
                 <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-white/10 text-slate-200 border border-white/20">
-                  {pedidos.length} {pedidos.length === 1 ? 'rótulo' : 'rótulos'} • {pages.length} {pages.length === 1 ? 'hoja A4' : 'hojas A4'}
+                  {pedidos.length} {pedidos.length === 1 ? 'rótulo' : 'rótulos'} • {pages.length} {pages.length === 1 ? 'hoja' : 'hojas'}
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Formato estándar hoja Bond A4 • Blanco y negro ahorrador de tinta • Líneas de corte
+                Formato exacto 2x2 para Hoja Bond A4 • Máximo aprovechamiento de espacio • Sin desbordes
               </p>
             </div>
           </div>
@@ -83,7 +81,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="py-2 px-4 sm:px-5 rounded-2xl bg-white hover:bg-slate-200 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
+              className="py-2.5 px-4 sm:px-5 rounded-2xl bg-white hover:bg-slate-200 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               <span>Imprimir en Hoja A4 ({pedidos.length})</span>
@@ -98,17 +96,12 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
         </div>
 
         {/* Área de Visualización y Rótulos Imprimibles */}
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-slate-950 print:bg-white print:p-0 print:m-0 print:overflow-visible printable-a4-sheet">
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-slate-950 print:bg-white print:p-0 print:m-0 print:overflow-visible">
           
           {pages.map((pageOrders, pageIndex) => (
             <div
               key={pageIndex}
-              className={`grid grid-cols-1 sm:grid-cols-2 gap-3 print:grid-cols-2 print:gap-3 bg-white text-black p-4 print:p-2 rounded-2xl print:rounded-none shadow-xl print:shadow-none mb-6 print:mb-0 ${
-                pageIndex < pages.length - 1 ? 'page-break' : ''
-              }`}
-              style={{
-                minHeight: 'auto',
-              }}
+              className="a4-print-page grid grid-cols-1 sm:grid-cols-2 gap-3 bg-white text-black p-4 print:p-0 rounded-2xl print:rounded-none shadow-xl print:shadow-none mb-6 print:mb-0"
             >
               {pageOrders.map((pedido) => {
                 const isShalom = pedido.metodo_envio_codigo === 'shalom';
@@ -119,29 +112,24 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                 return (
                   <div
                     key={pedido.id}
-                    className="border-2 border-dashed border-black rounded-xl p-3.5 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden"
-                    style={{
-                      minHeight: '125mm',
-                      maxHeight: '135mm',
-                      boxSizing: 'border-box',
-                    }}
+                    className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3.5 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden"
                   >
                     {/* Header: ComiKids & Encomi */}
-                    <div className="flex items-center justify-between border-b-2 border-black pb-2">
+                    <div className="flex items-center justify-between border-b-2 border-black pb-1.5">
                       <div className="flex items-center gap-1.5">
                         <span className="text-base">🧸</span>
                         <div>
                           <strong className="text-sm font-black tracking-tight uppercase block leading-none">
                             ComiKids
                           </strong>
-                          <span className="text-[9px] font-bold text-slate-700 tracking-wider">
+                          <span className="text-[8px] font-bold text-slate-700 tracking-wider">
                             ✨ TALLER DE BORDADOS
                           </span>
                         </div>
                       </div>
 
                       <div className="text-right flex flex-col items-end">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-800">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">
                           ENCOMI
                         </span>
                         <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase border border-black bg-slate-100">
@@ -150,18 +138,13 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                       </div>
                     </div>
 
-                    {/* Tracking Code & Simulated Barcode */}
-                    <div className="my-2 py-1.5 px-2 bg-slate-50 rounded border border-black text-center">
-                      <div className="flex items-center justify-center gap-1 text-[8px] font-bold text-slate-600 tracking-wider uppercase">
-                        <span>★</span>
-                        <span>CÓDIGO DE ENVÍO</span>
-                        <span>★</span>
-                      </div>
-                      <p className="text-base font-black font-mono tracking-widest text-black">
+                    {/* Tracking Code (Grande y Claro sin texto 'código de envío') */}
+                    <div className="my-1.5 py-1.5 px-2 bg-slate-50 rounded-lg border border-black text-center">
+                      <p className="text-xl sm:text-2xl font-black font-mono tracking-widest text-black leading-none">
                         {pedido.codigo_seguimiento}
                       </p>
                       
-                      {/* Barcode line pattern (B&W ink-saver) */}
+                      {/* Barcode line pattern */}
                       <div className="flex justify-center items-center gap-[2px] h-5 mt-1">
                         {[3, 1, 4, 2, 5, 2, 1, 3, 2, 4, 1, 2, 3, 4, 2, 3, 1, 5, 2, 3, 1, 4, 2, 3, 2, 4, 1, 2, 3, 1, 4].map((w, i) => (
                           <div
@@ -173,22 +156,22 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                       </div>
                     </div>
 
-                    {/* Essential Shipment Details (ONLY WHAT IS NEEDED) */}
-                    <div className="space-y-2 text-xs flex-1 flex flex-col justify-center">
+                    {/* Essential Shipment Details (Aprovechando todo el espacio con texto grande) */}
+                    <div className="space-y-1.5 text-xs flex-1 flex flex-col justify-around">
                       
                       {/* Destinatario */}
-                      <div className="border-b border-dashed border-slate-300 pb-1.5">
+                      <div className="border-b border-dashed border-slate-300 pb-1">
                         <span className="text-[9px] font-black text-slate-600 uppercase tracking-wider block">
                           DESTINATARIO:
                         </span>
-                        <strong className="text-sm font-black text-black block leading-tight">
+                        <strong className="text-base font-black text-black block leading-tight">
                           {pedido.usuario?.nombre_completo || 'Cliente'}
                         </strong>
                       </div>
 
                       {/* DNI (Shalom) or WhatsApp Phone (Motorizado) */}
                       {isShalom ? (
-                        <div className="border-b border-dashed border-slate-300 pb-1.5">
+                        <div className="border-b border-dashed border-slate-300 pb-1">
                           <span className="text-[9px] font-black text-slate-600 uppercase tracking-wider block">
                             DNI / DOCUMENTO RECOJO:
                           </span>
@@ -197,7 +180,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                           </strong>
                         </div>
                       ) : (
-                        <div className="border-b border-dashed border-slate-300 pb-1.5">
+                        <div className="border-b border-dashed border-slate-300 pb-1">
                           <span className="text-[9px] font-black text-slate-600 uppercase tracking-wider block">
                             TELÉFONO / WHATSAPP:
                           </span>
@@ -219,8 +202,8 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
 
                     </div>
 
-                    {/* Footer: Disney Line-Art Amigable en Blanco y Negro */}
-                    <div className="pt-2 border-t border-black flex items-center justify-between text-[8px] font-bold text-slate-600">
+                    {/* Footer: Disney Line-Art Amigable */}
+                    <div className="pt-1.5 border-t border-black flex items-center justify-between text-[8px] font-bold text-slate-600">
                       <div className="flex items-center gap-1">
                         <span>✨</span>
                         <span>¡Paquete con Magia y Amor!</span>
@@ -241,6 +224,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
 
       </div>
 
-    </div>
+    </div>,
+    document.body
   );
 };

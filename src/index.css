@@ -99,25 +99,23 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.2s ease-out forwards;
 }
 
 /* ==========================================================================
-   PRINT STYLES: A4 SHEET 4-LABELS BLACK & WHITE INK-SAVER
+   PRINT STYLES: A4 SHEET EXACT 4-LABELS PER PAGE (BLACK & WHITE)
    ========================================================================== */
 @media print {
   @page {
     size: A4 portrait;
-    margin: 5mm;
+    margin: 4mm;
   }
 
   html, body {
@@ -126,29 +124,38 @@
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     overflow: visible !important;
   }
 
-  /* Hide app chrome during printing */
+  /* Hide everything with data-no-print or fixed app navigation */
   header,
   nav,
   [data-no-print="true"] {
     display: none !important;
   }
 
-  /* Full visibility for the printable wrapper */
-  .printable-a4-sheet {
-    display: block !important;
+  .a4-print-page {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: 136mm 136mm !important;
+    gap: 4mm !important;
     width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
+    height: 278mm !important;
+    max-height: 278mm !important;
+    margin: 0 auto !important;
     padding: 0 !important;
-    background: #ffffff !important;
+    box-sizing: border-box !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    overflow: hidden !important;
   }
 
-  .page-break {
-    page-break-after: always;
-    break-after: page;
+  .a4-rotulo-card {
+    height: 136mm !important;
+    max-height: 136mm !important;
+    min-height: 136mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
   }
 }

@@ -186,10 +186,26 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [isEmpresaUnlock, setIsEmpresaUnlock] = useState(false);
   const [empresaPassword, setEmpresaPassword] = useState('');
 
-  // Status & Resumen de Pedido Creado
+  // Status & Resumen de Pedido Creado (Con Persistencia Inmune a Recargas y Login en Móviles)
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [createdOrder, setCreatedOrder] = useState<Pedido | null>(null);
+  const [createdOrder, setCreatedOrderState] = useState<Pedido | null>(() => {
+    try {
+      const saved = localStorage.getItem('incomi_current_receipt_order');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const setCreatedOrder = (order: Pedido | null) => {
+    setCreatedOrderState(order);
+    if (order) {
+      localStorage.setItem('incomi_current_receipt_order', JSON.stringify(order));
+    } else {
+      localStorage.removeItem('incomi_current_receipt_order');
+    }
+  };
 
   const suggestedDistritos = searchDistritos(distritoQuery);
 
@@ -595,7 +611,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           </div>
 
           {/* Botón Principal de WhatsApp */}
-          <div className="pt-2">
+          <div className="pt-2 space-y-3">
             <a
               href={whatsappUrl}
               target="_blank"
@@ -605,6 +621,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               <MessageCircle className="w-6 h-6 fill-current" />
               <span>Enviar Comprobante por WhatsApp</span>
             </a>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCreatedOrder(null);
+                setOrganicStep(1);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="text-xs font-bold text-slate-400 hover:text-cyan-300 transition-colors py-2 px-4 rounded-xl hover:bg-white/5 cursor-pointer"
+            >
+              ← Registrar otro paquete de despacho
+            </button>
           </div>
 
         </div>

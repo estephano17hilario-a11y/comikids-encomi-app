@@ -284,6 +284,40 @@ class OrdersService {
     localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
   }
 
+  // Sincronizar pedidos y usuarios locales rezagados directamente a Supabase
+  async syncLocalDataToSupabase(): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) return;
+    try {
+      const localUsers = this.getUsers();
+      for (const u of localUsers) {
+        if (u.id && u.dni) {
+          const cleanU = {
+            id: u.id,
+            dni: u.dni,
+            nombre_completo: u.nombre_completo,
+            edad: u.edad || 20,
+            password_hash: u.password_hash || 'incomi2026',
+            rol: u.rol || 'client',
+            avatar_url: u.avatar_url || '',
+            puntos_xp: u.puntos_xp || 0,
+            nivel: u.nivel || 1,
+            telefono_default: u.telefono_default || null,
+            created_at: u.created_at || new Date().toISOString()
+          };
+          await supabase.from('usuarios').upsert(cleanU);
+        }
+      }
+
+      const localOrders = this.getLocalOrders();
+      for (const order of localOrders) {
+        const payload = this.sanitizePedidoForDb(order);
+        await supabase.from('pedidos').upsert(payload);
+      }
+    } catch (e) {
+      console.warn('Sync local data to Supabase notice:', e);
+    }
+  }
+
   private sanitizePedidoForDb(pedido: Partial<Pedido>): Record<string, any> {
     const payload: Record<string, any> = {};
     if (pedido.id !== undefined) payload.id = pedido.id;
@@ -314,6 +348,9 @@ class OrdersService {
   async getPedidos(userId?: string): Promise<Pedido[]> {
     if (isSupabaseConfigured && supabase) {
       try {
+        // Ejecutar subida de pedidos locales en segundo plano
+        this.syncLocalDataToSupabase().catch(() => {});
+
         let query = supabase.from('pedidos').select('*').order('created_at', { ascending: false });
         if (userId) {
           query = query.eq('usuario_id', userId);

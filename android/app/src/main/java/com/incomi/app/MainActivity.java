@@ -12,7 +12,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(WidgetBridgePlugin.class);
         super.onCreate(savedInstanceState);
 
-        // Iniciar sincronización nativa en segundo plano para notificaciones y widget
+        // Iniciar servicio en primer plano para recibir notificaciones continuas con pantalla apagada
+        OrdersForegroundService.startService(getApplicationContext());
         BackgroundOrdersSync.startPeriodicSync(getApplicationContext());
     }
 

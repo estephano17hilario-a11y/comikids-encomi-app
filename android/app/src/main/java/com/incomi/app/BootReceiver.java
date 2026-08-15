@@ -9,6 +9,7 @@ public class BootReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction()) ||
             "android.intent.action.QUICKBOOT_POWERON".equals(intent.getAction())) {
+            OrdersForegroundService.startService(context.getApplicationContext());
             BackgroundOrdersSync.startPeriodicSync(context.getApplicationContext());
         }
     }

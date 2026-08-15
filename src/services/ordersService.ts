@@ -272,21 +272,43 @@ class OrdersService {
   }
 
   // --- PEDIDOS ---
+  private getDeletedOrderIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem('incomi_deleted_order_ids_v1');
+      if (!raw) return new Set();
+      return new Set(JSON.parse(raw));
+    } catch {
+      return new Set();
+    }
+  }
+
+  private addDeletedOrderIds(ids: string[]): void {
+    try {
+      const current = this.getDeletedOrderIds();
+      ids.forEach(id => current.add(id));
+      localStorage.setItem('incomi_deleted_order_ids_v1', JSON.stringify(Array.from(current)));
+    } catch {}
+  }
+
   private getLocalOrders(): Pedido[] {
     const raw = localStorage.getItem(STORAGE_KEYS.ORDERS);
     if (!raw) return [];
     try {
-      return JSON.parse(raw);
+      const parsed: Pedido[] = JSON.parse(raw);
+      const deletedIds = this.getDeletedOrderIds();
+      return parsed.filter(o => !deletedIds.has(o.id));
     } catch {
       return [];
     }
   }
 
   private saveLocalOrders(orders: Pedido[]) {
-    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
+    const deletedIds = this.getDeletedOrderIds();
+    const clean = orders.filter(o => !deletedIds.has(o.id));
+    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(clean));
   }
 
-  // Sincronizar pedidos y usuarios locales rezagados directamente a Supabase
+  // Sincronizar usuarios locales a Supabase (los pedidos son administrados por Supabase como fuente única)
   async syncLocalDataToSupabase(): Promise<void> {
     if (!isSupabaseConfigured || !supabase) return;
     try {
@@ -310,12 +332,6 @@ class OrdersService {
           };
           await supabase.from('usuarios').upsert(cleanU);
         }
-      }
-
-      const localOrders = this.getLocalOrders();
-      for (const order of localOrders) {
-        const payload = this.sanitizePedidoForDb(order);
-        await supabase.from('pedidos').upsert(payload);
       }
     } catch (e) {
       console.warn('Sync local data to Supabase notice:', e);
@@ -352,9 +368,6 @@ class OrdersService {
   async getPedidos(userId?: string): Promise<Pedido[]> {
     if (isSupabaseConfigured && supabase) {
       try {
-        // Ejecutar subida de pedidos locales en segundo plano
-        this.syncLocalDataToSupabase().catch(() => {});
-
         let query = supabase.from('pedidos').select('*').order('created_at', { ascending: false });
         if (userId) {
           query = query.eq('usuario_id', userId);
@@ -373,11 +386,14 @@ class OrdersService {
         }
 
         if (!ordersError && dbOrders) {
+          const deletedIds = this.getDeletedOrderIds();
           const currentUsers = this.getUsers();
-          const syncedOrders: Pedido[] = dbOrders.map((p: any) => ({
-            ...p,
-            usuario: currentUsers.find(u => u.id === p.usuario_id || u.dni === p.usuario_id) || p.usuario || undefined
-          }));
+          const syncedOrders: Pedido[] = dbOrders
+            .filter((p: any) => !deletedIds.has(p.id))
+            .map((p: any) => ({
+              ...p,
+              usuario: currentUsers.find(u => u.id === p.usuario_id || u.dni === p.usuario_id) || p.usuario || undefined
+            }));
           
           if (!userId) {
             this.saveLocalOrders(syncedOrders);
@@ -585,6 +601,7 @@ class OrdersService {
   }
 
   async deletePedido(pedidoId: string): Promise<boolean> {
+    this.addDeletedOrderIds([pedidoId]);
     const orders = this.getLocalOrders();
     const filtered = orders.filter(o => o.id !== pedidoId);
     this.saveLocalOrders(filtered);
@@ -593,7 +610,7 @@ class OrdersService {
       try {
         await supabase.from('pedidos').delete().eq('id', pedidoId);
       } catch (e) {
-        console.warn(e);
+        console.warn('Error eliminando pedido en Supabase:', e);
       }
     }
 
@@ -601,6 +618,7 @@ class OrdersService {
   }
 
   async deleteMultiplePedidos(pedidoIds: string[]): Promise<boolean> {
+    this.addDeletedOrderIds(pedidoIds);
     const setIds = new Set(pedidoIds);
     const orders = this.getLocalOrders();
     const filtered = orders.filter(o => !setIds.has(o.id));
@@ -610,7 +628,7 @@ class OrdersService {
       try {
         await supabase.from('pedidos').delete().in('id', pedidoIds);
       } catch (e) {
-        console.warn(e);
+        console.warn('Error eliminando pedidos en Supabase:', e);
       }
     }
 

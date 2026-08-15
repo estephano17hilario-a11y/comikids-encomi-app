@@ -394,49 +394,56 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     }
   };
 
-  // Construir mensaje predefinido para WhatsApp con todos los datos y emojis
+  // Construir mensaje de comprobante detallado para WhatsApp con Template Literals, emojis y encodeURIComponent
   const buildWhatsAppMessage = (order: Pedido) => {
-    // 1. Plantilla para Motorizado
+    // 1. Plantilla para Motorizado Local Lima
     if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
       const orderLat = order.latitud || lat;
       const orderLng = order.longitud || lng;
       const googleMapsUrl = (orderLat && orderLng) ? `https://www.google.com/maps?q=${orderLat},${orderLng}` : '';
 
       return (
-        `¡Hola Comikids! 👋✨\n` +
-        `Acabo de registrar mi despacho por Motorizado en la web:\n\n` +
-        `📦 *Código de Envío:* #${order.codigo_seguimiento}\n` +
-        `👤 *Destinatario:* ${nombreCompleto.trim()}\n` +
-        `📱 *WhatsApp:* +51 ${whatsapp.trim()}\n` +
-        `🛵 *Tipo de Envío:* ${selectedMethod?.nombre || 'Motorizado Local Lima'}\n` +
-        `📍 *Dirección Exacta:* ${distritoQuery.trim()} • ${direccionExacta.trim()}\n` +
-        (referencia.trim() ? `🏷️ *Referencia:* ${referencia.trim()}\n` : '') +
-        (googleMapsUrl ? `\n🗺️ *Ubicación en Google Maps:*\n${googleMapsUrl}\n` : '') +
-        `\nAdjunto aquí mi comprobante de pago 🧾 para proceder con el despacho. ¡Muchas gracias!`
+`¡Hola Comikids! 👋✨
+
+🧾 *COMPROBANTE OFICIAL DE DESPACHO* 🛵
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 *Código de Envío:* #${order.codigo_seguimiento}
+👤 *Destinatario:* ${nombreCompleto.trim()}
+📱 *WhatsApp de Contacto:* +51 ${whatsapp.trim()}
+🛵 *Tipo de Despacho:* ${selectedMethod?.nombre || 'Motorizado Local Lima'}
+📍 *Dirección Exacta:* ${distritoQuery.trim()} • ${direccionExacta.trim()}
+${referencia.trim() ? `🏷️ *Referencia:* ${referencia.trim()}\n` : ''}${googleMapsUrl ? `🗺️ *Ubicación en Google Maps:*\n${googleMapsUrl}\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Adjunto aquí mi comprobante de pago 🧾 para proceder con la entrega. ¡Muchas gracias!`
       );
     }
 
-    // 2. Plantilla para Agencia Shalom
+    // 2. Plantilla para Agencia Shalom Nacional
     let destinoTexto = order.destino_detalle;
     if (selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject) {
       destinoTexto = formatFullAgencyName(selectedAgencyObject);
     }
 
     return (
-      `¡Hola Comikids! 👋✨\n` +
-      `Acabo de registrar mi envío de mercadería en la web:\n\n` +
-      `📦 *Código de Envío:* #${order.codigo_seguimiento}\n` +
-      `👤 *Destinatario:* ${nombreCompleto.trim()}\n` +
-      `📱 *WhatsApp:* +51 ${whatsapp.trim()}\n` +
-      `🪪 *DNI o CE:* ${dniShalom.trim() || 'No especificado'}\n` +
-      `🚚 *Tipo de Envío:* ${selectedMethod?.nombre || 'Agencia Shalom Nacional'}\n` +
-      `📦 *Agencia Shalom de Destino:*\n${destinoTexto}\n\n` +
-      `Adjunto aquí mi comprobante de pago 🧾 para proceder con el rotulado y despacho. ¡Muchas gracias!`
+`¡Hola Comikids! 👋✨
+
+🧾 *COMPROBANTE OFICIAL DE DESPACHO* 📦
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 *Código de Envío:* #${order.codigo_seguimiento}
+👤 *Destinatario:* ${nombreCompleto.trim()}
+📱 *WhatsApp:* +51 ${whatsapp.trim()}
+🪪 *DNI o CE de Recojo:* ${dniShalom.trim() || 'No especificado'}
+🚚 *Método de Envío:* ${selectedMethod?.nombre || 'Agencia Shalom Nacional'}
+🏢 *Agencia Shalom de Destino:*
+${destinoTexto}
+${referencia.trim() ? `🏷️ *Referencia:* ${referencia.trim()}\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Adjunto aquí mi comprobante de pago 🧾 para proceder con el rotulado y despacho. ¡Muchas gracias!`
     );
   };
 
+  const mensajeComprobante = createdOrder ? buildWhatsAppMessage(createdOrder) : '';
+  const textoCodificado = encodeURIComponent(mensajeComprobante);
   const whatsappUrl = createdOrder
-    ? getWhatsAppBusinessChatUrl(buildWhatsAppMessage(createdOrder))
+    ? getWhatsAppBusinessChatUrl(mensajeComprobante)
     : getWhatsAppBusinessChatUrl();
 
   const whatsappNuevoPedidoUrl = getWhatsAppBusinessChatUrl('¡Hola Comikids! 👋 Deseo solicitar un nuevo pedido de mercadería.');

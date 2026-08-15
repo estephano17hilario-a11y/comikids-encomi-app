@@ -78,7 +78,7 @@ export const AuthScreen: React.FC = () => {
     const res = await register(
       nombreCompleto.trim(),
       dni.trim(),
-      parseInt(edad) || 20,
+      edad ? parseInt(edad) : 0,
       password.trim()
     );
     setSubmitting(false);

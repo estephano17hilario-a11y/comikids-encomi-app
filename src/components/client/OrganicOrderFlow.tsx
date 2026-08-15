@@ -375,7 +375,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         const regRes = await ordersService.registerUser(
           nombreCompleto.trim(),
           userIdentifier,
-          20,
+          undefined,
           'incomi2026',
           whatsapp.trim()
         );

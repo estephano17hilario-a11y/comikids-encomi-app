@@ -45,7 +45,7 @@ export const AdminPortal: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
       
       {/* Top Vision Header */}
-      <header className="w-full bg-slate-950/80 border-b border-white/[0.08] px-4 py-3 sm:px-8 sticky top-0 z-30 backdrop-blur-2xl print:hidden" data-no-print="true">
+      <header className="w-full bg-slate-950/85 border-b border-white/[0.08] px-4 pt-6 pb-4 sm:pt-7 sm:pb-4 sm:px-8 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all" data-no-print="true">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           
           {/* Brand */}

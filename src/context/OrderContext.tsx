@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import {
   Pedido,
   MetodoEnvio,
@@ -13,6 +13,7 @@ import {
 import { ordersService } from '../services/ordersService';
 import { soundService } from '../services/soundService';
 import { NativeNotificationService } from '../services/nativeNotificationService';
+import { WidgetService } from '../services/widgetService';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { useAuth } from './AuthContext';
 
@@ -64,6 +65,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [loading, setLoading] = useState<boolean>(true);
   const [latestNewOrder, setLatestNewOrder] = useState<Pedido | null>(null);
 
+  const knownOrderIdsRef = useRef<Set<string>>(new Set());
+  const isInitialLoadRef = useRef<boolean>(true);
+
   const deliveredCount = pedidos.filter(p => p.estado_envio === 'entregado').length;
   const companyAchievements = ordersService.getCompanyAchievements(deliveredCount);
 
@@ -79,13 +83,49 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setMotorizadoDistricts(ordersService.getMotorizadoDistricts());
       setCustomShalomAgencies(ordersService.getCustomShalomAgencies());
       setMasterCodeState(ordersService.getMasterCode());
+
+      // Sincronizar Widget Nativo de Android
+      const almacenCount = fetched.filter(p => p.estado_produccion === 'en_cola' && p.estado_envio === 'pendiente').length;
+      const alistandoCount = fetched.filter(p => p.estado_produccion === 'bordando' && p.estado_envio === 'pendiente').length;
+      const rutaCount = fetched.filter(p => p.estado_envio === 'en_camino' || (p.estado_produccion === 'completado' && p.estado_envio === 'pendiente')).length;
+      WidgetService.updateCounts(almacenCount, alistandoCount, rutaCount);
+
+      // Detectar nuevos pedidos que llegaron desde otro dispositivo
+      if (!isInitialLoadRef.current) {
+        const newOrders = fetched.filter(p => !knownOrderIdsRef.current.has(p.id));
+        if (newOrders.length > 0) {
+          soundService.playNewOrderAlert();
+          for (const newP of newOrders) {
+            setLatestNewOrder(newP);
+            NativeNotificationService.notifyNewOrder(
+              newP.codigo_seguimiento,
+              newP.usuario?.nombre_completo || 'Cliente',
+              newP.destino_detalle || 'Destino'
+            );
+          }
+        }
+      } else {
+        isInitialLoadRef.current = false;
+      }
+
+      knownOrderIdsRef.current = new Set(fetched.map(p => p.id));
     } finally {
       setLoading(false);
     }
   }, [currentUser?.id, role]);
 
   useEffect(() => {
+    NativeNotificationService.requestPermissions();
     refreshData();
+
+    // Eventos de entrada/salida de la app (cambio de visibilidad y focus)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshData();
+      }
+    };
+    window.addEventListener('focus', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // BroadcastChannel para sincronización instantánea (0ms) entre pestañas y dispositivos
     let broadcastChannel: BroadcastChannel | null = null;
@@ -116,7 +156,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (isSupabaseConfigured && supabase) {
       const activeSupabase = supabase;
       activeChannel = activeSupabase
-        .channel('incomi_realtime_orders_v3')
+        .channel('incomi_realtime_orders_v4')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'pedidos' },
@@ -138,6 +178,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
 
     return () => {
+      window.removeEventListener('focus', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(fastSyncInterval);
       if (broadcastChannel) broadcastChannel.close();
       if (activeChannel && supabase) {

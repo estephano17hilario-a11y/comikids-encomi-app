@@ -83,7 +83,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Formato 2x3 • 6 rótulos exactos por hoja • Sin saltos de página ni duplicaciones
+                Formato 2x3 • 6 rótulos gigantes por hoja • Ocupa el 100% de la hoja A4 sin espacios muertos
               </p>
             </div>
           </div>
@@ -111,7 +111,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
           {pages.map((pageOrders, pageIndex) => (
             <div
               key={pageIndex}
-              className="a4-print-page grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white text-black p-3 print:p-0 rounded-2xl print:rounded-none shadow-xl print:shadow-none mb-6 print:mb-0"
+              className="a4-print-page grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-white text-black p-3 print:p-0 rounded-2xl print:rounded-none shadow-xl print:shadow-none mb-6 print:mb-0"
             >
               {pageOrders.map((pedido) => {
                 const isShalom = pedido.metodo_envio_codigo === 'shalom';
@@ -122,61 +122,61 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                 return (
                   <div
                     key={pedido.id}
-                    className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-2.5 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden"
+                    className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden"
                   >
                     {/* Header: ComiKids & Slogan "Crea tu propia historia" & Encomi */}
-                    <div className="flex items-center justify-between border-b-2 border-black pb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-base leading-none">🧸</span>
+                    <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl leading-none">🧸</span>
                         <div>
-                          <strong className="text-sm sm:text-[15px] font-black tracking-tight uppercase block leading-none">
+                          <strong className="text-base sm:text-lg font-black tracking-tight uppercase block leading-none">
                             ComiKids
                           </strong>
-                          <span className="text-[8.5px] font-black text-slate-800 tracking-wide block pt-0.5 leading-none">
+                          <span className="text-[10px] sm:text-[11px] font-black text-slate-800 tracking-wide block pt-0.5 leading-none">
                             ✨ Crea tu propia historia ✨
                           </span>
                         </div>
                       </div>
 
                       <div className="text-right flex flex-col items-end">
-                        <span className="text-[9.5px] font-black uppercase tracking-widest text-slate-900 leading-none">
+                        <span className="text-xs font-black uppercase tracking-widest text-slate-900 leading-none">
                           ENCOMI
                         </span>
-                        <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase border border-black bg-slate-100 mt-0.5 leading-none">
+                        <span className="px-2.5 py-0.5 rounded text-[9px] sm:text-[10px] font-black uppercase border-2 border-black bg-slate-100 mt-1 leading-none">
                           {isShalom ? 'SHALOM' : 'MOTORIZADO'}
                         </span>
                       </div>
                     </div>
 
-                    {/* Essential Shipment Details (Aprovechando todo el espacio disponible) */}
-                    <div className="space-y-1 text-xs flex-1 flex flex-col justify-around py-1">
+                    {/* Essential Shipment Details (Ocupando todo el espacio con tipografía grande) */}
+                    <div className="flex-1 flex flex-col justify-around py-1 space-y-1">
                       
-                      {/* Destinatario (Grande y en 2 líneas si es necesario) */}
-                      <div className="border-b border-dashed border-slate-300 pb-0.5">
-                        <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block leading-none">
+                      {/* Destinatario */}
+                      <div className="border-b border-dashed border-slate-300 pb-1">
+                        <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
                           DESTINATARIO:
                         </span>
-                        <strong className="text-sm sm:text-[15px] font-black text-black block leading-tight pt-0.5 line-clamp-2 uppercase">
+                        <strong className="text-lg sm:text-xl font-black text-black block leading-tight pt-0.5 line-clamp-2 uppercase">
                           {pedido.usuario?.nombre_completo || 'Cliente'}
                         </strong>
                       </div>
 
                       {/* DNI (Shalom) or WhatsApp Phone (Motorizado) */}
                       {isShalom ? (
-                        <div className="border-b border-dashed border-slate-300 pb-0.5">
-                          <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block leading-none">
+                        <div className="border-b border-dashed border-slate-300 pb-1">
+                          <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
                             DNI / DOCUMENTO RECOJO:
                           </span>
-                          <strong className="text-sm font-mono font-black text-black block leading-tight pt-0.5">
+                          <strong className="text-base sm:text-lg font-mono font-black text-black block leading-tight pt-0.5">
                             {clientDni}
                           </strong>
                         </div>
                       ) : (
-                        <div className="border-b border-dashed border-slate-300 pb-0.5">
-                          <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block leading-none">
+                        <div className="border-b border-dashed border-slate-300 pb-1">
+                          <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
                             TELÉFONO / WHATSAPP:
                           </span>
-                          <strong className="text-sm font-mono font-black text-black block leading-tight pt-0.5">
+                          <strong className="text-base sm:text-lg font-mono font-black text-black block leading-tight pt-0.5">
                             {clientPhone ? `+51 ${clientPhone}` : 'No registrado'}
                           </strong>
                         </div>
@@ -184,10 +184,10 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
 
                       {/* Agencia Shalom Completa o Dirección Motorizado */}
                       <div className="pt-0.5">
-                        <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-wider block leading-none">
+                        <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
                           {isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA:'}
                         </span>
-                        <p className="text-xs sm:text-[12.5px] font-black text-black leading-tight pt-0.5 line-clamp-3">
+                        <p className="text-sm sm:text-[15px] font-black text-black leading-snug pt-0.5 line-clamp-3">
                           {isShalom ? shalomAgency : pedido.destino_detalle}
                         </p>
                       </div>
@@ -195,7 +195,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                     </div>
 
                     {/* Footer: Disney Line-Art Amigable */}
-                    <div className="pt-1 border-t border-black flex items-center justify-between text-[8px] font-bold text-slate-700 leading-none">
+                    <div className="pt-1.5 border-t-2 border-black flex items-center justify-between text-[9.5px] font-black text-slate-700 leading-none shrink-0">
                       <div className="flex items-center gap-1">
                         <span>✨</span>
                         <span>¡Paquete con Magia y Amor!</span>

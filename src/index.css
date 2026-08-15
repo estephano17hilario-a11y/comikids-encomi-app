@@ -165,12 +165,12 @@
   .a4-print-page {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
-    grid-template-rows: 86mm 86mm 86mm !important;
-    gap: 2.5mm !important;
+    grid-template-rows: 93mm 93mm 93mm !important;
+    gap: 3mm !important;
     width: 100% !important;
     max-width: 202mm !important;
-    height: 265mm !important;
-    max-height: 265mm !important;
+    height: 285mm !important;
+    max-height: 285mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
     box-sizing: border-box !important;
@@ -186,15 +186,15 @@
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
-    height: 86mm !important;
-    max-height: 86mm !important;
-    min-height: 86mm !important;
+    height: 93mm !important;
+    max-height: 93mm !important;
+    min-height: 93mm !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
     border: 2px dashed #000000 !important;
     background: #ffffff !important;
     color: #000000 !important;
-    padding: 2.5mm !important;
+    padding: 3.5mm !important;
     border-radius: 8px !important;
   }
 }

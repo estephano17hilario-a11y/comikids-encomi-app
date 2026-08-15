@@ -503,13 +503,13 @@ export const VisionAnalyticsDashboard: React.FC = () => {
 
         <div className="p-5 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-2 shadow-xl hover:border-purple-500/40 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Clientas Registradas</span>
+            <span className="text-xs font-bold text-slate-400">Clientes Registrados</span>
             <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
               <Users className="w-4 h-4" />
             </div>
           </div>
           <p className="text-2xl sm:text-3xl font-black text-white font-mono">{uniqueClients.length}</p>
-          <span className="text-[11px] text-purple-400 font-bold">Caseras en base de datos</span>
+          <span className="text-[11px] text-purple-400 font-bold">Clientes en base de datos</span>
         </div>
 
         <div className="p-5 rounded-3xl bg-slate-900/70 border border-white/15 backdrop-blur-2xl space-y-2 shadow-xl hover:border-emerald-500/40 transition-all">
@@ -613,7 +613,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
             </div>
             <div>
               <h3 className="text-base font-black text-white">¿Por Qué Compran en ComiKids?</h3>
-              <p className="text-xs text-slate-400">Cálculo real sobre las caseras registradas</p>
+              <p className="text-xs text-slate-400">Cálculo real sobre los clientes registrados</p>
             </div>
           </div>
 
@@ -626,7 +626,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black text-white">{motive.label}</span>
                   <span className="text-sm font-black font-mono" style={{ color: motive.color }}>
-                    {motive.count} clientas ({motive.percent}%)
+                    {motive.count} clientes ({motive.percent}%)
                   </span>
                 </div>
 

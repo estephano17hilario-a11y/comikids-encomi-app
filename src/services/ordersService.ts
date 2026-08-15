@@ -203,6 +203,26 @@ class OrdersService {
     return users[index];
   }
 
+  async deleteUser(userId: string): Promise<boolean> {
+    const users = this.getUsers();
+    const filteredUsers = users.filter(u => u.id !== userId);
+    this.saveUsers(filteredUsers);
+
+    const orders = this.getLocalOrders();
+    const filteredOrders = orders.filter((o: Pedido) => o.usuario_id !== userId);
+    this.saveLocalOrders(filteredOrders);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('pedidos').delete().eq('usuario_id', userId);
+        await supabase.from('usuarios').delete().eq('id', userId);
+      } catch (e) {
+        console.warn('Error deleting user in supabase', e);
+      }
+    }
+    return true;
+  }
+
   // --- MÉTODOS DE ENVÍO / DESTINOS (Configurables por la empresa) ---
   getShippingMethods(): MetodoEnvio[] {
     const raw = localStorage.getItem(STORAGE_KEYS.SHIPPING_METHODS);

@@ -43,6 +43,7 @@ interface OrderContextType {
   deleteCustomShalomAgency: (id: string | number) => void;
   saveMotorizadoDistrict: (district: MotorizadoDistrictConfig) => void;
   updateTallerConfig: (config: Partial<TallerConfig>) => void;
+  deleteUser: (userId: string) => Promise<boolean>;
   refreshData: () => Promise<void>;
   latestNewOrder: Pedido | null;
   clearLatestOrderAlert: () => void;
@@ -226,6 +227,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setTallerConfig(updated);
   };
 
+  const handleDeleteUser = async (userId: string): Promise<boolean> => {
+    const success = await ordersService.deleteUser(userId);
+    if (success) {
+      await refreshData();
+    }
+    return success;
+  };
+
   const clearLatestOrderAlert = () => {
     setLatestNewOrder(null);
   };
@@ -262,6 +271,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         deleteCustomShalomAgency: handleDeleteCustomShalomAgency,
         saveMotorizadoDistrict: handleSaveMotorizadoDistrict,
         updateTallerConfig: handleUpdateTallerConfig,
+        deleteUser: handleDeleteUser,
         refreshData,
         latestNewOrder,
         clearLatestOrderAlert

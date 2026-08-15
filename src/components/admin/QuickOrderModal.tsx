@@ -30,7 +30,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
     searchQuery: agencySearchQuery,
     setSearchQuery: setAgencySearchQuery,
     availableDepartments
-  } = useShalomAgencies({ initialDepartment: 'TODOS' });
+  } = useShalomAgencies({ initialDepartment: 'LIMA' });
 
   const [selectedAgencyId, setSelectedAgencyId] = useState<string | number>('');
   const [direccionSimple, setDireccionSimple] = useState('');
@@ -42,7 +42,8 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
 
   useEffect(() => {
     if (shalomAgenciesList.length > 0 && !selectedAgencyId) {
-      setSelectedAgencyId(shalomAgenciesList[0].id);
+      const central = shalomAgenciesList.find(a => a.nombre?.toUpperCase().includes('CENTRAL') || a.direccion?.toUpperCase().includes('CENTRAL'));
+      setSelectedAgencyId(central ? central.id : shalomAgenciesList[0].id);
     }
   }, [shalomAgenciesList, selectedAgencyId]);
 

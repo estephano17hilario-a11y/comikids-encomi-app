@@ -81,7 +81,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
         <div className="flex items-center justify-between border-b border-slate-300 pb-1 mb-2">
           <span className="text-[11px] font-black uppercase text-pink-700 flex items-center gap-1">
             <span>👤</span>
-            <span>DESTINATARIO VIP (CASERA)</span>
+            <span>DESTINATARIO VIP (CLIENTE)</span>
           </span>
           <span className="text-[10px] font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-300">
             CON AMOR

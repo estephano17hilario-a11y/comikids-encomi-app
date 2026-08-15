@@ -214,13 +214,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
   const suggestedDistritos = searchDistritos(distritoQuery);
 
-  // Auto-seleccionar primera agencia por defecto si no hay ninguna
-  useEffect(() => {
-    if (shalomAgenciesList.length > 0 && !selectedAgencyObject) {
-      setSelectedAgencyObject(shalomAgenciesList[0]);
-    }
-  }, [shalomAgenciesList, selectedAgencyObject]);
-
   // Acción rápida: Buscar 5 Sedes Más Cercanas con GPS
   const handleQuickNearest5 = async () => {
     if (!userLocation) {

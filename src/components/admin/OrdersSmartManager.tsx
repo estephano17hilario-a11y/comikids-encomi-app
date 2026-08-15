@@ -340,7 +340,7 @@ export const OrdersSmartManager: React.FC = () => {
               type="text"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Buscar por código, casera, DNI o agencia..."
+              placeholder="Buscar por código, cliente, DNI o agencia..."
               className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-800 rounded-2xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
             />
           </div>

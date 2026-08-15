@@ -17,13 +17,17 @@ import {
   Store,
   Calendar,
   MapPin,
-  ExternalLink
+  ExternalLink,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 export const ClientDirectory: React.FC = () => {
-  const { pedidos } = useOrders();
+  const { pedidos, deleteUser } = useOrders();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState<Usuario | null>(null);
+  const [clientToDelete, setClientToDelete] = useState<Usuario | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Extract unique clients from orders and stored users
   const clientsMap = new Map<string, Usuario>();
@@ -47,6 +51,20 @@ export const ClientDirectory: React.FC = () => {
     return pedidos.filter(p => p.usuario_id === userId);
   };
 
+  const handleConfirmDeleteClient = async () => {
+    if (!clientToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteUser(clientToDelete.id);
+      if (selectedClient?.id === clientToDelete.id) {
+        setSelectedClient(null);
+      }
+      setClientToDelete(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn pb-24">
       
@@ -58,7 +76,7 @@ export const ClientDirectory: React.FC = () => {
           </div>
           <div>
             <h2 className="text-xl sm:text-2xl font-black text-white">
-              Agendas & Directorio 360° de Caseras
+              Agendas & Directorio 360° de Clientes
             </h2>
             <p className="text-xs text-slate-400">
               Búsqueda por Nombre, DNI o WhatsApp con perfil demográfico e historial completo
@@ -82,7 +100,7 @@ export const ClientDirectory: React.FC = () => {
       {filteredClients.length === 0 ? (
         <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
           <p className="text-4xl">🔍</p>
-          <h3 className="text-lg font-bold text-white">No se encontraron clientas con ese criterio</h3>
+          <h3 className="text-lg font-bold text-white">No se encontraron clientes con ese criterio</h3>
           <p className="text-xs text-slate-400">Prueba buscando por número de celular, DNI o nombre completo.</p>
         </div>
       ) : (
@@ -109,7 +127,7 @@ export const ClientDirectory: React.FC = () => {
             const rawPhone = (displayPhone || '').replace(/\D/g, '');
             const whatsappChatUrl = rawPhone.length >= 9
               ? `https://wa.me/51${rawPhone.slice(-9)}?text=${encodeURIComponent(`¡Hola ${client.nombre_completo}! 👋 Te saluda ComiKids. ¿Cómo podemos ayudarte hoy con tus pedidos?`)}`
-              : `https://wa.me/message/FSEGUIYKFKYKA1`;
+              : `https://api.whatsapp.com/send?phone=51927781412`;
 
             const purchaseReasonLabel = client.motivo_compra === 'emprender'
               ? '💼 Para Venta / Negocio'
@@ -124,7 +142,7 @@ export const ClientDirectory: React.FC = () => {
               >
                 <div className="space-y-3.5">
                   
-                  {/* Top Avatar & Level */}
+                  {/* Top Avatar, Level & Quick Delete */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500 via-indigo-600 to-cyan-500 p-0.5 shadow-md shadow-purple-500/20 shrink-0">
@@ -148,9 +166,19 @@ export const ClientDirectory: React.FC = () => {
                       </div>
                     </div>
 
-                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-mono font-black bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                      {clientOrders.length} {clientOrders.length === 1 ? 'pedido' : 'pedidos'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2.5 py-1 rounded-xl text-[10px] font-mono font-black bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                        {clientOrders.length} {clientOrders.length === 1 ? 'pedido' : 'pedidos'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setClientToDelete(client)}
+                        className="p-1.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                        title="Eliminar cliente de la agenda"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Demographic & Contact Pills */}
@@ -214,6 +242,47 @@ export const ClientDirectory: React.FC = () => {
         </div>
       )}
 
+      {/* Confirmation Modal to Delete Client */}
+      {clientToDelete && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+          <div className="relative w-full max-w-sm rounded-3xl bg-slate-900 border border-rose-500/40 p-6 space-y-4 text-center shadow-2xl animate-scaleUp">
+            
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base font-black text-white">¿Eliminar Cliente de la Agenda?</h3>
+              <p className="text-xs text-slate-300">
+                Se eliminará a <strong>{clientToDelete.nombre_completo}</strong> del directorio y se desvinculará su información.
+              </p>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setClientToDelete(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDeleteClient}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg shadow-rose-600/30 transition-all cursor-pointer"
+              >
+                {isDeleting ? 'Eliminando...' : 'Sí, Eliminar'}
+              </button>
+            </div>
+
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* 360° Profile Modal */}
       {selectedClient && (() => {
         const clientOrders = getClientOrders(selectedClient.id);
@@ -247,12 +316,26 @@ export const ClientDirectory: React.FC = () => {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedClient(null)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClientToDelete(selectedClient);
+                    }}
+                    className="p-2 rounded-xl text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                    title="Eliminar de la agenda"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedClient(null)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Profile 360 Details */}
@@ -290,33 +373,33 @@ export const ClientDirectory: React.FC = () => {
                 </div>
               </div>
 
-            {/* Historical Orders */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Package className="w-4 h-4 text-cyan-400" />
-                <span>Historial de Despachos ({getClientOrders(selectedClient.id).length})</span>
-              </h4>
+              {/* Historical Orders */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-cyan-400" />
+                  <span>Historial de Despachos ({clientOrders.length})</span>
+                </h4>
 
-              <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                {getClientOrders(selectedClient.id).length === 0 ? (
-                  <p className="text-center py-6 text-xs text-slate-500">Sin despachos registrados.</p>
-                ) : (
-                  getClientOrders(selectedClient.id).map(p => (
-                    <div key={p.id} className="p-4 bg-slate-950/90 rounded-2xl border border-slate-800 space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono font-black text-cyan-400">{p.codigo_seguimiento}</span>
-                        <span className="text-[10px] text-slate-400">{formatDate(p.created_at)}</span>
+                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                  {clientOrders.length === 0 ? (
+                    <p className="text-center py-6 text-xs text-slate-500">Sin despachos registrados.</p>
+                  ) : (
+                    clientOrders.map(p => (
+                      <div key={p.id} className="p-4 bg-slate-950/90 rounded-2xl border border-slate-800 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-black text-cyan-400">#{p.codigo_seguimiento}</span>
+                          <span className="text-[10px] text-slate-400">{formatDate(p.created_at)}</span>
+                        </div>
+                        <p className="text-slate-200 font-semibold">{p.destino_detalle}</p>
+                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
+                          <span className="text-slate-400 capitalize">{p.metodo_envio_codigo === 'shalom' ? '📦 Shalom' : '🛵 Motorizado'}</span>
+                          <span className="font-bold text-emerald-400 capitalize">{p.estado_envio}</span>
+                        </div>
                       </div>
-                      <p className="text-slate-200 font-semibold">{p.destino_detalle}</p>
-                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
-                        <span className="text-slate-400 capitalize">{p.metodo_envio_codigo === 'shalom' ? '📦 Shalom' : '🛵 Motorizado'}</span>
-                        <span className="font-bold text-emerald-400 capitalize">{p.estado_envio}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
 
             </div>
           </div>,

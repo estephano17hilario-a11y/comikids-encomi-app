@@ -115,7 +115,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 4mm;
+    margin: 3mm 4mm !important;
   }
 
   html, body {
@@ -124,7 +124,7 @@
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
-    height: 100% !important;
+    height: auto !important;
     overflow: visible !important;
   }
 
@@ -138,24 +138,27 @@
   .a4-print-page {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
-    grid-template-rows: 88mm 88mm 88mm !important;
-    gap: 3mm !important;
+    grid-template-rows: 86mm 86mm 86mm !important;
+    gap: 2.5mm !important;
     width: 100% !important;
     max-width: 202mm !important;
-    height: 272mm !important;
-    max-height: 272mm !important;
+    height: 265mm !important;
+    max-height: 265mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
     box-sizing: border-box !important;
-    page-break-after: always !important;
-    break-after: page !important;
     overflow: hidden !important;
   }
 
+  .a4-print-page:not(:last-child) {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
   .a4-rotulo-card {
-    height: 88mm !important;
-    max-height: 88mm !important;
-    min-height: 88mm !important;
+    height: 86mm !important;
+    max-height: 86mm !important;
+    min-height: 86mm !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
   }

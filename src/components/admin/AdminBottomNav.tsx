@@ -63,7 +63,7 @@ export const AdminBottomNav: React.FC<Props> = ({
               </span>
             )}
           </div>
-          <span className="text-[10px] mt-1">Bordados</span>
+          <span className="text-[10px] mt-1">Alistamiento</span>
         </button>
 
         {/* Center Quick Order FAB */}

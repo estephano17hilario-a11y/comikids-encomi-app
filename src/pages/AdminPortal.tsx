@@ -22,7 +22,7 @@ import {
 export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'cuenta';
 
 export const AdminPortal: React.FC = () => {
-  const { pedidos, masterCode } = useOrders();
+  const { pedidos, masterCode, tallerConfig } = useOrders();
   const { currentUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -55,7 +55,7 @@ export const AdminPortal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-black text-white tracking-tight">
-                  ComiKids Almacén
+                  {tallerConfig.nombre_taller || 'Encomi Envíos'}
                 </h1>
                 <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/20">
                   Empresa Matriz

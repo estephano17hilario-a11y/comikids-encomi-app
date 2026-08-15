@@ -59,16 +59,16 @@ export const EmbroideryQueue: React.FC = () => {
           </div>
           <div>
             <h3 className="text-xl font-black text-white tracking-tight">
-              Cola Técnica de Producción de Bordados
+              Cola de Preparación & Alistamiento
             </h3>
             <p className="text-xs text-slate-400">
-              Control visual de diseño, hilos y referencias para la máquina y bastidor
+              Control de empaque, rotulado y preparación de prendas para despacho
             </p>
           </div>
         </div>
 
         <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-          {productionOrders.length} {productionOrders.length === 1 ? 'pedido en taller' : 'pedidos en taller'}
+          {productionOrders.length} {productionOrders.length === 1 ? 'pedido en preparación' : 'pedidos en preparación'}
         </span>
       </div>
 
@@ -77,9 +77,9 @@ export const EmbroideryQueue: React.FC = () => {
           <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-slate-900 flex items-center justify-center text-slate-600">
             <CheckCircle2 className="w-8 h-8 text-emerald-500" />
           </div>
-          <h4 className="text-base font-bold text-white">¡Taller al día! 🎉</h4>
+          <h4 className="text-base font-bold text-white">¡Alistamiento al día! 🎉</h4>
           <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-            No hay prendas pendientes en la cola de bordados. Todos los pedidos registrados han sido completados o despachados.
+            No hay paquetes pendientes en la cola de preparación. Todos los pedidos registrados han sido completados o despachados.
           </p>
         </div>
       ) : (
@@ -175,10 +175,10 @@ export const EmbroideryQueue: React.FC = () => {
                     {!isBordando ? (
                       <button
                         onClick={() => updateEstadoProduccion(pedido.id, 'bordando')}
-                        className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs shadow-lg shadow-purple-600/30 transition-all active:scale-95 flex items-center gap-1.5"
+                        className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition-all active:scale-95 flex items-center gap-1.5"
                       >
                         <Scissors className="w-4 h-4" />
-                        <span>Montar en Bastidor</span>
+                        <span>Comenzar Alistamiento</span>
                       </button>
                     ) : (
                       <button
@@ -186,7 +186,7 @@ export const EmbroideryQueue: React.FC = () => {
                         className="px-4 py-2 rounded-xl bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 transition-all active:scale-95 flex items-center gap-1.5"
                       >
                         <Check className="w-4 h-4" />
-                        <span>Marcar Bordado Listo</span>
+                        <span>Marcar Listo para Enviar</span>
                       </button>
                     )}
                   </div>

@@ -32,11 +32,11 @@ const STORAGE_KEYS = {
 export const DEFAULT_EMPRESA_USER: Usuario = {
   id: 'empresa-master-comikids',
   dni: '061625',
-  nombre_completo: 'Comikids Bordados & Estilo',
+  nombre_completo: 'Encomi Envíos',
   edad: 30,
   password_hash: '989834969MI',
   rol: 'empresa',
-  avatar_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=ComiKidsMaster&backgroundColor=06b6d4,3b82f6',
+  avatar_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=EncomiEnvios&backgroundColor=06b6d4,3b82f6',
   puntos_xp: 5000,
   nivel: 10,
   created_at: new Date().toISOString()
@@ -66,11 +66,11 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
 ];
 
 export const DEFAULT_TALLER_CONFIG: TallerConfig = {
-  nombre_taller: 'Comikids - Taller de Bordados & Estilo',
-  ruc_dni: '42020312COMIKIDS',
+  nombre_taller: 'Encomi Envíos',
+  ruc_dni: '42020312ENCOMI',
   celular_taller: '+51 987 654 321',
   whatsapp_pedidos: '51987654321',
-  direccion_taller: 'Av. Gamarra 1234, Taller 402, La Victoria, Lima',
+  direccion_taller: 'Av. Gamarra 1234, Oficina 402, La Victoria, Lima',
   ciudad_origen: 'LIMA',
   agencia_shalom_origen: 'CENTRAL',
 };
@@ -87,11 +87,11 @@ class OrdersService {
     try {
       const users: Usuario[] = JSON.parse(raw);
       // Ensure master empresa account is always present with dni 061625
-      const empresaIndex = users.findIndex(u => u.rol === 'empresa' || u.dni.toUpperCase() === '061625' || u.dni.toUpperCase() === '42020312COMIKIDS');
+      const empresaIndex = users.findIndex(u => u.rol === 'empresa' || u.dni.toUpperCase() === '061625' || u.dni.toUpperCase() === '42020312COMIKIDS' || u.dni.toUpperCase() === '42020312ENCOMI');
       if (empresaIndex !== -1) {
         users[empresaIndex].dni = '061625';
         users[empresaIndex].rol = 'empresa';
-        users[empresaIndex].nombre_completo = 'Comikids Bordados & Estilo';
+        users[empresaIndex].nombre_completo = 'Encomi Envíos';
       } else {
         users.push(DEFAULT_EMPRESA_USER);
       }

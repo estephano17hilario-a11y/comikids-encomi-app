@@ -126,7 +126,7 @@ export const CompanyAccountSettings: React.FC = () => {
           <div>
             <div className="flex items-center gap-2.5">
               <h2 className="text-xl sm:text-2xl font-black text-white">
-                {tallerConfig.nombre_taller || 'Comikids Bordados & Estilo'}
+                {tallerConfig.nombre_taller || 'Encomi Envíos'}
               </h2>
               <span className="px-3 py-1 rounded-xl text-[10px] font-black uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                 Cuenta Matriz

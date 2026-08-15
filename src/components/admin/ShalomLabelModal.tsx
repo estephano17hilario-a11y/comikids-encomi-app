@@ -68,12 +68,13 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
     }
   };
 
-  const clientName = pedido.usuario?.nombre_completo || 'Clienta';
+  const clientName = pedido.usuario?.nombre_completo || 'Cliente';
   const clientPhone = (pedido.usuario?.telefono_default || pedido.usuario?.dni || '').replace(/\D/g, '');
-  const whatsappNotifyText = `¡Hola ${clientName}! ✨ Te saluda el taller de *Comikids / Incomi*.\n\nTu pedido *#${pedido.codigo_seguimiento}* ha sido rotulado para la *Agencia Shalom (${pedido.destino_detalle})*.\n\n📦 *Consignatario:* ${clientName}\n🆔 *DNI:* ${pedido.usuario?.dni || '-'}\n\nTe adjuntaremos tu guía y foto en breve. ¡Muchas gracias por tu preferencia! 💖`;
+  const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
+  const whatsappNotifyText = `¡Hola ${clientName}! ✨ Te saluda *Encomi Envíos*.\n\nTu pedido *#${pedido.codigo_seguimiento}* ha sido rotulado para entrega por *${isShalom ? 'Agencia Shalom' : 'Motorizado Local'} (${pedido.destino_detalle})*.\n\n📦 *Destinatario:* ${clientName}\n\nTe adjuntaremos tu comprobante y foto en breve. ¡Muchas gracias por tu preferencia! ✨`;
   const whatsappNotifyUrl = clientPhone.length >= 9
     ? `https://wa.me/51${clientPhone.slice(-9)}?text=${encodeURIComponent(whatsappNotifyText)}`
-    : `https://wa.me/message/FSEGUIYKFKYKA1?text=${encodeURIComponent(whatsappNotifyText)}`;
+    : `https://api.whatsapp.com/send?phone=51927781412&text=${encodeURIComponent(whatsappNotifyText)}`;
 
   return createPortal(
     <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto" data-no-print="true">
@@ -87,7 +88,7 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
             </div>
             <div>
               <h3 className="text-lg font-bold text-white">
-                Rótulo Oficial de Envío Shalom
+                {isShalom ? 'Rótulo Oficial de Envío Shalom' : 'Rótulo Oficial de Despacho Motorizado'}
               </h3>
               <p className="text-xs text-slate-400 font-mono">
                 Pedido: #{pedido.codigo_seguimiento} • {clientName}

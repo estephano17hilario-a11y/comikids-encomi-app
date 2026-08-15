@@ -295,10 +295,10 @@ export const OrdersSmartManager: React.FC = () => {
                 disabled={isProcessing}
                 onClick={() => setShowBulkPrint(true)}
                 className="py-2 px-3 rounded-xl bg-purple-600/30 hover:bg-purple-600 active:scale-95 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                title="Imprimir Rótulos A4 de todos los seleccionados"
+                title="Imprimir Rótulos A4 de todos los seleccionados (Shalom y Motorizado)"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>Rótulos ({selectedShalomOrders.length})</span>
+                <span>Rótulos ({selectedOrders.length})</span>
               </button>
 
               {/* Eliminar en Masa */}
@@ -741,10 +741,10 @@ export const OrdersSmartManager: React.FC = () => {
         />
       )}
 
-      {/* Bulk Print Modal */}
+      {/* Bulk Print Modal (Shalom y Motorizado) */}
       {showBulkPrint && (
         <BulkPrintModal
-          pedidos={selectedShalomOrders}
+          pedidos={selectedOrders}
           tallerConfig={tallerConfig}
           onClose={() => setShowBulkPrint(false)}
           onPrintComplete={handleBulkPrintComplete}

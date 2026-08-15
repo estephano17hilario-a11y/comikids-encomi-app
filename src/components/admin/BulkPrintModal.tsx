@@ -87,7 +87,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Logo ComiKids Grande • Logos Shalom / Moto • Textos adaptables • 100% Hoja A4
+                Logo Encomi • Logos Shalom / Motorizado • Textos adaptables • 100% Hoja A4
               </p>
             </div>
           </div>
@@ -128,20 +128,18 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                     key={pedido.id}
                     className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden"
                   >
-                    {/* Header: Logo Oficial ComiKids Grande & Slogan & Badge con Logo Shalom / Moto */}
+                    {/* Header: Logo Oficial Encomi & Slogan & Badge con Logo Shalom / Moto */}
                     <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
                       <div className="flex items-center gap-2.5">
-                        <img 
-                          src="/Comikids.png" 
-                          alt="ComiKids" 
-                          className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0" 
-                        />
+                        <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center text-xl font-black shrink-0">
+                          📦
+                        </div>
                         <div>
                           <strong className="text-base sm:text-lg font-black tracking-tight uppercase block leading-none">
-                            ComiKids
+                            {tallerConfig.nombre_taller || 'Encomi Envíos'}
                           </strong>
                           <span className="text-[10.5px] sm:text-xs font-black text-slate-800 tracking-wide block pt-0.5 leading-none">
-                            ✨ Crea tu propia historia ✨
+                            ✨ Logística & Despacho Seguro ✨
                           </span>
                         </div>
                       </div>
@@ -220,15 +218,15 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
 
                     </div>
 
-                    {/* Footer: Disney Line-Art Amigable */}
+                    {/* Footer */}
                     <div className="pt-1.5 border-t-2 border-black flex items-center justify-between text-[9.5px] font-black text-slate-700 leading-none shrink-0">
                       <div className="flex items-center gap-1">
-                        <span>✨</span>
-                        <span>¡Paquete con Magia y Amor!</span>
+                        <span>📦</span>
+                        <span>Paquete de Despacho Seguro</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <span>★ ★ ★</span>
-                        <span>ComiKids 2026</span>
+                        <span>Encomi Envíos</span>
                       </div>
                     </div>
 

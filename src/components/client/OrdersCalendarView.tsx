@@ -124,7 +124,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
 
   const steps = [
     { num: 1, title: 'En Almacén', icon: Clock },
-    { num: 2, title: 'En Embalaje', icon: Boxes },
+    { num: 2, title: 'Alistándolo', icon: Boxes },
     { num: 3, title: 'Por Despachar', icon: PackageCheck },
     { num: 4, title: 'En Camino', icon: Truck },
   ];

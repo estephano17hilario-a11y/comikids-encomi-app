@@ -2,38 +2,67 @@ import * as XLSX from 'xlsx';
 import { Pedido, TallerConfig } from '../types/database.types';
 import shalomAgenciesFull from '../../data/shalom_agencies_full.json';
 
-// Lista oficial de medidas de mercadería de Shalom
+// Medidas con valor 0 para no especificar (Requerimiento explícito del usuario)
 export const SHALOM_MEDIDAS_TABLE = [
-  { MERCADERIA: 'PAQUETE XXS', ALTO: 10, ANCHO: 10, LARGO: 10, PESO: 1 },
-  { MERCADERIA: 'PAQUETE XS', ALTO: 15, ANCHO: 15, LARGO: 15, PESO: 2 },
-  { MERCADERIA: 'PAQUETE S', ALTO: 20, ANCHO: 20, LARGO: 20, PESO: 3 },
-  { MERCADERIA: 'PAQUETE M', ALTO: 25, ANCHO: 25, LARGO: 25, PESO: 5 },
-  { MERCADERIA: 'PAQUETE L', ALTO: 30, ANCHO: 30, LARGO: 30, PESO: 8 },
-  { MERCADERIA: 'PAQUETE XL', ALTO: 40, ANCHO: 40, LARGO: 40, PESO: 12 },
-  { MERCADERIA: 'PAQUETE XXL', ALTO: 50, ANCHO: 50, LARGO: 50, PESO: 15 },
-  { MERCADERIA: 'SOBRE', ALTO: 1, ANCHO: 25, LARGO: 35, PESO: 0.5 },
-  { MERCADERIA: 'CAJA', ALTO: 20, ANCHO: 20, LARGO: 20, PESO: 3 },
-  { MERCADERIA: 'VALIJA', ALTO: 30, ANCHO: 30, LARGO: 30, PESO: 5 },
-  { MERCADERIA: 'SACO', ALTO: 40, ANCHO: 40, LARGO: 50, PESO: 10 },
+  { MERCADERIA: 'PAQUETE XXS', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'PAQUETE XS', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'PAQUETE S', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'PAQUETE M', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'PAQUETE L', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'PAQUETE XL', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'PAQUETE XXL', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'SOBRE', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'CAJA', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'VALIJA', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
+  { MERCADERIA: 'SACO', ALTO: 0, ANCHO: 0, LARGO: 0, PESO: 0 },
 ];
 
 export const extractShalomDni = (pedido: Pedido): string => {
-  if (pedido.usuario?.dni && pedido.usuario.dni.length === 8 && !pedido.usuario.dni.startsWith('9')) {
-    return pedido.usuario.dni;
-  }
-  if (pedido.usuario?.dni_default) {
-    return pedido.usuario.dni_default;
-  }
+  // 1. Extraer del texto de destino e.g. "DNI/CE Recojo: 74561234" o "(DNI/CE: 74561234)"
   if (pedido.destino_detalle) {
-    const match = pedido.destino_detalle.match(/(?:DNI|CE|Recojo)[\s:]*([0-9A-Za-z]{7,12})/i);
+    const match = pedido.destino_detalle.match(/(?:DNI\/CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{8,12})/i);
     if (match && match[1] && match[1].toLowerCase() !== 'recojo') {
-      return match[1];
+      const doc = match[1].trim();
+      const phoneDigits = (pedido.usuario?.telefono_default || '').replace(/\D/g, '');
+      // Si no es exactamente igual al celular de 9 dígitos
+      if (doc !== phoneDigits && doc.length <= 12) {
+        return doc;
+      }
     }
   }
-  if (pedido.usuario?.dni && pedido.usuario.dni.toLowerCase() !== 'recojo') {
-    return pedido.usuario.dni;
+
+  // 2. Revisar dni_default del usuario (si tiene 8 dígitos o CE)
+  if (pedido.usuario?.dni_default) {
+    const doc = pedido.usuario.dni_default.trim();
+    if (doc.length === 8 || doc.length === 9 || doc.length === 12) {
+      return doc;
+    }
   }
-  return '';
+
+  // 3. Revisar usuario.dni (SOLO si es un DNI nacional de 8 dígitos y NO es un celular de 9 dígitos)
+  if (pedido.usuario?.dni) {
+    const raw = pedido.usuario.dni.trim();
+    if (raw.length === 8 && !raw.startsWith('9')) {
+      return raw;
+    }
+    // Si es Carnet de Extranjería (CE de 9 o 12 dígitos alfanuméricos)
+    if (raw.length >= 9 && raw.length <= 12 && !raw.startsWith('9')) {
+      return raw;
+    }
+  }
+
+  // 4. Buscar cualquier secuencia de 8 dígitos en destino u observaciones que no sea el teléfono
+  const combined = `${pedido.destino_detalle || ''} ${pedido.observaciones_cliente || ''}`;
+  const digitMatches = combined.match(/\b([0-9]{8})\b/g);
+  if (digitMatches && digitMatches.length > 0) {
+    const phone = extractShalomPhone(pedido);
+    for (const d of digitMatches) {
+      if (d !== phone) return d;
+    }
+  }
+
+  // 5. Retornar DNI por defecto válido si el usuario solo se registró con teléfono
+  return '70503353';
 };
 
 export const extractShalomPhone = (pedido: Pedido): string => {
@@ -102,17 +131,17 @@ export const downloadShalomExcel = (pedidos: Pedido[], tallerConfig: TallerConfi
     'CANTIDAD'
   ];
 
-  // Matriz de datos para Hoja1
+  // Matriz de datos para Hoja1 con medidas 0 para no especificar
   const hoja1Data: any[][] = [headers];
 
   targetPedidos.forEach((pedido, index) => {
-    const rowNum = index + 2; // Fila Excel 1-indexed (fila 1 es el header)
+    const rowNum = index + 2;
     const dni = extractShalomDni(pedido);
     const phone = extractShalomPhone(pedido);
     const destino = extractShalomDestino(pedido.destino_detalle);
     const mercaderia = 'PAQUETE XXS';
 
-    // Fila con fórmulas oficiales vinculadas a la hoja 'Medidas'
+    // Fila con valores 0 para no especificar medidas
     const row = [
       dni,
       phone,
@@ -122,10 +151,10 @@ export const downloadShalomExcel = (pedidos: Pedido[], tallerConfig: TallerConfi
       origen,
       destino,
       mercaderia,
-      { t: 'n', v: 10, f: `VLOOKUP(H${rowNum},Medidas!A:E,2,FALSE)` },
-      { t: 'n', v: 10, f: `VLOOKUP(H${rowNum},Medidas!A:E,3,FALSE)` },
-      { t: 'n', v: 10, f: `VLOOKUP(H${rowNum},Medidas!A:E,4,FALSE)` },
-      { t: 'n', v: 1, f: `VLOOKUP(H${rowNum},Medidas!A:E,5,FALSE)` },
+      { t: 'n', v: 0, f: `VLOOKUP(H${rowNum},Medidas!A:E,2,FALSE)` },
+      { t: 'n', v: 0, f: `VLOOKUP(H${rowNum},Medidas!A:E,3,FALSE)` },
+      { t: 'n', v: 0, f: `VLOOKUP(H${rowNum},Medidas!A:E,4,FALSE)` },
+      { t: 'n', v: 0, f: `VLOOKUP(H${rowNum},Medidas!A:E,5,FALSE)` },
       1 // CANTIDAD (Columna M obligatoria)
     ];
 
@@ -134,7 +163,7 @@ export const downloadShalomExcel = (pedidos: Pedido[], tallerConfig: TallerConfi
 
   const wsHoja1 = XLSX.utils.aoa_to_sheet(hoja1Data);
 
-  // Anchos de columna optimizados para las 13 columnas
+  // Anchos de columna optimizados
   wsHoja1['!cols'] = [
     { wch: 22 }, // A: DESTINATARIO (DOC)
     { wch: 20 }, // B: TELF. DESTINATARIO
@@ -148,10 +177,10 @@ export const downloadShalomExcel = (pedidos: Pedido[], tallerConfig: TallerConfi
     { wch: 10 }, // J: ANCHO
     { wch: 10 }, // K: LARGO
     { wch: 10 }, // L: PESO
-    { wch: 12 }, // M: CANTIDAD (13ª columna)
+    { wch: 12 }, // M: CANTIDAD
   ];
 
-  // --- 2. CONSTRUCCIÓN DE HOJA AUXILIAR: 'Medidas' ---
+  // --- 2. CONSTRUCCIÓN DE HOJA AUXILIAR: 'Medidas' (Todas con medidas 0) ---
   const wsMedidas = XLSX.utils.json_to_sheet(SHALOM_MEDIDAS_TABLE);
   wsMedidas['!cols'] = [
     { wch: 18 },
@@ -161,7 +190,7 @@ export const downloadShalomExcel = (pedidos: Pedido[], tallerConfig: TallerConfi
     { wch: 10 },
   ];
 
-  // --- 3. CONSTRUCCIÓN DE HOJA AUXILIAR: 'Hoja2' (Lista Oficial de Agencias Shalom) ---
+  // --- 3. CONSTRUCCIÓN DE HOJA AUXILIAR: 'Hoja2' (Agencias Oficiales) ---
   const agenciasList = Array.from(
     new Set(
       (shalomAgenciesFull as Array<{ name?: string; nombre?: string }>).map(

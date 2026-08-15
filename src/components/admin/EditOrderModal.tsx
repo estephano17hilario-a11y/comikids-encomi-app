@@ -112,7 +112,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                Estado de Producción / Embalaje
+                Estado de Producción / Alistado
               </label>
               <select
                 value={estadoProduccion}
@@ -120,7 +120,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                 className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
               >
                 <option value="en_cola">En Cola de Almacén</option>
-                <option value="bordando">Embalando / Preparando</option>
+                <option value="bordando">Alistándolo / Preparando</option>
                 <option value="completado">Listo para Despacho</option>
               </select>
             </div>

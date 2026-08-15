@@ -4,6 +4,7 @@ import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.type
 import { useOrders } from '../../context/OrderContext';
 import { BulkPrintModal } from './BulkPrintModal';
 import { EditOrderModal } from './EditOrderModal';
+import { ShalomRegisterModal } from './ShalomRegisterModal';
 import { downloadShalomExcel } from '../../utils/shalomExcelExporter';
 import {
   CheckSquare,
@@ -48,8 +49,9 @@ export const OrdersSmartManager: React.FC = () => {
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Modals State
+  // Modals
   const [showBulkPrint, setShowBulkPrint] = useState(false);
+  const [showShalomRegister, setShowShalomRegister] = useState(false);
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [swipeTargetOrder, setSwipeTargetOrder] = useState<Pedido | null>(null);
@@ -219,14 +221,14 @@ export const OrdersSmartManager: React.FC = () => {
             {/* Mass Actions */}
             <div className="flex items-center gap-2 flex-wrap">
               
-              {/* Mover a Embalando */}
+              {/* Mover a Alistándolo */}
               <button
                 disabled={isProcessing}
                 onClick={() => handleMassStatusUpdate('pendiente', 'bordando')}
                 className="py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
-                title="Mover a Embalaje"
+                title="Mover a Alistando"
               >
-                <span>📦 Embalar</span>
+                <span>📦 Alistar</span>
               </button>
 
               {/* Mover a Por Despachar / Enviar */}
@@ -249,12 +251,12 @@ export const OrdersSmartManager: React.FC = () => {
                 <span>✓ Entregar</span>
               </button>
 
-              {/* Descargar Excel Plantilla Oficial Shalom */}
+              {/* Descargar Excel Plantilla Oficial Shalom con validaciones */}
               <button
                 disabled={isProcessing}
-                onClick={handleRegisterShalomExcel}
+                onClick={() => setShowShalomRegister(true)}
                 className="py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
-                title="Descargar Plantilla Excel Oficial Shalom y registrar pedidos"
+                title="Abrir asistente de registro oficial en Shalom con validaciones"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-300" />
                 <span>Registrar Shalom</span>
@@ -297,27 +299,22 @@ export const OrdersSmartManager: React.FC = () => {
               <span>📋</span>
               <span>Gestor Inteligente de Pedidos & Envíos</span>
             </h2>
-            <p className="text-xs sm:text-sm text-slate-400">
-              Control To-Do de embalaje, despacho en Shalom y Motorizado con selección en masa
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Control To-Do de alistado, despacho en Shalom y Motorizado con selección en masa
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={selectAll}
-              className="px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-300 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
+              className="py-2 px-3 rounded-2xl bg-white/5 hover:bg-white/10 text-cyan-400 font-bold text-xs flex items-center gap-1.5 border border-cyan-500/20 transition-all cursor-pointer"
             >
-              {selectedIds.length > 0 && selectedIds.length === filteredOrders.length ? (
-                <>
-                  <CheckSquare className="w-4 h-4 text-cyan-400" />
-                  <span>Deseleccionar Todo</span>
-                </>
-              ) : (
-                <>
-                  <Square className="w-4 h-4 text-slate-400" />
-                  <span>Seleccionar Todos ({filteredOrders.length})</span>
-                </>
-              )}
+              <CheckSquare className="w-4 h-4" />
+              <span>
+                {selectedIds.length === filteredOrders.length && filteredOrders.length > 0
+                  ? 'Deseleccionar Todo'
+                  : 'Seleccionar Todo'}
+              </span>
             </button>
           </div>
         </div>
@@ -348,7 +345,7 @@ export const OrdersSmartManager: React.FC = () => {
               onClick={() => setStatusFilter('embalando')}
               className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'embalando' ? 'bg-purple-600 text-white font-black' : 'text-slate-400 hover:text-white'}`}
             >
-              Embalaje
+              Alistándolo
             </button>
             <button
               onClick={() => setStatusFilter('despachar')}
@@ -622,7 +619,7 @@ export const OrdersSmartManager: React.FC = () => {
               >
                 <div className="flex items-center gap-2">
                   <span>⚡</span>
-                  <span>Embalando / En Preparación</span>
+                  <span>Alistándolo / En Preparación</span>
                 </div>
                 <MoveRight className="w-4 h-4" />
               </button>
@@ -674,6 +671,20 @@ export const OrdersSmartManager: React.FC = () => {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Shalom Mass Registration Confirmation Modal */}
+      {showShalomRegister && (
+        <ShalomRegisterModal
+          pedidos={selectedOrders}
+          tallerConfig={tallerConfig}
+          onClose={() => setShowShalomRegister(false)}
+          onRegistered={async (registeredIds) => {
+            for (const id of registeredIds) {
+              await updatePedido(id, { registrado_shalom: true });
+            }
+          }}
+        />
       )}
 
       {/* Bulk Print Modal */}

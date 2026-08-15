@@ -51,6 +51,8 @@ export interface Pedido {
   estado_envio: EstadoEnvio;
   observaciones_cliente?: string;
   fecha_limite?: string;
+  rotulado?: boolean;
+  registrado_shalom?: boolean;
   created_at: string;
   updated_at?: string;
 }

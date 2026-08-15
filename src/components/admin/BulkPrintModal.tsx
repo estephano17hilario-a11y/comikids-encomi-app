@@ -7,9 +7,10 @@ interface Props {
   pedidos: Pedido[];
   tallerConfig: TallerConfig;
   onClose: () => void;
+  onPrintComplete?: (printedOrderIds: string[]) => void;
 }
 
-export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose }) => {
+export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose, onPrintComplete }) => {
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
@@ -17,12 +18,15 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
     };
   }, []);
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   // Deduplica pedidos por ID para evitar duplicaciones
   const uniquePedidos = Array.from(new Map(pedidos.map(p => [p.id, p])).values());
+
+  const handlePrint = () => {
+    window.print();
+    if (onPrintComplete) {
+      onPrintComplete(uniquePedidos.map(p => p.id));
+    }
+  };
 
   // Divide en grupos exactos de 6 pedidos por cada hoja A4 (2 columnas x 3 filas)
   const chunkArray = <T,>(arr: T[], size: number): T[][] => {
@@ -83,7 +87,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Logo oficial ComiKids • Logos Shalom / Moto • Textos adaptables a 2-3 líneas • Sin espacios muertos
+                Logo ComiKids Grande • Logos Shalom / Moto • Textos adaptables • 100% Hoja A4
               </p>
             </div>
           </div>
@@ -124,19 +128,19 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                     key={pedido.id}
                     className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden"
                   >
-                    {/* Header: Logo Oficial ComiKids & Slogan & Badge con Logo Shalom / Moto */}
+                    {/* Header: Logo Oficial ComiKids Grande & Slogan & Badge con Logo Shalom / Moto */}
                     <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2.5">
                         <img 
                           src="/Comikids.png" 
                           alt="ComiKids" 
-                          className="w-8 h-8 object-contain shrink-0" 
+                          className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0" 
                         />
                         <div>
                           <strong className="text-base sm:text-lg font-black tracking-tight uppercase block leading-none">
                             ComiKids
                           </strong>
-                          <span className="text-[10px] sm:text-[11px] font-black text-slate-800 tracking-wide block pt-0.5 leading-none">
+                          <span className="text-[10.5px] sm:text-xs font-black text-slate-800 tracking-wide block pt-0.5 leading-none">
                             ✨ Crea tu propia historia ✨
                           </span>
                         </div>
@@ -146,22 +150,22 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-900 leading-none">
                           ENCOMI
                         </span>
-                        <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded border-2 border-black bg-slate-100 mt-1 leading-none">
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border-2 border-black bg-slate-100 mt-1 leading-none">
                           {isShalom ? (
                             <>
                               <img 
                                 src="/Shalom-Courier-Logo.webp" 
                                 alt="Shalom" 
-                                className="h-3.5 w-auto object-contain shrink-0"
+                                className="h-4 w-auto object-contain shrink-0"
                               />
-                              <span className="text-[9.5px] font-black uppercase tracking-wider text-black">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-black">
                                 SHALOM
                               </span>
                             </>
                           ) : (
                             <>
-                              <span className="text-sm leading-none">🛵</span>
-                              <span className="text-[9.5px] font-black uppercase tracking-wider text-black">
+                              <span className="text-base leading-none">🛵</span>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-black">
                                 MOTORIZADO
                               </span>
                             </>

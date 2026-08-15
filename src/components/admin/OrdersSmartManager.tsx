@@ -4,6 +4,7 @@ import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.type
 import { useOrders } from '../../context/OrderContext';
 import { BulkPrintModal } from './BulkPrintModal';
 import { EditOrderModal } from './EditOrderModal';
+import { downloadShalomExcel } from '../../utils/shalomExcelExporter';
 import {
   CheckSquare,
   Square,
@@ -22,7 +23,9 @@ import {
   Sparkles,
   AlertTriangle,
   MoveRight,
-  X
+  X,
+  FileSpreadsheet,
+  Tag
 } from 'lucide-react';
 
 export const OrdersSmartManager: React.FC = () => {
@@ -164,6 +167,29 @@ export const OrdersSmartManager: React.FC = () => {
 
   const selectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
 
+  // Handler para exportar Excel oficial masivo de Shalom y marcar como registrados
+  const handleRegisterShalomExcel = async () => {
+    if (selectedOrders.length === 0) return;
+    setIsProcessing(true);
+    try {
+      downloadShalomExcel(selectedOrders, tallerConfig);
+      for (const order of selectedOrders) {
+        await updatePedido(order.id, { registrado_shalom: true });
+      }
+    } catch (err) {
+      console.error('Error al exportar plantilla masiva de Shalom:', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handler cuando se completa la impresion de rotulos
+  const handleBulkPrintComplete = async (orderIds: string[]) => {
+    for (const id of orderIds) {
+      await updatePedido(id, { rotulado: true });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn pb-32">
       
@@ -223,12 +249,23 @@ export const OrdersSmartManager: React.FC = () => {
                 <span>✓ Entregar</span>
               </button>
 
+              {/* Descargar Excel Plantilla Oficial Shalom */}
+              <button
+                disabled={isProcessing}
+                onClick={handleRegisterShalomExcel}
+                className="py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                title="Descargar Plantilla Excel Oficial Shalom y registrar pedidos"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-300" />
+                <span>Registrar Shalom</span>
+              </button>
+
               {/* Imprimir en Lote */}
               <button
                 disabled={isProcessing}
                 onClick={() => setShowBulkPrint(true)}
                 className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 border border-white/10 transition-all cursor-pointer"
-                title="Imprimir Rótulos"
+                title="Imprimir Rótulos A4"
               >
                 <Printer className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Rótulos</span>
@@ -453,33 +490,73 @@ export const OrdersSmartManager: React.FC = () => {
                 )}
 
                 {/* Status Badges & Quick Action Pills */}
-                <div className="pt-2 border-t border-white/[0.08] flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+                <div className="pt-2.5 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
                   
-                  {/* Status Indicator & Swipe Hint */}
-                  <button
-                    type="button"
-                    onClick={() => setSwipeTargetOrder(order)}
-                    className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-                    title="Clic o desliza para cambiar estado"
-                  >
-                    {order.estado_envio === 'entregado' ? (
-                      <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        ✓ Entregado
-                      </span>
-                    ) : order.estado_envio === 'en_camino' ? (
-                      <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                        🚚 En Camino
-                      </span>
-                    ) : order.estado_produccion === 'bordando' ? (
-                      <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                        ⚡ Embalando
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        🕒 En Almacén
-                      </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Status Indicator & Swipe Hint */}
+                    <button
+                      type="button"
+                      onClick={() => setSwipeTargetOrder(order)}
+                      className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+                      title="Clic o desliza para cambiar estado"
+                    >
+                      {order.estado_envio === 'entregado' ? (
+                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          ✓ Entregado
+                        </span>
+                      ) : order.estado_envio === 'en_camino' ? (
+                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                          🚚 En Camino
+                        </span>
+                      ) : order.estado_produccion === 'bordando' ? (
+                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          ⚡ Embalando
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          🕒 En Almacén
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Etiqueta Rotulado (Toggleable) */}
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await updatePedido(order.id, { rotulado: !order.rotulado });
+                      }}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
+                        order.rotulado
+                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/30 shadow-sm'
+                          : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300 hover:bg-white/10'
+                      }`}
+                      title={order.rotulado ? 'Marcado como Rotulado (Clic para quitar)' : 'Clic para marcar como Rotulado'}
+                    >
+                      <span>🏷️</span>
+                      <span>{order.rotulado ? 'Rotulado ✓' : '+ Rotular'}</span>
+                    </button>
+
+                    {/* Etiqueta Registrado en Shalom (Toggleable) */}
+                    {(order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom')) && (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          await updatePedido(order.id, { registrado_shalom: !order.registrado_shalom });
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
+                          order.registrado_shalom
+                            ? 'bg-indigo-500/25 text-indigo-300 border-indigo-500/40 hover:bg-indigo-500/35 shadow-sm'
+                            : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300 hover:bg-white/10'
+                        }`}
+                        title={order.registrado_shalom ? 'Registrado en Shalom (Clic para quitar)' : 'Clic para marcar como Registrado en Shalom'}
+                      >
+                        <span>📑</span>
+                        <span>{order.registrado_shalom ? 'Shalom Reg. ✓' : '+ Reg. Shalom'}</span>
+                      </button>
                     )}
-                  </button>
+                  </div>
 
                   {/* Individual Actions */}
                   <div className="flex items-center gap-1">
@@ -605,6 +682,7 @@ export const OrdersSmartManager: React.FC = () => {
           pedidos={selectedOrders}
           tallerConfig={tallerConfig}
           onClose={() => setShowBulkPrint(false)}
+          onPrintComplete={handleBulkPrintComplete}
         />
       )}
 

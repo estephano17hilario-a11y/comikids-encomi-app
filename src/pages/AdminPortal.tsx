@@ -5,7 +5,7 @@ import { OrdersSmartManager } from '../components/admin/OrdersSmartManager';
 import { ClientDirectory } from '../components/admin/ClientDirectory';
 import { VisionAnalyticsDashboard } from '../components/admin/VisionAnalyticsDashboard';
 import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettings';
-import { EncomiAiAdminMasterTab } from '../components/admin/EncomiAiAdminMasterTab';
+import { EncomiAiSection } from '../components/client/EncomiAiSection';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
 import { ExecutiveBriefingModal } from '../components/admin/ExecutiveBriefingModal';
 import { LogoutConfirmModal } from '../components/common/LogoutConfirmModal';
@@ -17,21 +17,16 @@ import {
   Settings,
   LogOut,
   Sparkles,
-  FileBarChart,
-  Crown,
-  KeyRound
+  FileBarChart
 } from 'lucide-react';
 
 export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'comikids' | 'encomi_ai';
 
 export const AdminPortal: React.FC = () => {
-  const { pedidos, masterCode, saveMasterCode, tallerConfig } = useOrders();
+  const { pedidos, masterCode, tallerConfig } = useOrders();
   const { currentUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [newPass, setNewPass] = useState(masterCode);
-  const [passSuccess, setPassSuccess] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
   // Informe completo y profesional al entrar (una vez por sesión)
@@ -61,21 +56,15 @@ export const AdminPortal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-black text-white tracking-tight">
-                  {tallerConfig.nombre_taller || 'Encomi Envíos'}
+                  ComiKids
                 </h1>
-                <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/20">
-                  Empresa Matriz
+                <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase bg-pink-500/15 text-pink-300 border border-pink-500/20">
+                  Panel Matriz
                 </span>
               </div>
-              <button
-                onClick={() => setShowPasswordModal(true)}
-                className="text-[11px] text-cyan-400 hover:text-cyan-300 font-mono hidden xs:flex items-center gap-1 cursor-pointer transition-colors"
-                title="Haga clic para cambiar la clave de acceso"
-              >
-                <KeyRound className="w-3 h-3 text-cyan-400" />
-                <span>Clave: {masterCode}</span>
-                <span className="text-[9px] text-slate-500 underline">(Cambiar)</span>
-              </button>
+              <p className="text-[11px] text-slate-400 font-mono hidden xs:block">
+                Clave de Acceso: {masterCode}
+              </p>
             </div>
           </div>
 
@@ -88,14 +77,6 @@ export const AdminPortal: React.FC = () => {
             >
               <FileBarChart className="w-4 h-4 text-cyan-400" />
               <span className="hidden sm:inline">Informe del Día</span>
-            </button>
-
-            <button
-              onClick={() => setShowPasswordModal(true)}
-              className="p-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-cyan-400 hover:text-white border border-white/10 transition-colors cursor-pointer"
-              title="Cambiar Contraseña de Acceso"
-            >
-              <KeyRound className="w-4 h-4" />
             </button>
 
             <button
@@ -127,7 +108,7 @@ export const AdminPortal: React.FC = () => {
           {activeTab === 'agendas' && <ClientDirectory />}
           {activeTab === 'estadisticas' && <VisionAnalyticsDashboard />}
           {activeTab === 'comikids' && <CompanyAccountSettings />}
-          {activeTab === 'encomi_ai' && <EncomiAiAdminMasterTab />}
+          {activeTab === 'encomi_ai' && <EncomiAiSection isAdmin={true} />}
         </div>
 
       </main>
@@ -136,10 +117,10 @@ export const AdminPortal: React.FC = () => {
       <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-2xl animate-slideUp print:hidden" data-no-print="true">
         <div className="p-2 rounded-3xl bg-slate-900/90 border-2 border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-around gap-1 sm:gap-2">
           
-          {/* 1. Pedidos */}
+          {/* 1. Pedidos To-Do */}
           <button
             onClick={() => setActiveTab('pedidos')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'pedidos'
                 ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/30 scale-105'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -159,20 +140,20 @@ export const AdminPortal: React.FC = () => {
           {/* 2. Agendas CRM */}
           <button
             onClick={() => setActiveTab('agendas')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'agendas'
                 ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 scale-105'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <Users className="w-4 h-4 shrink-0" />
-            <span className="truncate">Clientas</span>
+            <span className="truncate">Agendas</span>
           </button>
 
           {/* 3. Estadísticas Vision */}
           <button
             onClick={() => setActiveTab('estadisticas')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'estadisticas'
                 ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 scale-105'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -182,30 +163,30 @@ export const AdminPortal: React.FC = () => {
             <span className="truncate">Métricas</span>
           </button>
 
-          {/* 4. ComiKids (Sección Oficial) */}
+          {/* 4. Sección ComiKids */}
           <button
             onClick={() => setActiveTab('comikids')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'comikids'
                 ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30 scale-105'
-                : 'text-pink-300 hover:text-white hover:bg-white/5'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <Store className="w-4 h-4 shrink-0" />
             <span className="truncate">ComiKids</span>
           </button>
 
-          {/* 5. Encomi AI Master (Ilimitado 👑) */}
+          {/* 5. Encomi AI (Admin Ilimitado) */}
           <button
             onClick={() => setActiveTab('encomi_ai')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 sm:py-2.5 px-2 rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'encomi_ai'
-                ? 'bg-linear-to-r from-amber-500 to-purple-600 text-white shadow-lg shadow-amber-500/30 scale-105'
-                : 'text-amber-300 hover:text-white hover:bg-white/5'
+                ? 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-lg shadow-cyan-500/30 scale-105'
+                : 'text-cyan-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Crown className="w-4 h-4 shrink-0" />
-            <span className="truncate">AI Master</span>
+            <Sparkles className="w-4 h-4 shrink-0 animate-pulse" />
+            <span className="truncate">Encomi AI</span>
           </button>
 
         </div>
@@ -241,75 +222,6 @@ export const AdminPortal: React.FC = () => {
           }}
           onCancel={() => setShowLogoutConfirm(false)}
         />
-      )}
-
-      {/* Cambiar Clave de Acceso Modal */}
-      {showPasswordModal && (
-        <div className="fixed inset-0 z-10000 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md bg-slate-900 rounded-3xl border-2 border-cyan-500/50 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-lg font-black text-white">Cambiar Contraseña de Acceso</h3>
-              </div>
-              <button
-                onClick={() => setShowPasswordModal(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-300">
-              Esta clave protege el acceso a la cuenta y panel de administración de ComiKids:
-            </p>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newPass.trim()) return;
-                saveMasterCode(newPass.trim());
-                setPassSuccess('¡Contraseña de ComiKids actualizada exitosamente!');
-                setTimeout(() => {
-                  setPassSuccess('');
-                  setShowPasswordModal(false);
-                }, 2000);
-              }}
-              className="space-y-4"
-            >
-              <input
-                type="text"
-                required
-                value={newPass}
-                onChange={(e) => setNewPass(e.target.value)}
-                placeholder="Nueva clave..."
-                className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-white/20 text-center font-mono text-lg text-cyan-300 font-bold focus:outline-none focus:border-cyan-400"
-              />
-
-              {passSuccess && (
-                <p className="text-xs text-emerald-400 text-center font-bold bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/20">
-                  {passSuccess}
-                </p>
-              )}
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPasswordModal(false)}
-                  className="w-1/3 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="w-2/3 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black shadow-lg shadow-cyan-500/20"
-                >
-                  Guardar Contraseña
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
 
     </div>

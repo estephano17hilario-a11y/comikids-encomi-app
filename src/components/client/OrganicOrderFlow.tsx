@@ -1300,6 +1300,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           initialOrder={createdOrder}
           clientName={nombreCompleto || 'Cliente'}
           clientId={currentUser?.id || 'guest'}
+          isAdmin={currentUser?.rol === 'empresa'}
           onClose={() => setShowEncomiAiModal(false)}
         />
       )}

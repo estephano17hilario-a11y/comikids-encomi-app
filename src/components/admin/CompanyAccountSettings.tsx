@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { Colaborador, CompanyAchievement } from '../../types/database.types';
+import { ChangePasswordModal } from './ChangePasswordModal';
 import {
   Store,
   Users,
@@ -25,7 +26,8 @@ import {
   Link,
   Copy,
   Megaphone,
-  Save
+  Save,
+  Lock
 } from 'lucide-react';
 
 export const CompanyAccountSettings: React.FC = () => {
@@ -46,6 +48,7 @@ export const CompanyAccountSettings: React.FC = () => {
   // State for Access Code Edit
   const [newMasterCode, setNewMasterCode] = useState(masterCode);
   const [codeSuccessMsg, setCodeSuccessMsg] = useState('');
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
   // State for Custom Client Notice
   const [anuncioTexto, setAnuncioTexto] = useState(tallerConfig.anuncio_publico_clientes || '');
@@ -283,6 +286,32 @@ export const CompanyAccountSettings: React.FC = () => {
         )}
       </div>
 
+      {/* --- SECCIÓN SEGURIDAD: CAMBIAR CONTRASEÑA DE LA CUENTA COMIKIDS --- */}
+      <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-pink-500/30 bg-pink-950/10 backdrop-blur-2xl space-y-4 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-pink-500/20 text-pink-400 flex items-center justify-center">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white">Seguridad & Contraseña de la Cuenta</h3>
+              <p className="text-xs text-slate-300">
+                Cambia la contraseña maestra de acceso para la cuenta de administración de ComiKids
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowChangePasswordModal(true)}
+            className="py-2.5 px-5 rounded-2xl bg-linear-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-pink-600/25 transition-all active:scale-95 cursor-pointer shrink-0"
+          >
+            <KeyRound className="w-4 h-4" />
+            <span>Cambiar Contraseña</span>
+          </button>
+        </div>
+      </div>
+
       {/* --- SECCIÓN 2: COLABORADORES DE LA EMPRESA --- */}
       <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-white/10 backdrop-blur-2xl space-y-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -502,6 +531,11 @@ export const CompanyAccountSettings: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Modal de Cambio de Contraseña */}
+      {showChangePasswordModal && (
+        <ChangePasswordModal onClose={() => setShowChangePasswordModal(false)} />
+      )}
 
     </div>
   );

@@ -69,7 +69,7 @@ export const AdminBottomNav: React.FC<Props> = ({
         {/* Center Quick Order FAB */}
         <button
           onClick={onOpenQuickOrder}
-          className="-mt-5 w-12 h-12 rounded-full bg-gradient-to-tr from-pink-500 via-rose-500 to-amber-400 text-white shadow-xl shadow-pink-500/40 flex items-center justify-center border-2 border-slate-950 active:scale-95 transition-transform"
+          className="-mt-5 w-12 h-12 rounded-full bg-linear-to-tr from-pink-500 via-rose-500 to-amber-400 text-white shadow-xl shadow-pink-500/40 flex items-center justify-center border-2 border-slate-950 active:scale-95 transition-transform"
           title="Agregar Pedido Presencial"
         >
           <Plus className="w-6 h-6 stroke-[3]" />

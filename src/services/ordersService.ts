@@ -135,9 +135,9 @@ class OrdersService {
     // Save to Supabase if connected
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('usuarios').insert(newUser);
+        await supabase.from('usuarios').upsert(newUser);
       } catch (err) {
-        console.warn(err);
+        console.warn('Error guardando usuario en Supabase:', err);
       }
     }
 
@@ -285,6 +285,29 @@ class OrdersService {
   }
 
   async getPedidos(userId?: string): Promise<Pedido[]> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        let query = supabase.from('pedidos').select('*').order('created_at', { ascending: false });
+        if (userId) {
+          query = query.eq('usuario_id', userId);
+        }
+        const { data, error } = await query;
+        if (!error && data) {
+          const users = this.getUsers();
+          const syncedOrders: Pedido[] = data.map((p: any) => ({
+            ...p,
+            usuario: users.find(u => u.id === p.usuario_id) || p.usuario || undefined
+          }));
+          
+          if (!userId) {
+            this.saveLocalOrders(syncedOrders);
+          }
+          return syncedOrders;
+        }
+      } catch (err) {
+        console.warn('Usando pedidos locales por error de red:', err);
+      }
+    }
     const all = this.getLocalOrders();
     if (userId) {
       return all.filter(p => p.usuario_id === userId);
@@ -316,9 +339,9 @@ class OrdersService {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('pedidos').insert(newPedido);
+        await supabase.from('pedidos').upsert(newPedido);
       } catch (err) {
-        console.warn(err);
+        console.warn('Error al guardar pedido en Supabase:', err);
       }
     }
 
@@ -718,8 +741,19 @@ class OrdersService {
 
   saveTallerConfig(config: Partial<TallerConfig>): TallerConfig {
     const current = this.getTallerConfig();
-    const updated = { ...current, ...config };
+    const updated = { ...current, ...config, id: 'config-main' };
     localStorage.setItem(STORAGE_KEYS.TALLER_CONFIG, JSON.stringify(updated));
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        supabase.from('taller_config').upsert(updated).then(({ error }) => {
+          if (error) console.warn('Error sincronizando taller_config en Supabase:', error);
+        });
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
     return updated;
   }
 }

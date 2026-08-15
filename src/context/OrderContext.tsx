@@ -12,6 +12,7 @@ import {
 } from '../types/database.types';
 import { ordersService } from '../services/ordersService';
 import { soundService } from '../services/soundService';
+import { NativeNotificationService } from '../services/nativeNotificationService';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { useAuth } from './AuthContext';
 
@@ -97,7 +98,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             soundService.playNewOrderAlert();
             await refreshData();
             if (payload.new) {
-              setLatestNewOrder(payload.new as Pedido);
+              const newP = payload.new as Pedido;
+              setLatestNewOrder(newP);
+              NativeNotificationService.notifyNewOrder(
+                newP.codigo_seguimiento,
+                newP.usuario?.nombre_completo || 'Cliente',
+                newP.destino_detalle || 'Destino'
+              );
             }
           }
         )
@@ -119,6 +126,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const handleCreatePedido = async (data: Omit<Pedido, 'id' | 'codigo_seguimiento' | 'created_at' | 'estado_produccion' | 'estado_envio'>) => {
     const created = await ordersService.createPedido(data);
     soundService.playNewOrderAlert();
+    NativeNotificationService.notifyNewOrder(
+      created.codigo_seguimiento,
+      created.usuario?.nombre_completo || 'Cliente',
+      created.destino_detalle || 'Destino'
+    );
     setLatestNewOrder(created);
     await refreshData();
     return created;

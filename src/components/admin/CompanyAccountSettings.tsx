@@ -393,7 +393,7 @@ export const CompanyAccountSettings: React.FC = () => {
                 className="p-4 rounded-2xl bg-slate-950/70 border border-white/5 flex items-center justify-between gap-3 hover:border-purple-500/30 transition-all shadow-md"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-500/20 to-indigo-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 font-black text-sm shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-linear-to-tr from-purple-500/20 to-indigo-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 font-black text-sm shrink-0">
                     {c.nombre.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">

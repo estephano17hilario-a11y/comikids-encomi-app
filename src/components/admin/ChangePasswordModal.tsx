@@ -114,7 +114,7 @@ export const ChangePasswordModal: React.FC<Props> = ({ onClose }) => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5 mt-2"
+              className="w-full py-2.5 px-4 rounded-xl bg-linear-to-r from-amber-500 to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5 mt-2"
             >
               {submitting ? 'Guardando...' : 'Guardar Nueva Contraseña'}
             </button>

@@ -136,8 +136,15 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<UserCoordinates | null>(null);
   const [selectedDepartment, setSelectedDepartment] = useState<string>(initialDepartment);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQueryState] = useState<string>('');
   const [showOnlyNearest5, setShowOnlyNearest5] = useState<boolean>(false);
+
+  const setSearchQuery = useCallback((query: string) => {
+    setSearchQueryState(query);
+    if (query.trim()) {
+      setShowOnlyNearest5(false);
+    }
+  }, []);
 
   /**
    * Recalcula distancias para todas las agencias a partir de las coordenadas del usuario

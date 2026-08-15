@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Incomi Admin</string>
+    <string name="title_activity_main">Incomi Admin</string>
+    <string name="package_name">com.incomi.app</string>
+    <string name="custom_url_scheme">com.incomi.app</string>
+</resources>

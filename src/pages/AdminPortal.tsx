@@ -49,7 +49,7 @@ export const AdminPortal: React.FC = () => {
           
           {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-xl shadow-lg shadow-cyan-500/25">
+            <div className="w-10 h-10 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-xl shadow-lg shadow-cyan-500/25">
               📦
             </div>
             <div>
@@ -71,7 +71,7 @@ export const AdminPortal: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowBriefingModal(true)}
-              className="py-2 px-3 rounded-2xl bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              className="py-2 px-3 rounded-2xl bg-linear-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
               title="Ver Informe Ejecutivo de Despachos"
             >
               <FileBarChart className="w-4 h-4 text-cyan-400" />

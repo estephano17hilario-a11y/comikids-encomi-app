@@ -71,7 +71,7 @@ export const ClientDirectory: React.FC = () => {
       {/* Search & Header Bar */}
       <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center text-white text-xl shadow-lg shadow-purple-500/20">
+          <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-purple-500 to-pink-500 flex items-center justify-center text-white text-xl shadow-lg shadow-purple-500/20">
             👥
           </div>
           <div>
@@ -145,7 +145,7 @@ export const ClientDirectory: React.FC = () => {
                   {/* Top Avatar, Level & Quick Delete */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500 via-indigo-600 to-cyan-500 p-0.5 shadow-md shadow-purple-500/20 shrink-0">
+                      <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-purple-500 via-indigo-600 to-cyan-500 p-0.5 shadow-md shadow-purple-500/20 shrink-0">
                         <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center text-white font-black text-base">
                           {(client.nombre_completo || 'C').charAt(0).toUpperCase()}
                         </div>
@@ -244,7 +244,7 @@ export const ClientDirectory: React.FC = () => {
 
       {/* Confirmation Modal to Delete Client */}
       {clientToDelete && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
           <div className="relative w-full max-w-sm rounded-3xl bg-slate-900 border border-rose-500/40 p-6 space-y-4 text-center shadow-2xl animate-scaleUp">
             
             <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
@@ -258,7 +258,7 @@ export const ClientDirectory: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex gap-2.5 pt-2">
+            <div className="flex items-center gap-2 pt-2">
               <button
                 type="button"
                 disabled={isDeleting}
@@ -300,13 +300,13 @@ export const ClientDirectory: React.FC = () => {
         }
 
         return createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+          <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
             <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border border-white/15 p-6 sm:p-8 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
               
               {/* Modal Header */}
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-500 to-cyan-500 flex items-center justify-center text-white text-xl font-black shadow-lg">
+                  <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-purple-500 to-cyan-500 flex items-center justify-center text-white text-xl font-black shadow-lg">
                     {(selectedClient.nombre_completo || 'C').charAt(0).toUpperCase()}
                   </div>
                   <div>

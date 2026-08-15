@@ -52,7 +52,7 @@ export const EmbroideryQueue: React.FC = () => {
     <div className="space-y-6">
       
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-purple-950/40 via-slate-900 to-slate-900 p-5 rounded-3xl border border-purple-500/30">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-linear-to-r from-purple-950/40 via-slate-900 to-slate-900 p-5 rounded-3xl border border-purple-500/30">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-400">
             <Scissors className="w-6 h-6" />
@@ -183,7 +183,7 @@ export const EmbroideryQueue: React.FC = () => {
                     ) : (
                       <button
                         onClick={() => updateEstadoProduccion(pedido.id, 'completado')}
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 transition-all active:scale-95 flex items-center gap-1.5"
+                        className="px-4 py-2 rounded-xl bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 transition-all active:scale-95 flex items-center gap-1.5"
                       >
                         <Check className="w-4 h-4" />
                         <span>Marcar Bordado Listo</span>

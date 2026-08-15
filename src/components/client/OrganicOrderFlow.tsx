@@ -196,12 +196,30 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [submitting, setSubmitting] = useState(false);
   const [createdOrder, setCreatedOrderState] = useState<Pedido | null>(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('action') === 'nuevo_envio' || urlParams.get('nuevo') === 'true') {
+          localStorage.removeItem('incomi_current_receipt_order');
+          return null;
+        }
+      }
       const saved = localStorage.getItem('incomi_current_receipt_order');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
     }
   });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('action') === 'nuevo_envio' || urlParams.get('nuevo') === 'true') {
+        localStorage.removeItem('incomi_current_receipt_order');
+        setCreatedOrderState(null);
+        setOrganicStep(1);
+      }
+    }
+  }, []);
 
   const setCreatedOrder = (order: Pedido | null) => {
     setCreatedOrderState(order);

@@ -32,18 +32,29 @@ export const OrderLiveTracker: React.FC = () => {
     : clientOrders;
 
   const getStepProgress = (pedido: Pedido) => {
-    if (pedido.estado_envio === 'entregado' || pedido.estado_envio === 'en_camino') return 4;
-    if (pedido.estado_produccion === 'completado') return 3;
+    if (pedido.estado_envio === 'entregado') return 4;
+    if (pedido.estado_envio === 'en_camino' || (pedido.estado_produccion === 'completado' && pedido.estado_envio === 'pendiente')) return 3;
     if (pedido.estado_produccion === 'bordando') return 2;
     return 1;
   };
 
-  const steps = [
-    { num: 1, title: 'En Almacén', icon: Clock },
-    { num: 2, title: 'Alistándolo', icon: Boxes },
-    { num: 3, title: 'Por Despachar', icon: PackageCheck },
-    { num: 4, title: 'En Camino', icon: Truck },
-  ];
+  const getStepsForOrder = (pedido: Pedido) => {
+    const isMotorizado = pedido.metodo_envio_codigo === 'motorizado' || pedido.destino_detalle?.toLowerCase().includes('motorizado');
+    if (isMotorizado) {
+      return [
+        { num: 1, title: 'En Almacén', icon: Clock },
+        { num: 2, title: 'Alistándolo', icon: Boxes },
+        { num: 3, title: 'En Ruta', icon: Truck },
+        { num: 4, title: 'Entregado', icon: PackageCheck },
+      ];
+    }
+    return [
+      { num: 1, title: 'En Almacén', icon: Clock },
+      { num: 2, title: 'Alistándolo', icon: Boxes },
+      { num: 3, title: 'Dejando en Shalom', icon: Truck },
+      { num: 4, title: 'Entregado a Shalom', icon: PackageCheck },
+    ];
+  };
 
   const getWhatsAppEditUrl = (pedido: Pedido) => {
     const clientName = currentUser?.nombre_completo || 'Clienta';
@@ -142,7 +153,7 @@ export const OrderLiveTracker: React.FC = () => {
                         #{pedido.codigo_seguimiento}
                       </span>
                       <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        ✓ Entregado
+                        {pedido.metodo_envio_codigo === 'motorizado' ? '✓ Entregado' : '✓ Entregado a Shalom'}
                       </span>
                       <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white/5 text-slate-300">
                         {pedido.metodo_envio_nombre}
@@ -230,10 +241,10 @@ export const OrderLiveTracker: React.FC = () => {
                   )}
                 </div>
 
-                {/* 4-Step Visual Timeline */}
+                {/* 4-Step Visual Timeline Diferenciado Shalom vs Motorizado */}
                 <div className="pt-3 border-t border-white/8">
                   <div className="grid grid-cols-4 gap-2">
-                    {steps.map((step) => {
+                    {getStepsForOrder(pedido).map((step) => {
                       const isPast = currentStep > step.num;
                       const isCurrent = currentStep === step.num;
                       const StepIcon = step.icon;

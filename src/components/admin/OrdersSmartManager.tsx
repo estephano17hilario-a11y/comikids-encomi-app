@@ -198,6 +198,19 @@ export const OrdersSmartManager: React.FC = () => {
     }
   };
 
+  // Contadores dinámicos calculados en tiempo real
+  const counts = useMemo(() => {
+    return {
+      all: pedidos.length,
+      almacen: pedidos.filter(p => p.estado_produccion === 'en_cola' && p.estado_envio === 'pendiente').length,
+      alistando: pedidos.filter(p => p.estado_produccion === 'bordando' && p.estado_envio === 'pendiente').length,
+      dejando_shalom: pedidos.filter(p => p.estado_envio === 'en_camino' || (p.estado_produccion === 'completado' && p.estado_envio === 'pendiente')).length,
+      entregado: pedidos.filter(p => p.estado_envio === 'entregado').length,
+      shalom: pedidos.filter(p => p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom')).length,
+      motorizado: pedidos.filter(p => p.metodo_envio_codigo === 'motorizado' || p.destino_detalle?.toLowerCase().includes('motorizado')).length,
+    };
+  }, [pedidos]);
+
   return (
     <div className="space-y-6 animate-fadeIn pb-32">
       
@@ -219,42 +232,45 @@ export const OrdersSmartManager: React.FC = () => {
                   onClick={clearSelection}
                   className="text-[10px] text-cyan-400 hover:text-white underline cursor-pointer"
                 >
-                  Cancelar selección
+                  Deseleccionar
                 </button>
               </div>
             </div>
 
             {/* Mass Actions */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
               
               {/* Mover a Alistándolo */}
               <button
                 disabled={isProcessing}
                 onClick={() => handleMassStatusUpdate('pendiente', 'bordando')}
-                className="py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
-                title="Mover a Alistando"
+                className="py-2 px-3 rounded-xl bg-purple-600/30 hover:bg-purple-600 active:scale-95 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                title="Marcar seleccionados como Alistándolo"
               >
-                <span>📦 Alistar</span>
+                <span>🪡</span>
+                <span>Alistándolo</span>
               </button>
 
               {/* Mover a Dejando en Shalom */}
               <button
                 disabled={isProcessing}
                 onClick={() => handleMassStatusUpdate('en_camino', 'completado')}
-                className="py-2 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-cyan-600/30 transition-all cursor-pointer"
-                title="Mover a Dejando en Shalom"
+                className="py-2 px-3 rounded-xl bg-blue-600/30 hover:bg-blue-600 active:scale-95 text-blue-200 hover:text-white border border-blue-500/40 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                title="Marcar seleccionados como Dejando en Shalom / En Ruta"
               >
-                <span>🚚 Dejando en Shalom</span>
+                <span>🚚</span>
+                <span>Dejando en Shalom</span>
               </button>
 
               {/* Mover a Entregado */}
               <button
                 disabled={isProcessing}
                 onClick={() => handleMassStatusUpdate('entregado', 'completado')}
-                className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
-                title="Marcar como Entregado"
+                className="py-2 px-3 rounded-xl bg-emerald-600/30 hover:bg-emerald-600 active:scale-95 text-emerald-200 hover:text-white border border-emerald-500/40 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                title="Marcar seleccionados como Entregado"
               >
-                <span>✓ Entregar</span>
+                <span>✓</span>
+                <span>Entregado</span>
               </button>
 
               {/* Descargar Excel Plantilla Oficial Shalom con validaciones */}
@@ -278,21 +294,21 @@ export const OrdersSmartManager: React.FC = () => {
               <button
                 disabled={isProcessing}
                 onClick={() => setShowBulkPrint(true)}
-                className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 border border-white/10 transition-all cursor-pointer"
-                title="Imprimir Rótulos A4"
+                className="py-2 px-3 rounded-xl bg-purple-600/30 hover:bg-purple-600 active:scale-95 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                title="Imprimir Rótulos A4 de todos los seleccionados"
               >
-                <Printer className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Rótulos</span>
+                <Printer className="w-3.5 h-3.5" />
+                <span>Rótulos ({selectedShalomOrders.length})</span>
               </button>
 
-              {/* Borrar en masa */}
+              {/* Eliminar en Masa */}
               <button
                 disabled={isProcessing}
                 onClick={() => setShowDeleteConfirm(true)}
-                className="p-2 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white transition-all cursor-pointer"
-                title="Borrar seleccionados"
+                className="py-2 px-3 rounded-xl bg-rose-600/30 hover:bg-rose-600 active:scale-95 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                title="Eliminar pedidos seleccionados"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
 
             </div>
@@ -345,61 +361,61 @@ export const OrdersSmartManager: React.FC = () => {
             />
           </div>
 
-          {/* Status Tabs (5 Estados Requeridos) */}
+          {/* Status Tabs con conteos entre paréntesis */}
           <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 overflow-x-auto text-[11px] font-bold">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'all' ? 'bg-cyan-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'all' ? 'bg-cyan-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              Todos
+              Todos ({counts.all})
             </button>
             <button
               onClick={() => setStatusFilter('almacen')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'almacen' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'almacen' ? 'bg-amber-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              En Almacén
+              En Almacén ({counts.almacen})
             </button>
             <button
               onClick={() => setStatusFilter('alistando')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'alistando' ? 'bg-purple-600 text-white font-black' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'alistando' ? 'bg-purple-600 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              Alistándolo
+              Alistándolo ({counts.alistando})
             </button>
             <button
               onClick={() => setStatusFilter('dejando_shalom')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'dejando_shalom' ? 'bg-blue-500 text-white font-black' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'dejando_shalom' ? 'bg-blue-500 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              Dejando en Shalom
+              Dejando en Shalom ({counts.dejando_shalom})
             </button>
             <button
               onClick={() => setStatusFilter('entregado')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${statusFilter === 'entregado' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'entregado' ? 'bg-emerald-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              Entregado
+              Entregado a Shalom ({counts.entregado})
             </button>
           </div>
 
-          {/* Transport Method Filter */}
+          {/* Transport Method Filter con conteos entre paréntesis */}
           <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 text-[11px] font-bold">
             <button
               onClick={() => setTransportFilter('all')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all ${transportFilter === 'all' ? 'bg-white/15 text-white font-black' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${transportFilter === 'all' ? 'bg-white/15 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              Todos ({pedidos.length})
+              Todos ({counts.all})
             </button>
             <button
               onClick={() => setTransportFilter('shalom')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 ${transportFilter === 'shalom' ? 'bg-rose-500/25 border border-rose-500/40 text-rose-300 font-black' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'shalom' ? 'bg-rose-500/25 border border-rose-500/40 text-rose-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               <span>📦</span>
-              <span>Shalom</span>
+              <span>Shalom ({counts.shalom})</span>
             </button>
             <button
               onClick={() => setTransportFilter('motorizado')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 ${transportFilter === 'motorizado' ? 'bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-black' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'motorizado' ? 'bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               <span>🛵</span>
-              <span>Motorizado</span>
+              <span>Motorizado ({counts.motorizado})</span>
             </button>
           </div>
 
@@ -514,7 +530,7 @@ export const OrdersSmartManager: React.FC = () => {
                 )}
 
                 {/* Status Badges & Quick Action Pills */}
-                <div className="pt-2.5 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+                <div className="pt-2.5 border-t border-white/8 flex flex-wrap items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
                   
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Status Indicator & Swipe Hint */}
@@ -526,19 +542,19 @@ export const OrdersSmartManager: React.FC = () => {
                     >
                       {order.estado_envio === 'entregado' ? (
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          ✓ Entregado
+                          {order.metodo_envio_codigo === 'motorizado' ? '✓ Entregado' : '✓ Entregado a Shalom'}
                         </span>
                       ) : order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente') ? (
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                          🚚 Dejando en Shalom
+                          {order.metodo_envio_codigo === 'motorizado' ? '🛵 En Ruta' : '🚚 Dejando en Shalom'}
                         </span>
                       ) : order.estado_produccion === 'bordando' ? (
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                          ⚡ Alistándolo
+                          🪡 Alistándolo
                         </span>
                       ) : (
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          🕒 En Almacén
+                          🏬 En Almacén
                         </span>
                       )}
                     </button>

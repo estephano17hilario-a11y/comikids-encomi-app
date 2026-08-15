@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useOrders } from '../context/OrderContext';
 import { useAuth } from '../context/AuthContext';
 import { OrdersSmartManager } from '../components/admin/OrdersSmartManager';
@@ -6,9 +7,9 @@ import { ClientDirectory } from '../components/admin/ClientDirectory';
 import { VisionAnalyticsDashboard } from '../components/admin/VisionAnalyticsDashboard';
 import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettings';
 import { EncomiAiSection } from '../components/client/EncomiAiSection';
+import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
 import { ExecutiveBriefingModal } from '../components/admin/ExecutiveBriefingModal';
-import { QuickOrderModal } from '../components/admin/QuickOrderModal';
 import { LogoutConfirmModal } from '../components/common/LogoutConfirmModal';
 import {
   ClipboardList,
@@ -19,17 +20,18 @@ import {
   LogOut,
   Sparkles,
   FileBarChart,
-  PlusCircle
+  Plus,
+  X
 } from 'lucide-react';
 
 export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'comikids' | 'encomi_ai';
 
 export const AdminPortal: React.FC = () => {
-  const { pedidos, masterCode, tallerConfig } = useOrders();
+  const { pedidos, masterCode, tallerConfig, refreshData } = useOrders();
   const { currentUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [showQuickOrder, setShowQuickOrder] = useState(false);
+  const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
   // Informe completo y profesional al entrar (una vez por sesión)
@@ -48,54 +50,53 @@ export const AdminPortal: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
       
       {/* Top Vision Header */}
-      <header className="w-full bg-slate-950/85 border-b border-white/[0.08] px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-8 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl" data-no-print="true">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <header className="w-full bg-slate-950/90 border-b border-white/[0.08] px-3.5 sm:px-8 pt-8 pb-3 sm:pt-9 sm:pb-3.5 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl" data-no-print="true">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5 sm:gap-4">
           
           {/* Brand */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-xl shadow-lg shadow-cyan-500/25">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-lg sm:text-xl shadow-lg shadow-cyan-500/25 shrink-0">
               📦
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-black text-white tracking-tight">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-sm sm:text-base font-black text-white tracking-tight truncate">
                   ComiKids
                 </h1>
-                <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase bg-pink-500/15 text-pink-300 border border-pink-500/20">
+                <span className="px-1.5 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black uppercase bg-pink-500/15 text-pink-300 border border-pink-500/20 shrink-0">
                   Panel Matriz
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-mono hidden xs:block">
-                Clave de Acceso: {masterCode}
+              <p className="text-[10px] sm:text-[11px] text-slate-400 font-mono truncate">
+                Clave: {masterCode}
               </p>
             </div>
           </div>
 
-          {/* Quick Header Actions */}
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Quick Header Actions - Exactly on the same horizontal axis line */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             
-            {/* Botón Chiquito para Añadir Nuevo Pedido Directamente desde ComiKids */}
+            {/* Botón Circular + para Añadir Nuevo Pedido (Exclusivo ComiKids) */}
             <button
-              onClick={() => setShowQuickOrder(true)}
-              className="py-2 px-3 sm:px-3.5 rounded-2xl bg-linear-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-pink-600/30 transition-all cursor-pointer active:scale-95"
-              title="Añadir un nuevo pedido manualmente"
+              onClick={() => setShowCreateOrderModal(true)}
+              className="p-2 sm:p-2.5 rounded-2xl bg-linear-to-tr from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white border border-pink-400/40 shadow-md shadow-pink-500/25 transition-all cursor-pointer active:scale-90 flex items-center justify-center shrink-0"
+              title="Registrar nuevo pedido (Interfaz clásica de cliente)"
             >
-              <PlusCircle className="w-4 h-4" />
-              <span>+ Nuevo Pedido</span>
+              <Plus className="w-4 h-4 text-white stroke-[2.5]" />
             </button>
 
             <button
               onClick={() => setShowBriefingModal(true)}
-              className="py-2 px-3 rounded-2xl bg-linear-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              className="py-2 px-2.5 sm:px-3 rounded-2xl bg-linear-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
               title="Ver Informe Ejecutivo de Despachos"
             >
-              <FileBarChart className="w-4 h-4 text-cyan-400" />
-              <span className="hidden sm:inline">Informe del Día</span>
+              <FileBarChart className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span className="hidden md:inline text-xs">Informe del Día</span>
             </button>
 
             <button
               onClick={() => setShowConfigModal(true)}
-              className="p-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/10 transition-colors cursor-pointer"
+              className="p-2 sm:p-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/10 transition-colors cursor-pointer shrink-0"
               title="Configurar Datos del Remitente"
             >
               <Settings className="w-4 h-4" />
@@ -103,7 +104,7 @@ export const AdminPortal: React.FC = () => {
 
             <button
               onClick={() => setShowLogoutConfirm(true)}
-              className="p-2.5 rounded-2xl bg-white/[0.05] hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors cursor-pointer"
+              className="p-2 sm:p-2.5 rounded-2xl bg-white/[0.05] hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors cursor-pointer shrink-0"
               title="Cerrar Sesión"
             >
               <LogOut className="w-4 h-4" />
@@ -227,9 +228,48 @@ export const AdminPortal: React.FC = () => {
         />
       )}
 
-      {/* Quick Order Modal para Añadir Pedidos desde ComiKids */}
-      {showQuickOrder && (
-        <QuickOrderModal onClose={() => setShowQuickOrder(false)} />
+      {/* Modal Clásico de Registro de Pedido para ComiKids (Directo y Sin Salir) */}
+      {showCreateOrderModal && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+          <div className="relative w-full max-w-2xl max-h-[92vh] rounded-3xl bg-slate-950 border border-cyan-500/40 shadow-2xl flex flex-col overflow-hidden animate-scaleUp">
+            {/* Header Modal */}
+            <div className="p-3.5 sm:p-4 border-b border-white/10 bg-slate-900 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold text-base">
+                  📦
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white">
+                    Registrar Nuevo Envío (ComiKids)
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    Interfaz de despacho oficial para Shalom y Motorizado
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowCreateOrderModal(false);
+                  refreshData();
+                }}
+                className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Contenido Clásico de Registro */}
+            <div className="flex-1 p-3 sm:p-5 overflow-y-auto bg-slate-950/80">
+              <OrganicOrderFlow
+                onSuccess={() => {
+                  setShowCreateOrderModal(false);
+                  refreshData();
+                }}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Logout Confirm Modal */}

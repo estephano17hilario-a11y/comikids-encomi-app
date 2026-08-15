@@ -11,19 +11,18 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(WidgetBridgePlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Iniciar sincronización nativa en segundo plano para notificaciones y widget
+        BackgroundOrdersSync.startPeriodicSync(getApplicationContext());
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        // Refrescar widgets en pantalla cuando la app entra en primer plano
+        // Sincronizar y refrescar inmediatamente al entrar en primer plano
         Context context = getApplicationContext();
-        AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
-        ComponentName componentName = new ComponentName(context, ComikidsWidgetProvider.class);
-        int[] appWidgetIds = appWidgetManager.getAppWidgetIds(componentName);
-        for (int id : appWidgetIds) {
-            ComikidsWidgetProvider.updateAppWidget(context, appWidgetManager, id);
-        }
+        new Thread(() -> BackgroundOrdersSync.fetchOrdersAndSync(context)).start();
     }
 }
+
 

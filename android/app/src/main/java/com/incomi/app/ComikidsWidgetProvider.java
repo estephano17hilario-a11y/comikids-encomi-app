@@ -15,6 +15,9 @@ public class ComikidsWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
+        // Disparar sincronización inmediata desde Supabase
+        new Thread(() -> BackgroundOrdersSync.fetchOrdersAndSync(context)).start();
+
         for (int appWidgetId : appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId);
         }
@@ -38,11 +41,18 @@ public class ComikidsWidgetProvider extends AppWidgetProvider {
             JSONArray orders = new JSONArray(ordersJsonStr);
             int count = orders.length();
 
+            if (count > 0) {
+                views.setTextViewText(R.id.widget_title_orders_count, count + " Despachos Activos");
+            } else {
+                views.setTextViewText(R.id.widget_title_orders_count, "Despachos Activos");
+            }
+
             if (count == 0) {
                 views.setViewVisibility(R.id.widget_empty_text, View.VISIBLE);
                 views.setViewVisibility(R.id.widget_item_1_layout, View.GONE);
                 views.setViewVisibility(R.id.widget_item_2_layout, View.GONE);
                 views.setViewVisibility(R.id.widget_item_3_layout, View.GONE);
+                views.setViewVisibility(R.id.widget_item_4_layout, View.GONE);
             } else {
                 views.setViewVisibility(R.id.widget_empty_text, View.GONE);
 
@@ -84,6 +94,19 @@ public class ComikidsWidgetProvider extends AppWidgetProvider {
                 } else {
                     views.setViewVisibility(R.id.widget_item_3_layout, View.GONE);
                 }
+
+                // Slot 4
+                if (count >= 4) {
+                    JSONObject o4 = orders.getJSONObject(3);
+                    views.setViewVisibility(R.id.widget_item_4_layout, View.VISIBLE);
+                    views.setTextViewText(R.id.widget_item_4_name, o4.optString("nombre", "Cliente") + " • #" + o4.optString("codigo", ""));
+                    String phone4 = o4.optString("telefono", "");
+                    views.setTextViewText(R.id.widget_item_4_phone, phone4.isEmpty() ? "📱 Sin teléfono" : "📱 +51 " + phone4.replaceFirst("^51", ""));
+                    views.setTextViewText(R.id.widget_item_4_dest, "📍 " + o4.optString("destino", ""));
+                    views.setTextViewText(R.id.widget_item_4_status, o4.optString("estado", "Alistando"));
+                } else {
+                    views.setViewVisibility(R.id.widget_item_4_layout, View.GONE);
+                }
             }
         } catch (Exception e) {
             views.setViewVisibility(R.id.widget_empty_text, View.VISIBLE);
@@ -104,5 +127,6 @@ public class ComikidsWidgetProvider extends AppWidgetProvider {
         appWidgetManager.updateAppWidget(appWidgetId, views);
     }
 }
+
 
 

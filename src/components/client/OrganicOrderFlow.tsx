@@ -7,7 +7,12 @@ import { searchDistritos } from '../../data/distritosLima';
 import { PlacesMapPicker } from './PlacesMapPicker';
 import { ShalomAgenciesMap } from './ShalomAgenciesMap';
 import { MetodoEnvio, ShalomAgency, Pedido } from '../../types/database.types';
-import { getWhatsAppBusinessChatUrl } from '../../services/whatsappService';
+import {
+  DatosComprobante,
+  enviarComprobanteAWhatsapp,
+  buildWhatsAppComprobanteUrl,
+  getWhatsAppBusinessChatUrl
+} from '../../services/whatsappService';
 import {
   Package,
   Truck,
@@ -394,59 +399,40 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     }
   };
 
-  // Construir mensaje de comprobante detallado para WhatsApp con Template Literals, emojis y encodeURIComponent
-  const buildWhatsAppMessage = (order: Pedido) => {
-    // 1. Plantilla para Motorizado Local Lima
-    if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
-      const orderLat = order.latitud || lat;
-      const orderLng = order.longitud || lng;
-      const googleMapsUrl = (orderLat && orderLng) ? `https://www.google.com/maps?q=${orderLat},${orderLng}` : '';
-
-      return (
-`¡Hola Comikids! 👋✨
-
-🧾 *COMPROBANTE OFICIAL DE DESPACHO* 🛵
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦 *Código de Envío:* #${order.codigo_seguimiento}
-👤 *Destinatario:* ${nombreCompleto.trim()}
-📱 *WhatsApp de Contacto:* +51 ${whatsapp.trim()}
-🛵 *Tipo de Despacho:* ${selectedMethod?.nombre || 'Motorizado Local Lima'}
-📍 *Dirección Exacta:* ${distritoQuery.trim()} • ${direccionExacta.trim()}
-${referencia.trim() ? `🏷️ *Referencia:* ${referencia.trim()}\n` : ''}${googleMapsUrl ? `🗺️ *Ubicación en Google Maps:*\n${googleMapsUrl}\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Adjunto aquí mi comprobante de pago 🧾 para proceder con la entrega. ¡Muchas gracias!`
-      );
-    }
-
-    // 2. Plantilla para Agencia Shalom Nacional
-    let destinoTexto = order.destino_detalle;
+  // Paso 1 & 2: Extracción dinámica de variables para el Comprobante Estándar
+  const getDatosComprobanteActual = (order: Pedido | null): DatosComprobante => {
+    let destinoTexto = order?.destino_detalle || '';
     if (selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject) {
       destinoTexto = formatFullAgencyName(selectedAgencyObject);
+    } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
+      destinoTexto = `${distritoQuery.trim()} • ${direccionExacta.trim()}`;
     }
 
-    return (
-`¡Hola Comikids! 👋✨
+    const orderLat = order?.latitud || lat;
+    const orderLng = order?.longitud || lng;
+    const mapsUrl = (selectedMethod?.tipo_formulario === 'mapa_direccion' && orderLat && orderLng)
+      ? `https://www.google.com/maps?q=${orderLat},${orderLng}`
+      : undefined;
 
-🧾 *COMPROBANTE OFICIAL DE DESPACHO* 📦
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦 *Código de Envío:* #${order.codigo_seguimiento}
-👤 *Destinatario:* ${nombreCompleto.trim()}
-📱 *WhatsApp:* +51 ${whatsapp.trim()}
-🪪 *DNI o CE de Recojo:* ${dniShalom.trim() || 'No especificado'}
-🚚 *Método de Envío:* ${selectedMethod?.nombre || 'Agencia Shalom Nacional'}
-🏢 *Agencia Shalom de Destino:*
-${destinoTexto}
-${referencia.trim() ? `🏷️ *Referencia:* ${referencia.trim()}\n` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Adjunto aquí mi comprobante de pago 🧾 para proceder con el rotulado y despacho. ¡Muchas gracias!`
-    );
+    return {
+      destinatario: nombreCompleto.trim(),
+      telefonoCliente: whatsapp.trim(),
+      documentoRecojo: dniShalom.trim(),
+      tipoEnvio: selectedMethod?.nombre || (selectedMethod?.tipo_formulario === 'shalom' ? 'Agencia Shalom Nacional' : 'Motorizado Local Lima'),
+      destinoDetalle: destinoTexto,
+      codigoSeguimiento: order?.codigo_seguimiento,
+      referencia: referencia.trim() || undefined,
+      coordenadasMapsUrl: mapsUrl,
+    };
   };
 
-  const mensajeComprobante = createdOrder ? buildWhatsAppMessage(createdOrder) : '';
-  const textoCodificado = encodeURIComponent(mensajeComprobante);
-  const whatsappUrl = createdOrder
-    ? getWhatsAppBusinessChatUrl(mensajeComprobante)
-    : getWhatsAppBusinessChatUrl();
+  const datosComprobanteActuales = getDatosComprobanteActual(createdOrder);
+  const whatsappUrl = buildWhatsAppComprobanteUrl(datosComprobanteActuales);
 
-  const whatsappNuevoPedidoUrl = getWhatsAppBusinessChatUrl('¡Hola Comikids! 👋 Deseo solicitar un nuevo pedido de mercadería.');
+  // Paso 3: Función de envío directo
+  const handleEnviarComprobanteWhatsApp = () => {
+    enviarComprobanteAWhatsapp(datosComprobanteActuales);
+  };
 
   return (
     <div className="w-full max-w-2xl mx-auto py-1 font-sans tracking-tight space-y-3.5">
@@ -621,6 +607,10 @@ Adjunto aquí mi comprobante de pago 🧾 para proceder con el rotulado y despac
           <div className="pt-2 space-y-3">
             <a
               href={whatsappUrl}
+              onClick={(e) => {
+                e.preventDefault();
+                handleEnviarComprobanteWhatsApp();
+              }}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-base font-bold flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 transition-all cursor-pointer"

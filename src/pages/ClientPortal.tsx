@@ -3,7 +3,7 @@ import { useOrders } from '../context/OrderContext';
 import { useAuth } from '../context/AuthContext';
 import { ClientHUD } from '../components/client/ClientHUD';
 import { ClientBottomNav, ClientSection } from '../components/client/ClientBottomNav';
-import { OrderWizard } from '../components/client/OrderWizard';
+import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { OrderLiveTracker } from '../components/client/OrderLiveTracker';
 import { GamificationCard } from '../components/client/GamificationCard';
 import {
@@ -105,7 +105,7 @@ export const ClientPortal: React.FC = () => {
         {/* Dynamic Section Content */}
         <div className="transition-all duration-300">
           {activeSection === 'crear_pedido' && (
-            <OrderWizard onSuccess={() => setActiveSection('mis_pedidos')} />
+            <OrganicOrderFlow onSuccess={() => setActiveSection('mis_pedidos')} />
           )}
 
           {activeSection === 'mis_pedidos' && (

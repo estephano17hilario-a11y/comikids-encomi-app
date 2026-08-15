@@ -127,4 +127,44 @@ export interface ShalomAgencyDB {
   updated_at?: string;
 }
 
+export interface Colaborador {
+  id: string;
+  nombre: string;
+  rol: 'administrador' | 'embalaje' | 'atencion' | 'motorizado';
+  telefono?: string;
+  email?: string;
+  activo: boolean;
+  created_at: string;
+}
 
+export interface CompanyAchievement {
+  id: string;
+  codigo: string;
+  titulo: string;
+  descripcion: string;
+  meta_pedidos: number;
+  icono: string;
+  recompensa_xp: number;
+  unlocked: boolean;
+  unlocked_at?: string;
+}
+
+export interface MotorizadoDistrictConfig {
+  id: string;
+  distrito: string;
+  zona: 'lima_centro' | 'lima_norte' | 'lima_sur' | 'lima_este' | 'callao';
+  tiempo_estimado_horas: number;
+  tarifa_sugerida: number;
+  activo: boolean;
+}
+
+export interface CompanyFinancialSummary {
+  total_pedidos: number;
+  pedidos_entregados: number;
+  pedidos_en_curso: number;
+  pedidos_shalom: number;
+  pedidos_motorizado: number;
+  clientes_activos: number;
+  tasa_entrega_porcentaje: number;
+  tiempo_promedio_despacho_horas: number;
+}

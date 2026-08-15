@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOrders } from '../context/OrderContext';
 import { useAuth } from '../context/AuthContext';
 import { ClientHUD } from '../components/client/ClientHUD';
@@ -18,6 +18,17 @@ export const ClientPortal: React.FC = () => {
   const { pedidos } = useOrders();
   const { currentUser } = useAuth();
   const [activeSection, setActiveSection] = useState<ClientSection>('crear_pedido');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('action') === 'nuevo_envio' || urlParams.get('nuevo') === 'true') {
+        localStorage.removeItem('incomi_current_receipt_order');
+        setActiveSection('crear_pedido');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
 
   const myOrdersCount = pedidos.filter(p => p.usuario_id === currentUser?.id).length;
 

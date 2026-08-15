@@ -96,7 +96,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border border-pink-500/30 flex items-center justify-center text-pink-400">
+            <div className="w-10 h-10 rounded-2xl bg-linear-to-br from-pink-500/20 to-purple-500/20 border border-pink-500/30 flex items-center justify-center text-pink-400">
               <Store className="w-5 h-5" />
             </div>
             <div>
@@ -218,7 +218,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
                         className={`w-full text-left p-2 rounded-lg text-[11px] transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-cyan-500/25 border border-cyan-500/50 text-cyan-200 font-bold'
-                            : 'hover:bg-white/[0.06] text-slate-300'
+                            : 'hover:bg-white/6 text-slate-300'
                         }`}
                       >
                         <p className={`font-bold truncate ${isSelected ? 'text-cyan-300' : 'text-white'}`}>
@@ -261,7 +261,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 text-white font-black text-xs shadow-lg shadow-pink-500/20 hover:opacity-95 transition-opacity flex items-center justify-center gap-2 mt-2"
+            className="w-full py-3 px-4 rounded-xl bg-linear-to-r from-pink-500 to-rose-600 text-white font-black text-xs shadow-lg shadow-pink-500/20 hover:opacity-95 transition-opacity flex items-center justify-center gap-2 mt-2"
           >
             {submitting ? 'Guardando...' : '💾 Registrar Pedido en Taller'}
           </button>

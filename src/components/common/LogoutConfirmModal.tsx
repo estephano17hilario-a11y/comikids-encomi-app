@@ -16,7 +16,7 @@ export const LogoutConfirmModal: React.FC<Props> = ({ onConfirm, onCancel }) => 
   }, []);
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+    <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
       <div className="relative w-full max-w-xs rounded-3xl glass-panel p-6 border border-rose-500/40 shadow-2xl shadow-rose-500/10 text-center space-y-4">
         
         {/* Warning Icon */}

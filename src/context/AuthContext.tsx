@@ -64,6 +64,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = () => {
     setCurrentUser(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem('incomi_current_receipt_order');
+    localStorage.removeItem('incomi_saved_phone');
+    localStorage.removeItem('incomi_saved_fullname');
+    localStorage.removeItem('incomi_saved_doc');
+    localStorage.removeItem('incomi_saved_district');
+    localStorage.removeItem('incomi_saved_address');
+    localStorage.removeItem('incomi_saved_reference');
+    if (typeof window !== 'undefined') {
+      window.location.href = window.location.origin + window.location.pathname;
+    }
   };
 
   const updatePassword = async (newPass: string): Promise<boolean> => {

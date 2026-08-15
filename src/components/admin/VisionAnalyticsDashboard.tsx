@@ -55,12 +55,12 @@ const CustomSelect: React.FC<{
         className="flex items-center gap-2 bg-slate-900/90 hover:bg-slate-800 text-xs text-cyan-300 font-bold px-3.5 py-2 rounded-2xl border border-cyan-500/40 shadow-lg shadow-cyan-500/10 transition-all cursor-pointer select-none active:scale-95"
       >
         <span className="text-cyan-400">{icon}</span>
-        <span className="truncate max-w-[200px]">{selectedOption?.label}</span>
+        <span className="truncate max-w-50">{selectedOption?.label}</span>
         <ChevronDown className={`w-3.5 h-3.5 text-cyan-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 min-w-[230px] rounded-2xl bg-slate-900/95 border border-cyan-500/40 p-1.5 shadow-2xl shadow-cyan-500/25 backdrop-blur-3xl space-y-1 animate-scaleUp">
+        <div className="absolute right-0 top-full mt-2 z-50 min-w-57.5 rounded-2xl bg-slate-900/95 border border-cyan-500/40 p-1.5 shadow-2xl shadow-cyan-500/25 backdrop-blur-3xl space-y-1 animate-scaleUp">
           {options.map(opt => {
             const isSelected = opt.value === value;
             return (
@@ -381,7 +381,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                 }}
                 className={`flex-1 sm:flex-none py-2 px-3.5 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
                   timeFrame === tf.id
-                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 scale-102'
+                    ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 scale-102'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -549,7 +549,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xl shadow-lg shadow-cyan-500/20">
+            <div className="w-11 h-11 rounded-2xl bg-linear-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xl shadow-lg shadow-cyan-500/20">
               📊
             </div>
             <div>
@@ -582,9 +582,9 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                 </div>
 
                 {/* Animated Glowing Bar */}
-                <div className="w-full max-w-[50px] bg-slate-900 rounded-2xl p-1 h-full flex flex-col justify-end">
+                <div className="w-full max-w-12.5 bg-slate-900 rounded-2xl p-1 h-full flex flex-col justify-end">
                   <div
-                    className="w-full rounded-xl bg-gradient-to-t from-cyan-600 via-blue-500 to-indigo-400 group-hover:from-cyan-400 group-hover:to-pink-500 shadow-lg shadow-cyan-500/25 transition-all duration-700 group-hover:scale-y-105"
+                    className="w-full rounded-xl bg-linear-to-t from-cyan-600 via-blue-500 to-indigo-400 group-hover:from-cyan-400 group-hover:to-pink-500 shadow-lg shadow-cyan-500/25 transition-all duration-700 group-hover:scale-y-105"
                     style={{ height: `${item.orders > 0 ? Math.max(item.percent, 16) : 6}%` }}
                   />
                 </div>
@@ -669,7 +669,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
 
                 <div className="w-full h-3 rounded-full bg-slate-950 overflow-hidden p-0.5 border border-slate-800">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 transition-all duration-700 shadow-md"
+                    className="h-full rounded-full bg-linear-to-r from-cyan-500 via-blue-500 to-indigo-500 transition-all duration-700 shadow-md"
                     style={{ width: `${Math.max(stat.percent, stat.count > 0 ? 6 : 2)}%` }}
                   />
                 </div>

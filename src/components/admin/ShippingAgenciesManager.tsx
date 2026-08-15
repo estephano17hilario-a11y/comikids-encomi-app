@@ -93,7 +93,7 @@ export const ShippingAgenciesManager: React.FC = () => {
       {/* Header & Sub-tabs */}
       <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-500 flex items-center justify-center text-white text-xl shadow-lg shadow-pink-500/20">
+          <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-pink-500 to-rose-500 flex items-center justify-center text-white text-xl shadow-lg shadow-pink-500/20">
             🚚
           </div>
           <div>

@@ -123,7 +123,7 @@ class OrdersService {
       edad: edad || 20,
       password_hash: password || '',
       rol: cleanDni === DEFAULT_EMPRESA_USER.dni ? 'empresa' : 'client',
-      avatar_url: getRandomAvatar(),
+      avatar_url: getRandomAvatar(nombreCompleto.trim()),
       puntos_xp: 0,
       nivel: 1,
       created_at: new Date().toISOString(),

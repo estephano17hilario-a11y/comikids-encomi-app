@@ -45,7 +45,7 @@ ${lineaMonto}
 📍 *Destino / Agencia:*
 ${destino}
 ${lineaReferencia}${lineaMaps}-----------------------------------
-Adjunto aquí mi comprobante de pago 🧾 para proceder con el despacho. ¡Muchas gracias!`;
+¡Muchas gracias! ✨`;
 
   // 3. Codificación con encodeURIComponent
   const textoCodificado = encodeURIComponent(cuerpoMensaje);

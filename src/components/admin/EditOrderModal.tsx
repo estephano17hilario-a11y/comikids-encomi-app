@@ -42,7 +42,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+    <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
       <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-white/10 p-6 sm:p-8 shadow-2xl shadow-cyan-500/10 space-y-6 max-h-[90vh] overflow-y-auto">
         
         {/* Header */}
@@ -68,7 +68,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
         <form onSubmit={handleSubmit} className="space-y-4">
           
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
               Destino / Agencia / Dirección Exacta
             </label>
@@ -82,7 +82,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-purple-400" />
               Detalles de Destinatario / Paquete
             </label>
@@ -96,7 +96,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-amber-400" />
               Observaciones / Referencia
             </label>
@@ -153,7 +153,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
             <button
               type="submit"
               disabled={saving}
-              className="w-2/3 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-95 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
+              className="w-2/3 py-3 px-4 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-95 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all cursor-pointer"
             >
               {saving ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

@@ -153,7 +153,7 @@ export const AdminPortal: React.FC = () => {
             onClick={() => setActiveTab('estadisticas')}
             className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-3 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'estadisticas'
-                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 scale-105'
+                ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 scale-105'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >

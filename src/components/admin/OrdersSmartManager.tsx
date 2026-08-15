@@ -203,7 +203,7 @@ export const OrdersSmartManager: React.FC = () => {
       
       {/* --- TOP FLOATING ACTION BAR FOR MASS ACTIONS (ITEM 7: FOLLOWS SCROLL AT TOP) --- */}
       {selectedIds.length > 0 && createPortal(
-        <div className="fixed top-4 sm:top-5 left-1/2 -translate-x-1/2 z-[9990] w-11/12 max-w-3xl animate-slideDown print:hidden" data-no-print="true">
+        <div className="fixed top-4 sm:top-5 left-1/2 -translate-x-1/2 z-9990 w-11/12 max-w-3xl animate-slideDown print:hidden" data-no-print="true">
           <div className="p-3.5 sm:p-4 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/70 backdrop-blur-3xl shadow-2xl shadow-cyan-500/30 flex flex-wrap items-center justify-between gap-3">
             
             {/* Counter */}
@@ -267,7 +267,7 @@ export const OrdersSmartManager: React.FC = () => {
                   }
                   setShowShalomRegister(true);
                 }}
-                className="py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                className="py-2 px-3 rounded-xl bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
                 title="Abrir asistente de registro oficial en Shalom con validaciones"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-300" />
@@ -580,17 +580,15 @@ export const OrdersSmartManager: React.FC = () => {
                         <span>{order.registrado_shalom ? 'Shalom Reg. ✓' : '+ Reg. Shalom'}</span>
                       </button>
                     )}
-                  </div>
 
-                  {/* Individual Actions */}
-                  <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setEditingPedido(order)}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                      title="Editar Pedido"
+                      className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Editar datos del pedido"
                     >
-                      <Edit3 className="w-3.5 h-3.5" />
+                      <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="hidden sm:inline">Editar</span>
                     </button>
 
                     <button
@@ -600,8 +598,8 @@ export const OrdersSmartManager: React.FC = () => {
                           await deletePedido(order.id);
                         }
                       }}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
-                      title="Eliminar Pedido"
+                      className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition-colors cursor-pointer"
+                      title="Eliminar pedido"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -617,7 +615,7 @@ export const OrdersSmartManager: React.FC = () => {
 
       {/* --- SWIPE / MOVE STATUS ACTION DIALOG (ITEM 5) --- */}
       {swipeTargetOrder && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
           <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-cyan-500/40 p-6 space-y-5 shadow-2xl animate-scaleUp">
             
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
@@ -630,77 +628,89 @@ export const OrdersSmartManager: React.FC = () => {
                   <p className="text-xs text-cyan-400 font-mono">#{swipeTargetOrder.codigo_seguimiento}</p>
                 </div>
               </div>
-              <button
-                onClick={() => setSwipeTargetOrder(null)}
-                className="text-slate-400 hover:text-white p-1 cursor-pointer"
-              >
+              <button onClick={() => setSwipeTargetOrder(null)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <button
-                disabled={isProcessing}
+                type="button"
+                onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'pendiente', 'en_cola')}
+                className="w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-white/10 text-left flex items-center justify-between group transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🏬</span>
+                  <div>
+                    <strong className="text-xs font-black text-white block">En Almacén</strong>
+                    <span className="text-[10px] text-slate-400">El paquete ingresó al taller en cola</span>
+                  </div>
+                </div>
+                <MoveRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 transition-colors" />
+              </button>
+
+              <button
+                type="button"
                 onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'pendiente', 'bordando')}
-                className="w-full p-3.5 rounded-2xl bg-purple-600/20 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/30 text-xs font-black flex items-center justify-between transition-all cursor-pointer"
+                className="w-full p-3.5 rounded-2xl bg-purple-950/40 hover:bg-purple-950/60 border border-purple-500/30 text-left flex items-center justify-between group transition-all cursor-pointer"
               >
-                <div className="flex items-center gap-2">
-                  <span>⚡</span>
-                  <span>Alistándolo / En Preparación</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🪡</span>
+                  <div>
+                    <strong className="text-xs font-black text-purple-300 block">Alistándolo</strong>
+                    <span className="text-[10px] text-purple-400/80">En proceso de empaquetado y rotulado</span>
+                  </div>
                 </div>
-                <MoveRight className="w-4 h-4" />
+                <MoveRight className="w-4 h-4 text-purple-400 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <button
-                disabled={isProcessing}
-                onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'pendiente', 'completado')}
-                className="w-full p-3.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500 text-amber-200 hover:text-slate-950 border border-amber-500/30 text-xs font-black flex items-center justify-between transition-all cursor-pointer"
-              >
-                <div className="flex items-center gap-2">
-                  <span>🏢</span>
-                  <span>Listo para Despacho / Mandando a Agencia</span>
-                </div>
-                <MoveRight className="w-4 h-4" />
-              </button>
-
-              <button
-                disabled={isProcessing}
+                type="button"
                 onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'en_camino', 'completado')}
-                className="w-full p-3.5 rounded-2xl bg-blue-600/20 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-500/30 text-xs font-black flex items-center justify-between transition-all cursor-pointer"
+                className="w-full p-3.5 rounded-2xl bg-blue-950/40 hover:bg-blue-950/60 border border-blue-500/30 text-left flex items-center justify-between group transition-all cursor-pointer"
               >
-                <div className="flex items-center gap-2">
-                  <span>🚀</span>
-                  <span>Recibido en Shalom / Motorizado en Ruta</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🚚</span>
+                  <div>
+                    <strong className="text-xs font-black text-cyan-300 block">Dejando en Shalom</strong>
+                    <span className="text-[10px] text-cyan-400/80">Transportándose o dejado en sucursal/agencia</span>
+                  </div>
                 </div>
-                <MoveRight className="w-4 h-4" />
+                <MoveRight className="w-4 h-4 text-cyan-400 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <button
-                disabled={isProcessing}
+                type="button"
                 onClick={() => handleSingleOrderMove(swipeTargetOrder.id, 'entregado', 'completado')}
-                className="w-full p-3.5 rounded-2xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-500/30 text-xs font-black flex items-center justify-between transition-all cursor-pointer"
+                className="w-full p-3.5 rounded-2xl bg-emerald-950/40 hover:bg-emerald-950/60 border border-emerald-500/30 text-left flex items-center justify-between group transition-all cursor-pointer"
               >
-                <div className="flex items-center gap-2">
-                  <span>✓</span>
-                  <span>Entregado con Éxito al Cliente</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">✅</span>
+                  <div>
+                    <strong className="text-xs font-black text-emerald-300 block">Entregado al Cliente</strong>
+                    <span className="text-[10px] text-emerald-400/80">Completado con éxito y registrado</span>
+                  </div>
                 </div>
-                <MoveRight className="w-4 h-4" />
+                <MoveRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
 
-            <button
-              onClick={() => setSwipeTargetOrder(null)}
-              className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs font-bold transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setSwipeTargetOrder(null)}
+                className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
 
           </div>
         </div>,
         document.body
       )}
 
-      {/* Shalom Mass Registration Confirmation Modal */}
+      {/* Shalom Register Assistance Modal */}
       {showShalomRegister && (
         <ShalomRegisterModal
           pedidos={selectedShalomOrders}
@@ -718,14 +728,14 @@ export const OrdersSmartManager: React.FC = () => {
       {/* Bulk Print Modal */}
       {showBulkPrint && (
         <BulkPrintModal
-          pedidos={selectedOrders}
+          pedidos={selectedShalomOrders}
           tallerConfig={tallerConfig}
           onClose={() => setShowBulkPrint(false)}
           onPrintComplete={handleBulkPrintComplete}
         />
       )}
 
-      {/* Edit Single Order Modal (Centered & Locked) */}
+      {/* Edit Order Modal */}
       {editingPedido && (
         <EditOrderModal
           pedido={editingPedido}
@@ -739,7 +749,7 @@ export const OrdersSmartManager: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
           <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-rose-500/40 p-6 space-y-4 text-center shadow-2xl">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-xl">
               <AlertTriangle className="w-6 h-6" />

@@ -57,13 +57,13 @@ export const ExecutiveBriefingModal: React.FC<Props> = ({
   }).format(new Date());
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+    <div className="fixed inset-0 z-9999 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
       <div className="relative w-full max-w-2xl rounded-3xl bg-slate-900 border border-cyan-500/40 p-6 sm:p-8 shadow-2xl shadow-cyan-500/20 space-y-5 max-h-[92vh] flex flex-col animate-scaleUp">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4 shrink-0">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-cyan-500/25">
+            <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-cyan-500/25">
               📊
             </div>
             <div>
@@ -219,7 +219,7 @@ export const ExecutiveBriefingModal: React.FC<Props> = ({
               onClose();
               onNavigateToOrders();
             }}
-            className="py-3 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/25 transition-all cursor-pointer active:scale-95 ml-auto"
+            className="py-3 px-6 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/25 transition-all cursor-pointer active:scale-95 ml-auto"
           >
             <span>Ir al Gestor de Pedidos ({total})</span>
             <ArrowRight className="w-4 h-4" />

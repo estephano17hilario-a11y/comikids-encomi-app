@@ -212,6 +212,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     }
   };
 
+  const [showScrollHint, setShowScrollHint] = useState(true);
+
+  useEffect(() => {
+    if (!createdOrder) return;
+    setShowScrollHint(true);
+    const handleScroll = () => {
+      if (window.scrollY > 40) {
+        setShowScrollHint(false);
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [createdOrder]);
+
   const suggestedDistritos = searchDistritos(distritoQuery);
 
   // Acción rápida: Buscar 5 Sedes Más Cercanas con GPS
@@ -472,56 +486,71 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
 
 
-      {/* Pantalla Final: Resumen Completo + Envío Obligatorio de Comprobante por WhatsApp */}
+      {/* Aviso Personalizado de la Empresa (si existe) */}
+      {!createdOrder && tallerConfig?.anuncio_publico_clientes && (
+        <div className="p-3.5 sm:p-4 rounded-3xl bg-linear-to-r from-amber-500/15 via-pink-500/10 to-purple-500/15 border border-amber-500/35 text-xs text-amber-200 flex items-start gap-3 shadow-lg shadow-amber-500/10 animate-fadeIn">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div className="space-y-0.5 leading-snug">
+            <strong className="text-amber-300 font-bold block text-[11px] uppercase tracking-wide">
+              Aviso Importante ComiKids:
+            </strong>
+            <p className="text-slate-100 text-xs sm:text-sm">{tallerConfig.anuncio_publico_clientes}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Pantalla Final: Resumen Compacto + Envío Obligatorio por WhatsApp */}
       {createdOrder ? (
-        <div className="minimal-card p-6 sm:p-10 text-center animate-fadeIn space-y-6">
-          <div className="w-16 h-16 mx-auto rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-2xl shadow-emerald-500/20">
-            <CheckCircle className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-1.5">
-            <h3 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">¡Envío Registrado con Éxito! 🎉</h3>
-            <p className="text-xs sm:text-sm text-slate-400">Tu orden ha sido generada en el sistema:</p>
-            <div className="inline-block font-mono text-lg font-bold px-5 py-2 rounded-2xl bg-white/6 text-cyan-300 border border-white/10 shadow-inner mt-1">
-              #{createdOrder.codigo_seguimiento}
-            </div>
-          </div>
-
-          {/* Recuadro Cupertino de Resumen Completo */}
-          <div className="p-5 sm:p-6 rounded-3xl bg-white/4 border border-white/10 text-left space-y-3.5 shadow-xl">
-            <div className="flex items-center justify-between border-b border-white/8 pb-2.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <FileCheck2 className="w-4 h-4 text-cyan-400" />
-                Resumen de Envío
-              </span>
-              <span className="text-xs font-semibold text-cyan-300 bg-cyan-500/15 px-2.5 py-0.5 rounded-full border border-cyan-500/20">
-                {selectedMethod?.nombre}
-              </span>
+        <div className="minimal-card p-4 sm:p-6 text-center animate-fadeIn space-y-3.5 relative">
+          
+          {/* Encabezado Compacto Integrado Directamente en el Resumen */}
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-linear-to-r from-emerald-500/20 via-slate-900 to-cyan-500/20 border border-emerald-500/35 flex items-center justify-between gap-3 text-left shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/25 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
+                <CheckCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 block">
+                  ¡Envío Registrado con Éxito!
+                </span>
+                <div className="font-mono text-base sm:text-lg font-black text-cyan-300">
+                  #{createdOrder.codigo_seguimiento}
+                </div>
+              </div>
             </div>
 
+            <span className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-white/5 text-slate-200 border border-white/10 shrink-0">
+              {selectedMethod?.nombre || 'Envío'}
+            </span>
+          </div>
+
+          {/* Cuerpo del Resumen de Envío */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white/4 border border-white/10 text-left space-y-3 shadow-md">
             {selectedMethod?.tipo_formulario === 'mapa_direccion' ? (
-              /* Comprobante Limpio para Motorizado (Sin DNI ni WhatsApp) */
-              <div className="space-y-3.5 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              /* Comprobante Motorizado */
+              <div className="space-y-2.5 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <span className="text-slate-400 block font-medium">👤 Destinatario:</span>
+                    <span className="text-slate-400 block text-[11px] font-medium">👤 Destinatario:</span>
                     <span className="text-white font-bold text-sm">{nombreCompleto}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">🚚 Tipo de Envío:</span>
+                    <span className="text-slate-400 block text-[11px] font-medium">🚚 Tipo de Despacho:</span>
                     <span className="text-white font-bold text-sm">{selectedMethod?.nombre || 'Motorizado Local'}</span>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-white/6 text-xs space-y-1">
-                  <span className="text-slate-400 font-medium block">📍 Dirección Exacta de Destino:</span>
-                  <p className="text-white font-bold text-sm">
+                <div className="pt-2 border-t border-white/6 text-xs space-y-0.5">
+                  <span className="text-slate-400 text-[11px] font-medium block">📍 Dirección de Entrega:</span>
+                  <p className="text-white font-bold text-xs sm:text-sm">
                     {distritoQuery} • {direccionExacta}
                   </p>
                 </div>
 
                 {referencia.trim() && (
-                  <div className="pt-1.5 text-xs space-y-0.5">
+                  <div className="pt-1 text-xs space-y-0.5">
                     <span className="text-cyan-400 font-bold block text-[11px]">🏷️ Referencia:</span>
                     <p className="text-white font-medium text-xs bg-white/4 p-2 rounded-xl border border-white/10">
                       {referencia}
@@ -530,54 +559,48 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 )}
 
                 {(createdOrder?.latitud || lat) && (createdOrder?.longitud || lng) && (
-                  <div className="pt-2.5 border-t border-white/6 space-y-1.5">
-                    <span className="text-[11px] font-bold text-slate-400 block">
-                      🗺️ Coordenadas exactas fijadas en el mapa:
-                    </span>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <a
-                        href={`https://www.google.com/maps?q=${createdOrder?.latitud || lat},${createdOrder?.longitud || lng}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2.5 rounded-xl bg-blue-600/25 hover:bg-blue-600/35 text-blue-300 border border-blue-500/50 text-xs font-black flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
-                      >
-                        <span>📍</span>
-                        <span>Ver ubicación exacta en Google Maps</span>
-                      </a>
-                    </div>
+                  <div className="pt-1.5 border-t border-white/6">
+                    <a
+                      href={`https://www.google.com/maps?q=${createdOrder?.latitud || lat},${createdOrder?.longitud || lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2 px-3 rounded-xl bg-blue-600/25 hover:bg-blue-600/35 text-blue-300 border border-blue-500/40 text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                    >
+                      <span>📍 Ver ubicación en Google Maps</span>
+                    </a>
                   </div>
                 )}
               </div>
             ) : (
-              /* Comprobante para Agencia Shalom / Otros */
-              <div className="space-y-3.5 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              /* Comprobante Shalom / Otros */
+              <div className="space-y-2.5 text-xs">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <span className="text-slate-400 block font-medium">👤 Destinatario:</span>
-                    <span className="text-white font-bold text-sm">{nombreCompleto}</span>
+                    <span className="text-slate-400 block text-[11px] font-medium">👤 Destinatario:</span>
+                    <span className="text-white font-bold text-xs sm:text-sm truncate block">{nombreCompleto}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">📱 WhatsApp:</span>
-                    <span className="text-white font-bold text-sm">+51 {whatsapp}</span>
+                    <span className="text-slate-400 block text-[11px] font-medium">📱 WhatsApp:</span>
+                    <span className="text-white font-bold text-xs sm:text-sm font-mono">+51 {whatsapp}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">🪪 DNI o CE de Recojo:</span>
-                    <span className="text-white font-bold text-sm">{dniShalom || 'No especificado'}</span>
+                    <span className="text-slate-400 block text-[11px] font-medium">🪪 DNI / Doc:</span>
+                    <span className="text-white font-bold text-xs sm:text-sm font-mono">{dniShalom || 'No especificado'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">🚚 Tipo de Envío:</span>
-                    <span className="text-white font-bold text-sm">{selectedMethod?.nombre}</span>
+                    <span className="text-slate-400 block text-[11px] font-medium">🚚 Tipo de Envío:</span>
+                    <span className="text-white font-bold text-xs sm:text-sm">{selectedMethod?.nombre}</span>
                   </div>
                 </div>
 
                 {selectedAgencyObject && (
-                  <div className="pt-2 border-t border-white/6 text-xs space-y-1">
-                    <span className="text-slate-400 font-medium block">📦 Agencia Shalom de Destino:</span>
-                    <p className="text-white font-bold leading-snug">
+                  <div className="pt-2 border-t border-white/6 text-xs space-y-0.5">
+                    <span className="text-slate-400 text-[11px] font-medium block">📦 Agencia Shalom de Destino:</span>
+                    <p className="text-white font-bold text-xs leading-snug">
                       {formatFullAgencyName(selectedAgencyObject)}
                     </p>
                     {selectedAgencyObject.horario && (
-                      <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1">
+                      <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
                         <Clock className="w-3 h-3 text-slate-500" />
                         <span>{selectedAgencyObject.horario}</span>
                       </p>
@@ -588,16 +611,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             )}
           </div>
 
-          {/* Aviso Importante de Envío de Comprobante */}
-          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-left flex items-start gap-3 text-xs text-amber-200">
-            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-            <p className="leading-relaxed">
-              <strong>Paso Obligatorio:</strong> Para confirmar y procesar tu despacho, debes enviar el comprobante de pago con este resumen al WhatsApp oficial de Comikids.
-            </p>
-          </div>
-
           {/* Botón Principal de WhatsApp */}
-          <div className="pt-2 space-y-3">
+          <div className="pt-1">
             <a
               href={whatsappUrl}
               onClick={(e) => {
@@ -606,24 +621,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               }}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-base font-bold flex items-center justify-center gap-3 shadow-xl shadow-emerald-600/30 transition-all cursor-pointer"
+              className="w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-sm sm:text-base font-black flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-600/30 transition-all cursor-pointer"
             >
-              <MessageCircle className="w-6 h-6 fill-current" />
+              <MessageCircle className="w-5 h-5 fill-current" />
               <span>Enviar Comprobante por WhatsApp</span>
             </a>
-
-            <button
-              type="button"
-              onClick={() => {
-                setCreatedOrder(null);
-                setOrganicStep(1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="text-xs font-bold text-slate-400 hover:text-cyan-300 transition-colors py-2 px-4 rounded-xl hover:bg-white/5 cursor-pointer"
-            >
-              ← Registrar otro paquete de despacho
-            </button>
           </div>
+
+          {/* Flecha Flotante hacia abajo para indicar que baje */}
+          {showScrollHint && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none transition-opacity duration-300">
+              <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900/95 text-cyan-300 border border-cyan-500/50 text-xs font-black shadow-2xl backdrop-blur-md">
+                <span>Desliza para enviar</span>
+                <ChevronDown className="w-4 h-4 text-cyan-400" />
+              </div>
+            </div>
+          )}
 
         </div>
       ) : isEmpresaUnlock ? (
@@ -670,7 +683,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         </div>
       ) : (
         /* Main Flow Container */
-        <div className="minimal-card p-5 sm:p-7 space-y-5">
+        <div className="glass-panel p-5 sm:p-7 space-y-5 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/35 backdrop-blur-2xl shadow-2xl shadow-cyan-500/15">
           
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/8 pb-3.5">

@@ -11,7 +11,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
   return (
     <div
       id="shalom-print-area"
-      className="w-full max-w-[440px] mx-auto bg-white text-slate-900 p-5 rounded-3xl border-4 border-dashed border-pink-500 shadow-2xl font-sans relative overflow-hidden"
+      className="w-full max-w-110 mx-auto bg-white text-slate-900 p-5 rounded-3xl border-4 border-dashed border-pink-500 shadow-2xl font-sans relative overflow-hidden"
       style={{ fontFamily: 'Arial, sans-serif' }}
     >
       {/* Top Header ComiKids & Disney / Comic Elements */}
@@ -51,7 +51,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
 
       {/* Barcode Simulation with Comic Stars */}
       <div className="my-2 p-2.5 bg-pink-50/70 rounded-2xl border-2 border-pink-300 text-center">
-        <div className="flex justify-center items-center gap-[2px] h-9 mb-1">
+        <div className="flex justify-center items-center gap-0.5 h-9 mb-1">
           {[4, 2, 6, 2, 8, 3, 2, 5, 2, 7, 3, 2, 4, 6, 2, 5, 3, 8, 2, 4, 3, 6, 2, 4, 2, 7, 2, 3, 5, 2, 4].map((w, i) => (
             <div
               key={i}

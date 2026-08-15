@@ -81,13 +81,13 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+    <div className="fixed inset-0 z-9999 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
       <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border border-cyan-500/40 p-5 sm:p-7 shadow-2xl shadow-cyan-500/15 space-y-4 max-h-[92vh] flex flex-col">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-blue-500/20">
+            <div className="w-10 h-10 rounded-2xl bg-linear-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-blue-500/20">
               <FileSpreadsheet className="w-5 h-5 text-yellow-300" />
             </div>
             <div>
@@ -174,7 +174,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         </div>
 
         {/* Scrollable Order List Summary (UI limpia, espaciada y responsiva) */}
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[160px] custom-scrollbar">
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-40 custom-scrollbar">
           <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 sticky top-0 bg-slate-900 py-1 z-10">
             <Package className="w-3.5 h-3.5 text-cyan-400" />
             <span>Pedidos Shalom a Registrar ({pedidos.length})</span>
@@ -241,7 +241,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
             onClick={handleConfirm}
             className={`w-2/3 py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-lg transition-all ${
               canRegister
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/25 cursor-pointer active:scale-95'
+                ? 'bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/25 cursor-pointer active:scale-95'
                 : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
             }`}
           >

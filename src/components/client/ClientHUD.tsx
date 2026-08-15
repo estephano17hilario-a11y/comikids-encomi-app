@@ -49,12 +49,15 @@ export const ClientHUD: React.FC = () => {
 
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h2 className="text-sm sm:text-base font-black text-white truncate tracking-tight group-hover:text-cyan-300 transition-colors">
-                  {currentUser.nombre_completo}
+                <h2 className="text-sm sm:text-base font-black text-white whitespace-nowrap tracking-tight group-hover:text-cyan-300 transition-colors">
+                  {(() => {
+                    const words = (currentUser.nombre_completo || '').trim().split(/\s+/);
+                    return words.slice(0, 2).join(' ') || currentUser.nombre_completo;
+                  })()}
                 </h2>
                 <Edit3 className="w-3 h-3 text-slate-500 group-hover:text-cyan-400 shrink-0" />
               </div>
-              <p className="text-xs text-cyan-400 font-semibold flex items-center gap-1 mt-0.5">
+              <p className="text-xs text-cyan-400 font-semibold flex items-center gap-1 mt-0.5 whitespace-nowrap">
                 <span>✨ {levelInfo.nombre}</span>
               </p>
             </div>

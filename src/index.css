@@ -138,11 +138,12 @@
   .a4-print-page {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
-    grid-template-rows: 136mm 136mm !important;
-    gap: 4mm !important;
+    grid-template-rows: 88mm 88mm 88mm !important;
+    gap: 3mm !important;
     width: 100% !important;
-    height: 278mm !important;
-    max-height: 278mm !important;
+    max-width: 202mm !important;
+    height: 272mm !important;
+    max-height: 272mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
     box-sizing: border-box !important;
@@ -152,9 +153,9 @@
   }
 
   .a4-rotulo-card {
-    height: 136mm !important;
-    max-height: 136mm !important;
-    min-height: 136mm !important;
+    height: 88mm !important;
+    max-height: 88mm !important;
+    min-height: 88mm !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
   }

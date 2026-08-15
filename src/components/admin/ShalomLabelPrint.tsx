@@ -22,10 +22,10 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
           </div>
           <div>
             <h2 className="text-base font-black uppercase tracking-tight text-slate-900 leading-none">
-              {tallerConfig.nombre_taller || 'ComiKids Bordados'}
+              {tallerConfig.nombre_taller || 'ComiKids'}
             </h2>
             <span className="text-[10px] font-black text-pink-600 uppercase">
-              ✨ ¡Llegó tu Magia ComiKids! 💖
+              ✨ Crea tu propia historia ✨
             </span>
           </div>
         </div>

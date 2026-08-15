@@ -29,9 +29,6 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
             <h2 className="text-base font-black uppercase tracking-tight text-slate-900 leading-none">
               ComiKids
             </h2>
-            <span className="text-[10px] font-black text-pink-600 uppercase">
-              ✨ Crea tu propia historia ✨
-            </span>
           </div>
         </div>
 

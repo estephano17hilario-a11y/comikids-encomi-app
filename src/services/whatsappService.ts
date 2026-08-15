@@ -33,9 +33,8 @@ export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => 
 
   // 2. Construcción del mensaje con Template Literals y Emojis
   const cuerpoMensaje = 
-`¡Hola! 👋✨
+`Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨
 
-📄 *RESUMEN DE ENVÍO*
 -----------------------------------
 ${lineaCodigo}👤 *Destinatario:* ${nombre}
 📱 *WhatsApp:* ${telefono}
@@ -45,7 +44,7 @@ ${lineaMonto}
 📍 *Destino / Agencia:*
 ${destino}
 ${lineaReferencia}${lineaMaps}-----------------------------------
-¡Muchas gracias! ✨`;
+Gracias por la confianza 💖✨🙏`;
 
   // 3. Codificación con encodeURIComponent
   const textoCodificado = encodeURIComponent(cuerpoMensaje);

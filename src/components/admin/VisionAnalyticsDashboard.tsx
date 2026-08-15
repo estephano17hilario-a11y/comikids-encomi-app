@@ -129,20 +129,21 @@ export const VisionAnalyticsDashboard: React.FC = () => {
       '55+': 0,
     };
 
-    uniqueClients.forEach(c => {
-      const age = Number(c.edad) || 24;
+    const clientsWithAge = uniqueClients.filter(c => c.edad && Number(c.edad) > 0);
+    clientsWithAge.forEach(c => {
+      const age = Number(c.edad);
       if (age >= 18 && age <= 24) brackets['18 - 24']++;
       else if (age >= 25 && age <= 34) brackets['25 - 34']++;
       else if (age >= 35 && age <= 44) brackets['35 - 44']++;
       else if (age >= 45 && age <= 54) brackets['45 - 54']++;
-      else brackets['55+']++;
+      else if (age >= 55) brackets['55+']++;
     });
 
-    const total = uniqueClients.length || 1;
+    const total = clientsWithAge.length || 1;
     return Object.entries(brackets).map(([range, count]) => ({
       range,
       count,
-      percent: uniqueClients.length > 0 ? Math.round((count / total) * 100) : 0,
+      percent: clientsWithAge.length > 0 ? Math.round((count / total) * 100) : 0,
     }));
   }, [uniqueClients, animKey]);
 
@@ -152,33 +153,34 @@ export const VisionAnalyticsDashboard: React.FC = () => {
     let usoPersonal = 0;
     let empresa = 0;
 
-    uniqueClients.forEach(c => {
+    const clientsWithMotivo = uniqueClients.filter(c => c.motivo_compra && c.motivo_compra.trim() !== '');
+    clientsWithMotivo.forEach(c => {
       if (c.motivo_compra === 'emprender') paraVenta++;
       else if (c.motivo_compra === 'empresa') empresa++;
       else usoPersonal++;
     });
 
-    const total = uniqueClients.length || 1;
+    const total = clientsWithMotivo.length || 1;
     return [
       {
         id: 'emprender',
         label: 'Para Venta / Emprendimiento 💼',
         count: paraVenta,
-        percent: uniqueClients.length > 0 ? Math.round((paraVenta / total) * 100) : 0,
+        percent: clientsWithMotivo.length > 0 ? Math.round((paraVenta / total) * 100) : 0,
         color: '#06b6d4'
       },
       {
         id: 'uso_personal',
         label: 'Uso Personal / Familia 💖',
         count: usoPersonal,
-        percent: uniqueClients.length > 0 ? Math.round((usoPersonal / total) * 100) : 0,
+        percent: clientsWithMotivo.length > 0 ? Math.round((usoPersonal / total) * 100) : 0,
         color: '#ec4899'
       },
       {
         id: 'empresa',
         label: 'Empresa / Institucional 🏢',
         count: empresa,
-        percent: uniqueClients.length > 0 ? Math.round((empresa / total) * 100) : 0,
+        percent: clientsWithMotivo.length > 0 ? Math.round((empresa / total) * 100) : 0,
         color: '#f59e0b'
       },
     ];

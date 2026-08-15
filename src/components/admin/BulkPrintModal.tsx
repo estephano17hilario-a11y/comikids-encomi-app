@@ -140,9 +140,6 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                           <strong className="text-base sm:text-lg font-black tracking-tight uppercase block leading-none">
                             ComiKids
                           </strong>
-                          <span className="text-[10.5px] sm:text-xs font-black text-slate-800 tracking-wide block pt-0.5 leading-none">
-                            ✨ Crea tu propia historia ✨
-                          </span>
                         </div>
                       </div>
 

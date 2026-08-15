@@ -57,9 +57,13 @@ export const OrdersSmartManager: React.FC = () => {
   const [swipeTargetOrder, setSwipeTargetOrder] = useState<Pedido | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Swipe detection touch state
+  // Swipe detection touch state - track BOTH axes to avoid false positives during scroll
   const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
   const touchEndX = useRef<number>(0);
+  const touchEndY = useRef<number>(0);
+  // Track if finger moved too much to be a tap (for card onClick)
+  const didMoveEnoughToScroll = useRef<boolean>(false);
 
   // Filtered Orders
   const filteredOrders = useMemo(() => {
@@ -139,21 +143,41 @@ export const OrdersSmartManager: React.FC = () => {
   // Swipe handlers for moving status
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
+    touchStartY.current = e.targetTouches[0].clientY;
+    touchEndX.current = e.targetTouches[0].clientX;
+    touchEndY.current = e.targetTouches[0].clientY;
+    didMoveEnoughToScroll.current = false;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     touchEndX.current = e.targetTouches[0].clientX;
+    touchEndY.current = e.targetTouches[0].clientY;
+    const dx = Math.abs(touchEndX.current - touchStartX.current);
+    const dy = Math.abs(touchEndY.current - touchStartY.current);
+    // Mark as scroll if moved more than 10px in any direction
+    if (dx > 10 || dy > 10) {
+      didMoveEnoughToScroll.current = true;
+    }
   };
 
   const handleTouchEnd = (order: Pedido) => {
-    if (!touchStartX.current || !touchEndX.current) return;
-    const distance = touchStartX.current - touchEndX.current;
-    if (Math.abs(distance) > 60) {
-      // Swiped left or right!
+    const dx = touchStartX.current - touchEndX.current;
+    const dy = Math.abs(touchStartY.current - touchEndY.current);
+    // Only trigger swipe if: horizontal movement > 80px AND horizontal dominates over vertical
+    if (Math.abs(dx) > 80 && Math.abs(dx) > dy * 1.5) {
       setSwipeTargetOrder(order);
     }
     touchStartX.current = 0;
+    touchStartY.current = 0;
     touchEndX.current = 0;
+    touchEndY.current = 0;
+  };
+
+  // Card tap handler: only toggle selection if the finger did NOT scroll significantly
+  const handleCardTap = (id: string) => {
+    if (!didMoveEnoughToScroll.current) {
+      toggleSelect(id);
+    }
   };
 
   const handleSingleOrderMove = async (orderId: string, envio: EstadoEnvio, prod?: EstadoProduccion) => {
@@ -446,7 +470,7 @@ export const OrdersSmartManager: React.FC = () => {
             return (
               <div
                 key={order.id}
-                onClick={() => toggleSelect(order.id)}
+                onClick={() => handleCardTap(order.id)}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={() => handleTouchEnd(order)}

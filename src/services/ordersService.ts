@@ -284,6 +284,33 @@ class OrdersService {
     localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
   }
 
+  private sanitizePedidoForDb(pedido: Partial<Pedido>): Record<string, any> {
+    const payload: Record<string, any> = {};
+    if (pedido.id !== undefined) payload.id = pedido.id;
+    if (pedido.codigo_seguimiento !== undefined) payload.codigo_seguimiento = pedido.codigo_seguimiento;
+    if (pedido.usuario_id !== undefined) payload.usuario_id = pedido.usuario_id;
+    if (pedido.detalles_bordado !== undefined) payload.detalles_bordado = pedido.detalles_bordado;
+    if (pedido.foto_referencia_url !== undefined) payload.foto_referencia_url = pedido.foto_referencia_url || null;
+    if (pedido.metodo_envio_codigo !== undefined) payload.metodo_envio_codigo = pedido.metodo_envio_codigo;
+    if (pedido.metodo_envio_nombre !== undefined) {
+      payload.metodo_envio_nombre = pedido.metodo_envio_nombre;
+    } else if (pedido.metodo_envio_codigo) {
+      payload.metodo_envio_nombre = pedido.metodo_envio_codigo === 'shalom' ? 'Agencia Shalom Nacional' : 'Motorizado Local Lima';
+    }
+    if (pedido.destino_detalle !== undefined) payload.destino_detalle = pedido.destino_detalle;
+    if (pedido.latitud !== undefined) payload.latitud = pedido.latitud ?? null;
+    if (pedido.longitud !== undefined) payload.longitud = pedido.longitud ?? null;
+    if (pedido.estado_produccion !== undefined) payload.estado_produccion = pedido.estado_produccion;
+    if (pedido.estado_envio !== undefined) payload.estado_envio = pedido.estado_envio;
+    if (pedido.observaciones_cliente !== undefined) payload.observaciones_cliente = pedido.observaciones_cliente || null;
+    if (pedido.fecha_limite !== undefined) payload.fecha_limite = pedido.fecha_limite || null;
+    if (pedido.rotulado !== undefined) payload.rotulado = Boolean(pedido.rotulado);
+    if (pedido.registrado_shalom !== undefined) payload.registrado_shalom = Boolean(pedido.registrado_shalom);
+    if (pedido.created_at !== undefined) payload.created_at = pedido.created_at;
+    if (pedido.updated_at !== undefined) payload.updated_at = pedido.updated_at;
+    return payload;
+  }
+
   async getPedidos(userId?: string): Promise<Pedido[]> {
     if (isSupabaseConfigured && supabase) {
       try {
@@ -291,12 +318,24 @@ class OrdersService {
         if (userId) {
           query = query.eq('usuario_id', userId);
         }
-        const { data, error } = await query;
-        if (!error && data) {
-          const users = this.getUsers();
-          const syncedOrders: Pedido[] = data.map((p: any) => ({
+        const { data: dbOrders, error: ordersError } = await query;
+        
+        // Sincronizar usuarios de Supabase en la memoria local
+        const { data: dbUsers } = await supabase.from('usuarios').select('*');
+        if (dbUsers && dbUsers.length > 0) {
+          const localUsers = this.getUsers();
+          const mergedMap = new Map<string, Usuario>();
+          localUsers.forEach(u => mergedMap.set(u.id, u));
+          dbUsers.forEach((u: any) => mergedMap.set(u.id, u));
+          const mergedList = Array.from(mergedMap.values());
+          this.saveUsers(mergedList);
+        }
+
+        if (!ordersError && dbOrders) {
+          const currentUsers = this.getUsers();
+          const syncedOrders: Pedido[] = dbOrders.map((p: any) => ({
             ...p,
-            usuario: users.find(u => u.id === p.usuario_id) || p.usuario || undefined
+            usuario: currentUsers.find(u => u.id === p.usuario_id || u.dni === p.usuario_id) || p.usuario || undefined
           }));
           
           if (!userId) {
@@ -324,6 +363,7 @@ class OrdersService {
       ...pedidoData,
       id: newId,
       codigo_seguimiento: trackingCode,
+      metodo_envio_nombre: pedidoData.metodo_envio_nombre || (pedidoData.metodo_envio_codigo === 'shalom' ? 'Agencia Shalom Nacional' : 'Motorizado Local Lima'),
       estado_produccion: 'en_cola',
       estado_envio: 'pendiente',
       created_at: now,
@@ -339,9 +379,31 @@ class OrdersService {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('pedidos').upsert(newPedido);
+        // Asegurar que el usuario existe en Supabase antes de insertar el pedido
+        if (pedidoData.usuario) {
+          const cleanUser = {
+            id: pedidoData.usuario.id,
+            dni: pedidoData.usuario.dni,
+            nombre_completo: pedidoData.usuario.nombre_completo,
+            edad: pedidoData.usuario.edad || 20,
+            password_hash: pedidoData.usuario.password_hash || 'incomi2026',
+            rol: pedidoData.usuario.rol || 'client',
+            avatar_url: pedidoData.usuario.avatar_url || '',
+            puntos_xp: pedidoData.usuario.puntos_xp || 0,
+            nivel: pedidoData.usuario.nivel || 1,
+            telefono_default: pedidoData.usuario.telefono_default || null,
+            created_at: pedidoData.usuario.created_at || now,
+          };
+          await supabase.from('usuarios').upsert(cleanUser);
+        }
+
+        const dbPayload = this.sanitizePedidoForDb(newPedido);
+        const { error: insError } = await supabase.from('pedidos').upsert(dbPayload);
+        if (insError) {
+          console.error('Error insertando pedido en Supabase:', insError);
+        }
       } catch (err) {
-        console.warn('Error al guardar pedido en Supabase:', err);
+        console.error('Error al guardar pedido en Supabase:', err);
       }
     }
 
@@ -468,9 +530,11 @@ class OrdersService {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('pedidos').update(updates).eq('id', pedidoId);
+        const dbUpdates = this.sanitizePedidoForDb(updates);
+        delete dbUpdates.id; // Don't modify primary key
+        await supabase.from('pedidos').update(dbUpdates).eq('id', pedidoId);
       } catch (e) {
-        console.warn(e);
+        console.warn('Error actualizando pedido en Supabase:', e);
       }
     }
 

@@ -106,11 +106,7 @@ export const ClientPortal: React.FC = () => {
         {/* Dynamic Section Content */}
         <div className="transition-all duration-300">
           {activeSection === 'crear_pedido' && (
-            myOrdersCount === 0 ? (
-              <OrganicOrderFlow onSuccess={() => setActiveSection('mis_pedidos')} />
-            ) : (
-              <OrderWizard onSuccess={() => setActiveSection('mis_pedidos')} />
-            )
+            <OrganicOrderFlow />
           )}
 
           {activeSection === 'mis_pedidos' && (

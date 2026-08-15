@@ -70,7 +70,10 @@ export const ClientDirectory: React.FC = () => {
         {filteredClients.map((client) => {
           const clientOrders = getClientOrders(client.id);
           const levelInfo = calculateLevel(client.puntos_xp || 0);
-          const whatsappUrl = `https://wa.me/${tallerConfig.whatsapp_pedidos}?text=${encodeURIComponent(`¡Hola ${client.nombre_completo}! Te saluda el taller Comikids / Incomi ✨`)}`;
+          const clientPhone = (client.telefono_default || client.dni || '').replace(/\D/g, '');
+          const whatsappUrl = clientPhone.length >= 9
+            ? `https://wa.me/51${clientPhone.slice(-9)}?text=${encodeURIComponent(`¡Hola ${client.nombre_completo}! Te saluda el taller Comikids / Incomi ✨`)}`
+            : `https://wa.me/message/FSEGUIYKFKYKA1?text=${encodeURIComponent(`¡Hola ${client.nombre_completo}! Te saluda el taller Comikids / Incomi ✨`)}`;
 
           return (
             <div

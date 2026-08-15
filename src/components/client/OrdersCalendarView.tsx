@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Pedido } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
+import { getWhatsAppBusinessChatUrl } from '../../services/whatsappService';
 import {
   ChevronLeft,
   ChevronRight,
@@ -337,7 +338,7 @@ export const OrdersCalendarView: React.FC<Props> = ({
               {selectedOrders.map((pedido) => {
                 const currentStep = getStepProgress(pedido);
                 const queryText = `¡Hola Comikids! 📦\nSoy *${clientName}*, deseo consultar el estado de mi envío *#${pedido.codigo_seguimiento}* del día ${selectedDateStr}.\n\n*Destino:* ${pedido.destino_detalle}`;
-                const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(queryText)}`;
+                const waUrl = getWhatsAppBusinessChatUrl(queryText);
 
                 return (
                   <div key={pedido.id} className="minimal-card p-5 sm:p-6 space-y-5 border-cyan-500/30">

@@ -61,9 +61,11 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
   };
 
   const clientName = pedido.usuario?.nombre_completo || 'Clienta';
-  const whatsappNumber = tallerConfig.whatsapp_pedidos || '51987654321';
+  const clientPhone = (pedido.usuario?.telefono_default || pedido.usuario?.dni || '').replace(/\D/g, '');
   const whatsappNotifyText = `¡Hola ${clientName}! ✨ Te saluda el taller de *Comikids / Incomi*.\n\nTu pedido *#${pedido.codigo_seguimiento}* ha sido rotulado para la *Agencia Shalom (${pedido.destino_detalle})*.\n\n📦 *Consignatario:* ${clientName}\n🆔 *DNI:* ${pedido.usuario?.dni || '-'}\n\nTe adjuntaremos tu guía y foto en breve. ¡Muchas gracias por tu preferencia! 💖`;
-  const whatsappNotifyUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappNotifyText)}`;
+  const whatsappNotifyUrl = clientPhone.length >= 9
+    ? `https://wa.me/51${clientPhone.slice(-9)}?text=${encodeURIComponent(whatsappNotifyText)}`
+    : `https://wa.me/message/FSEGUIYKFKYKA1?text=${encodeURIComponent(whatsappNotifyText)}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto">

@@ -7,6 +7,7 @@ import { searchDistritos } from '../../data/distritosLima';
 import { PlacesMapPicker } from './PlacesMapPicker';
 import { ShalomAgenciesMap } from './ShalomAgenciesMap';
 import { MetodoEnvio, ShalomAgency, Pedido } from '../../types/database.types';
+import { getWhatsAppBusinessChatUrl } from '../../services/whatsappService';
 import {
   Package,
   Truck,
@@ -414,10 +415,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   };
 
   const whatsappUrl = createdOrder
-    ? `https://wa.me/${whatsappTallerNumber}?text=${encodeURIComponent(buildWhatsAppMessage(createdOrder))}`
-    : '#';
+    ? getWhatsAppBusinessChatUrl(buildWhatsAppMessage(createdOrder))
+    : getWhatsAppBusinessChatUrl();
 
-  const whatsappNuevoPedidoUrl = `https://wa.me/${whatsappTallerNumber}?text=${encodeURIComponent('¡Hola Comikids! 👋 Deseo solicitar un nuevo pedido de mercadería.')}`;
+  const whatsappNuevoPedidoUrl = getWhatsAppBusinessChatUrl('¡Hola Comikids! 👋 Deseo solicitar un nuevo pedido de mercadería.');
 
   return (
     <div className="w-full max-w-2xl mx-auto py-1 font-sans tracking-tight space-y-3.5">

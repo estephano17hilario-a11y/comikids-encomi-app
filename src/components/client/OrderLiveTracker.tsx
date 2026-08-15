@@ -15,6 +15,7 @@ import {
   Calendar as CalendarIcon
 } from 'lucide-react';
 import { OrdersCalendarView } from './OrdersCalendarView';
+import { getWhatsAppBusinessChatUrl } from '../../services/whatsappService';
 
 export const OrderLiveTracker: React.FC = () => {
   const { pedidos, tallerConfig } = useOrders();
@@ -22,10 +23,9 @@ export const OrderLiveTracker: React.FC = () => {
   const [filter, setFilter] = useState<'activos' | 'todos'>('activos');
   const [viewMode, setViewMode] = useState<'lista' | 'calendario'>('lista');
 
-  const clientOrders = pedidos.filter(p => {
-    if (!currentUser) return true;
-    return p.usuario_id === currentUser.id;
-  });
+  const clientOrders = pedidos
+    .filter(p => p.usuario_id === currentUser?.id)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   const displayedOrders = filter === 'activos'
     ? clientOrders.filter(p => p.estado_envio !== 'entregado')
@@ -46,10 +46,9 @@ export const OrderLiveTracker: React.FC = () => {
   ];
 
   const getWhatsAppEditUrl = (pedido: Pedido) => {
-    const number = tallerConfig.whatsapp_pedidos || '51987654321';
     const clientName = currentUser?.nombre_completo || 'Clienta';
     const text = `¡Hola Encomi! 📦\nSoy *${clientName}*, deseo consultar el estado de mi envío *#${pedido.codigo_seguimiento}*.\n\n*Destino:* ${pedido.destino_detalle}\n\n¿Cómo va mi despacho? ✨`;
-    return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
+    return getWhatsAppBusinessChatUrl(text);
   };
 
   if (viewMode === 'calendario') {

@@ -1,16 +1,13 @@
 import React from 'react';
-import { useOrders } from '../../context/OrderContext';
 import { MessageCircle, Building2 } from 'lucide-react';
+import { getWhatsAppBusinessChatUrl } from '../../services/whatsappService';
 
 interface Props {
   onSuccess?: () => void;
 }
 
 export const OrderWizard: React.FC<Props> = () => {
-  const { tallerConfig } = useOrders();
-
-  const whatsappNumber = (tallerConfig?.whatsapp_pedidos || '51987654321').replace(/\D/g, '');
-  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent('¡Hola Comikids! 👋 Deseo hacer un nuevo pedido de mercadería.')}`;
+  const whatsappUrl = getWhatsAppBusinessChatUrl('¡Hola Comikids! 👋 Deseo hacer un nuevo pedido de mercadería.');
 
   return (
     <div className="w-full max-w-xl mx-auto space-y-6 animate-fadeIn">

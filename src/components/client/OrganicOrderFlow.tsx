@@ -6,6 +6,7 @@ import { useShalomAgencies, formatFullAgencyName, cleanAddressText } from '../..
 import { searchDistritos } from '../../data/distritosLima';
 import { PlacesMapPicker } from './PlacesMapPicker';
 import { ShalomAgenciesMap } from './ShalomAgenciesMap';
+import { EncomiAiChatModal } from './EncomiAiChatModal';
 import { MetodoEnvio, ShalomAgency, Pedido } from '../../types/database.types';
 import {
   DatosComprobante,
@@ -194,6 +195,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   // Status & Resumen de Pedido Creado (Con Persistencia Inmune a Recargas y Login en Móviles)
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showEncomiAiModal, setShowEncomiAiModal] = useState(false);
   const [createdOrder, setCreatedOrderState] = useState<Pedido | null>(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -645,6 +647,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               <span>Enviar Comprobante por WhatsApp</span>
             </a>
           </div>
+
+          {/* Botón de Preguntas Frecuentes con Encomi AI (Exclusivo Shalom) */}
+          {(selectedMethod?.tipo_formulario === 'shalom' || createdOrder?.metodo_envio_codigo === 'shalom') && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowEncomiAiModal(true)}
+                className="w-full py-3 px-5 rounded-2xl bg-linear-to-r from-purple-600/30 via-indigo-600/30 to-cyan-600/30 hover:from-purple-600/45 hover:to-cyan-600/45 border border-purple-500/45 text-purple-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2.5 shadow-lg shadow-purple-950/30 transition-all active:scale-[0.98] cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse" />
+                <span>Preguntas Frecuentes con Encomi AI</span>
+              </button>
+            </div>
+          )}
 
           {/* Flecha Flotante hacia abajo para indicar que baje */}
           {showScrollHint && (
@@ -1286,6 +1302,17 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           )}
 
         </div>
+      )}
+
+      {/* Encomi AI Interactive FAQ Chat Modal */}
+      {showEncomiAiModal && (
+        <EncomiAiChatModal
+          initialOrder={createdOrder}
+          clientName={nombreCompleto || 'Cliente'}
+          clientId={currentUser?.id || 'guest'}
+          initialQuestion="¿Cuánto tiempo demorará el envío hasta que me llegue?"
+          onClose={() => setShowEncomiAiModal(false)}
+        />
       )}
 
     </div>

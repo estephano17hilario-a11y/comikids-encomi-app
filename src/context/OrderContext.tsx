@@ -87,17 +87,43 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     refreshData();
 
+    // BroadcastChannel para sincronización instantánea (0ms) entre pestañas y dispositivos
+    let broadcastChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        broadcastChannel = new BroadcastChannel('incomi_orders_sync_channel');
+        broadcastChannel.onmessage = async (event) => {
+          if (event.data?.type === 'NEW_ORDER' || event.data?.type === 'UPDATE_ORDER') {
+            soundService.playNewOrderAlert();
+            await refreshData();
+            if (event.data?.pedido) {
+              setLatestNewOrder(event.data.pedido);
+            }
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel fallback:', e);
+    }
+
+    // Polling ultrarrápido cada 3.5 segundos para cuentas de empresa y clientes
+    const fastSyncInterval = setInterval(() => {
+      refreshData();
+    }, 3500);
+
+    // Supabase Realtime Channel
+    let activeChannel: any = null;
     if (isSupabaseConfigured && supabase) {
       const activeSupabase = supabase;
-      const channel = activeSupabase
-        .channel('incomi_realtime_v2')
+      activeChannel = activeSupabase
+        .channel('incomi_realtime_orders_v3')
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'pedidos' },
+          { event: '*', schema: 'public', table: 'pedidos' },
           async (payload) => {
             soundService.playNewOrderAlert();
             await refreshData();
-            if (payload.new) {
+            if (payload.new && payload.eventType === 'INSERT') {
               const newP = payload.new as Pedido;
               setLatestNewOrder(newP);
               NativeNotificationService.notifyNewOrder(
@@ -108,19 +134,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
           }
         )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'pedidos' },
-          async () => {
-            await refreshData();
-          }
-        )
         .subscribe();
-
-      return () => {
-        activeSupabase.removeChannel(channel);
-      };
     }
+
+    return () => {
+      clearInterval(fastSyncInterval);
+      if (broadcastChannel) broadcastChannel.close();
+      if (activeChannel && supabase) {
+        supabase.removeChannel(activeChannel);
+      }
+    };
   }, [refreshData]);
 
   const handleCreatePedido = async (data: Omit<Pedido, 'id' | 'codigo_seguimiento' | 'created_at' | 'estado_produccion' | 'estado_envio'>) => {
@@ -131,6 +154,16 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       created.usuario?.nombre_completo || 'Cliente',
       created.destino_detalle || 'Destino'
     );
+
+    // Notificar instantáneamente a todas las pestañas abiertas
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('incomi_orders_sync_channel');
+        bc.postMessage({ type: 'NEW_ORDER', pedido: created });
+        bc.close();
+      }
+    } catch {}
+
     setLatestNewOrder(created);
     await refreshData();
     return created;

@@ -128,18 +128,20 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                     key={pedido.id}
                     className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden"
                   >
-                    {/* Header: Logo Oficial Encomi & Slogan & Badge con Logo Shalom / Moto */}
+                    {/* Header: Logo Oficial ComiKids Grande & Slogan & Badge con Logo Shalom / Moto */}
                     <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center text-xl font-black shrink-0">
-                          📦
-                        </div>
+                        <img 
+                          src="/Comikids.png" 
+                          alt="ComiKids" 
+                          className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0" 
+                        />
                         <div>
                           <strong className="text-base sm:text-lg font-black tracking-tight uppercase block leading-none">
-                            {tallerConfig.nombre_taller || 'Encomi Envíos'}
+                            ComiKids
                           </strong>
                           <span className="text-[10.5px] sm:text-xs font-black text-slate-800 tracking-wide block pt-0.5 leading-none">
-                            ✨ Logística & Despacho Seguro ✨
+                            ✨ Crea tu propia historia ✨
                           </span>
                         </div>
                       </div>

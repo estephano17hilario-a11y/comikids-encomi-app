@@ -87,7 +87,8 @@ export const OrdersSmartManager: React.FC = () => {
       if (statusFilter === 'dejando_shalom') return order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente');
       if (statusFilter === 'entregado') return order.estado_envio === 'entregado';
 
-      return true;
+      // Vista "Todos": Todos los pedidos vigentes EXCEPTO los que ya fueron entregados
+      return order.estado_envio !== 'entregado';
     });
   }, [pedidos, searchTerm, statusFilter, transportFilter]);
 
@@ -201,13 +202,13 @@ export const OrdersSmartManager: React.FC = () => {
   // Contadores dinámicos calculados en tiempo real
   const counts = useMemo(() => {
     return {
-      all: pedidos.length,
+      all: pedidos.filter(p => p.estado_envio !== 'entregado').length,
       almacen: pedidos.filter(p => p.estado_produccion === 'en_cola' && p.estado_envio === 'pendiente').length,
       alistando: pedidos.filter(p => p.estado_produccion === 'bordando' && p.estado_envio === 'pendiente').length,
       dejando_shalom: pedidos.filter(p => p.estado_envio === 'en_camino' || (p.estado_produccion === 'completado' && p.estado_envio === 'pendiente')).length,
       entregado: pedidos.filter(p => p.estado_envio === 'entregado').length,
-      shalom: pedidos.filter(p => p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom')).length,
-      motorizado: pedidos.filter(p => p.metodo_envio_codigo === 'motorizado' || p.destino_detalle?.toLowerCase().includes('motorizado')).length,
+      shalom: pedidos.filter(p => (p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom')) && p.estado_envio !== 'entregado').length,
+      motorizado: pedidos.filter(p => (p.metodo_envio_codigo === 'motorizado' || p.destino_detalle?.toLowerCase().includes('motorizado')) && p.estado_envio !== 'entregado').length,
     };
   }, [pedidos]);
 

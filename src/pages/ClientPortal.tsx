@@ -7,11 +7,13 @@ import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { OrderWizard } from '../components/client/OrderWizard';
 import { OrderLiveTracker } from '../components/client/OrderLiveTracker';
 import { GamificationCard } from '../components/client/GamificationCard';
+import { EncomiAiSection } from '../components/client/EncomiAiSection';
 import {
   PackagePlus,
   ClipboardList,
   Trophy,
-  Package
+  Package,
+  Sparkles
 } from 'lucide-react';
 
 export const ClientPortal: React.FC = () => {
@@ -110,6 +112,18 @@ export const ClientPortal: React.FC = () => {
                 <span>Mis Logros & XP</span>
               </button>
 
+              <button
+                onClick={() => setActiveSection('encomi_ai')}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
+                  activeSection === 'encomi_ai'
+                    ? 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-lg shadow-cyan-500/30'
+                    : 'text-cyan-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-4 h-4 animate-pulse" />
+                <span>Encomi AI</span>
+              </button>
+
             </div>
           </div>
         )}
@@ -126,6 +140,10 @@ export const ClientPortal: React.FC = () => {
 
           {activeSection === 'mis_logros' && (
             <GamificationCard />
+          )}
+
+          {activeSection === 'encomi_ai' && (
+            <EncomiAiSection />
           )}
         </div>
 

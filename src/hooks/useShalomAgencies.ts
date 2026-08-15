@@ -238,7 +238,7 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
           setIsLocating(false);
           resolvePromise(null);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 }
       );
     }
   }, []);

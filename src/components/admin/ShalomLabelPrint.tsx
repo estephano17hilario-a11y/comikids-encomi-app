@@ -17,18 +17,20 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
       className="w-full max-w-110 mx-auto bg-white text-slate-900 p-5 rounded-3xl border-4 border-dashed border-cyan-500 shadow-2xl font-sans relative overflow-hidden"
       style={{ fontFamily: 'Arial, sans-serif' }}
     >
-      {/* Top Header Encomi & Badge con Logo Shalom / Moto */}
-      <div className="flex items-center justify-between border-b-2 border-dashed border-cyan-500 pb-3 mb-3">
+      {/* Top Header ComiKids & Badge con Logo Shalom / Moto */}
+      <div className="flex items-center justify-between border-b-2 border-dashed border-pink-500 pb-3 mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center text-xl font-black shadow">
-            📦
-          </div>
+          <img
+            src="/Comikids.png"
+            alt="ComiKids"
+            className="w-10 h-10 object-contain rounded-xl shadow"
+          />
           <div>
             <h2 className="text-base font-black uppercase tracking-tight text-slate-900 leading-none">
-              {tallerConfig.nombre_taller || 'Encomi Envíos'}
+              ComiKids
             </h2>
-            <span className="text-[10px] font-black text-cyan-600 uppercase">
-              ✨ Logística & Despacho Seguro ✨
+            <span className="text-[10px] font-black text-pink-600 uppercase">
+              ✨ Crea tu propia historia ✨
             </span>
           </div>
         </div>

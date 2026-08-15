@@ -383,29 +383,32 @@ export const PlacesMapPicker: React.FC<Props> = ({
 
     setIsLocating(true);
     setLocationPermissionDenied(false);
-    setStatusMessage('Localizando tu GPS en alta precisión...');
+    setStatusMessage('Localizando tu GPS satelital en alta precisión...');
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
+        const accuracy = position.coords.accuracy ? Math.round(position.coords.accuracy) : 10;
 
         setUserGpsCoords({ lat: userLat, lng: userLng });
         setIsLocating(false);
         setLocationPermissionDenied(false);
+        setStatusMessage(`📍 Precisión GPS: ${accuracy}m`);
+        setTimeout(() => setStatusMessage(''), 3000);
 
         if (leafletMapRef.current) {
           if (!userLocationMarkerRef.current) {
             userLocationMarkerRef.current = L.marker([userLat, userLng], {
               icon: createUserLocationDotIcon(),
-              zIndexOffset: 100,
+              zIndexOffset: 200,
             }).addTo(leafletMapRef.current);
           } else {
             userLocationMarkerRef.current.setLatLng([userLat, userLng]);
           }
 
-          leafletMapRef.current.flyTo([userLat, userLng], 19, {
-            duration: 1.2,
+          leafletMapRef.current.setView([userLat, userLng], 19, {
+            animate: true,
           });
         }
 
@@ -414,18 +417,22 @@ export const PlacesMapPicker: React.FC<Props> = ({
           googleMapRef.current.setZoom(19);
         }
 
+        // Posicionar el pin de entrega directamente en la ubicación exacta del usuario
         updateDeliveryPosition(userLat, userLng);
       },
       (error) => {
         setIsLocating(false);
         if (error.code === error.PERMISSION_DENIED) {
           setLocationPermissionDenied(true);
+          setStatusMessage('Por favor concede permiso de ubicación en tu navegador.');
+        } else {
+          setStatusMessage('No se pudo obtener señal GPS en este momento.');
         }
-        setStatusMessage('');
+        setTimeout(() => setStatusMessage(''), 4000);
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 25000,
         maximumAge: 0,
       }
     );

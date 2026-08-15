@@ -6,7 +6,6 @@ import {
   generateEncomiAiResponse,
   getDailyMessageLimitStatus,
   consumeDailyMessage,
-  calculateShalomTransitTime,
 } from '../../services/encomiAiService';
 import {
   Sparkles,
@@ -15,11 +14,10 @@ import {
   Bot,
   User,
   Clock,
-  MapPin,
-  HelpCircle,
-  AlertCircle,
   Package,
-  ChevronRight,
+  AlertCircle,
+  CheckCircle2,
+  HelpCircle,
   ShieldCheck
 } from 'lucide-react';
 
@@ -28,7 +26,7 @@ interface Props {
   allUserOrders?: Pedido[];
   clientName?: string;
   clientId?: string;
-  initialQuestion?: string;
+  isEmpresa?: boolean;
   onClose: () => void;
 }
 
@@ -37,7 +35,7 @@ export const EncomiAiChatModal: React.FC<Props> = ({
   allUserOrders = [],
   clientName = 'Cliente',
   clientId = 'guest',
-  initialQuestion = '¿Cuánto tiempo demorará el envío hasta que me llegue?',
+  isEmpresa = false,
   onClose,
 }) => {
   const [selectedOrder, setSelectedOrder] = useState<Pedido | null>(() => {
@@ -49,8 +47,9 @@ export const EncomiAiChatModal: React.FC<Props> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [limitStatus, setLimitStatus] = useState(() => getDailyMessageLimitStatus(clientId));
-  const [showOrderSelector, setShowOrderSelector] = useState(false);
+  const [limitStatus, setLimitStatus] = useState(() => getDailyMessageLimitStatus(clientId, isEmpresa));
+  const [showOrderSelectorModal, setShowOrderSelectorModal] = useState(false);
+  const [manualOrderCode, setManualOrderCode] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -69,7 +68,7 @@ export const EncomiAiChatModal: React.FC<Props> = ({
     };
   }, []);
 
-  // Mensaje inicial de bienvenida con la orden seleccionada
+  // Mensaje inicial de bienvenida sin descontar ningún mensaje
   useEffect(() => {
     const orderCode = selectedOrder?.codigo_seguimiento || 'Vigente';
     const destination = selectedOrder?.destino_detalle || 'Agencia Shalom';
@@ -77,31 +76,24 @@ export const EncomiAiChatModal: React.FC<Props> = ({
     const welcomeMsg: ChatMessage = {
       id: 'welcome',
       sender: 'assistant',
-      text: `¡Hola ${clientName}! 👋 Soy **Encomi AI**, tu asistente logístico especializado en despachos nacionales.
+      text: `¡Hola ${clientName}! 👋 Soy **Encomi AI**, tu asistente logístico inteligente de ComiKids.
 
 📍 **Agencia Destino:** ${destination}
-🚚 **Origen Fijo:** Sede Central de Shalom en Lima
-⏰ **Hora de Salida de Camiones:** **9:00 PM (21:00 hrs)** todos los días.
+🚚 **Entrega de Lote:** Sede Central de Shalom (9:00 PM - Turno Noche)
+⏰ **Salida de Flota:** Al día siguiente en la mañana/tarde hacia tu región.
 
-Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de recojo con DNI o costos de flete.`,
+Presiona el botón de pregunta frecuente abajo o escribe tu duda sobre la entrega.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
     setMessages([welcomeMsg]);
+  }, [selectedOrder?.id]);
 
-    // Si viene con pregunta inicial (ej. "¿Cuánto tiempo demorará el envío hasta que me llegue?"), responder automáticamente
-    if (initialQuestion) {
-      setTimeout(() => {
-        handleQuickQuestion(initialQuestion);
-      }, 500);
-    }
-  }, []);
-
-  const handleSendMessage = async (textToSend: string) => {
+  const handleSendMessage = async (textToSend: string, targetOrder: Pedido | null = selectedOrder) => {
     const text = textToSend.trim();
     if (!text || isTyping) return;
 
-    const currentLimit = getDailyMessageLimitStatus(clientId);
+    const currentLimit = getDailyMessageLimitStatus(clientId, isEmpresa);
     if (!currentLimit.canSend) {
       const limitMsg: ChatMessage = {
         id: `limit-${Date.now()}`,
@@ -113,9 +105,9 @@ Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de re
       return;
     }
 
-    // Consumir 1 crédito diario
-    consumeDailyMessage(clientId);
-    setLimitStatus(getDailyMessageLimitStatus(clientId));
+    // Consumir 1 crédito sólo cuando el usuario realmente envía una consulta
+    consumeDailyMessage(clientId, isEmpresa);
+    setLimitStatus(getDailyMessageLimitStatus(clientId, isEmpresa));
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -129,7 +121,7 @@ Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de re
     setIsTyping(true);
 
     try {
-      const response = await generateEncomiAiResponse(text, selectedOrder, clientName);
+      const response = await generateEncomiAiResponse(text, targetOrder, clientName, isEmpresa);
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: 'assistant',
@@ -142,7 +134,7 @@ Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de re
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         sender: 'assistant',
-        text: 'Tu paquete saldrá hoy a las 9:00 PM desde la Sede Central de Shalom en Lima hacia tu agencia de destino. Por favor intenta consultar nuevamente en un momento.',
+        text: 'Tu paquete se entrega en la Sede Central de Shalom a las 9:00 PM y saldrá al día siguiente en la flota interprovincial. Recuerda que ComiKids te enviará tu código de 4 dígitos por WhatsApp.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages(prev => [...prev, errorMsg]);
@@ -151,8 +143,42 @@ Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de re
     }
   };
 
-  const handleQuickQuestion = (question: string) => {
-    handleSendMessage(question);
+  // Al presionar la pregunta frecuente, abrir el recuadro para elegir el pedido
+  const handleFaqClick = () => {
+    setShowOrderSelectorModal(true);
+  };
+
+  const handleConfirmOrderForTransit = (orderToUse: Pedido) => {
+    setSelectedOrder(orderToUse);
+    setShowOrderSelectorModal(false);
+    handleSendMessage('¿Cuánto tiempo demorará mi paquete en llegarme?', orderToUse);
+  };
+
+  const handleManualOrderSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualOrderCode.trim()) return;
+
+    // Buscar en los pedidos del usuario o crear pedido simulado con el código
+    const found = allUserOrders.find(
+      o => o.codigo_seguimiento.toLowerCase() === manualOrderCode.trim().toLowerCase()
+    );
+
+    const orderToUse: Pedido = found || {
+      id: 'manual-ord',
+      codigo_seguimiento: manualOrderCode.trim().toUpperCase(),
+      destino_detalle: selectedOrder?.destino_detalle || 'Agencia Shalom Nacional',
+      metodo_envio_codigo: 'shalom',
+      metodo_envio_nombre: 'Shalom',
+      detalles_bordado: '',
+      estado_envio: 'pendiente',
+      estado_produccion: 'en_cola',
+      created_at: new Date().toISOString(),
+      usuario_id: clientId,
+    };
+
+    setSelectedOrder(orderToUse);
+    setShowOrderSelectorModal(false);
+    handleSendMessage(`¿Cuánto tiempo demorará mi paquete #${orderToUse.codigo_seguimiento} en llegarme?`, orderToUse);
   };
 
   return createPortal(
@@ -173,35 +199,36 @@ Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de re
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Sede Central Shalom • Salida diaria 9:00 PM
+                Sede Central Shalom (9:00 PM) • Salida al día siguiente
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Indicador de límite de 3 mensajes diarios */}
+            {/* Indicador de límite de 3 mensajes diarios (o Ilimitado para ComiKids) */}
             <span
               className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border flex items-center gap-1 ${
-                limitStatus.remaining > 0
+                isEmpresa
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 font-black'
+                  : limitStatus.remaining > 0
                   ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
                   : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
               }`}
-              title="Límite diario de 3 consultas por cliente"
             >
               <span>💬</span>
-              <span>{limitStatus.remaining}/3 hoy</span>
+              <span>{isEmpresa ? 'Ilimitado 👑' : `${limitStatus.remaining}/3 hoy`}</span>
             </span>
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+              className="p-1.5 rounded-full text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Selected Order Context Card / Selector de Pedido Vigente */}
+        {/* Selected Order Context Card */}
         <div className="p-3 bg-linear-to-r from-purple-950/40 via-slate-900 to-cyan-950/40 border-b border-white/10 shrink-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -218,41 +245,13 @@ Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de re
               </div>
             </div>
 
-            {allUserOrders.length > 1 && (
-              <button
-                onClick={() => setShowOrderSelector(!showOrderSelector)}
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[10px] font-bold text-cyan-300 shrink-0 cursor-pointer"
-              >
-                {showOrderSelector ? 'Ocultar' : 'Cambiar Pedido'}
-              </button>
-            )}
+            <button
+              onClick={() => setShowOrderSelectorModal(true)}
+              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[10px] font-bold text-cyan-300 shrink-0 cursor-pointer"
+            >
+              Cambiar Pedido
+            </button>
           </div>
-
-          {/* Selector desplegable de pedidos si el cliente tiene más de uno */}
-          {showOrderSelector && allUserOrders.length > 1 && (
-            <div className="mt-2 pt-2 border-t border-white/10 space-y-1.5 animate-fadeIn">
-              <span className="text-[10px] text-slate-400 font-bold block">Elige el pedido a consultar:</span>
-              <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
-                {allUserOrders.map(ord => (
-                  <button
-                    key={ord.id}
-                    onClick={() => {
-                      setSelectedOrder(ord);
-                      setShowOrderSelector(false);
-                    }}
-                    className={`w-full text-left p-2 rounded-xl text-xs flex items-center justify-between border transition-all cursor-pointer ${
-                      selectedOrder?.id === ord.id
-                        ? 'bg-cyan-500/20 border-cyan-500 text-cyan-200 font-black'
-                        : 'bg-slate-800/60 border-white/5 text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span className="truncate">#{ord.codigo_seguimiento} - {ord.destino_detalle}</span>
-                    <span className="text-[10px] font-mono shrink-0 ml-2">{ord.metodo_envio_codigo}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Chat History Messages */}
@@ -317,30 +316,14 @@ Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de re
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Quick FAQ Chips */}
-        <div className="p-2.5 bg-slate-950/80 border-t border-white/10 flex items-center gap-1.5 overflow-x-auto shrink-0">
+        {/* ÚNICA Pregunta Frecuente Requerida */}
+        <div className="p-3 bg-slate-950/90 border-t border-white/10 flex items-center justify-center shrink-0">
           <button
-            onClick={() => handleQuickQuestion('¿Cuánto tiempo demorará el envío hasta que me llegue?')}
-            className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-200 text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
+            onClick={handleFaqClick}
+            className="w-full py-2.5 px-4 rounded-2xl bg-linear-to-r from-purple-600/30 via-indigo-600/30 to-cyan-600/30 hover:from-purple-600/40 hover:to-cyan-600/40 border border-purple-500/40 text-purple-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98] cursor-pointer"
           >
-            <Clock className="w-3.5 h-3.5 text-purple-400" />
-            <span>¿Cuánto tiempo demorará?</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickQuestion('¿Qué documentos necesito para recoger mi paquete en Shalom?')}
-            className="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-200 text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-            <span>¿Qué necesito para recoger?</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickQuestion('¿Cuánto se paga de flete en la agencia de destino?')}
-            className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-200 text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
-          >
-            <span>💰</span>
-            <span>Costo de flete</span>
+            <Clock className="w-4 h-4 text-cyan-400 animate-pulse" />
+            <span>¿Cuánto tiempo demorará mi paquete en llegarme?</span>
           </button>
         </div>
 
@@ -375,6 +358,99 @@ Puedes hacerme cualquier pregunta sobre los tiempos de llegada, requisitos de re
         </form>
 
       </div>
+
+      {/* Recuadro / Modal Emergente para Seleccionar o Ingresar el Pedido */}
+      {showOrderSelectorModal && (
+        <div className="fixed inset-0 z-10000 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-slate-900 rounded-3xl border-2 border-cyan-500/50 p-5 shadow-2xl space-y-4">
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-cyan-400" />
+                <h4 className="text-base font-black text-white">¿Sobre qué pedido deseas consultar?</h4>
+              </div>
+              <button
+                onClick={() => setShowOrderSelectorModal(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Selecciona tu pedido registrado para que Encomi AI calcule la fecha exacta de llegada según la agencia de destino:
+            </p>
+
+            {/* Lista de Pedidos del Usuario si existen */}
+            {allUserOrders.length > 0 ? (
+              <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                {allUserOrders.map((ord) => (
+                  <button
+                    key={ord.id}
+                    onClick={() => handleConfirmOrderForTransit(ord)}
+                    className="w-full p-3 rounded-2xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-500 text-left transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <strong className="text-xs text-white block group-hover:text-cyan-300 font-mono">
+                        #{ord.codigo_seguimiento}
+                      </strong>
+                      <span className="text-[11px] text-slate-400 block truncate">
+                        📍 {ord.destino_detalle}
+                      </span>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-xl bg-cyan-500/20 text-cyan-300 text-[10px] font-black shrink-0">
+                      Consultar
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : selectedOrder ? (
+              <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-left space-y-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Pedido Actual:</span>
+                  <strong className="text-sm font-mono text-cyan-300 block">#{selectedOrder.codigo_seguimiento}</strong>
+                  <span className="text-xs text-slate-200 block">📍 {selectedOrder.destino_detalle}</span>
+                </div>
+                <button
+                  onClick={() => handleConfirmOrderForTransit(selectedOrder)}
+                  className="w-full py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs transition-all cursor-pointer"
+                >
+                  Consultar este Pedido
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-amber-300 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+                No tienes pedidos vigentes listados. Ingresa el código de tu pedido a continuación:
+              </p>
+            )}
+
+            {/* O ingreso manual de código */}
+            <form onSubmit={handleManualOrderSubmit} className="pt-2 border-t border-white/10 space-y-2">
+              <label className="text-[11px] font-bold text-slate-300 block">
+                O ingresa manualmente el código de tu pedido:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={manualOrderCode}
+                  onChange={(e) => setManualOrderCode(e.target.value)}
+                  placeholder="Ej. JWL-2026-9379"
+                  className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-white/15 text-xs text-white uppercase font-mono focus:outline-none focus:border-cyan-400"
+                />
+                <button
+                  type="submit"
+                  disabled={!manualOrderCode.trim()}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-black disabled:opacity-40 cursor-pointer"
+                >
+                  Consultar
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
     </div>,
     document.body
   );

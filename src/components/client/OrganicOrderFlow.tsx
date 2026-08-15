@@ -662,16 +662,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             </div>
           )}
 
-          {/* Flecha Flotante hacia abajo para indicar que baje */}
-          {showScrollHint && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none transition-opacity duration-300">
-              <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900/95 text-cyan-300 border border-cyan-500/50 text-xs font-black shadow-2xl backdrop-blur-md">
-                <span>Desliza para enviar</span>
-                <ChevronDown className="w-4 h-4 text-cyan-400" />
-              </div>
-            </div>
-          )}
-
         </div>
       ) : isEmpresaUnlock ? (
         /* Admin Login */
@@ -1310,7 +1300,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           initialOrder={createdOrder}
           clientName={nombreCompleto || 'Cliente'}
           clientId={currentUser?.id || 'guest'}
-          initialQuestion="¿Cuánto tiempo demorará el envío hasta que me llegue?"
           onClose={() => setShowEncomiAiModal(false)}
         />
       )}

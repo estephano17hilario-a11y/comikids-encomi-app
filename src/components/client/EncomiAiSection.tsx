@@ -7,7 +7,6 @@ import {
   generateEncomiAiResponse,
   getDailyMessageLimitStatus,
   consumeDailyMessage,
-  calculateShalomTransitTime,
 } from '../../services/encomiAiService';
 import {
   Sparkles,
@@ -15,12 +14,9 @@ import {
   Bot,
   User,
   Clock,
-  MapPin,
-  HelpCircle,
   Package,
-  ShieldCheck,
   AlertCircle,
-  CheckCircle2
+  X
 } from 'lucide-react';
 
 export const EncomiAiSection: React.FC = () => {
@@ -35,7 +31,9 @@ export const EncomiAiSection: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [limitStatus, setLimitStatus] = useState(() => getDailyMessageLimitStatus(currentUser?.id || 'guest'));
+  const [limitStatus, setLimitStatus] = useState(() => getDailyMessageLimitStatus(currentUser?.id || 'guest', false));
+  const [showOrderSelectorModal, setShowOrderSelectorModal] = useState(false);
+  const [manualOrderCode, setManualOrderCode] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -47,7 +45,7 @@ export const EncomiAiSection: React.FC = () => {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  // Mensaje inicial de bienvenida
+  // Mensaje inicial de bienvenida sin cobrar nada
   useEffect(() => {
     const clientName = currentUser?.nombre_completo || 'Cliente';
     const destination = selectedOrder?.destino_detalle || 'Agencia Shalom Nacional';
@@ -55,25 +53,25 @@ export const EncomiAiSection: React.FC = () => {
     const welcomeMsg: ChatMessage = {
       id: 'welcome-section',
       sender: 'assistant',
-      text: `¡Hola ${clientName}! ✨ Te doy la bienvenida a **Encomi AI**, tu inteligencia artificial especializada en logística y seguimiento de encomiendas.
+      text: `¡Hola ${clientName}! ✨ Te doy la bienvenida a **Encomi AI**, tu inteligencia artificial especializada en logística de ComiKids.
 
 📌 **Información Clave de Despacho:**
-• **Origen Fijo:** Sede Central Shalom (Av. 28 de Julio / Lima Central)
-• **Horario de Salida:** **9:00 PM (21:00 hrs)** todos los días.
-• **Pedido Seleccionado:** #${selectedOrder?.codigo_seguimiento || 'Vigente'} (${destination})
+• **Entrega de Carga en Shalom:** **9:00 PM (Turno Noche)**
+• **Salida de Flota Interprovincial:** Al día siguiente en la mañana/tarde hacia tu región.
+• **Pedido en Consulta:** #${selectedOrder?.codigo_seguimiento || 'Vigente'} (${destination})
 
-¿En qué puedo ayudarte hoy? Puedes presionar las preguntas frecuentes sugeridas abajo o escribir tu consulta.`,
+Presiona la pregunta frecuente abajo o escribe tu consulta.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
     setMessages([welcomeMsg]);
   }, [selectedOrder?.id, currentUser?.nombre_completo]);
 
-  const handleSendMessage = async (textToSend: string) => {
+  const handleSendMessage = async (textToSend: string, targetOrder: Pedido | null = selectedOrder) => {
     const text = textToSend.trim();
     if (!text || isTyping) return;
 
-    const currentLimit = getDailyMessageLimitStatus(currentUser?.id || 'guest');
+    const currentLimit = getDailyMessageLimitStatus(currentUser?.id || 'guest', false);
     if (!currentLimit.canSend) {
       const limitMsg: ChatMessage = {
         id: `limit-${Date.now()}`,
@@ -85,9 +83,9 @@ export const EncomiAiSection: React.FC = () => {
       return;
     }
 
-    // Consumir 1 crédito diario
-    consumeDailyMessage(currentUser?.id || 'guest');
-    setLimitStatus(getDailyMessageLimitStatus(currentUser?.id || 'guest'));
+    // Consumir 1 crédito solo cuando envía la pregunta
+    consumeDailyMessage(currentUser?.id || 'guest', false);
+    setLimitStatus(getDailyMessageLimitStatus(currentUser?.id || 'guest', false));
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -102,7 +100,7 @@ export const EncomiAiSection: React.FC = () => {
 
     try {
       const clientName = currentUser?.nombre_completo || 'Cliente';
-      const response = await generateEncomiAiResponse(text, selectedOrder, clientName);
+      const response = await generateEncomiAiResponse(text, targetOrder, clientName, false);
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: 'assistant',
@@ -115,13 +113,45 @@ export const EncomiAiSection: React.FC = () => {
       const errorMsg: ChatMessage = {
         id: `error-${Date.now()}`,
         sender: 'assistant',
-        text: 'Todos los pedidos son entregados en la Sede Central de Shalom para salir en los camiones de las 9:00 PM. Por favor inténtalo de nuevo en unos momentos.',
+        text: 'Los paquetes se entregan en la Sede Central de Shalom a las 9:00 PM y salen al día siguiente en los camiones interprovinciales. ComiKids te enviará tu código de 4 dígitos por WhatsApp.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleConfirmOrderForTransit = (orderToUse: Pedido) => {
+    setSelectedOrder(orderToUse);
+    setShowOrderSelectorModal(false);
+    handleSendMessage('¿Cuánto tiempo demorará mi paquete en llegarme?', orderToUse);
+  };
+
+  const handleManualOrderSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualOrderCode.trim()) return;
+
+    const found = userOrders.find(
+      o => o.codigo_seguimiento.toLowerCase() === manualOrderCode.trim().toLowerCase()
+    );
+
+    const orderToUse: Pedido = found || {
+      id: 'manual-ord',
+      codigo_seguimiento: manualOrderCode.trim().toUpperCase(),
+      destino_detalle: selectedOrder?.destino_detalle || 'Agencia Shalom Nacional',
+      metodo_envio_codigo: 'shalom',
+      metodo_envio_nombre: 'Shalom',
+      detalles_bordado: '',
+      estado_envio: 'pendiente',
+      estado_produccion: 'en_cola',
+      created_at: new Date().toISOString(),
+      usuario_id: currentUser?.id || 'guest',
+    };
+
+    setSelectedOrder(orderToUse);
+    setShowOrderSelectorModal(false);
+    handleSendMessage(`¿Cuánto tiempo demorará mi paquete #${orderToUse.codigo_seguimiento} en llegarme?`, orderToUse);
   };
 
   return (
@@ -141,7 +171,7 @@ export const EncomiAiSection: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Despachos diarios 9:00 PM desde Sede Central Shalom
+              Despachos Shalom 9:00 PM • Salida de flota al día siguiente
             </p>
           </div>
         </div>
@@ -161,7 +191,7 @@ export const EncomiAiSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Order Context Selector if user has multiple orders */}
+      {/* Order Context Selector */}
       {userOrders.length > 0 && (
         <div className="p-3 rounded-2xl bg-slate-900/80 border border-white/10 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -171,22 +201,12 @@ export const EncomiAiSection: React.FC = () => {
             </span>
           </div>
 
-          {userOrders.length > 1 && (
-            <select
-              value={selectedOrder?.id || ''}
-              onChange={(e) => {
-                const found = userOrders.find(o => o.id === e.target.value);
-                if (found) setSelectedOrder(found);
-              }}
-              className="px-2.5 py-1 rounded-xl bg-slate-950 border border-white/10 text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-500 shrink-0"
-            >
-              {userOrders.map(o => (
-                <option key={o.id} value={o.id}>
-                  #{o.codigo_seguimiento} - {o.destino_detalle}
-                </option>
-              ))}
-            </select>
-          )}
+          <button
+            onClick={() => setShowOrderSelectorModal(true)}
+            className="px-2.5 py-1 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold shrink-0 cursor-pointer"
+          >
+            Cambiar
+          </button>
         </div>
       )}
 
@@ -255,30 +275,14 @@ export const EncomiAiSection: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Quick FAQ Suggestion Chips */}
-        <div className="p-2.5 bg-slate-950/80 border-t border-white/10 flex items-center gap-1.5 overflow-x-auto shrink-0">
+        {/* ÚNICA Pregunta Frecuente */}
+        <div className="p-3 bg-slate-950/90 border-t border-white/10 flex items-center justify-center shrink-0">
           <button
-            onClick={() => handleSendMessage('¿Cuánto tiempo demorará el envío hasta que me llegue?')}
-            className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-200 text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
+            onClick={() => setShowOrderSelectorModal(true)}
+            className="w-full py-2.5 px-4 rounded-2xl bg-linear-to-r from-purple-600/30 via-indigo-600/30 to-cyan-600/30 hover:from-purple-600/40 hover:to-cyan-600/40 border border-purple-500/40 text-purple-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98] cursor-pointer"
           >
-            <Clock className="w-3.5 h-3.5 text-purple-400" />
-            <span>¿Cuánto tiempo demorará?</span>
-          </button>
-
-          <button
-            onClick={() => handleSendMessage('¿Qué documentos necesito para recoger mi paquete en Shalom?')}
-            className="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-200 text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Requisitos con DNI</span>
-          </button>
-
-          <button
-            onClick={() => handleSendMessage('¿Cuánto se paga de flete en la agencia de destino?')}
-            className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-200 text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1"
-          >
-            <span>💰</span>
-            <span>Costo de flete</span>
+            <Clock className="w-4 h-4 text-cyan-400 animate-pulse" />
+            <span>¿Cuánto tiempo demorará mi paquete en llegarme?</span>
           </button>
         </div>
 
@@ -313,6 +317,84 @@ export const EncomiAiSection: React.FC = () => {
         </form>
 
       </div>
+
+      {/* Recuadro para Seleccionar o Ingresar el Pedido */}
+      {showOrderSelectorModal && (
+        <div className="fixed inset-0 z-10000 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-slate-900 rounded-3xl border-2 border-cyan-500/50 p-5 shadow-2xl space-y-4">
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-cyan-400" />
+                <h4 className="text-base font-black text-white">¿Sobre qué pedido deseas consultar?</h4>
+              </div>
+              <button
+                onClick={() => setShowOrderSelectorModal(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Selecciona tu pedido registrado para que Encomi AI calcule la fecha exacta de llegada:
+            </p>
+
+            {/* Lista de Pedidos del Usuario */}
+            {userOrders.length > 0 ? (
+              <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                {userOrders.map((ord) => (
+                  <button
+                    key={ord.id}
+                    onClick={() => handleConfirmOrderForTransit(ord)}
+                    className="w-full p-3 rounded-2xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-500 text-left transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <strong className="text-xs text-white block group-hover:text-cyan-300 font-mono">
+                        #{ord.codigo_seguimiento}
+                      </strong>
+                      <span className="text-[11px] text-slate-400 block truncate">
+                        📍 {ord.destino_detalle}
+                      </span>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-xl bg-cyan-500/20 text-cyan-300 text-[10px] font-black shrink-0">
+                      Consultar
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-amber-300 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+                No tienes pedidos vigentes registrados. Ingresa el código de tu pedido a continuación:
+              </p>
+            )}
+
+            {/* Ingreso manual de código */}
+            <form onSubmit={handleManualOrderSubmit} className="pt-2 border-t border-white/10 space-y-2">
+              <label className="text-[11px] font-bold text-slate-300 block">
+                O ingresa el código de tu pedido:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={manualOrderCode}
+                  onChange={(e) => setManualOrderCode(e.target.value)}
+                  placeholder="Ej. JWL-2026-9379"
+                  className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-white/15 text-xs text-white uppercase font-mono focus:outline-none focus:border-cyan-400"
+                />
+                <button
+                  type="submit"
+                  disabled={!manualOrderCode.trim()}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-black disabled:opacity-40 cursor-pointer"
+                >
+                  Consultar
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

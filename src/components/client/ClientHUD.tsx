@@ -20,7 +20,7 @@ export const ClientHUD: React.FC = () => {
 
   return (
     <>
-      <header className="w-full bg-slate-950/85 border-b border-white/8 px-4 pt-6 pb-4 sm:pt-7 sm:pb-4 sm:px-8 sticky top-0 z-40 backdrop-blur-2xl transition-all">
+      <header className="w-full bg-slate-950/85 border-b border-white/8 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-8 sticky top-0 z-40 backdrop-blur-2xl transition-all shadow-xl">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
           
           {/* Avatar + Name (Clickeable para editar perfil y predeterminados) */}

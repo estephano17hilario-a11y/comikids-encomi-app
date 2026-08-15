@@ -84,11 +84,27 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setCustomShalomAgencies(ordersService.getCustomShalomAgencies());
       setMasterCodeState(ordersService.getMasterCode());
 
-      // Sincronizar Widget Nativo de Android
+      // Sincronizar Widget Nativo de Android con contadores y tarjetas de pedidos
       const almacenCount = fetched.filter(p => p.estado_produccion === 'en_cola' && p.estado_envio === 'pendiente').length;
       const alistandoCount = fetched.filter(p => p.estado_produccion === 'bordando' && p.estado_envio === 'pendiente').length;
       const rutaCount = fetched.filter(p => p.estado_envio === 'en_camino' || (p.estado_produccion === 'completado' && p.estado_envio === 'pendiente')).length;
-      WidgetService.updateCounts(almacenCount, alistandoCount, rutaCount);
+
+      const activePendingOrders = fetched
+        .filter(p => p.estado_envio !== 'entregado')
+        .slice(0, 5)
+        .map(p => ({
+          codigo: p.codigo_seguimiento,
+          nombre: p.usuario?.nombre_completo || 'Cliente',
+          telefono: p.usuario?.telefono_default || (p.usuario as any)?.telefono || '',
+          destino: p.destino_detalle || 'Destino',
+          estado: p.estado_envio === 'en_camino' || (p.estado_produccion === 'completado' && p.estado_envio === 'pendiente')
+            ? 'En Ruta'
+            : p.estado_produccion === 'bordando'
+            ? 'Alistando'
+            : 'Almacén'
+        }));
+
+      WidgetService.updateCounts(almacenCount, alistandoCount, rutaCount, activePendingOrders);
 
       // Detectar nuevos pedidos que llegaron desde otro dispositivo
       if (!isInitialLoadRef.current) {

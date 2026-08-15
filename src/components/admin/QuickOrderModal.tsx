@@ -55,7 +55,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
 
     setSubmitting(true);
     try {
-      const reg = await ordersService.registerUser(nombre.trim(), dni.trim(), 20, '1234');
+      const reg = await ordersService.registerUser(nombre.trim(), dni.trim(), undefined, '1234');
       const user = reg.user || (await ordersService.loginUser(dni.trim(), '1234')).user;
 
       let destinoDetalle = '';

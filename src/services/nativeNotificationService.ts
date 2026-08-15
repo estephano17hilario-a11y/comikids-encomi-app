@@ -1,4 +1,5 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { WidgetService } from './widgetService';
 
 const CHANNEL_ID = 'comikids_orders_high_priority';
 
@@ -53,33 +54,38 @@ export class NativeNotificationService {
     const body = `${clientName} registró un nuevo envío para: ${destination}`;
 
     try {
-      await this.initChannel();
-      const granted = await this.requestPermissions();
+      // 1. Notificación Nativa Directa vía Android NotificationManager
+      const directSuccess = await WidgetService.showNativeAlert(title, body, orderCode);
 
-      const notifId = Math.floor(Math.random() * 900000) + 100000;
+      // 2. Notificación vía Capacitor LocalNotifications
+      if (!directSuccess) {
+        await this.initChannel();
+        const granted = await this.requestPermissions();
 
-      if (granted) {
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              title,
-              body,
-              id: notifId,
-              schedule: { at: new Date(Date.now() + 100), allowWhileIdle: true },
-              sound: 'beep.wav',
-              channelId: CHANNEL_ID,
-              actionTypeId: 'OPEN_ORDER',
-              extra: {
-                orderCode,
-                destination,
-                clientName
+        const notifId = Math.floor(Math.random() * 900000) + 100000;
+
+        if (granted) {
+          await LocalNotifications.schedule({
+            notifications: [
+              {
+                title,
+                body,
+                id: notifId,
+                schedule: { at: new Date(Date.now() + 100), allowWhileIdle: true },
+                channelId: CHANNEL_ID,
+                actionTypeId: 'OPEN_ORDER',
+                extra: {
+                  orderCode,
+                  destination,
+                  clientName
+                }
               }
-            }
-          ]
-        });
+            ]
+          });
+        }
       }
 
-      // Fallback a Notification de navegador Web/PWA
+      // 3. Fallback a Notification de navegador Web/PWA
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
         try {
           new Notification(title, {

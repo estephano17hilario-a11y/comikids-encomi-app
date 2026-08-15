@@ -8,6 +8,7 @@ import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettin
 import { EncomiAiSection } from '../components/client/EncomiAiSection';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
 import { ExecutiveBriefingModal } from '../components/admin/ExecutiveBriefingModal';
+import { QuickOrderModal } from '../components/admin/QuickOrderModal';
 import { LogoutConfirmModal } from '../components/common/LogoutConfirmModal';
 import {
   ClipboardList,
@@ -17,7 +18,8 @@ import {
   Settings,
   LogOut,
   Sparkles,
-  FileBarChart
+  FileBarChart,
+  PlusCircle
 } from 'lucide-react';
 
 export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'comikids' | 'encomi_ai';
@@ -27,6 +29,7 @@ export const AdminPortal: React.FC = () => {
   const { currentUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showQuickOrder, setShowQuickOrder] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
   // Informe completo y profesional al entrar (una vez por sesión)
@@ -45,7 +48,7 @@ export const AdminPortal: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
       
       {/* Top Vision Header */}
-      <header className="w-full bg-slate-950/85 border-b border-white/[0.08] px-4 pt-6 pb-4 sm:pt-7 sm:pb-4 sm:px-8 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all" data-no-print="true">
+      <header className="w-full bg-slate-950/85 border-b border-white/[0.08] px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-8 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl" data-no-print="true">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           
           {/* Brand */}
@@ -69,7 +72,18 @@ export const AdminPortal: React.FC = () => {
           </div>
 
           {/* Quick Header Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            
+            {/* Botón Chiquito para Añadir Nuevo Pedido Directamente desde ComiKids */}
+            <button
+              onClick={() => setShowQuickOrder(true)}
+              className="py-2 px-3 sm:px-3.5 rounded-2xl bg-linear-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-pink-600/30 transition-all cursor-pointer active:scale-95"
+              title="Añadir un nuevo pedido manualmente"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>+ Nuevo Pedido</span>
+            </button>
+
             <button
               onClick={() => setShowBriefingModal(true)}
               className="py-2 px-3 rounded-2xl bg-linear-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
@@ -211,6 +225,11 @@ export const AdminPortal: React.FC = () => {
             setActiveTab('estadisticas');
           }}
         />
+      )}
+
+      {/* Quick Order Modal para Añadir Pedidos desde ComiKids */}
+      {showQuickOrder && (
+        <QuickOrderModal onClose={() => setShowQuickOrder(false)} />
       )}
 
       {/* Logout Confirm Modal */}

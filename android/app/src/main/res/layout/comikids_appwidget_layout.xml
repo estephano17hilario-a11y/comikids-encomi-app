@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/widget_background"
-    android:padding="16dp">
+    android:padding="12dp">
 
     <!-- Header: Logo, Title & Status Dot -->
     <LinearLayout
@@ -17,8 +17,8 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🧵"
-            android:textSize="18sp"
+            android:text="📦"
+            android:textSize="16sp"
             android:layout_marginEnd="6dp" />
 
         <LinearLayout
@@ -30,18 +30,18 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="COMIKIDS LOGÍSTICA"
+                android:text="COMIKIDS ENCOMI"
                 android:textColor="#38BDF8"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textStyle="bold"
-                android:letterSpacing="0.08" />
+                android:letterSpacing="0.06" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Despachos Activos"
+                android:text="Despachos en Vivo"
                 android:textColor="#F8FAFC"
-                android:textSize="13sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -51,13 +51,13 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="#1E293B"
-            android:paddingStart="8dp"
-            android:paddingTop="3dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="3dp"
+            android:paddingStart="6dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="6dp"
+            android:paddingBottom="2dp"
             android:text="● EN VIVO"
             android:textColor="#34D399"
-            android:textSize="9sp"
+            android:textSize="8sp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -66,7 +66,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="8dp"
         android:weightSum="3">
 
         <!-- En Almacen -->
@@ -77,16 +77,16 @@
             android:orientation="vertical"
             android:gravity="center"
             android:background="#1E293B"
-            android:padding="8dp"
-            android:layout_marginEnd="4dp">
+            android:padding="6dp"
+            android:layout_marginEnd="3dp">
 
             <TextView
                 android:id="@+id/widget_count_almacen"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="--"
+                android:text="0"
                 android:textColor="#FBBF24"
-                android:textSize="16sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -94,7 +94,7 @@
                 android:layout_height="wrap_content"
                 android:text="Almacén"
                 android:textColor="#94A3B8"
-                android:textSize="9sp" />
+                android:textSize="8sp" />
         </LinearLayout>
 
         <!-- Alistando -->
@@ -105,16 +105,16 @@
             android:orientation="vertical"
             android:gravity="center"
             android:background="#1E293B"
-            android:padding="8dp"
-            android:layout_marginEnd="4dp">
+            android:padding="6dp"
+            android:layout_marginEnd="3dp">
 
             <TextView
                 android:id="@+id/widget_count_alistando"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="--"
+                android:text="0"
                 android:textColor="#C084FC"
-                android:textSize="16sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -122,7 +122,7 @@
                 android:layout_height="wrap_content"
                 android:text="Alistando"
                 android:textColor="#94A3B8"
-                android:textSize="9sp" />
+                android:textSize="8sp" />
         </LinearLayout>
 
         <!-- En Ruta / Shalom -->
@@ -133,15 +133,15 @@
             android:orientation="vertical"
             android:gravity="center"
             android:background="#1E293B"
-            android:padding="8dp">
+            android:padding="6dp">
 
             <TextView
                 android:id="@+id/widget_count_ruta"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="--"
+                android:text="0"
                 android:textColor="#38BDF8"
-                android:textSize="16sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -149,8 +149,219 @@
                 android:layout_height="wrap_content"
                 android:text="En Ruta"
                 android:textColor="#94A3B8"
-                android:textSize="9sp" />
+                android:textSize="8sp" />
         </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Lista de Recuadros de Pedidos -->
+    <LinearLayout
+        android:id="@+id/widget_orders_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="8dp">
+
+        <!-- Pedido 1 -->
+        <LinearLayout
+            android:id="@+id/widget_item_1_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#0F172A"
+            android:padding="6dp"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/widget_item_1_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Cliente"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:singleLine="true" />
+
+                <TextView
+                    android:id="@+id/widget_item_1_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="#1E293B"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:paddingTop="1dp"
+                    android:paddingBottom="1dp"
+                    android:text="Alistando"
+                    android:textColor="#38BDF8"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_item_1_phone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📱 +51 987654321"
+                android:textColor="#34D399"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:layout_marginTop="1dp" />
+
+            <TextView
+                android:id="@+id/widget_item_1_dest"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📍 Agencia Shalom Chiclayo"
+                android:textColor="#94A3B8"
+                android:textSize="9sp"
+                android:singleLine="true" />
+        </LinearLayout>
+
+        <!-- Pedido 2 -->
+        <LinearLayout
+            android:id="@+id/widget_item_2_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#0F172A"
+            android:padding="6dp"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/widget_item_2_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Cliente"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:singleLine="true" />
+
+                <TextView
+                    android:id="@+id/widget_item_2_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="#1E293B"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:paddingTop="1dp"
+                    android:paddingBottom="1dp"
+                    android:text="En Ruta"
+                    android:textColor="#34D399"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_item_2_phone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📱 +51 987654321"
+                android:textColor="#34D399"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:layout_marginTop="1dp" />
+
+            <TextView
+                android:id="@+id/widget_item_2_dest"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📍 Agencia Shalom Trujillo"
+                android:textColor="#94A3B8"
+                android:textSize="9sp"
+                android:singleLine="true" />
+        </LinearLayout>
+
+        <!-- Pedido 3 -->
+        <LinearLayout
+            android:id="@+id/widget_item_3_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#0F172A"
+            android:padding="6dp"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/widget_item_3_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Cliente"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:singleLine="true" />
+
+                <TextView
+                    android:id="@+id/widget_item_3_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="#1E293B"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:paddingTop="1dp"
+                    android:paddingBottom="1dp"
+                    android:text="Almacén"
+                    android:textColor="#FBBF24"
+                    android:textSize="8sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_item_3_phone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📱 +51 987654321"
+                android:textColor="#34D399"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:layout_marginTop="1dp" />
+
+            <TextView
+                android:id="@+id/widget_item_3_dest"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📍 Motorizado Lima"
+                android:textColor="#94A3B8"
+                android:textSize="9sp"
+                android:singleLine="true" />
+        </LinearLayout>
+
+        <!-- Empty State View -->
+        <TextView
+            android:id="@+id/widget_empty_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="8dp"
+            android:text="✨ No hay pedidos pendientes por despachar"
+            android:textColor="#94A3B8"
+            android:textSize="10sp"
+            android:visibility="visible" />
 
     </LinearLayout>
 
@@ -158,11 +369,11 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="4dp"
         android:gravity="center"
-        android:text="Toca para abrir gestor inteligente de pedidos 🚀"
+        android:text="Toca para abrir ComiKids Gestor 🚀"
         android:textColor="#64748B"
-        android:textSize="10sp"
+        android:textSize="9sp"
         android:textStyle="bold" />
 
 </LinearLayout>

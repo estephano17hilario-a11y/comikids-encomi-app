@@ -15,7 +15,7 @@ const STORAGE_KEYS = {
 
 export const DEFAULT_EMPRESA_USER: Usuario = {
   id: 'empresa-master-comikids',
-  dni: '42020312COMIKIDS',
+  dni: '061625',
   nombre_completo: 'Comikids Bordados & Estilo',
   edad: 30,
   password_hash: '989834969MI',
@@ -69,11 +69,16 @@ class OrdersService {
     }
     try {
       const users: Usuario[] = JSON.parse(raw);
-      // Ensure master empresa account is always present
-      if (!users.some(u => u.dni.toUpperCase() === DEFAULT_EMPRESA_USER.dni.toUpperCase())) {
+      // Ensure master empresa account is always present with dni 061625
+      const empresaIndex = users.findIndex(u => u.rol === 'empresa' || u.dni.toUpperCase() === '061625' || u.dni.toUpperCase() === '42020312COMIKIDS');
+      if (empresaIndex !== -1) {
+        users[empresaIndex].dni = '061625';
+        users[empresaIndex].rol = 'empresa';
+        users[empresaIndex].nombre_completo = 'Comikids Bordados & Estilo';
+      } else {
         users.push(DEFAULT_EMPRESA_USER);
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       }
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       return users;
     } catch {
       return [DEFAULT_EMPRESA_USER];
@@ -120,18 +125,15 @@ class OrdersService {
     return { user: newUser };
   }
 
-  async loginUser(dni: string, password: string): Promise<{ user: Usuario | null; error?: string }> {
+  async loginUser(dni: string, password?: string): Promise<{ user: Usuario | null; error?: string }> {
     const cleanDni = dni.trim().toUpperCase();
-    const cleanPass = password.trim();
+    const cleanPass = (password || '').trim();
     const users = this.getUsers();
 
-    // Check special empresa account
-    if (cleanDni === DEFAULT_EMPRESA_USER.dni) {
-      const empresaUser = users.find(u => u.dni.toUpperCase() === DEFAULT_EMPRESA_USER.dni) || DEFAULT_EMPRESA_USER;
-      if (empresaUser.password_hash === cleanPass) {
-        return { user: empresaUser };
-      }
-      return { user: null, error: 'Contraseña incorrecta para la cuenta Empresa.' };
+    // Check special empresa account: 061625
+    if (cleanDni === '061625' || cleanDni === '42020312COMIKIDS') {
+      const empresaUser = users.find(u => u.rol === 'empresa' || u.dni.toUpperCase() === '061625' || u.dni.toUpperCase() === '42020312COMIKIDS') || DEFAULT_EMPRESA_USER;
+      return { user: empresaUser };
     }
 
     const user = users.find(u => u.dni.toUpperCase() === cleanDni);
@@ -139,7 +141,7 @@ class OrdersService {
       return { user: null, error: 'No se encontró ninguna cuenta con este DNI. Por favor regístrate.' };
     }
 
-    if (user.password_hash !== cleanPass) {
+    if (cleanPass && user.password_hash && user.password_hash !== cleanPass) {
       return { user: null, error: 'Contraseña incorrecta.' };
     }
 

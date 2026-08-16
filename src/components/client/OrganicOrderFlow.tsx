@@ -537,31 +537,31 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
       {/* Pantalla Final: Resumen Compacto + Envío Obligatorio por WhatsApp */}
       {createdOrder ? (
-        <div className="minimal-card p-4 sm:p-6 text-center animate-fadeIn space-y-3.5 relative">
+        <div className="minimal-card p-3 text-center animate-fadeIn space-y-2 relative">
           
           {/* Encabezado Compacto Integrado Directamente en el Resumen */}
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-linear-to-r from-emerald-500/20 via-slate-900 to-cyan-500/20 border border-emerald-500/35 flex items-center justify-between gap-3 text-left shadow-lg">
+          <div className="py-2 px-3 rounded-xl bg-linear-to-r from-emerald-500/20 via-slate-900 to-cyan-500/20 border border-emerald-500/35 flex items-center justify-between gap-2 text-left">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/25 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
-                <CheckCircle className="w-5 h-5" />
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/25 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                <CheckCircle className="w-4 h-4" />
               </div>
               <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 block">
+                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 block">
                   ¡Envío Registrado con Éxito!
                 </span>
-                <div className="font-mono text-base sm:text-lg font-black text-cyan-300">
+                <div className="font-mono text-sm font-black text-cyan-300">
                   #{createdOrder.codigo_seguimiento}
                 </div>
               </div>
             </div>
 
-            <span className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-white/5 text-slate-200 border border-white/10 shrink-0">
+            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white/5 text-slate-200 border border-white/10 shrink-0">
               {selectedMethod?.nombre || 'Envío'}
             </span>
           </div>
 
           {/* Cuerpo del Resumen de Envío */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white/4 border border-white/10 text-left space-y-3 shadow-md">
+          <div className="p-2.5 rounded-xl bg-white/4 border border-white/10 text-left space-y-2 shadow-md">
             {selectedMethod?.tipo_formulario === 'mapa_direccion' ? (
               /* Comprobante Motorizado */
               <div className="space-y-2.5 text-xs">
@@ -660,34 +660,30 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           </div>
 
           {/* 1. Botón Principal de WhatsApp */}
-          <div className="pt-1">
-            <a
-              href={whatsappUrl}
-              onClick={(e) => {
-                e.preventDefault();
-                handleEnviarComprobanteWhatsApp();
-              }}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-sm sm:text-base font-black flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-600/30 transition-all cursor-pointer"
-            >
-              <MessageCircle className="w-5 h-5 fill-current" />
-              <span>Enviar Comprobante por WhatsApp</span>
-            </a>
-          </div>
+          <a
+            href={whatsappUrl}
+            onClick={(e) => {
+              e.preventDefault();
+              handleEnviarComprobanteWhatsApp();
+            }}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-3 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-sm font-black flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/30 transition-all cursor-pointer"
+          >
+            <MessageCircle className="w-4 h-4 fill-current" />
+            <span>Enviar Comprobante por WhatsApp</span>
+          </a>
 
-          {/* 2. Botón Promocional: ¿Quieres unirte a ComiKids? / Únete a Encomi */}
-          <div className="pt-1.5">
-            <a
-              href={getJoinEncomiWhatsAppUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 px-4 rounded-2xl bg-linear-to-r from-cyan-500/20 via-blue-600/20 to-purple-600/20 hover:from-cyan-500/30 hover:to-purple-600/30 border-2 border-cyan-400/50 hover:border-cyan-300 text-cyan-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all active:scale-[0.98] cursor-pointer group"
-            >
-              <span className="text-base group-hover:scale-110 transition-transform">🚀</span>
-              <span>¿Quieres unirte a ComiKids? ¡Únete a Encomi y envía 10 veces más rápido!</span>
-            </a>
-          </div>
+          {/* 2. Botón Promocional */}
+          <a
+            href={getJoinEncomiWhatsAppUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-2 px-4 rounded-2xl bg-linear-to-r from-cyan-500/20 via-blue-600/20 to-purple-600/20 hover:from-cyan-500/30 hover:to-purple-600/30 border-2 border-cyan-400/50 hover:border-cyan-300 text-cyan-200 hover:text-white text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all active:scale-[0.98] cursor-pointer group"
+          >
+            <span className="text-base group-hover:scale-110 transition-transform">🚀</span>
+            <span>¿Quieres unirte a ComiKids? ¡Únete a Encomi y envía 10 veces más rápido!</span>
+          </a>
 
           {/* 3. Botón de Preguntas Frecuentes con Encomi AI (Exclusivo Shalom) */}
           {(selectedMethod?.tipo_formulario === 'shalom' || createdOrder?.metodo_envio_codigo === 'shalom') && (
@@ -695,7 +691,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               <button
                 type="button"
                 onClick={() => setShowEncomiAiModal(true)}
-                className="w-full py-3 px-5 rounded-2xl bg-linear-to-r from-purple-600/30 via-indigo-600/30 to-cyan-600/30 hover:from-purple-600/45 hover:to-cyan-600/45 border border-purple-500/45 text-purple-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2.5 shadow-lg shadow-purple-950/30 transition-all active:scale-[0.98] cursor-pointer"
+                className="w-full py-2.5 px-5 rounded-2xl bg-linear-to-r from-purple-600/30 via-indigo-600/30 to-cyan-600/30 hover:from-purple-600/45 hover:to-cyan-600/45 border border-purple-500/45 text-purple-200 hover:text-white text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-purple-950/30 transition-all active:scale-[0.98] cursor-pointer"
               >
                 <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse" />
                 <span>Preguntas Frecuentes con Encomi AI</span>

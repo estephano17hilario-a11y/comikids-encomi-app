@@ -126,7 +126,7 @@
                 android:textSize="8sp" />
         </LinearLayout>
 
-        <!-- En Ruta / Shalom -->
+        <!-- En Ruta -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -155,276 +155,27 @@
 
     </LinearLayout>
 
-    <!-- Lista de Recuadros de Pedidos -->
-    <LinearLayout
-        android:id="@+id/widget_orders_container"
+    <!-- Lista COMPLETA de Pedidos usando ListView (RemoteViewsService) -->
+    <ListView
+        android:id="@+id/widget_orders_stack"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:orientation="vertical"
-        android:layout_marginTop="6dp">
+        android:layout_marginTop="6dp"
+        android:divider="@null"
+        android:dividerHeight="0dp" />
 
-        <!-- Pedido 1 -->
-        <LinearLayout
-            android:id="@+id/widget_item_1_layout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#0F172A"
-            android:padding="5dp"
-            android:layout_marginBottom="3dp"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:id="@+id/widget_item_1_name"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Cliente"
-                    android:textColor="#FFFFFF"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:singleLine="true" />
-
-                <TextView
-                    android:id="@+id/widget_item_1_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="#1E293B"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:paddingTop="1dp"
-                    android:paddingBottom="1dp"
-                    android:text="Alistando"
-                    android:textColor="#38BDF8"
-                    android:textSize="8sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/widget_item_1_phone"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📱 +51 987654321"
-                android:textColor="#34D399"
-                android:textSize="8.5sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_item_1_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📍 Destino"
-                android:textColor="#94A3B8"
-                android:textSize="8.5sp"
-                android:singleLine="true" />
-        </LinearLayout>
-
-        <!-- Pedido 2 -->
-        <LinearLayout
-            android:id="@+id/widget_item_2_layout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#0F172A"
-            android:padding="5dp"
-            android:layout_marginBottom="3dp"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:id="@+id/widget_item_2_name"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Cliente"
-                    android:textColor="#FFFFFF"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:singleLine="true" />
-
-                <TextView
-                    android:id="@+id/widget_item_2_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="#1E293B"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:paddingTop="1dp"
-                    android:paddingBottom="1dp"
-                    android:text="En Ruta"
-                    android:textColor="#34D399"
-                    android:textSize="8sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/widget_item_2_phone"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📱 +51 987654321"
-                android:textColor="#34D399"
-                android:textSize="8.5sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_item_2_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📍 Destino"
-                android:textColor="#94A3B8"
-                android:textSize="8.5sp"
-                android:singleLine="true" />
-        </LinearLayout>
-
-        <!-- Pedido 3 -->
-        <LinearLayout
-            android:id="@+id/widget_item_3_layout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#0F172A"
-            android:padding="5dp"
-            android:layout_marginBottom="3dp"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:id="@+id/widget_item_3_name"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Cliente"
-                    android:textColor="#FFFFFF"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:singleLine="true" />
-
-                <TextView
-                    android:id="@+id/widget_item_3_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="#1E293B"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:paddingTop="1dp"
-                    android:paddingBottom="1dp"
-                    android:text="Almacén"
-                    android:textColor="#FBBF24"
-                    android:textSize="8sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/widget_item_3_phone"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📱 +51 987654321"
-                android:textColor="#34D399"
-                android:textSize="8.5sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_item_3_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📍 Destino"
-                android:textColor="#94A3B8"
-                android:textSize="8.5sp"
-                android:singleLine="true" />
-        </LinearLayout>
-
-        <!-- Pedido 4 -->
-        <LinearLayout
-            android:id="@+id/widget_item_4_layout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#0F172A"
-            android:padding="5dp"
-            android:layout_marginBottom="3dp"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:id="@+id/widget_item_4_name"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Cliente"
-                    android:textColor="#FFFFFF"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:singleLine="true" />
-
-                <TextView
-                    android:id="@+id/widget_item_4_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="#1E293B"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:paddingTop="1dp"
-                    android:paddingBottom="1dp"
-                    android:text="Alistando"
-                    android:textColor="#C084FC"
-                    android:textSize="8sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/widget_item_4_phone"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📱 +51 987654321"
-                android:textColor="#34D399"
-                android:textSize="8.5sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_item_4_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📍 Destino"
-                android:textColor="#94A3B8"
-                android:textSize="8.5sp"
-                android:singleLine="true" />
-        </LinearLayout>
-
-        <!-- Empty State View -->
-        <TextView
-            android:id="@+id/widget_empty_text"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:padding="8dp"
-            android:text="✨ No hay pedidos pendientes por despachar"
-            android:textColor="#94A3B8"
-            android:textSize="9.5sp"
-            android:visibility="visible" />
-
-    </LinearLayout>
+    <!-- Empty State -->
+    <TextView
+        android:id="@+id/widget_empty_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="8dp"
+        android:text="✨ No hay pedidos pendientes por despachar"
+        android:textColor="#94A3B8"
+        android:textSize="9.5sp"
+        android:visibility="gone" />
 
     <!-- Bottom Quick Action Info -->
     <TextView

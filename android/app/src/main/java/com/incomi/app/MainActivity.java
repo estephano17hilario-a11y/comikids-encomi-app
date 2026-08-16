@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(WidgetBridgePlugin.class);
+        registerPlugin(YapeReaderPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Iniciar servicio en primer plano para recibir notificaciones continuas con pantalla apagada

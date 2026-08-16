@@ -68,7 +68,7 @@ export const AdminPortal: React.FC = () => {
                 </span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 font-mono truncate">
-                Clave: {masterCode}
+                Panel de Gestión
               </p>
             </div>
           </div>

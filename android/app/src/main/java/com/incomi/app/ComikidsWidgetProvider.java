@@ -6,127 +6,102 @@ import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.view.View;
 import android.widget.RemoteViews;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class ComikidsWidgetProvider extends AppWidgetProvider {
 
+    // Color hex por estado (únicos y distintos)
+    private static String getStatusColor(String estado) {
+        if (estado == null) return "#94A3B8";
+        switch (estado.toLowerCase()) {
+            case "en_cola":
+            case "en cola":
+            case "almacén":
+            case "almacen":
+            case "en almacen":
+            case "en almacén":
+                return "#FBBF24"; // Amber — En Almacén
+            case "alistando":
+            case "alistandolo":
+                return "#C084FC"; // Purple — Alistando
+            case "en_ruta":
+            case "en ruta":
+            case "despachado":
+            case "en_camino":
+            case "en camino":
+                return "#38BDF8"; // Sky Blue — En Ruta
+            case "entregado":
+            case "delivered":
+                return "#34D399"; // Emerald — Entregado
+            case "pendiente":
+                return "#FB923C"; // Orange — Pendiente
+            default:
+                return "#94A3B8"; // Slate — Desconocido
+        }
+    }
+
+    private static String getStatusLabel(String estado) {
+        if (estado == null) return "Pendiente";
+        switch (estado.toLowerCase()) {
+            case "en_cola": return "En Almacén";
+            case "alistando": return "Alistando";
+            case "en_ruta": return "En Ruta";
+            case "entregado": return "Entregado";
+            case "pendiente": return "Pendiente";
+            default: return estado;
+        }
+    }
+
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
-        // Disparar sincronización inmediata desde Supabase
         new Thread(() -> BackgroundOrdersSync.fetchOrdersAndSync(context)).start();
-
         for (int appWidgetId : appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId);
         }
     }
 
     public static void updateAppWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
-        RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.comikids_appwidget_layout);
-
         SharedPreferences prefs = context.getSharedPreferences("comikids_widget_prefs", Context.MODE_PRIVATE);
-        int almacen = prefs.getInt("count_almacen", 0);
+        int almacen  = prefs.getInt("count_almacen", 0);
         int alistando = prefs.getInt("count_alistando", 0);
-        int ruta = prefs.getInt("count_ruta", 0);
+        int ruta      = prefs.getInt("count_ruta", 0);
         String ordersJsonStr = prefs.getString("orders_json", "[]");
 
-        views.setTextViewText(R.id.widget_count_almacen, String.valueOf(almacen));
-        views.setTextViewText(R.id.widget_count_alistando, String.valueOf(alistando));
-        views.setTextViewText(R.id.widget_count_ruta, String.valueOf(ruta));
+        // Usamos el StackView via RemoteViewsService para todos los pedidos
+        RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.comikids_appwidget_layout);
 
-        // Cargar y mostrar los recuadros de pedidos activos
+        views.setTextViewText(R.id.widget_count_almacen,  String.valueOf(almacen));
+        views.setTextViewText(R.id.widget_count_alistando, String.valueOf(alistando));
+        views.setTextViewText(R.id.widget_count_ruta,     String.valueOf(ruta));
+
         try {
             JSONArray orders = new JSONArray(ordersJsonStr);
             int count = orders.length();
 
-            if (count > 0) {
-                views.setTextViewText(R.id.widget_title_orders_count, count + " Despachos Activos");
-            } else {
-                views.setTextViewText(R.id.widget_title_orders_count, "Despachos Activos");
-            }
+            views.setTextViewText(R.id.widget_title_orders_count,
+                count > 0 ? count + " Despachos Activos" : "Despachos Activos");
 
-            if (count == 0) {
-                views.setViewVisibility(R.id.widget_empty_text, View.VISIBLE);
-                views.setViewVisibility(R.id.widget_item_1_layout, View.GONE);
-                views.setViewVisibility(R.id.widget_item_2_layout, View.GONE);
-                views.setViewVisibility(R.id.widget_item_3_layout, View.GONE);
-                views.setViewVisibility(R.id.widget_item_4_layout, View.GONE);
-            } else {
-                views.setViewVisibility(R.id.widget_empty_text, View.GONE);
+            // Pasar el JSON completo al RemoteViewsService via Intent
+            Intent serviceIntent = new Intent(context, WidgetOrdersRemoteViewsService.class);
+            serviceIntent.putExtra("orders_json", ordersJsonStr);
+            serviceIntent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
 
-                // Slot 1
-                if (count >= 1) {
-                    JSONObject o1 = orders.getJSONObject(0);
-                    views.setViewVisibility(R.id.widget_item_1_layout, View.VISIBLE);
-                    views.setTextViewText(R.id.widget_item_1_name, o1.optString("nombre", "Cliente") + " • #" + o1.optString("codigo", ""));
-                    String phone1 = o1.optString("telefono", "");
-                    views.setTextViewText(R.id.widget_item_1_phone, phone1.isEmpty() ? "📱 Sin teléfono" : "📱 +51 " + phone1.replaceFirst("^51", ""));
-                    views.setTextViewText(R.id.widget_item_1_dest, "📍 " + o1.optString("destino", ""));
-                    views.setTextViewText(R.id.widget_item_1_status, o1.optString("estado", "Alistando"));
-                } else {
-                    views.setViewVisibility(R.id.widget_item_1_layout, View.GONE);
-                }
+            views.setRemoteAdapter(R.id.widget_orders_stack, serviceIntent);
+            views.setEmptyView(R.id.widget_orders_stack, R.id.widget_empty_text);
 
-                // Slot 2
-                if (count >= 2) {
-                    JSONObject o2 = orders.getJSONObject(1);
-                    views.setViewVisibility(R.id.widget_item_2_layout, View.VISIBLE);
-                    views.setTextViewText(R.id.widget_item_2_name, o2.optString("nombre", "Cliente") + " • #" + o2.optString("codigo", ""));
-                    String phone2 = o2.optString("telefono", "");
-                    views.setTextViewText(R.id.widget_item_2_phone, phone2.isEmpty() ? "📱 Sin teléfono" : "📱 +51 " + phone2.replaceFirst("^51", ""));
-                    views.setTextViewText(R.id.widget_item_2_dest, "📍 " + o2.optString("destino", ""));
-                    views.setTextViewText(R.id.widget_item_2_status, o2.optString("estado", "En Ruta"));
-                } else {
-                    views.setViewVisibility(R.id.widget_item_2_layout, View.GONE);
-                }
-
-                // Slot 3
-                if (count >= 3) {
-                    JSONObject o3 = orders.getJSONObject(2);
-                    views.setViewVisibility(R.id.widget_item_3_layout, View.VISIBLE);
-                    views.setTextViewText(R.id.widget_item_3_name, o3.optString("nombre", "Cliente") + " • #" + o3.optString("codigo", ""));
-                    String phone3 = o3.optString("telefono", "");
-                    views.setTextViewText(R.id.widget_item_3_phone, phone3.isEmpty() ? "📱 Sin teléfono" : "📱 +51 " + phone3.replaceFirst("^51", ""));
-                    views.setTextViewText(R.id.widget_item_3_dest, "📍 " + o3.optString("destino", ""));
-                    views.setTextViewText(R.id.widget_item_3_status, o3.optString("estado", "Almacén"));
-                } else {
-                    views.setViewVisibility(R.id.widget_item_3_layout, View.GONE);
-                }
-
-                // Slot 4
-                if (count >= 4) {
-                    JSONObject o4 = orders.getJSONObject(3);
-                    views.setViewVisibility(R.id.widget_item_4_layout, View.VISIBLE);
-                    views.setTextViewText(R.id.widget_item_4_name, o4.optString("nombre", "Cliente") + " • #" + o4.optString("codigo", ""));
-                    String phone4 = o4.optString("telefono", "");
-                    views.setTextViewText(R.id.widget_item_4_phone, phone4.isEmpty() ? "📱 Sin teléfono" : "📱 +51 " + phone4.replaceFirst("^51", ""));
-                    views.setTextViewText(R.id.widget_item_4_dest, "📍 " + o4.optString("destino", ""));
-                    views.setTextViewText(R.id.widget_item_4_status, o4.optString("estado", "Alistando"));
-                } else {
-                    views.setViewVisibility(R.id.widget_item_4_layout, View.GONE);
-                }
-            }
         } catch (Exception e) {
-            views.setViewVisibility(R.id.widget_empty_text, View.VISIBLE);
+            views.setTextViewText(R.id.widget_title_orders_count, "Despachos Activos");
         }
 
-        // Configurar acción al tocar el widget: abrir MainActivity
+        // Click: abrir MainActivity
         Intent intent = new Intent(context, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_root_layout, pendingIntent);
 
-        // Actualizar el widget
         appWidgetManager.updateAppWidget(appWidgetId, views);
     }
 }
-
-
-

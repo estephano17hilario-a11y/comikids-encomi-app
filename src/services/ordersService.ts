@@ -479,8 +479,23 @@ class OrdersService {
     const updated = [newPedido, ...orders];
     this.saveLocalOrders(updated);
 
-    // Sumar +50 XP al usuario
-    await this.awardXp(pedidoData.usuario_id, 50, 'primer_bordado', 'Primer Bordado ✨', 'Creaste tu primer pedido personalizado.');
+    // Contar pedidos previos del usuario para dar XP y logros correctos
+    const allOrders = this.getLocalOrders();
+    const userOrderCount = allOrders.filter(o => o.usuario_id === pedidoData.usuario_id).length + 1; // +1 por el nuevo
+
+    // Dar XP base por el pedido
+    await this.awardXp(pedidoData.usuario_id, 50);
+
+    // Verificar logros basados en conteo
+    const { ACHIEVEMENTS_CATALOG } = await import('../data/achievementsList');
+    for (const ach of ACHIEVEMENTS_CATALOG) {
+      if (ach.reqCount && userOrderCount >= ach.reqCount) {
+        const existing = this.getLocalAchievements();
+        if (!existing.some(a => a.usuario_id === pedidoData.usuario_id && a.codigo_logro === ach.codigo)) {
+          await this.awardXp(pedidoData.usuario_id, ach.puntosXp, ach.codigo, ach.titulo, ach.descripcion);
+        }
+      }
+    }
 
     if (isSupabaseConfigured && supabase) {
       try {
@@ -592,15 +607,24 @@ class OrdersService {
     user.nivel = tierInfo.nivel;
     this.saveUsers(users);
 
-    // Save session if active
+    // Update active session
     const active = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
     if (active) {
       try {
         const parsed = JSON.parse(active);
         if (parsed.id === userId) {
-          localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+          localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify({ ...parsed, puntos_xp: user.puntos_xp, nivel: user.nivel }));
         }
       } catch {}
+    }
+
+    // Sync XP to Supabase
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('usuarios').update({ puntos_xp: user.puntos_xp, nivel: user.nivel }).eq('id', userId);
+      } catch (e) {
+        console.warn('XP Supabase sync failed:', e);
+      }
     }
 
     if (unlockCode && logroTitulo) {

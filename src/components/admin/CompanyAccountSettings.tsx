@@ -3,6 +3,8 @@ import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { Colaborador, CompanyAchievement } from '../../types/database.types';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { yapeReaderService } from '../../services/yapeReaderService';
+import { Volume2 } from 'lucide-react';
 import {
   Store,
   Users,
@@ -150,6 +152,44 @@ export const CompanyAccountSettings: React.FC = () => {
             🏆
           </div>
         </div>
+      </div>
+
+      {/* --- SECCIÓN 0: LECTOR DE VOZ YAPE NATIVO (WAKELOCK + TTS) --- */}
+      <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-purple-500/30 bg-purple-950/20 backdrop-blur-2xl space-y-4 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-300 flex items-center justify-center">
+            <Volume2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <span>Lector de Pagos Yape por Voz</span>
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                Nativo Android
+              </span>
+            </h3>
+            <p className="text-xs text-slate-300">
+              Anuncia los pagos de Yape por altavoz en tiempo real, incluso con la pantalla apagada o la app cerrada.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white/4 border border-white/8 space-y-2.5 text-xs text-slate-300">
+          <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+            <span>⚙️ Requisito indispensable de Android:</span>
+          </div>
+          <p className="leading-relaxed">
+            Debes otorgar el permiso de <strong>Acceso a Notificaciones</strong> a la app Encomi. Al tocar el botón de abajo se abrirá la configuración del sistema.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => yapeReaderService.requestPermission()}
+          className="w-full py-3 px-5 rounded-2xl bg-linear-to-r from-purple-600 via-pink-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-950/40 transition-all active:scale-[0.98] cursor-pointer"
+        >
+          <Volume2 className="w-4 h-4" />
+          <span>Activar / Abrir Ajustes de Acceso a Notificaciones</span>
+        </button>
       </div>
 
       {/* --- SECCIÓN 0: LINK OFICIAL ÚNICO PARA CLIENTES --- */}

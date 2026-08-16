@@ -31,6 +31,11 @@ export const AdminPortal: React.FC = () => {
   const { pedidos, masterCode, tallerConfig, refreshData } = useOrders();
   const { currentUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
+
+  // Detectar si la cuenta activa es la cuenta empresa/comikids
+  const isComikids = currentUser?.rol === 'empresa' ||
+    currentUser?.dni?.toUpperCase() === '061625' ||
+    currentUser?.dni?.toUpperCase()?.includes('COMIKIDS');
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -123,7 +128,8 @@ export const AdminPortal: React.FC = () => {
           {activeTab === 'pedidos' && <OrdersSmartManager />}
           {activeTab === 'agendas' && <ClientDirectory />}
           {activeTab === 'estadisticas' && <VisionAnalyticsDashboard />}
-          {activeTab === 'comikids' && <ComicInventoryApp />}
+          {activeTab === 'comikids' && isComikids && <ComicInventoryApp />}
+          {activeTab === 'comikids' && !isComikids && <OrdersSmartManager />}
           {activeTab === 'encomi_ai' && <EncomiAiSection isAdmin={true} />}
         </div>
 
@@ -179,18 +185,20 @@ export const AdminPortal: React.FC = () => {
             <span className="truncate">Métricas</span>
           </button>
 
-          {/* 4. Sección ComiKids / Comic Inventory */}
-          <button
-            onClick={() => setActiveTab('comikids')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'comikids'
-                ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-lg shadow-pink-600/30 scale-105'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Store className="w-4 h-4 shrink-0" />
-            <span className="truncate">Comic Inv</span>
-          </button>
+          {/* 4. Sección ComiKids / Comic Inventory - EXCLUSIVO cuenta empresa */}
+          {isComikids && (
+            <button
+              onClick={() => setActiveTab('comikids')}
+              className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+                activeTab === 'comikids'
+                  ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-lg shadow-pink-600/30 scale-105'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Store className="w-4 h-4 shrink-0" />
+              <span className="truncate">Comic Inv</span>
+            </button>
+          )}
 
           {/* 5. Encomi AI (Admin Ilimitado) */}
           <button

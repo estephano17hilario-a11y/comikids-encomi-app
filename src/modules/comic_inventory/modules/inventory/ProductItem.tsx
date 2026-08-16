@@ -111,23 +111,25 @@ export const ProductItem: React.FC<ProductItemProps> = memo(
           </div>
         </div>
 
-        {/* Variants Matrix */}
+        {/* Variants Grid – 2 columns, no cost shown */}
         <div className="p-3 bg-black/40 flex-1 flex flex-col justify-between">
-          <div className="space-y-1.5 mb-3 max-h-36 overflow-y-auto custom-scrollbar">
+          <div className="grid grid-cols-2 gap-1.5 mb-3 max-h-36 overflow-y-auto custom-scrollbar">
             {item.variants?.map((v: Variant) => {
-              const vPrice = v.price || item.price;
+              const hasCustomPrice = v.price && v.price !== item.price;
               return (
-                <div key={v.id} className="flex justify-between items-center bg-white/4 p-1.5 rounded-lg text-xs border border-white/4">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-white uppercase text-[11px]">{v.size}</span>
-                    <span className="text-slate-400 text-[10px]">{v.color}</span>
-                    {v.price && v.price !== item.price && (
-                      <span className="text-[10px] text-cyan-300 font-mono font-bold">S/ {v.price}</span>
+                <div key={v.id} className="bg-white/5 p-2 rounded-xl border border-white/6 flex flex-col gap-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-white uppercase text-[11px] leading-tight">{v.size}</span>
+                    <span className={`font-mono font-bold text-[10px] ${v.stock < 5 ? 'text-rose-400 animate-pulse' : 'text-emerald-400'}`}>
+                      {v.stock}u
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 text-[10px] truncate">{v.color}</span>
+                    {hasCustomPrice && (
+                      <span className="text-[9px] text-cyan-300 font-mono font-bold">S/{v.price}</span>
                     )}
                   </div>
-                  <span className={`font-mono font-bold text-[11px] ${v.stock < 5 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {v.stock} unds
-                  </span>
                 </div>
               );
             })}

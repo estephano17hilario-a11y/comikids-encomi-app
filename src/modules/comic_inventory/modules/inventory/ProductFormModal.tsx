@@ -62,7 +62,6 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Redimensionar imagen para optimizar almacenamiento
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
@@ -74,15 +73,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
         let height = img.height;
 
         if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
+          if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
         } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
+          if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
         }
 
         canvas.width = width;
@@ -90,13 +83,10 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          setSelectedImage(dataUrl);
+          setSelectedImage(canvas.toDataURL('image/jpeg', 0.85));
         }
       };
-      if (typeof event.target?.result === 'string') {
-        img.src = event.target.result;
-      }
+      if (typeof event.target?.result === 'string') img.src = event.target.result;
     };
     reader.readAsDataURL(file);
   };
@@ -114,9 +104,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
   };
 
   const handleVariantChange = (index: number, field: string, value: any) => {
-    setVariants((prev) =>
-      prev.map((v, i) => (i === index ? { ...v, [field]: value } : v))
-    );
+    setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -253,9 +241,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
                   className="w-full p-3 bg-slate-950 border border-white/10 rounded-xl text-white text-xs font-bold focus:border-cyan-400 focus:outline-none"
                 >
                   {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
               </div>
@@ -271,9 +257,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
                   {categories
                     .find((c) => c.id === categoryId)
                     ?.subCategories.map((sub) => (
-                      <option key={sub.id} value={sub.id}>
-                        {sub.name}
-                      </option>
+                      <option key={sub.id} value={sub.id}>{sub.name}</option>
                     ))}
                 </select>
               </div>
@@ -282,7 +266,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
             {/* Precios Base */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] uppercase font-bold text-slate-300 block mb-1">Precio Base Sugerido (S/) *</label>
+                <label className="text-[11px] uppercase font-bold text-cyan-300 block mb-1">💰 Precio Base (S/) *</label>
                 <input
                   type="number"
                   required
@@ -290,19 +274,19 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
                   value={basePrice}
                   onChange={(e) => setBasePrice(e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-3 bg-slate-950 border border-white/10 rounded-xl text-emerald-400 font-mono text-xs font-bold focus:border-emerald-400 focus:outline-none"
+                  className="w-full p-3 bg-slate-950 border border-cyan-500/30 rounded-xl text-cyan-400 font-mono text-xs font-bold focus:border-cyan-400 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] uppercase font-bold text-slate-300 block mb-1">Costo Base Taller (S/)</label>
+                <label className="text-[11px] uppercase font-bold text-amber-400 block mb-1">🏭 Costo Base (S/)</label>
                 <input
                   type="number"
                   step="any"
                   value={baseCost}
                   onChange={(e) => setBaseCost(e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-3 bg-slate-950 border border-white/10 rounded-xl text-slate-300 font-mono text-xs font-bold focus:border-cyan-400 focus:outline-none"
+                  className="w-full p-3 bg-slate-950 border border-amber-500/30 rounded-xl text-amber-300 font-mono text-xs font-bold focus:border-amber-400 focus:outline-none"
                 />
               </div>
             </div>
@@ -326,80 +310,102 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
             </div>
           </div>
 
-          {/* Matriz de Variantes con PRECIO INDIVIDUAL POR VARIANTE */}
-          <div className="space-y-2 pt-2 border-t border-white/8">
+          {/* ═══ MATRIZ DE VARIANTES CON PRECIO Y COSTO INDIVIDUAL ═══ */}
+          <div className="space-y-3 pt-2 border-t border-white/8">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-[11px] uppercase font-bold text-slate-300 block">Variantes, Stock & Precios Individuales</label>
-                <p className="text-[10px] text-slate-500">Puedes asignar un precio diferente a cada talla/color</p>
+                <label className="text-[11px] uppercase font-bold text-slate-300 block">🏷️ Variantes · Precio · Costo</label>
+                <p className="text-[10px] text-slate-500">Precio de venta y costo de producción por talla/color → ganancias 100% precisas</p>
               </div>
               <button
                 type="button"
                 onClick={handleAddVariant}
                 className="py-1 px-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/30 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" /> Agregar Variante
+                <Plus className="w-3.5 h-3.5" /> Agregar
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {variants.map((v, idx) => (
-                <div key={v.id || idx} className="grid grid-cols-12 gap-1.5 items-center bg-white/4 p-2.5 rounded-xl border border-white/6">
-                  <div className="col-span-3">
-                    <label className="text-[9px] uppercase text-slate-400 block font-bold mb-0.5">Talla</label>
-                    <input
-                      type="text"
-                      placeholder="S, M, XL..."
-                      value={v.size}
-                      onChange={(e) => handleVariantChange(idx, 'size', e.target.value)}
-                      className="w-full p-2 bg-slate-950 border border-white/10 rounded-lg text-white text-xs font-bold"
-                    />
+                <div key={v.id || idx} className="bg-white/4 p-3 rounded-2xl border border-white/6 space-y-2">
+                  {/* Fila 1: Talla · Color · Stock · Eliminar */}
+                  <div className="grid grid-cols-12 gap-1.5 items-end">
+                    <div className="col-span-4">
+                      <label className="text-[9px] uppercase text-slate-400 block font-bold mb-1">Talla</label>
+                      <input
+                        type="text"
+                        placeholder="S, M, XL..."
+                        value={v.size}
+                        onChange={(e) => handleVariantChange(idx, 'size', e.target.value)}
+                        className="w-full p-2 bg-slate-950 border border-white/10 rounded-lg text-white text-xs font-bold focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div className="col-span-4">
+                      <label className="text-[9px] uppercase text-slate-400 block font-bold mb-1">Color</label>
+                      <input
+                        type="text"
+                        placeholder="Negro..."
+                        value={v.color}
+                        onChange={(e) => handleVariantChange(idx, 'color', e.target.value)}
+                        className="w-full p-2 bg-slate-950 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div className="col-span-3">
+                      <label className="text-[9px] uppercase text-emerald-400 block font-bold mb-1">Stock</label>
+                      <input
+                        type="number"
+                        placeholder="10"
+                        value={v.stock}
+                        onChange={(e) => handleVariantChange(idx, 'stock', e.target.value)}
+                        className="w-full p-2 bg-slate-950 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs font-mono font-bold focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+
+                    <div className="col-span-1 flex justify-center pb-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveVariant(idx)}
+                        className="p-1.5 text-rose-400 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                        title="Eliminar variante"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="col-span-3">
-                    <label className="text-[9px] uppercase text-slate-400 block font-bold mb-0.5">Color</label>
-                    <input
-                      type="text"
-                      placeholder="Negro..."
-                      value={v.color}
-                      onChange={(e) => handleVariantChange(idx, 'color', e.target.value)}
-                      className="w-full p-2 bg-slate-950 border border-white/10 rounded-lg text-white text-xs"
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="text-[9px] uppercase text-slate-400 block font-bold mb-0.5">Stock</label>
-                    <input
-                      type="number"
-                      placeholder="Stock"
-                      value={v.stock}
-                      onChange={(e) => handleVariantChange(idx, 'stock', e.target.value)}
-                      className="w-full p-2 bg-slate-950 border border-white/10 rounded-lg text-emerald-400 text-xs font-mono font-bold"
-                    />
-                  </div>
-
-                  <div className="col-span-3">
-                    <label className="text-[9px] uppercase text-cyan-300 block font-bold mb-0.5">Precio (S/)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder={basePrice || '0.00'}
-                      value={v.price}
-                      onChange={(e) => handleVariantChange(idx, 'price', e.target.value)}
-                      className="w-full p-2 bg-slate-950 border border-cyan-500/30 rounded-lg text-cyan-300 text-xs font-mono font-bold"
-                      title="Precio específico para esta variante (deja vacío para usar precio base)"
-                    />
-                  </div>
-
-                  <div className="col-span-1 flex justify-center pt-3">
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveVariant(idx)}
-                      className="p-1.5 text-rose-400 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
-                      title="Eliminar variante"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  {/* Fila 2: Precio de venta | Costo de producción */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="text-[9px] uppercase text-cyan-300 block font-bold mb-1">
+                        💰 Precio Venta (S/)
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder={basePrice || '0.00'}
+                        value={v.price}
+                        onChange={(e) => handleVariantChange(idx, 'price', e.target.value)}
+                        className="w-full p-2 bg-slate-950 border border-cyan-500/30 rounded-lg text-cyan-300 text-xs font-mono font-bold focus:border-cyan-400 focus:outline-none"
+                        title="Precio de venta de esta variante (vacío = usa precio base)"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] uppercase text-amber-400 block font-bold mb-1">
+                        🏭 Costo Producción (S/)
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder={baseCost || '0.00'}
+                        value={v.cost}
+                        onChange={(e) => handleVariantChange(idx, 'cost', e.target.value)}
+                        className="w-full p-2 bg-slate-950 border border-amber-500/30 rounded-lg text-amber-300 text-xs font-mono font-bold focus:border-amber-400 focus:outline-none"
+                        title="Costo real de producción → determina ganancia neta precisa"
+                      />
+                    </div>
                   </div>
                 </div>
               ))}

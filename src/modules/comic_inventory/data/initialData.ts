@@ -93,37 +93,38 @@ export const MESH_THEMES: MeshTheme[] = [
   {
     id: 'matrix',
     name: 'Matrix Vision',
-    colors: ['#4f46e5', '#06b6d4', '#8b5cf6', '#ec4899'],
-    liveColors: ['#e11d48', '#f97316', '#be123c', '#7f1d1d']
+    colors: ['#6d28d9', '#06e6ff', '#a855f7', '#f72585'],
+    liveColors: ['#ff0050', '#ff6b00', '#e11d48', '#9b1c1c']
   },
   {
     id: 'neon',
     name: 'Neon Cyber',
-    colors: ['#db2777', '#7c3aed', '#2563eb', '#0891b2'],
-    liveColors: ['#f43f5e', '#fbbf24', '#f59e0b', '#dc2626']
+    colors: ['#f000b8', '#9b00ff', '#0055ff', '#00c8ff'],
+    liveColors: ['#ff2056', '#ffd000', '#ff8c00', '#ff2020']
   },
   {
     id: 'emerald',
     name: 'Emerald City',
-    colors: ['#059669', '#10b981', '#06b6d4', '#14b8a6'],
-    liveColors: ['#fbbf24', '#f59e0b', '#d97706', '#b45309']
+    colors: ['#00c875', '#00f5a0', '#00c8ff', '#00e5d0'],
+    liveColors: ['#ffd000', '#ff9900', '#ff6600', '#e65c00']
   },
   {
     id: 'midnight',
     name: 'Midnight Dark',
-    colors: ['#334155', '#475569', '#1e293b', '#0f172a'],
-    liveColors: ['#4b5563', '#374151', '#1f2937', '#111827']
+    colors: ['#4b6584', '#6a8dad', '#2d4a6b', '#1a2f4a'],
+    liveColors: ['#6b7280', '#4b5563', '#374151', '#1f2937']
   },
   {
     id: 'sunset',
     name: 'Sunset Vibe',
-    colors: ['#f59e0b', '#d97706', '#ea580c', '#c2410c'],
-    liveColors: ['#991b1b', '#7f1d1d', '#450a0a', '#b91c1c']
+    colors: ['#ffd000', '#ff8800', '#ff4400', '#e83000'],
+    liveColors: ['#cc0000', '#8b0000', '#5c0000', '#d41919']
   },
   {
     id: 'royal',
     name: 'Royal Purple',
-    colors: ['#7e22ce', '#9333ea', '#c026d3', '#a21caf'],
-    liveColors: ['#4c1d95', '#5b21b6', '#6d28d9', '#7c3aed']
+    colors: ['#a800ff', '#cc00ff', '#f000d0', '#c700b8'],
+    liveColors: ['#6200c4', '#7700e6', '#8f00ff', '#9f1fff']
   }
 ];
+

@@ -230,9 +230,16 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                     </div>
 
                     <div className="flex justify-between items-end mt-1 pt-1 border-t border-white/6 w-full">
-                      <span className="text-[11px] font-mono font-bold text-cyan-300">
-                        S/ {vPrice}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-mono font-bold text-cyan-300">
+                          S/ {vPrice}
+                        </span>
+                        {!isSale && v.cost !== undefined && v.cost > 0 && (
+                          <span className="text-[9px] font-mono text-amber-400">
+                            Costo: S/ {v.cost}
+                          </span>
+                        )}
+                      </div>
                       <span
                         className={`text-[10px] font-mono font-bold ${
                           v.stock < 5 ? 'text-rose-400' : 'text-emerald-400'

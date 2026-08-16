@@ -33,7 +33,7 @@ export const DEFAULT_EMPRESA_USER: Usuario = {
   id: 'empresa-master-comikids',
   dni: '061625',
   nombre_completo: 'Encomi Envíos',
-  edad: 30,
+  // sin edad ni motivo_compra → no contamina métricas demográficas
   password_hash: '989834969MI',
   rol: 'empresa',
   avatar_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=EncomiEnvios&backgroundColor=06b6d4,3b82f6',
@@ -41,6 +41,7 @@ export const DEFAULT_EMPRESA_USER: Usuario = {
   nivel: 10,
   created_at: new Date().toISOString()
 };
+
 
 export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
   {

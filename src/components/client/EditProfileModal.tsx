@@ -23,6 +23,9 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
   const [nombreCompleto, setNombreCompleto] = useState(
     currentUser?.nombre_completo || localStorage.getItem('incomi_saved_fullname') || ''
   );
+  const [tiktokUsuario, setTiktokUsuario] = useState(
+    currentUser?.tiktok_usuario || localStorage.getItem('incomi_saved_tiktok') || ''
+  );
   const [telefonoDefault, setTelefonoDefault] = useState(
     currentUser?.telefono_default || localStorage.getItem('incomi_saved_phone') || currentUser?.dni || ''
   );
@@ -48,8 +51,12 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
     e.preventDefault();
     setIsSaving(true);
 
+    const cleanTiktok = tiktokUsuario.trim().replace(/^@/, '');
+    if (cleanTiktok) localStorage.setItem('incomi_saved_tiktok', cleanTiktok);
+
     const ok = await updateProfile({
       nombre_completo: nombreCompleto.trim(),
+      tiktok_usuario: cleanTiktok || undefined,
       telefono_default: telefonoDefault.trim(),
       dni_default: dniDefault.trim(),
       distrito_default: distritoDefault.trim(),
@@ -124,7 +131,7 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Nombre Completo Predeterminado *</span>
+              <span>Nombres y Apellidos Predeterminados *</span>
             </label>
             <input
               type="text"
@@ -134,6 +141,24 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
               placeholder="Ej. María Elena Pérez Torres"
               className="w-full px-4 py-3 bg-white/6 border border-white/15 rounded-2xl text-sm font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
             />
+          </div>
+
+          {/* TikTok Username */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <span className="text-pink-400 font-black">🎵</span>
+              <span>Usuario de TikTok <span className="text-slate-500 font-normal">(Opcional)</span></span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-pink-400 font-bold text-sm">@</span>
+              <input
+                type="text"
+                value={tiktokUsuario}
+                onChange={(e) => setTiktokUsuario(e.target.value)}
+                placeholder="usuario_tiktok"
+                className="w-full pl-8 pr-4 py-3 bg-white/6 border border-white/15 rounded-2xl text-sm font-bold text-pink-300 placeholder-slate-400 focus:outline-none focus:border-pink-500 font-mono"
+              />
+            </div>
           </div>
 
           {/* Celular / WhatsApp */}

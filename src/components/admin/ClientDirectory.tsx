@@ -145,11 +145,14 @@ export const ClientDirectory: React.FC = () => {
               ? `https://wa.me/51${rawPhone.slice(-9)}?text=${encodeURIComponent(`¡Hola ${client.nombre_completo}! 👋 Te saluda ComiKids. ¿Cómo podemos ayudarte hoy con tus pedidos?`)}`
               : `https://api.whatsapp.com/send?phone=51927781412`;
 
-            const purchaseReasonLabel = client.motivo_compra === 'emprender'
-              ? '💼 Para Venta / Negocio'
-              : client.motivo_compra === 'empresa'
-              ? '🏢 Empresa / Institución'
-              : '💖 Uso Personal';
+            const hasCompletedSurvey = Boolean(client.datos_adicionales_completados);
+            const purchaseReasonLabel = hasCompletedSurvey && client.motivo_compra
+              ? client.motivo_compra === 'emprender'
+                ? '💼 Para Venta / Negocio'
+                : client.motivo_compra === 'empresa'
+                ? '🏢 Empresa / Institución'
+                : '💖 Uso Personal'
+              : null;
 
             return (
               <div
@@ -207,6 +210,15 @@ export const ClientDirectory: React.FC = () => {
                       </strong>
                     </div>
 
+                    {client.tiktok_usuario && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-[11px]">🎵 TikTok:</span>
+                        <strong className="font-mono text-pink-300 font-bold">
+                          @{client.tiktok_usuario.replace(/^@/, '')}
+                        </strong>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400 text-[11px]">🆔 DNI / Doc:</span>
                       <strong className="font-mono text-white font-bold">
@@ -214,12 +226,14 @@ export const ClientDirectory: React.FC = () => {
                       </strong>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-800">
-                      <span className="text-slate-400 text-[11px]">🎯 Motivo:</span>
-                      <span className="text-[11px] font-bold text-slate-200">{purchaseReasonLabel}</span>
-                    </div>
+                    {purchaseReasonLabel && (
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+                        <span className="text-slate-400 text-[11px]">🎯 Motivo:</span>
+                        <span className="text-[11px] font-bold text-slate-200">{purchaseReasonLabel}</span>
+                      </div>
+                    )}
 
-                    {client.edad && (
+                    {hasCompletedSurvey && client.edad && client.edad > 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400 text-[11px]">🎂 Edad:</span>
                         <span className="text-[11px] font-bold text-slate-300">{client.edad} años</span>

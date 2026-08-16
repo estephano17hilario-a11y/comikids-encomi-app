@@ -13,6 +13,7 @@ import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
 import { ExecutiveBriefingModal } from '../components/admin/ExecutiveBriefingModal';
 import { LogoutConfirmModal } from '../components/common/LogoutConfirmModal';
+import { Pedido } from '../types/database.types';
 import {
   ClipboardList,
   Users,
@@ -47,17 +48,84 @@ export const AdminPortal: React.FC = () => {
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
-  // Informe completo y profesional al entrar (una vez por sesión)
-  const [showBriefingModal, setShowBriefingModal] = useState(() => {
-    const hasSeen = sessionStorage.getItem('incomi_briefing_seen_v1');
-    if (!hasSeen) {
-      sessionStorage.setItem('incomi_briefing_seen_v1', 'true');
-      return true;
+  // Estado Inteligente del Modal de Resumen / Briefing
+  const [briefingConfig, setBriefingConfig] = useState<{
+    show: boolean;
+    mode: 'new_orders' | 'daily_closing' | 'manual';
+    newOrders?: Pedido[];
+    referenceDate?: string;
+  }>({ show: false, mode: 'manual' });
+
+  // Verificación inteligente de nuevos pedidos y resumen diario
+  useEffect(() => {
+    if (pedidos.length === 0) return;
+
+    const now = new Date();
+    const todayKey = now.toISOString().split('T')[0];
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = yesterday.toISOString().split('T')[0];
+
+    const lastSeenTime = Number(localStorage.getItem('incomi_last_seen_orders_time') || 0);
+
+    // 1. Verificar si hay pedidos NUEVOS desde la última salida/visita
+    if (lastSeenTime > 0) {
+      const newlyCreated = pedidos.filter(p => {
+        try {
+          return new Date(p.created_at).getTime() > lastSeenTime;
+        } catch {
+          return false;
+        }
+      });
+
+      if (newlyCreated.length > 0) {
+        setBriefingConfig({
+          show: true,
+          mode: 'new_orders',
+          newOrders: newlyCreated
+        });
+        localStorage.setItem('incomi_last_seen_orders_time', Date.now().toString());
+        return;
+      }
     }
-    return false;
-  });
+
+    // 2. Verificar si es hora de Cierre Diario (23:59 o al día siguiente por la mañana)
+    const isLateNight = now.getHours() === 23 && now.getMinutes() >= 55;
+    const isMorning = now.getHours() < 13; // Mañana (ej. 7:00 AM)
+
+    const closingTargetDate = isLateNight ? todayKey : isMorning ? yesterdayKey : null;
+    if (closingTargetDate) {
+      const closingSeenKey = `incomi_daily_closing_seen_${closingTargetDate}`;
+      const hasSeenClosing = localStorage.getItem(closingSeenKey);
+
+      if (!hasSeenClosing) {
+        // Enviar notificación local si el plugin o el navegador lo soportan
+        try {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('📊 Resumen Diario de Envíos ComiKids', {
+              body: `El resumen detallado de despachos del ${closingTargetDate} está listo para revisar.`,
+              icon: '/favicon.ico'
+            });
+          }
+        } catch {}
+
+        localStorage.setItem(closingSeenKey, 'true');
+        setBriefingConfig({
+          show: true,
+          mode: 'daily_closing',
+          referenceDate: closingTargetDate
+        });
+        localStorage.setItem('incomi_last_seen_orders_time', Date.now().toString());
+        return;
+      }
+    }
+
+    // Guardar timestamp actual para la próxima sesión
+    localStorage.setItem('incomi_last_seen_orders_time', Date.now().toString());
+  }, [pedidos]);
 
   const pendingOrdersCount = pedidos.filter(p => p.estado_envio !== 'entregado').length;
+
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
@@ -106,7 +174,7 @@ export const AdminPortal: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setShowBriefingModal(true)}
+              onClick={() => setBriefingConfig({ show: true, mode: 'manual' })}
               className="py-2 px-2.5 sm:px-3 rounded-2xl bg-linear-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
               title="Ver Informe Ejecutivo de Despachos"
             >
@@ -249,17 +317,20 @@ export const AdminPortal: React.FC = () => {
         <TallerConfigModal onClose={() => setShowConfigModal(false)} />
       )}
 
-      {/* Executive Briefing Modal (Al entrar o bajo demanda) */}
-      {showBriefingModal && (
+      {/* Executive Briefing Modal (Al entrar si hay nuevos pedidos, a las 23:59 o bajo demanda) */}
+      {briefingConfig.show && (
         <ExecutiveBriefingModal
           pedidos={pedidos}
-          onClose={() => setShowBriefingModal(false)}
+          mode={briefingConfig.mode}
+          newOrders={briefingConfig.newOrders}
+          referenceDate={briefingConfig.referenceDate}
+          onClose={() => setBriefingConfig(prev => ({ ...prev, show: false }))}
           onNavigateToOrders={() => {
-            setShowBriefingModal(false);
+            setBriefingConfig(prev => ({ ...prev, show: false }));
             setActiveTab('pedidos');
           }}
           onNavigateToStats={() => {
-            setShowBriefingModal(false);
+            setBriefingConfig(prev => ({ ...prev, show: false }));
             setActiveTab('estadisticas');
           }}
         />

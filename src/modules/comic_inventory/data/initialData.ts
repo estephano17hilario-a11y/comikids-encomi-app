@@ -93,38 +93,75 @@ export const MESH_THEMES: MeshTheme[] = [
   {
     id: 'matrix',
     name: 'Matrix Vision',
-    colors: ['#6d28d9', '#06e6ff', '#a855f7', '#f72585'],
-    liveColors: ['#ff0050', '#ff6b00', '#e11d48', '#9b1c1c']
+    colors: ['#7c3aed', '#00f0ff', '#c026d3', '#ff2d87'],
+    liveColors: ['#ff003c', '#ff7a00', '#ff1a5e', '#c0172f']
   },
   {
     id: 'neon',
     name: 'Neon Cyber',
-    colors: ['#f000b8', '#9b00ff', '#0055ff', '#00c8ff'],
-    liveColors: ['#ff2056', '#ffd000', '#ff8c00', '#ff2020']
+    colors: ['#ff00d0', '#b000ff', '#005eff', '#00dfff'],
+    liveColors: ['#ff2060', '#ffe000', '#ffa000', '#ff2828']
   },
   {
     id: 'emerald',
     name: 'Emerald City',
-    colors: ['#00c875', '#00f5a0', '#00c8ff', '#00e5d0'],
-    liveColors: ['#ffd000', '#ff9900', '#ff6600', '#e65c00']
+    colors: ['#00e088', '#00ffb3', '#00dfff', '#00fce4'],
+    liveColors: ['#ffe200', '#ffaa00', '#ff7400', '#ff4c00']
   },
   {
     id: 'midnight',
     name: 'Midnight Dark',
-    colors: ['#4b6584', '#6a8dad', '#2d4a6b', '#1a2f4a'],
-    liveColors: ['#6b7280', '#4b5563', '#374151', '#1f2937']
+    colors: ['#556e90', '#7aa0c4', '#334e70', '#1e364f'],
+    liveColors: ['#788090', '#566070', '#404855', '#252d35']
   },
   {
     id: 'sunset',
     name: 'Sunset Vibe',
-    colors: ['#ffd000', '#ff8800', '#ff4400', '#e83000'],
-    liveColors: ['#cc0000', '#8b0000', '#5c0000', '#d41919']
+    colors: ['#ffe500', '#ff9900', '#ff5000', '#ff3500'],
+    liveColors: ['#e60000', '#a00000', '#700000', '#ee2222']
   },
   {
     id: 'royal',
     name: 'Royal Purple',
-    colors: ['#a800ff', '#cc00ff', '#f000d0', '#c700b8'],
-    liveColors: ['#6200c4', '#7700e6', '#8f00ff', '#9f1fff']
+    colors: ['#bf00ff', '#e000ff', '#ff00e8', '#e000d0'],
+    liveColors: ['#7000e0', '#8a00ff', '#a200ff', '#b822ff']
+  },
+  {
+    id: 'aurora',
+    name: 'Aurora Boreal',
+    colors: ['#00ffa3', '#00cfff', '#9b00ff', '#ff00c8'],
+    liveColors: ['#00ff88', '#00e0e0', '#6600ff', '#cc00aa']
+  },
+  {
+    id: 'ocean',
+    name: 'Ocean Depth',
+    colors: ['#0077ff', '#0044cc', '#00ccff', '#005588'],
+    liveColors: ['#00ffdd', '#00ccbb', '#009988', '#007766']
+  },
+  {
+    id: 'volcanic',
+    name: 'Volcanic Fire',
+    colors: ['#ff6600', '#ff3300', '#ff9900', '#cc2200'],
+    liveColors: ['#ff2200', '#dd0000', '#ff4400', '#ee1100']
+  },
+  {
+    id: 'sakura',
+    name: 'Sakura Dream',
+    colors: ['#ff80c0', '#ff44aa', '#dd00aa', '#ff99cc'],
+    liveColors: ['#ff1188', '#cc0077', '#ee0099', '#ff55bb']
+  },
+  {
+    id: 'cyber_gold',
+    name: 'Cyber Gold',
+    colors: ['#ffd700', '#ffaa00', '#ff8800', '#ffe566'],
+    liveColors: ['#ff6600', '#cc5500', '#ff4400', '#dd3300']
+  },
+  {
+    id: 'toxic',
+    name: 'Toxic Green',
+    colors: ['#aaff00', '#77ee00', '#00ff55', '#ccff00'],
+    liveColors: ['#00cc44', '#00aa33', '#ff4400', '#ff6600']
   }
 ];
+
 

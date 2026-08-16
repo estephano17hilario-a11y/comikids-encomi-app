@@ -357,8 +357,7 @@ export const ComicInventoryApp: React.FC = () => {
             </p>
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-            <span>Comic</span>
-            <span className="text-cyan-400">.Inventory</span>
+            <span>Comic<span className="text-cyan-400">.Inventory</span></span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">
               ComiKids Pro
             </span>

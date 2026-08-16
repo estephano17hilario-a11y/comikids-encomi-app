@@ -18,6 +18,7 @@ interface Props {
 export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
   const { createPedido, activeShippingMethods } = useOrders();
   const [nombre, setNombre] = useState('');
+  const [tiktokUsuario, setTiktokUsuario] = useState('');
   const [dni, setDni] = useState('');
   const [detallesBordado, setDetallesBordado] = useState('');
   const [selectedMethodId, setSelectedMethodId] = useState(activeShippingMethods[0]?.id || 'met-shalom');
@@ -52,11 +53,16 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim() || !dni.trim() || !detallesBordado.trim()) return;
+    const tiktokClean = tiktokUsuario.trim().replace(/^@/, '');
 
     setSubmitting(true);
     try {
       const reg = await ordersService.registerUser(nombre.trim(), dni.trim(), undefined, '1234');
       const user = reg.user || (await ordersService.loginUser(dni.trim(), '1234')).user;
+      // Save TikTok username if provided
+      if (user && tiktokClean) {
+        await ordersService.updateUserProfile(user.id, { tiktok_usuario: tiktokClean } as any);
+      }
 
       let destinoDetalle = '';
       if (selectedMethod?.tipo_formulario === 'shalom') {
@@ -69,9 +75,10 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
       }
 
       if (user) {
+        const updatedUser = { ...user, ...(tiktokClean ? { tiktok_usuario: tiktokClean } : {}) };
         await createPedido({
           usuario_id: user.id,
-          usuario: user,
+          usuario: updatedUser,
           detalles_bordado: detallesBordado.trim(),
           metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
           metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
@@ -117,7 +124,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Nombre Clienta *</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Nombres y Apellidos *</label>
               <input
                 type="text"
                 required
@@ -136,6 +143,21 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
                 onChange={e => setDni(e.target.value)}
                 placeholder="76543210"
                 className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* TikTok username */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Usuario de TikTok 🎵 <span className="text-slate-500 font-normal">(opcional)</span></label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">@</span>
+              <input
+                type="text"
+                value={tiktokUsuario}
+                onChange={e => setTiktokUsuario(e.target.value)}
+                placeholder="usuario123"
+                className="w-full pl-7 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-pink-300 focus:outline-none focus:border-pink-500 font-mono"
               />
             </div>
           </div>

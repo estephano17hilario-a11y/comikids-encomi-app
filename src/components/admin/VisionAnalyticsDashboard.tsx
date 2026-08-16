@@ -119,7 +119,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
     return Array.from(map.values());
   }, [pedidos]);
 
-  // --- 2. REAL AGE DEMOGRAPHICS ---
+  // --- 2. REAL AGE DEMOGRAPHICS (SOLO CLIENTES CON ENCUESTA COMPLETADA) ---
   const ageStats = useMemo(() => {
     const brackets = {
       '18 - 24': 0,
@@ -129,7 +129,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
       '55+': 0,
     };
 
-    const clientsWithAge = uniqueClients.filter(c => c.edad && Number(c.edad) > 0);
+    const clientsWithAge = uniqueClients.filter(c => c.rol !== 'empresa' && c.datos_adicionales_completados && c.edad && Number(c.edad) > 0);
     clientsWithAge.forEach(c => {
       const age = Number(c.edad);
       if (age >= 18 && age <= 24) brackets['18 - 24']++;
@@ -147,17 +147,17 @@ export const VisionAnalyticsDashboard: React.FC = () => {
     }));
   }, [uniqueClients, animKey]);
 
-  // --- 3. REAL MOTIVOS DE COMPRA ---
+  // --- 3. REAL MOTIVOS DE COMPRA (SOLO CLIENTES CON ENCUESTA COMPLETADA) ---
   const motiveStats = useMemo(() => {
     let paraVenta = 0;
     let usoPersonal = 0;
     let empresa = 0;
 
-    const clientsWithMotivo = uniqueClients.filter(c => c.motivo_compra && c.motivo_compra.trim() !== '');
+    const clientsWithMotivo = uniqueClients.filter(c => c.rol !== 'empresa' && c.datos_adicionales_completados && c.motivo_compra && c.motivo_compra.trim() !== '');
     clientsWithMotivo.forEach(c => {
       if (c.motivo_compra === 'emprender') paraVenta++;
       else if (c.motivo_compra === 'empresa') empresa++;
-      else usoPersonal++;
+      else if (c.motivo_compra === 'uso_personal') usoPersonal++;
     });
 
     const total = clientsWithMotivo.length || 1;
@@ -185,6 +185,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
       },
     ];
   }, [uniqueClients, animKey]);
+
 
   // --- 4. REAL DYNAMIC TIME-BASED CHART DATA ---
   const chartData = useMemo(() => {

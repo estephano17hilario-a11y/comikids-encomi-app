@@ -103,6 +103,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     return currentUser?.nombre_completo || localStorage.getItem('incomi_saved_fullname') || '';
   });
 
+  const [tiktokUsuario, setTiktokUsuario] = useState<string>(() => {
+    return currentUser?.tiktok_usuario || localStorage.getItem('incomi_saved_tiktok') || '';
+  });
+
   const [dniShalom, setDniShalom] = useState<string>(() => {
     return currentUser?.dni_default || localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
   });
@@ -127,6 +131,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   useEffect(() => {
     if (currentUser) {
       if (currentUser.nombre_completo) setNombreCompleto(currentUser.nombre_completo);
+      if (currentUser.tiktok_usuario) setTiktokUsuario(currentUser.tiktok_usuario);
       if (currentUser.telefono_default) setWhatsapp(currentUser.telefono_default);
       if (currentUser.dni_default) setDniShalom(currentUser.dni_default);
       if (currentUser.distrito_default) setDistritoQuery(currentUser.distrito_default);
@@ -143,6 +148,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   useEffect(() => {
     if (nombreCompleto) localStorage.setItem('incomi_saved_fullname', nombreCompleto);
   }, [nombreCompleto]);
+
+  useEffect(() => {
+    if (tiktokUsuario) localStorage.setItem('incomi_saved_tiktok', tiktokUsuario);
+  }, [tiktokUsuario]);
 
   useEffect(() => {
     if (dniShalom) localStorage.setItem('incomi_saved_doc', dniShalom);
@@ -362,6 +371,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
     // Persistir todos los datos
     localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
+    const cleanTiktok = tiktokUsuario.trim().replace(/^@/, '');
+    if (cleanTiktok) localStorage.setItem('incomi_saved_tiktok', cleanTiktok);
     localStorage.setItem('incomi_saved_doc', dniShalom.trim());
     if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery.trim());
     if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta.trim());
@@ -375,10 +386,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       // Si el usuario actual es cliente y coincide con este identificador, usarlo
       if (currentUser && currentUser.rol !== 'empresa' && (currentUser.dni === userIdentifier || currentUser.id === userIdentifier)) {
         activeUser = currentUser;
-        if (nombreCompleto.trim()) {
-          activeUser = { ...activeUser, nombre_completo: nombreCompleto.trim() };
-          await ordersService.updateUserProfile(activeUser.id, { nombre_completo: nombreCompleto.trim(), telefono_default: whatsapp.trim() || activeUser.telefono_default });
-        }
+        const userUpdates: any = {
+          nombre_completo: nombreCompleto.trim(),
+          telefono_default: whatsapp.trim() || activeUser.telefono_default,
+        };
+        if (cleanTiktok) userUpdates.tiktok_usuario = cleanTiktok;
+        activeUser = { ...activeUser, ...userUpdates };
+        await ordersService.updateUserProfile(activeUser.id, userUpdates);
       } else {
         // Registrar o actualizar el perfil de la clienta
         const regRes = await ordersService.registerUser(
@@ -389,6 +403,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           whatsapp.trim()
         );
         activeUser = regRes.user || null;
+        if (activeUser && cleanTiktok) {
+          await ordersService.updateUserProfile(activeUser.id, { tiktok_usuario: cleanTiktok } as any);
+          activeUser.tiktok_usuario = cleanTiktok;
+        }
         if (currentUser?.rol !== 'empresa' && activeUser) {
           await login(userIdentifier, 'incomi2026');
         }
@@ -411,6 +429,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         id: 'usr-' + Date.now().toString(36),
         dni: userIdentifier,
         nombre_completo: nombreCompleto.trim(),
+        tiktok_usuario: cleanTiktok || undefined,
         telefono_default: whatsapp.trim(),
         rol: 'client',
         created_at: new Date().toISOString()
@@ -570,6 +589,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     <span className="text-slate-400 block text-[11px] font-medium">👤 Destinatario:</span>
                     <span className="text-white font-bold text-sm">{nombreCompleto}</span>
                   </div>
+                  {tiktokUsuario && (
+                    <div>
+                      <span className="text-slate-400 block text-[11px] font-medium">🎵 Usuario TikTok:</span>
+                      <span className="text-pink-300 font-bold text-sm font-mono">@{tiktokUsuario.replace(/^@/, '')}</span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">🚚 Tipo de Despacho:</span>
                     <span className="text-white font-bold text-sm">{selectedMethod?.nombre || 'Motorizado Local'}</span>
@@ -613,6 +638,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     <span className="text-slate-400 block text-[11px] font-medium">👤 Destinatario:</span>
                     <span className="text-white font-bold text-xs sm:text-sm truncate block">{nombreCompleto}</span>
                   </div>
+                  {tiktokUsuario && (
+                    <div>
+                      <span className="text-slate-400 block text-[11px] font-medium">🎵 Usuario TikTok:</span>
+                      <span className="text-pink-300 font-bold text-xs sm:text-sm font-mono truncate block">@{tiktokUsuario.replace(/^@/, '')}</span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">📱 WhatsApp:</span>
                     <span className="text-white font-bold text-xs sm:text-sm font-mono">+51 {whatsapp}</span>
@@ -1282,12 +1313,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               )}
 
-              {/* NOMBRE COMPLETO CON EMOJI (Solo se muestra cuando no estamos en la selección del mapa de motorizado) */}
+              {/* NOMBRE Y APELLIDOS + TIKTOK (Solo se muestra cuando no estamos en la selección del mapa de motorizado) */}
               {(selectedMethod?.tipo_formulario !== 'mapa_direccion' || motorizadoSubStep === 'form') && (
                 <>
                   <div className="space-y-2 pt-2 border-t border-white/8">
                     <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                      👤 Tu Nombre Completo (Destinatario) *
+                      👤 Nombres y Apellidos (Destinatario) *
                     </label>
                     <div className="relative flex items-center">
                       <input
@@ -1299,6 +1330,23 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
                       />
                       <User className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Casilla: Nombre completo de usuario de TikTok */}
+                  <div className="space-y-2">
+                    <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                      🎵 Nombre completo de usuario de TikTok <span className="text-slate-500 font-normal">(Opcional)</span>
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={tiktokUsuario}
+                        onChange={e => setTiktokUsuario(e.target.value)}
+                        placeholder="usuario_tiktok"
+                        className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-pink-300 placeholder-slate-400 focus:outline-none focus:border-pink-500 shadow-inner font-mono"
+                      />
+                      <span className="text-pink-400 font-black text-lg absolute left-4 pointer-events-none">@</span>
                     </div>
                   </div>
 

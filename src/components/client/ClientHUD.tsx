@@ -68,18 +68,28 @@ export const ClientHUD: React.FC = () => {
             
             {/* Botón de Datos Adicionales con Urgencia o Modo Edición */}
             {!hasCompletedAdditionalData ? (
-              <button
-                type="button"
-                onClick={() => setShowAdditionalDataModal(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border-2 border-amber-500/70 text-amber-300 text-xs sm:text-sm font-black shadow-lg shadow-amber-500/20 active:scale-95 animate-pulse transition-all cursor-pointer"
-                title="Completar datos adicionales importantes"
-              >
-                <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow">
-                  !
-                </span>
-                <span className="hidden xs:inline sm:inline">Datos importantes</span>
-                <span className="inline xs:hidden sm:hidden">Datos !</span>
-              </button>
+              <div className="relative flex flex-col items-center">
+                {/* Tooltip "¡DALE CLICK!" */}
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-bounce">
+                  <div className="bg-amber-400 text-slate-950 text-[9px] font-black px-2 py-1 rounded-lg whitespace-nowrap shadow-lg shadow-amber-500/50">
+                    ¡DALE CLICK! 👆
+                  </div>
+                  <div className="w-0 h-0 mx-auto border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-amber-400" />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAdditionalDataModal(true)}
+                  style={{ animationDuration: '0.5s' }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 text-xs sm:text-sm font-black shadow-xl shadow-amber-500/50 active:scale-95 animate-pulse transition-all cursor-pointer ring-4 ring-amber-400/40"
+                  title="¡Completar datos adicionales importantes!"
+                >
+                  <span className="w-5 h-5 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center font-black text-xs shrink-0 shadow">
+                    !
+                  </span>
+                  <span>DATOS</span>
+                </button>
+              </div>
             ) : (
               <button
                 type="button"

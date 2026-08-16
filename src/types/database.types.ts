@@ -7,6 +7,7 @@ export interface Usuario {
   id: string;
   dni: string;
   nombre_completo: string;
+  tiktok_usuario?: string;
   edad?: number;
   genero?: 'masculino' | 'femenino' | 'otro';
   motivo_compra?: 'uso_personal' | 'emprender' | 'empresa';

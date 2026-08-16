@@ -6,6 +6,7 @@ import { OrdersSmartManager } from '../components/admin/OrdersSmartManager';
 import { ClientDirectory } from '../components/admin/ClientDirectory';
 import { VisionAnalyticsDashboard } from '../components/admin/VisionAnalyticsDashboard';
 import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettings';
+import { ComicInventoryApp } from '../modules/comic_inventory/ComicInventoryApp';
 import { EncomiAiSection } from '../components/client/EncomiAiSection';
 import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
@@ -122,7 +123,7 @@ export const AdminPortal: React.FC = () => {
           {activeTab === 'pedidos' && <OrdersSmartManager />}
           {activeTab === 'agendas' && <ClientDirectory />}
           {activeTab === 'estadisticas' && <VisionAnalyticsDashboard />}
-          {activeTab === 'comikids' && <CompanyAccountSettings />}
+          {activeTab === 'comikids' && <ComicInventoryApp />}
           {activeTab === 'encomi_ai' && <EncomiAiSection isAdmin={true} />}
         </div>
 
@@ -178,17 +179,17 @@ export const AdminPortal: React.FC = () => {
             <span className="truncate">Métricas</span>
           </button>
 
-          {/* 4. Sección ComiKids */}
+          {/* 4. Sección ComiKids / Comic Inventory */}
           <button
             onClick={() => setActiveTab('comikids')}
             className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'comikids'
-                ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30 scale-105'
+                ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-lg shadow-pink-600/30 scale-105'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <Store className="w-4 h-4 shrink-0" />
-            <span className="truncate">ComiKids</span>
+            <span className="truncate">Comic Inv</span>
           </button>
 
           {/* 5. Encomi AI (Admin Ilimitado) */}

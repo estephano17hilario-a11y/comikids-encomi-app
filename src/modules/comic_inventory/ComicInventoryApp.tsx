@@ -5,7 +5,7 @@ import { MeshBackground } from './components/ui/MeshBackground';
 import { MESH_THEMES } from './data/initialData';
 import { ProductItem } from './modules/inventory/ProductItem';
 import { ProductFormModal } from './modules/inventory/ProductFormModal';
-import { TransactionModal } from './modules/inventory/TransactionModal';
+import { TransactionModal, MultiVariantCommitItem } from './modules/inventory/TransactionModal';
 import { CategoryFilter } from './modules/inventory/CategoryFilter';
 import { SessionSummaryModal } from './modules/analytics/SessionSummaryModal';
 import { SessionDetailsModal } from './modules/analytics/SessionDetailsModal';
@@ -174,27 +174,88 @@ export const ComicInventoryApp: React.FC = () => {
     setModalConfig(null);
   };
 
-  const handleUpdateSale = (saleItem: HistoryItem, change: number) => {
-    if (saleItem.qty + change <= 0) {
-      handleDeleteSale(saleItem);
-      return;
-    }
+  // Commit múltiple de variantes desde TransactionModal
+  const handleCommitMulti = (
+    productId: string,
+    items: MultiVariantCommitItem[],
+    mode: 'sale' | 'restock' | 'production'
+  ) => {
+    const prod = products.find((p) => p.id === productId);
+    if (!prod) return;
+
+    const now = Date.now();
+    const newHistoryItems: HistoryItem[] = [];
+
+    items.forEach((item) => {
+      const vari = prod.variants?.find((v) => v.id === item.variantId);
+      if (!vari) return;
+
+      const finalPrice = item.price || vari.price || prod.price || 0;
+      const finalCost = vari.cost || prod.cost || 0;
+
+      if (mode === 'sale' && isLiveMode) {
+        liveSessionService.updateLiveStats(item.quantity, item.quantity * finalPrice);
+      }
+
+      newHistoryItems.push({
+        id: now + Math.random(),
+        type: mode === 'production' ? 'restock' : mode,
+        productId,
+        variantId: item.variantId,
+        product: prod.name,
+        variant: `${vari.size} - ${vari.color}`,
+        qty: item.quantity,
+        price: finalPrice,
+        cost: finalCost,
+        time: now,
+        sessionDate: isLiveMode ? sessionStartTime : null,
+        sessionId: isLiveMode ? currentSessionId : null
+      });
+
+      updateStock(productId, item.variantId, mode === 'sale' ? -item.quantity : item.quantity);
+    });
+
+    setHistory((prev) => [...prev, ...newHistoryItems]);
+    setModalConfig(null);
+  };
+
+  // Actualización profunda de venta desde SessionDetailsModal
+  const handleUpdateSaleDetails = (
+    saleItem: HistoryItem,
+    newVariantId: string,
+    newQty: number,
+    newPrice: number
+  ) => {
     const prod = products.find((p) => p.id === saleItem.productId);
     if (!prod) return;
 
-    if (change > 0) {
-      const vari = prod.variants?.find((v) => v.id === saleItem.variantId);
-      if (!vari || (vari.stock || 0) < change) return;
-    }
+    const oldTotal = (saleItem.price || 0) * (saleItem.qty || 0);
+    const newTotal = (newPrice || 0) * (newQty || 0);
+    const diffRevenue = newTotal - oldTotal;
+
+    // Revertir stock previo
+    updateStock(saleItem.productId, saleItem.variantId, saleItem.qty);
+    // Aplicar nuevo stock
+    updateStock(saleItem.productId, newVariantId, -newQty);
+
+    const newVari = prod.variants?.find((v) => v.id === newVariantId);
+    const variantName = newVari ? `${newVari.size} - ${newVari.color}` : saleItem.variant;
 
     setHistory((prev) =>
       prev.map((item) => {
         if (item.id !== saleItem.id) return item;
-        return { ...item, qty: item.qty + change };
+        return {
+          ...item,
+          variantId: newVariantId,
+          variant: variantName,
+          qty: newQty,
+          price: newPrice,
+          cost: newVari?.cost || prod.cost || 0
+        };
       })
     );
-    liveSessionService.updateLiveStats(change, change * saleItem.price);
-    updateStock(saleItem.productId, saleItem.variantId, -change);
+
+    liveSessionService.updateLiveStats(newQty - saleItem.qty, diffRevenue);
   };
 
   const handleDeleteSale = (saleItem: HistoryItem) => {
@@ -278,7 +339,7 @@ export const ComicInventoryApp: React.FC = () => {
   };
 
   return (
-    <div className="relative w-full min-h-[85vh] text-white flex flex-col transition-colors duration-500 rounded-3xl overflow-hidden bg-slate-950/90 border border-white/10 shadow-2xl p-4 sm:p-6 text-left">
+    <div className="relative w-full min-h-[90vh] text-white flex flex-col transition-colors duration-500 rounded-3xl overflow-hidden bg-slate-950/95 border border-white/10 shadow-2xl p-3 sm:p-6 text-left">
       {/* Background ambient lighting */}
       <MeshBackground isLiveMode={isLiveMode} theme={currentTheme} />
 
@@ -381,9 +442,9 @@ export const ComicInventoryApp: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowSessionDetails(true)}
-                  className="py-1.5 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/15 text-xs font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  className="py-2 px-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/15 text-xs font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow-md"
                 >
-                  <SettingsIcon className="w-3.5 h-3.5" />
+                  <SettingsIcon className="w-3.5 h-3.5 text-cyan-300" />
                   <span>Ajustar Ventas</span>
                 </button>
               </div>
@@ -418,7 +479,7 @@ export const ComicInventoryApp: React.FC = () => {
             }`}
           >
             <BarChart3 className="w-4 h-4" />
-            <span>Métricas & HyperGraph</span>
+            <span>Métricas & Yape 📱</span>
           </button>
 
           <button
@@ -575,6 +636,7 @@ export const ComicInventoryApp: React.FC = () => {
           mode={modalConfig.mode}
           onClose={() => setModalConfig(null)}
           onCommit={handleTransaction}
+          onCommitMulti={handleCommitMulti}
         />
       )}
 
@@ -605,8 +667,9 @@ export const ComicInventoryApp: React.FC = () => {
       {showSessionDetails && (
         <SessionDetailsModal
           currentSessionHistory={history.filter((h) => h.sessionId === currentSessionId)}
+          products={products}
           onClose={() => setShowSessionDetails(false)}
-          onUpdateSale={handleUpdateSale}
+          onUpdateSaleDetails={handleUpdateSaleDetails}
           onDeleteSale={handleDeleteSale}
         />
       )}

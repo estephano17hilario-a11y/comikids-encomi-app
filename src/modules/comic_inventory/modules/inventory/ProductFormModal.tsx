@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '../../components/ui/Icon';
-import { Product, Category } from '../../types';
+import { Product, Category, Variant } from '../../types';
+import { Camera, Image as ImageIcon, Trash2, Plus, Upload } from 'lucide-react';
 
 interface ProductFormModalProps {
   onClose: () => void;
@@ -23,13 +24,16 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
 
   const [variants, setVariants] = useState<any[]>(
     initialData && initialData.variants && initialData.variants.length > 0
-      ? initialData.variants.map((v) => ({ ...v, cost: v.cost || '' }))
+      ? initialData.variants.map((v) => ({
+          ...v,
+          price: v.price !== undefined ? v.price.toString() : '',
+          cost: v.cost !== undefined ? v.cost.toString() : ''
+        }))
       : [{ id: Date.now().toString(), size: 'M', color: 'Negro', stock: 10, price: '', cost: '' }]
   );
 
   const [isPack, setIsPack] = useState(initialData ? initialData.isPack || false : false);
-
-  const [activeBlock, setActiveBlock] = useState<1 | 2 | 3>(1);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!initialData || categoryId !== initialData.categoryId) setSubCategoryId('');
@@ -54,6 +58,49 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
     { class: 'bg-slate-700', label: 'Slate' }
   ];
 
+  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Redimensionar imagen para optimizar almacenamiento
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 600;
+        const MAX_HEIGHT = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          setSelectedImage(dataUrl);
+        }
+      };
+      if (typeof event.target?.result === 'string') {
+        img.src = event.target.result;
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddVariant = () => {
     setVariants((prev) => [
       ...prev,
@@ -76,13 +123,13 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
     e.preventDefault();
     if (!name.trim()) return;
 
-    const cleanedVariants = variants.map((v) => ({
+    const cleanedVariants: Variant[] = variants.map((v) => ({
       id: v.id || Date.now().toString() + Math.random(),
       size: v.size || 'STD',
       color: v.color || 'Único',
       stock: Number(v.stock) || 0,
-      price: v.price ? Number(v.price) : Number(basePrice) || 0,
-      cost: v.cost ? Number(v.cost) : Number(baseCost) || 0
+      price: v.price && v.price !== '' ? Number(v.price) : Number(basePrice) || 0,
+      cost: v.cost && v.cost !== '' ? Number(v.cost) : Number(baseCost) || 0
     }));
 
     const productPayload: Partial<Product> = {
@@ -135,6 +182,54 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4">
+          {/* Foto de la prenda */}
+          <div className="p-3 bg-white/4 rounded-2xl border border-white/8">
+            <label className="text-[11px] uppercase font-bold text-slate-300 block mb-2 flex items-center justify-between">
+              <span>📸 Foto de la Prenda</span>
+              {selectedImage && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedImage(null)}
+                  className="text-rose-400 hover:text-rose-300 text-[10px] flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" /> Quitar Foto
+                </button>
+              )}
+            </label>
+
+            <div className="flex items-center gap-4">
+              {selectedImage ? (
+                <div className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-cyan-400 shadow-md shrink-0">
+                  <img src={selectedImage} alt="Previsualización" className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="w-20 h-20 rounded-2xl bg-black/40 border border-dashed border-white/20 flex flex-col items-center justify-center text-slate-500 shrink-0">
+                  <ImageIcon className="w-6 h-6 mb-1" />
+                  <span className="text-[9px]">Sin foto</span>
+                </div>
+              )}
+
+              <div className="flex-1 space-y-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageFile}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-2.5 px-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/30 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{selectedImage ? 'Cambiar Foto' : 'Subir Foto de Galería o Cámara'}</span>
+                </button>
+                <p className="text-[10px] text-slate-400">Aparecerá en el catálogo, en Live y al registrar ventas.</p>
+              </div>
+            </div>
+          </div>
+
           {/* Nombre y Descripción */}
           <div className="space-y-3">
             <div>
@@ -187,7 +282,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
             {/* Precios Base */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] uppercase font-bold text-slate-300 block mb-1">Precio Venta (S/) *</label>
+                <label className="text-[11px] uppercase font-bold text-slate-300 block mb-1">Precio Base Sugerido (S/) *</label>
                 <input
                   type="number"
                   required
@@ -200,7 +295,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
               </div>
 
               <div>
-                <label className="text-[11px] uppercase font-bold text-slate-300 block mb-1">Costo Taller (S/)</label>
+                <label className="text-[11px] uppercase font-bold text-slate-300 block mb-1">Costo Base Taller (S/)</label>
                 <input
                   type="number"
                   step="any"
@@ -231,50 +326,81 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
             </div>
           </div>
 
-          {/* Matriz de Variantes */}
+          {/* Matriz de Variantes con PRECIO INDIVIDUAL POR VARIANTE */}
           <div className="space-y-2 pt-2 border-t border-white/8">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] uppercase font-bold text-slate-300">Variantes & Stock</label>
+              <div>
+                <label className="text-[11px] uppercase font-bold text-slate-300 block">Variantes, Stock & Precios Individuales</label>
+                <p className="text-[10px] text-slate-500">Puedes asignar un precio diferente a cada talla/color</p>
+              </div>
               <button
                 type="button"
                 onClick={handleAddVariant}
                 className="py-1 px-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/30 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
               >
-                <Icon name="Plus" size={12} /> Agregar Variante
+                <Plus className="w-3.5 h-3.5" /> Agregar Variante
               </button>
             </div>
 
             <div className="space-y-2">
               {variants.map((v, idx) => (
-                <div key={v.id || idx} className="flex gap-2 items-center bg-white/4 p-2 rounded-xl border border-white/6">
-                  <input
-                    type="text"
-                    placeholder="Talla (S, M, L...)"
-                    value={v.size}
-                    onChange={(e) => handleVariantChange(idx, 'size', e.target.value)}
-                    className="w-1/4 p-2 bg-slate-950 border border-white/10 rounded-lg text-white text-xs font-bold"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Color (Negro, Rosa...)"
-                    value={v.color}
-                    onChange={(e) => handleVariantChange(idx, 'color', e.target.value)}
-                    className="w-1/3 p-2 bg-slate-950 border border-white/10 rounded-lg text-white text-xs"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Stock"
-                    value={v.stock}
-                    onChange={(e) => handleVariantChange(idx, 'stock', e.target.value)}
-                    className="w-1/4 p-2 bg-slate-950 border border-white/10 rounded-lg text-emerald-400 text-xs font-mono font-bold"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveVariant(idx)}
-                    className="p-2 text-rose-400 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Icon name="Trash" size={14} />
-                  </button>
+                <div key={v.id || idx} className="grid grid-cols-12 gap-1.5 items-center bg-white/4 p-2.5 rounded-xl border border-white/6">
+                  <div className="col-span-3">
+                    <label className="text-[9px] uppercase text-slate-400 block font-bold mb-0.5">Talla</label>
+                    <input
+                      type="text"
+                      placeholder="S, M, XL..."
+                      value={v.size}
+                      onChange={(e) => handleVariantChange(idx, 'size', e.target.value)}
+                      className="w-full p-2 bg-slate-950 border border-white/10 rounded-lg text-white text-xs font-bold"
+                    />
+                  </div>
+
+                  <div className="col-span-3">
+                    <label className="text-[9px] uppercase text-slate-400 block font-bold mb-0.5">Color</label>
+                    <input
+                      type="text"
+                      placeholder="Negro..."
+                      value={v.color}
+                      onChange={(e) => handleVariantChange(idx, 'color', e.target.value)}
+                      className="w-full p-2 bg-slate-950 border border-white/10 rounded-lg text-white text-xs"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="text-[9px] uppercase text-slate-400 block font-bold mb-0.5">Stock</label>
+                    <input
+                      type="number"
+                      placeholder="Stock"
+                      value={v.stock}
+                      onChange={(e) => handleVariantChange(idx, 'stock', e.target.value)}
+                      className="w-full p-2 bg-slate-950 border border-white/10 rounded-lg text-emerald-400 text-xs font-mono font-bold"
+                    />
+                  </div>
+
+                  <div className="col-span-3">
+                    <label className="text-[9px] uppercase text-cyan-300 block font-bold mb-0.5">Precio (S/)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder={basePrice || '0.00'}
+                      value={v.price}
+                      onChange={(e) => handleVariantChange(idx, 'price', e.target.value)}
+                      className="w-full p-2 bg-slate-950 border border-cyan-500/30 rounded-lg text-cyan-300 text-xs font-mono font-bold"
+                      title="Precio específico para esta variante (deja vacío para usar precio base)"
+                    />
+                  </div>
+
+                  <div className="col-span-1 flex justify-center pt-3">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveVariant(idx)}
+                      className="p-1.5 text-rose-400 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                      title="Eliminar variante"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

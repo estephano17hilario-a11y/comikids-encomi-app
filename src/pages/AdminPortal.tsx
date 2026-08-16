@@ -63,7 +63,7 @@ export const AdminPortal: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
       
       {/* Top Vision Header */}
-      <header className="w-full bg-slate-950/90 border-b border-white/[0.08] px-3.5 sm:px-8 pt-8 pb-3 sm:pt-9 sm:pb-3.5 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl" data-no-print="true">
+      <header className="w-full bg-slate-950/90 border-b border-white/8 px-3.5 sm:px-8 pt-8 pb-3 sm:pt-9 sm:pb-3.5 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl" data-no-print="true">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5 sm:gap-4">
           
           {/* Brand */}
@@ -116,7 +116,7 @@ export const AdminPortal: React.FC = () => {
 
             <button
               onClick={() => setShowConfigModal(true)}
-              className="p-2 sm:p-2.5 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/10 transition-colors cursor-pointer shrink-0"
+              className="p-2 sm:p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors cursor-pointer shrink-0"
               title="Configurar Datos del Remitente"
             >
               <Settings className="w-4 h-4" />
@@ -124,7 +124,7 @@ export const AdminPortal: React.FC = () => {
 
             <button
               onClick={() => setShowLogoutConfirm(true)}
-              className="p-2 sm:p-2.5 rounded-2xl bg-white/[0.05] hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors cursor-pointer shrink-0"
+              className="p-2 sm:p-2.5 rounded-2xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors cursor-pointer shrink-0"
               title="Cerrar Sesión"
             >
               <LogOut className="w-4 h-4" />
@@ -135,7 +135,12 @@ export const AdminPortal: React.FC = () => {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 space-y-6 pb-28 print:hidden" data-no-print="true">
+      <main
+        className={`flex-1 w-full max-w-7xl mx-auto space-y-6 pb-28 print:hidden transition-all ${
+          activeTab === 'comikids' ? 'px-2 sm:px-4 py-3' : 'px-4 sm:px-8 py-6'
+        }`}
+        data-no-print="true"
+      >
         
         {/* Dynamic Section Rendering */}
         <div className="transition-all duration-300">

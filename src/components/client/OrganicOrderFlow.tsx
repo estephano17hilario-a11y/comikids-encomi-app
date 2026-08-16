@@ -369,9 +369,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
     setSubmitting(true);
     try {
-      let activeUser = currentUser;
-      if (!activeUser) {
-        const userIdentifier = dniShalom.trim() || whatsapp.trim();
+      const userIdentifier = dniShalom.trim() || whatsapp.trim();
+      let activeUser: any = null;
+
+      // Si el usuario actual es cliente y coincide con este identificador, usarlo
+      if (currentUser && currentUser.rol !== 'empresa' && (currentUser.dni === userIdentifier || currentUser.id === userIdentifier)) {
+        activeUser = currentUser;
+        if (nombreCompleto.trim()) {
+          activeUser = { ...activeUser, nombre_completo: nombreCompleto.trim() };
+          await ordersService.updateUserProfile(activeUser.id, { nombre_completo: nombreCompleto.trim(), telefono_default: whatsapp.trim() || activeUser.telefono_default });
+        }
+      } else {
+        // Registrar o actualizar el perfil de la clienta
         const regRes = await ordersService.registerUser(
           nombreCompleto.trim(),
           userIdentifier,
@@ -379,13 +388,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           'incomi2026',
           whatsapp.trim()
         );
-        if (regRes.user) {
-          activeUser = regRes.user;
-        } else {
-          const logRes = await ordersService.loginUser(userIdentifier, 'incomi2026');
-          activeUser = logRes.user || null;
-        }
-        if (activeUser) {
+        activeUser = regRes.user || null;
+        if (currentUser?.rol !== 'empresa' && activeUser) {
           await login(userIdentifier, 'incomi2026');
         }
       }
@@ -403,9 +407,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         finalDestinoDetalle = customDestinoText.trim() || 'Indicaciones de entrega';
       }
 
+      const clientUserData = activeUser || {
+        id: 'usr-' + Date.now().toString(36),
+        dni: userIdentifier,
+        nombre_completo: nombreCompleto.trim(),
+        telefono_default: whatsapp.trim(),
+        rol: 'client',
+        created_at: new Date().toISOString()
+      };
+
       const newOrder = await createPedido({
-        usuario_id: activeUser?.id || 'usr-temp',
-        usuario: activeUser || undefined,
+        usuario_id: clientUserData.id,
+        usuario: clientUserData,
         detalles_bordado: `Envío de Mercadería para ${nombreCompleto.trim()}`,
         metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
         metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
@@ -615,24 +628,38 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
 
                 {selectedAgencyObject && (
-                  <div className="pt-2 border-t border-white/6 text-xs space-y-0.5">
-                    <span className="text-slate-400 text-[11px] font-medium block">📦 Agencia Shalom de Destino:</span>
-                    <p className="text-white font-bold text-xs leading-snug">
-                      {formatFullAgencyName(selectedAgencyObject)}
-                    </p>
-                    {selectedAgencyObject.horario && (
-                      <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3 h-3 text-slate-500" />
-                        <span>{selectedAgencyObject.horario}</span>
+                  <div className="pt-2 border-t border-white/6 text-xs space-y-2">
+                    <div className="space-y-0.5">
+                      <span className="text-slate-400 text-[11px] font-medium block">📦 Agencia Shalom de Destino:</span>
+                      <p className="text-white font-bold text-xs leading-snug">
+                        {formatFullAgencyName(selectedAgencyObject)}
                       </p>
-                    )}
+                      {selectedAgencyObject.horario && (
+                        <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3 text-slate-500" />
+                          <span>{selectedAgencyObject.horario}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Botón al costado / pie del comprobante Shalom: Ver tiempo aproximado de envío */}
+                    <div className="pt-1 flex items-center justify-start">
+                      <button
+                        type="button"
+                        onClick={() => setShowEncomiAiModal(true)}
+                        className="py-1.5 px-3 rounded-xl bg-purple-600/30 hover:bg-purple-600/45 text-purple-200 hover:text-white border border-purple-400/40 text-[11px] font-bold inline-flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-cyan-300" />
+                        <span>⏱️ Ver tiempo aproximado de envío</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          {/* Botón Principal de WhatsApp */}
+          {/* 1. Botón Principal de WhatsApp */}
           <div className="pt-1">
             <a
               href={whatsappUrl}
@@ -649,7 +676,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             </a>
           </div>
 
-          {/* Botón de Preguntas Frecuentes con Encomi AI (Exclusivo Shalom) */}
+          {/* 2. Botón Promocional: ¿Quieres unirte a ComiKids? / Únete a Encomi */}
+          <div className="pt-1.5">
+            <a
+              href={getJoinEncomiWhatsAppUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 px-4 rounded-2xl bg-linear-to-r from-cyan-500/20 via-blue-600/20 to-purple-600/20 hover:from-cyan-500/30 hover:to-purple-600/30 border-2 border-cyan-400/50 hover:border-cyan-300 text-cyan-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all active:scale-[0.98] cursor-pointer group"
+            >
+              <span className="text-base group-hover:scale-110 transition-transform">🚀</span>
+              <span>¿Quieres unirte a ComiKids? ¡Únete a Encomi y envía 10 veces más rápido!</span>
+            </a>
+          </div>
+
+          {/* 3. Botón de Preguntas Frecuentes con Encomi AI (Exclusivo Shalom) */}
           {(selectedMethod?.tipo_formulario === 'shalom' || createdOrder?.metodo_envio_codigo === 'shalom') && (
             <div className="pt-1">
               <button
@@ -662,19 +702,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               </button>
             </div>
           )}
-
-          {/* Botón Promocional: Únete a Encomi y envía 10 veces más rápido */}
-          <div className="pt-2">
-            <a
-              href={getJoinEncomiWhatsAppUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 px-4 rounded-2xl bg-linear-to-r from-cyan-500/20 via-blue-600/20 to-purple-600/20 hover:from-cyan-500/30 hover:to-purple-600/30 border-2 border-cyan-400/50 hover:border-cyan-300 text-cyan-200 hover:text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition-all active:scale-[0.98] cursor-pointer group"
-            >
-              <span className="text-base group-hover:scale-110 transition-transform">🚀</span>
-              <span>¡Únete a Encomi y envía 10 veces más rápido!</span>
-            </a>
-          </div>
 
         </div>
       ) : isEmpresaUnlock ? (

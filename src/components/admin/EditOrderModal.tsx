@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
-import { X, Save, Package, MapPin, User, FileText } from 'lucide-react';
+import { X, Save, Package, MapPin, User, FileText, Phone, CreditCard } from 'lucide-react';
 
 interface Props {
   pedido: Pedido;
@@ -10,6 +10,14 @@ interface Props {
 }
 
 export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => {
+  const initialClientName = pedido.usuario?.nombre_completo || 
+    (pedido.detalles_bordado?.includes('Envío de Mercadería para ') 
+      ? pedido.detalles_bordado.replace(/^Envío de Mercadería para\s+/i, '').trim() 
+      : '');
+  
+  const [nombreCliente, setNombreCliente] = useState(initialClientName);
+  const [telefonoCliente, setTelefonoCliente] = useState(pedido.usuario?.telefono_default || '');
+  const [dniCliente, setDniCliente] = useState(pedido.usuario?.dni || '');
   const [destinoDetalle, setDestinoDetalle] = useState(pedido.destino_detalle || '');
   const [detallesBordado, setDetallesBordado] = useState(pedido.detalles_bordado || '');
   const [observaciones, setObservaciones] = useState(pedido.observaciones_cliente || '');
@@ -28,12 +36,30 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
     e.preventDefault();
     setSaving(true);
     try {
+      const finalNombre = nombreCliente.trim() || 'Cliente';
+      const finalPhone = telefonoCliente.trim().replace(/\D/g, '');
+      const finalDni = dniCliente.trim().toUpperCase() || pedido.usuario_id;
+      
+      const updatedDetalles = detallesBordado.trim() || `Envío de Mercadería para ${finalNombre}`;
+
       await onSave(pedido.id, {
         destino_detalle: destinoDetalle.trim(),
-        detalles_bordado: detallesBordado.trim(),
+        detalles_bordado: updatedDetalles,
         observaciones_cliente: observaciones.trim(),
         estado_envio: estadoEnvio,
         estado_produccion: estadoProduccion,
+        usuario: {
+          id: pedido.usuario?.id || pedido.usuario_id || ('usr-' + Date.now().toString(36)),
+          dni: finalDni,
+          nombre_completo: finalNombre,
+          telefono_default: finalPhone || undefined,
+          password_hash: pedido.usuario?.password_hash || 'incomi2026',
+          rol: pedido.usuario?.rol || 'client',
+          avatar_url: pedido.usuario?.avatar_url || '',
+          puntos_xp: pedido.usuario?.puntos_xp || 0,
+          nivel: pedido.usuario?.nivel || 1,
+          created_at: pedido.usuario?.created_at || new Date().toISOString()
+        }
       });
       onClose();
     } finally {
@@ -43,7 +69,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
 
   return createPortal(
     <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
-      <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-white/10 p-6 sm:p-8 shadow-2xl shadow-cyan-500/10 space-y-6 max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-white/10 p-6 sm:p-8 shadow-2xl shadow-cyan-500/10 space-y-5 max-h-[90vh] overflow-y-auto">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
@@ -52,8 +78,8 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
               <Package className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-black text-white">Editar Pedido</h3>
-              <p className="text-xs text-slate-400 font-mono">{pedido.codigo_seguimiento}</p>
+              <h3 className="text-base font-black text-white">Editar Datos del Despacho</h3>
+              <p className="text-xs text-slate-400 font-mono">#{pedido.codigo_seguimiento}</p>
             </div>
           </div>
           <button
@@ -67,6 +93,53 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           
+          {/* Nombre de la Clienta */}
+          <div>
+            <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-cyan-400" />
+              Nombre Completo de la Clienta
+            </label>
+            <input
+              type="text"
+              required
+              value={nombreCliente}
+              onChange={e => setNombreCliente(e.target.value)}
+              placeholder="Ej. María Pérez"
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 font-bold"
+            />
+          </div>
+
+          {/* Teléfono y DNI */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                WhatsApp / Teléfono
+              </label>
+              <input
+                type="tel"
+                value={telefonoCliente}
+                onChange={e => setTelefonoCliente(e.target.value)}
+                placeholder="Ej. 987654321"
+                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <CreditCard className="w-3.5 h-3.5 text-pink-400" />
+                DNI / Documento
+              </label>
+              <input
+                type="text"
+                value={dniCliente}
+                onChange={e => setDniCliente(e.target.value)}
+                placeholder="Ej. 71234567"
+                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Destino */}
           <div>
             <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
@@ -74,27 +147,29 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
             </label>
             <textarea
               required
-              rows={3}
+              rows={2}
               value={destinoDetalle}
               onChange={e => setDestinoDetalle(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
             />
           </div>
 
+          {/* Detalles del Paquete */}
           <div>
             <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-purple-400" />
-              Detalles de Destinatario / Paquete
+              <Package className="w-3.5 h-3.5 text-purple-400" />
+              Detalles del Paquete / Mercadería
             </label>
             <input
               type="text"
               required
               value={detallesBordado}
               onChange={e => setDetallesBordado(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
             />
           </div>
 
+          {/* Observaciones */}
           <div>
             <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-amber-400" />
@@ -105,11 +180,12 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
               value={observaciones}
               onChange={e => setObservaciones(e.target.value)}
               placeholder="Referencia o notas adicionales..."
-              className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          {/* Estados */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
                 Estado de Producción / Alistado
@@ -142,7 +218,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+          <div className="flex items-center gap-3 pt-3 border-t border-white/10">
             <button
               type="button"
               onClick={onClose}
@@ -173,3 +249,4 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
     document.body
   );
 };
+

@@ -110,9 +110,24 @@ class OrdersService {
     const cleanDni = dni.trim().toUpperCase();
     const cleanPhone = (telefono || '').trim().replace(/\D/g, '');
     const users = this.getUsers();
+    const existingIdx = users.findIndex(u => u.dni.toUpperCase() === cleanDni);
+    if (existingIdx !== -1) {
+      // Si la clienta ya existe, actualizar su nombre y teléfono con los datos más recientes
+      users[existingIdx] = {
+        ...users[existingIdx],
+        nombre_completo: nombreCompleto.trim() || users[existingIdx].nombre_completo,
+        telefono_default: cleanPhone || users[existingIdx].telefono_default,
+      };
+      this.saveUsers(users);
 
-    if (users.some(u => u.dni.toUpperCase() === cleanDni)) {
-      return { user: null, error: 'Ya existe una cuenta registrada con este DNI.' };
+      if (isSupabaseConfigured && supabase) {
+        try {
+          await supabase.from('usuarios').upsert(users[existingIdx]);
+        } catch (err) {
+          console.warn('Error actualizando usuario existente en Supabase:', err);
+        }
+      }
+      return { user: users[existingIdx] };
     }
 
     const newUser: Usuario = {
@@ -390,10 +405,43 @@ class OrdersService {
           const currentUsers = this.getUsers();
           const syncedOrders: Pedido[] = dbOrders
             .filter((p: any) => !deletedIds.has(p.id))
-            .map((p: any) => ({
-              ...p,
-              usuario: currentUsers.find(u => u.id === p.usuario_id || u.dni === p.usuario_id) || p.usuario || undefined
-            }));
+            .map((p: any) => {
+              let matchedUser = currentUsers.find(u => 
+                u.id === p.usuario_id || 
+                u.dni === p.usuario_id || 
+                (u.telefono_default && u.telefono_default === p.usuario_id)
+              ) || p.usuario;
+
+              // Extraer el nombre real de la clienta si usuario_id era el admin o estaba vacío
+              let clientName = matchedUser?.nombre_completo;
+              if (!clientName || clientName === 'Encomi Envíos' || clientName === 'ComiKids' || clientName.trim() === '') {
+                if (p.detalles_bordado && p.detalles_bordado.includes('Envío de Mercadería para ')) {
+                  clientName = p.detalles_bordado.replace(/^Envío de Mercadería para\s+/i, '').trim();
+                } else if (p.detalles_bordado && p.detalles_bordado.includes('Venta directa a ')) {
+                  clientName = p.detalles_bordado.replace(/^Venta directa a\s+/i, '').trim();
+                }
+              }
+
+              if (matchedUser) {
+                matchedUser = {
+                  ...matchedUser,
+                  nombre_completo: clientName || matchedUser.nombre_completo || 'Cliente',
+                };
+              } else if (clientName) {
+                matchedUser = {
+                  id: p.usuario_id || 'usr-temp',
+                  dni: p.usuario_id || '00000000',
+                  nombre_completo: clientName,
+                  rol: 'client',
+                  created_at: p.created_at || new Date().toISOString()
+                };
+              }
+
+              return {
+                ...p,
+                usuario: matchedUser || undefined
+              };
+            });
           
           if (!userId) {
             this.saveLocalOrders(syncedOrders);
@@ -514,7 +562,7 @@ class OrdersService {
     return orders[idx];
   }
 
-  // --- GAMIFICACIÓN & LOGROS ---
+  // --- LOGROS & GAMIFICACIÓN ---
   private getLocalAchievements(): LogroUsuario[] {
     const raw = localStorage.getItem(STORAGE_KEYS.ACHIEVEMENTS);
     if (!raw) return [];
@@ -525,16 +573,16 @@ class OrdersService {
     }
   }
 
-  private saveLocalAchievements(achs: LogroUsuario[]) {
-    localStorage.setItem(STORAGE_KEYS.ACHIEVEMENTS, JSON.stringify(achs));
+  private saveLocalAchievements(achievements: LogroUsuario[]) {
+    localStorage.setItem(STORAGE_KEYS.ACHIEVEMENTS, JSON.stringify(achievements));
   }
 
-  async getAchievementsByUser(userId: string): Promise<LogroUsuario[]> {
+  getAchievements(userId: string): LogroUsuario[] {
     const all = this.getLocalAchievements();
     return all.filter(a => a.usuario_id === userId);
   }
 
-  async awardXp(userId: string, amount: number, unlockCode?: string, logroTitulo?: string, logroDesc?: string) {
+  async awardXp(userId: string, amount: number, unlockCode?: string, logroTitulo?: string, logroDesc?: string): Promise<void> {
     const users = this.getUsers();
     const user = users.find(u => u.id === userId);
     if (!user) return;
@@ -580,9 +628,13 @@ class OrdersService {
     const idx = orders.findIndex(o => o.id === pedidoId);
     if (idx === -1) return null;
 
+    const oldOrder = orders[idx];
+    const mergedUser = updates.usuario ? { ...oldOrder.usuario, ...updates.usuario } : oldOrder.usuario;
+
     orders[idx] = {
-      ...orders[idx],
+      ...oldOrder,
       ...updates,
+      usuario: mergedUser,
       updated_at: new Date().toISOString(),
     };
     this.saveLocalOrders(orders);
@@ -592,6 +644,24 @@ class OrdersService {
         const dbUpdates = this.sanitizePedidoForDb(updates);
         delete dbUpdates.id; // Don't modify primary key
         await supabase.from('pedidos').update(dbUpdates).eq('id', pedidoId);
+
+        // Si se actualizó el nombre o teléfono del usuario, actualizar en Supabase usuarios
+        if (updates.usuario && (updates.usuario.id || oldOrder.usuario_id)) {
+          const uId = updates.usuario.id || oldOrder.usuario_id;
+          const userPayload: Record<string, any> = {};
+          if (updates.usuario.nombre_completo) userPayload.nombre_completo = updates.usuario.nombre_completo.trim();
+          if (updates.usuario.telefono_default) userPayload.telefono_default = updates.usuario.telefono_default.trim();
+          if (Object.keys(userPayload).length > 0) {
+            await supabase.from('usuarios').update(userPayload).eq('id', uId);
+            // Actualizar también en la memoria de usuarios locales
+            const allUsers = this.getUsers();
+            const uIdx = allUsers.findIndex(u => u.id === uId || u.dni === uId);
+            if (uIdx !== -1) {
+              allUsers[uIdx] = { ...allUsers[uIdx], ...userPayload };
+              this.saveUsers(allUsers);
+            }
+          }
+        }
       } catch (e) {
         console.warn('Error actualizando pedido en Supabase:', e);
       }

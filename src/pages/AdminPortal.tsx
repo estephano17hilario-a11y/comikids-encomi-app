@@ -7,6 +7,7 @@ import { ClientDirectory } from '../components/admin/ClientDirectory';
 import { VisionAnalyticsDashboard } from '../components/admin/VisionAnalyticsDashboard';
 import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettings';
 import { ComicInventoryApp } from '../modules/comic_inventory/ComicInventoryApp';
+import { liveSessionService, LiveSessionState } from '../services/liveSessionService';
 import { EncomiAiSection } from '../components/client/EncomiAiSection';
 import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
@@ -36,6 +37,12 @@ export const AdminPortal: React.FC = () => {
   const isComikids = currentUser?.rol === 'empresa' ||
     currentUser?.dni?.toUpperCase() === '061625' ||
     currentUser?.dni?.toUpperCase()?.includes('COMIKIDS');
+  
+  // Estado de sesión Live sincronizado
+  const [liveState, setLiveState] = useState<LiveSessionState>(() => liveSessionService.getState());
+  useEffect(() => {
+    return liveSessionService.subscribe(setLiveState);
+  }, []);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -69,12 +76,19 @@ export const AdminPortal: React.FC = () => {
                 <h1 className="text-sm sm:text-base font-black text-white tracking-tight truncate">
                   ComiKids
                 </h1>
-                <span className="px-1.5 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black uppercase bg-pink-500/15 text-pink-300 border border-pink-500/20 shrink-0">
-                  Panel Matriz
-                </span>
+                {liveState.isLive ? (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 animate-pulse shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                    En Live 🔴
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black uppercase bg-pink-500/15 text-pink-300 border border-pink-500/20 shrink-0">
+                    Panel Matriz
+                  </span>
+                )}
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 font-mono truncate">
-                Panel de Gestión
+                {liveState.isLive ? `Live Activo • S/ ${liveState.revenue.toLocaleString()}` : 'Panel de Gestión'}
               </p>
             </div>
           </div>
@@ -128,8 +142,11 @@ export const AdminPortal: React.FC = () => {
           {activeTab === 'pedidos' && <OrdersSmartManager />}
           {activeTab === 'agendas' && <ClientDirectory />}
           {activeTab === 'estadisticas' && <VisionAnalyticsDashboard />}
-          {activeTab === 'comikids' && isComikids && <ComicInventoryApp />}
-          {activeTab === 'comikids' && !isComikids && <OrdersSmartManager />}
+          {isComikids && (
+            <div className={activeTab === 'comikids' ? 'block' : 'hidden'}>
+              <ComicInventoryApp />
+            </div>
+          )}
           {activeTab === 'encomi_ai' && <EncomiAiSection isAdmin={true} />}
         </div>
 
@@ -189,7 +206,7 @@ export const AdminPortal: React.FC = () => {
           {isComikids && (
             <button
               onClick={() => setActiveTab('comikids')}
-              className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+              className={`relative flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
                 activeTab === 'comikids'
                   ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-lg shadow-pink-600/30 scale-105'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -197,6 +214,12 @@ export const AdminPortal: React.FC = () => {
             >
               <Store className="w-4 h-4 shrink-0" />
               <span className="truncate">Comic Inv</span>
+              {liveState.isLive && (
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 border-2 border-slate-900"></span>
+                </span>
+              )}
             </button>
           )}
 

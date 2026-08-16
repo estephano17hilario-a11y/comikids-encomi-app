@@ -14,6 +14,7 @@ import { AnalyticsDashboard } from './modules/analytics/AnalyticsDashboard';
 import { SettingsView } from './modules/inventory/SettingsView';
 import { inventoryService } from './services/inventoryService';
 import { yapeReaderService } from '../../services/yapeReaderService';
+import { liveSessionService, LiveSessionState } from '../../services/liveSessionService';
 import { Product, Category, HistoryItem, Session } from './types';
 import { Volume2, Sparkles, Plus, Archive, Radio, BarChart3, Settings as SettingsIcon, Package } from 'lucide-react';
 
@@ -25,15 +26,23 @@ export const ComicInventoryApp: React.FC = () => {
   const [themeId, setThemeId] = useState<string>(() => inventoryService.getThemePreference());
 
   const [activeTab, setActiveTab] = useState<'inventory' | 'analytics' | 'settings' | 'archived'>('inventory');
-  const [isLiveMode, setIsLiveMode] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Live session stats
-  const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
-  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
-  const [liveSessionStats, setLiveSessionStats] = useState({ sold: 0, revenue: 0 });
+  // Live session state from global persistent service
+  const [liveState, setLiveState] = useState<LiveSessionState>(() => liveSessionService.getState());
+  const isLiveMode = liveState.isLive;
+  const currentSessionId = liveState.sessionId;
+  const sessionStartTime = liveState.startTime;
+  const liveSessionStats = { sold: liveState.sold, revenue: liveState.revenue };
+
+  useEffect(() => {
+    const unsub = liveSessionService.subscribe((state) => {
+      setLiveState(state);
+    });
+    return unsub;
+  }, []);
 
   // Modals state
   const [modalConfig, setModalConfig] = useState<{ product: Product; mode: 'sale' | 'restock' | 'production' } | null>(null);
@@ -142,10 +151,7 @@ export const ComicInventoryApp: React.FC = () => {
     const finalCost = vari.cost || prod.cost || 0;
 
     if (mode === 'sale' && isLiveMode) {
-      setLiveSessionStats((prev) => ({
-        sold: prev.sold + quantity,
-        revenue: prev.revenue + quantity * finalPrice
-      }));
+      liveSessionService.updateLiveStats(quantity, quantity * finalPrice);
     }
 
     const newItem: HistoryItem = {
@@ -187,19 +193,13 @@ export const ComicInventoryApp: React.FC = () => {
         return { ...item, qty: item.qty + change };
       })
     );
-    setLiveSessionStats((prev) => ({
-      sold: prev.sold + change,
-      revenue: prev.revenue + change * saleItem.price
-    }));
+    liveSessionService.updateLiveStats(change, change * saleItem.price);
     updateStock(saleItem.productId, saleItem.variantId, -change);
   };
 
   const handleDeleteSale = (saleItem: HistoryItem) => {
     setHistory((prev) => prev.filter((item) => item.id !== saleItem.id));
-    setLiveSessionStats((prev) => ({
-      sold: prev.sold - saleItem.qty,
-      revenue: prev.revenue - saleItem.qty * saleItem.price
-    }));
+    liveSessionService.updateLiveStats(-saleItem.qty, -(saleItem.qty * saleItem.price));
     updateStock(saleItem.productId, saleItem.variantId, saleItem.qty);
   };
 
@@ -231,10 +231,7 @@ export const ComicInventoryApp: React.FC = () => {
         title: '¿Iniciar Modo TikTok Live?',
         message: 'Se activará el modo de venta rápida de prendas y el monitor de pagos Yape.',
         onConfirm: () => {
-          setIsLiveMode(true);
-          setLiveSessionStats({ sold: 0, revenue: 0 });
-          setCurrentSessionId(Date.now());
-          setSessionStartTime(Date.now());
+          liveSessionService.startLive();
           setConfirmationConfig(null);
         }
       });
@@ -262,10 +259,8 @@ export const ComicInventoryApp: React.FC = () => {
         notes
       };
       setSessions((prev) => [...prev, newSession]);
-      setIsLiveMode(false);
+      liveSessionService.endLive();
       setShowSummaryModal(false);
-      setCurrentSessionId(null);
-      setSessionStartTime(null);
     },
     [currentSessionId, sessionStartTime, liveSessionStats]
   );

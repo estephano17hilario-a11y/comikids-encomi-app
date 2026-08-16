@@ -102,6 +102,14 @@ class OrdersService {
     }
   }
 
+  public getLocalUsers(): Usuario[] {
+    return this.getUsers();
+  }
+
+  public saveLocalUsers(users: Usuario[]) {
+    this.saveUsers(users);
+  }
+
   private saveUsers(users: Usuario[]) {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
   }

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useOrders } from '../../context/OrderContext';
+import { ordersService } from '../../services/ordersService';
 import { Usuario, Pedido } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
 import { calculateLevel } from '../../data/achievementsList';
+import { yapeReaderService } from '../../services/yapeReaderService';
 import {
   Users,
   Search,
@@ -31,12 +33,26 @@ export const ClientDirectory: React.FC = () => {
 
   // Extract unique clients from orders and stored users
   const clientsMap = new Map<string, Usuario>();
+  
+  // Agregar usuarios registrados
+  const allStoredUsers: Usuario[] = ordersService.getLocalUsers();
+  allStoredUsers.forEach((u: Usuario) => {
+    if (u.rol !== 'empresa') {
+      clientsMap.set(u.id, u);
+    }
+  });
+
   pedidos.forEach(p => {
     if (p.usuario) {
       clientsMap.set(p.usuario.id, p.usuario);
     }
   });
   const clientsList = Array.from(clientsMap.values());
+
+  const [yapes, setYapes] = useState(() => yapeReaderService.getLocalYapes());
+  React.useEffect(() => {
+    yapeReaderService.syncNativeYapes().then(setYapes);
+  }, []);
 
   const filteredClients = clientsList.filter(c => {
     const query = searchTerm.toLowerCase().trim();
@@ -209,6 +225,40 @@ export const ClientDirectory: React.FC = () => {
                         <span className="text-[11px] font-bold text-slate-300">{client.edad} años</span>
                       </div>
                     )}
+
+                    {/* Métricas de Gasto por Yape */}
+                    {(() => {
+                      const now = Date.now();
+                      const clientYapes = yapes.filter(y => y.sender.toLowerCase().trim() === client.nombre_completo.toLowerCase().trim());
+                      const totalYape = clientYapes.reduce((acc, y) => acc + (Number(y.amount) || 0), 0);
+                      const weeklyYape = clientYapes.filter(y => now - y.timestamp <= 7 * 24 * 60 * 60 * 1000).reduce((acc, y) => acc + (Number(y.amount) || 0), 0);
+                      const monthlyYape = clientYapes.filter(y => now - y.timestamp <= 30 * 24 * 60 * 60 * 1000).reduce((acc, y) => acc + (Number(y.amount) || 0), 0);
+
+                      if (totalYape === 0) return null;
+
+                      return (
+                        <div className="pt-2 border-t border-purple-500/20 bg-purple-950/30 p-2 rounded-xl">
+                          <p className="text-[9px] uppercase font-bold text-purple-300 mb-1 flex items-center gap-1">
+                            <span>📱 Yapes Registrados</span>
+                            <span className="text-[8px] text-slate-400 font-mono">({clientYapes.length})</span>
+                          </p>
+                          <div className="grid grid-cols-3 gap-1 text-center font-mono">
+                            <div className="bg-black/40 p-1 rounded-lg">
+                              <span className="text-[8px] text-slate-400 block">Semana</span>
+                              <span className="text-[10px] font-bold text-cyan-300">S/{weeklyYape}</span>
+                            </div>
+                            <div className="bg-black/40 p-1 rounded-lg">
+                              <span className="text-[8px] text-slate-400 block">Mes</span>
+                              <span className="text-[10px] font-bold text-emerald-400">S/{monthlyYape}</span>
+                            </div>
+                            <div className="bg-purple-900/50 p-1 rounded-lg border border-purple-500/30">
+                              <span className="text-[8px] text-purple-300 block font-bold">Total</span>
+                              <span className="text-[10px] font-black text-white">S/{totalYape}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                   </div>
 

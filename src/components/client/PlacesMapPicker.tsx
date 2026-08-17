@@ -194,7 +194,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
     }
 
     geocoder.geocode(
-      { location: { lat, lng } } as any,
+      { location: { lat, lng }, language: 'es', region: 'PE' } as any,
       (results: any, status: string) => {
         if (status === 'OK' && results && results.length > 0) {
           const best = results[0];

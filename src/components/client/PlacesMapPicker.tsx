@@ -8,7 +8,13 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  Crosshair
+  Crosshair,
+  Search,
+  X,
+  Compass,
+  Building,
+  RotateCcw,
+  Check
 } from 'lucide-react';
 import { DISTRITOS_LIMA } from '../../data/distritosLima';
 import { loadGoogleMapsScript } from '../../services/googleMapsLoader';
@@ -26,6 +32,15 @@ interface Props {
   }) => void;
   onCloseModal?: () => void;
   isModal?: boolean;
+}
+
+interface PlaceSuggestion {
+  id: string;
+  title: string;
+  subtitle: string;
+  district: string;
+  lat: number;
+  lng: number;
 }
 
 // 1. Icono para el PIN de entrega seleccionado (Punta inferior milimétrica)
@@ -136,7 +151,7 @@ function cleanStreetName(rawStreet: string, houseNumber?: string): string {
 
   let street = rawStreet.trim();
 
-  // Limpiar prefijos de vías auxiliares o ciclovías
+  // Limpiar prefijos
   if (street.toLowerCase().startsWith('ciclovia ') || street.toLowerCase().startsWith('ciclovía ')) {
     street = street.replace(/ciclov[ií]a\s+/i, 'Av. ');
   } else if (street.toLowerCase().startsWith('via auxiliar ') || street.toLowerCase().startsWith('vía auxiliar ')) {
@@ -163,7 +178,6 @@ function cleanStreetName(rawStreet: string, houseNumber?: string): string {
   return street;
 }
 
-// Analizar la respuesta completa de OpenStreetMap Nominatim metro a metro
 function parseOsmDetailedAddress(data: any, lat: number, lng: number): { fullAddress: string; district: string } {
   const addr = data.address || {};
   const dispName = data.display_name || '';
@@ -175,13 +189,11 @@ function parseOsmDetailedAddress(data: any, lat: number, lng: number): { fullAdd
   let landmark = addr.amenity || addr.shop || addr.building || data.name || '';
   let rawDistrict = addr.city_district || addr.suburb || addr.town || addr.city || 'Lima';
 
-  // Extraer número de puerta de display_name si existe (ej. "1166, Avenida México")
   if (!houseNumber && parts.length > 0) {
     const numPart = parts.find((p: string) => /^\d+[a-zA-Z]?$/.test(p));
     if (numPart) houseNumber = numPart;
   }
 
-  // Extraer urbanización de display_name si existe
   if (!urb && parts.length > 0) {
     const urbPart = parts.find((p: string) => /^urbanizaci[oó]n\s+/i.test(p) || /^urb\.?\s+/i.test(p) || /^unidad vecinal\s+/i.test(p));
     if (urbPart) urb = urbPart;
@@ -228,6 +240,10 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const googleMapRef = useRef<google.maps.Map | null>(null);
   const googleMarkerRef = useRef<google.maps.Marker | null>(null);
 
+  // Estados de Pantalla: 'prompt' (pide permiso/pregunta) -> 'loading_gps' (calibrando) -> 'map' (mapa activo)
+  const [screenState, setScreenState] = useState<'prompt' | 'loading_gps' | 'map'>('prompt');
+  const [gpsCalibratingStep, setGpsCalibratingStep] = useState<string>('Buscando satélites...');
+
   const [coords, setCoords] = useState<{ lat: number; lng: number }>({
     lat: initialLat,
     lng: initialLng,
@@ -242,12 +258,19 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const [hasConfirmed, setHasConfirmed] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
 
+  // Estados de Búsqueda y Autocompletador
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+  const searchTimeoutRef = useRef<any>(null);
+
   // Geocodificación Inversa Metro a Metro de Alta Fidelidad
   const fetchAddressFromCoords = useCallback(async (latitude: number, longitude: number) => {
     setIsGeocoding(true);
     setStatusMessage('Localizando número y calle exacta...');
 
-    // 1. Google Maps Geocoder (si está activo con region=PE y language=es)
+    // 1. Google Maps Geocoder (si está activo)
     if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
       try {
         const geocoder = new (window as any).google.maps.Geocoder();
@@ -289,7 +312,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
       }
     }
 
-    // 2. OpenStreetMap Nominatim JSONv2 Regional con Headers Oficiales
+    // 2. OpenStreetMap Nominatim JSONv2 Regional
     let addressResolved = false;
     try {
       const osmRes = await fetch(
@@ -374,61 +397,195 @@ export const PlacesMapPicker: React.FC<Props> = ({
     }
   }, [fetchAddressFromCoords]);
 
-  // Pedir GPS en tiempo real
-  const requestCurrentLocation = useCallback(() => {
-    if (!('geolocation' in navigator)) {
-      setLocationPermissionDenied(true);
+  // Buscar lugares y autocompletar en tiempo real con Photon/Nominatim
+  const handleSearchInputChange = (text: string) => {
+    setSearchQuery(text);
+    if (!text.trim() || text.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
       return;
     }
 
-    setIsLocating(true);
-    setLocationPermissionDenied(false);
-    setStatusMessage('Localizando tu GPS satelital en alta precisión...');
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      const query = text.trim();
+      const results: PlaceSuggestion[] = [];
+
+      // 1. Photon Komoot API (Ultra rápido con tipo adelante y puntos de interés)
+      try {
+        const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&lat=-12.0464&lon=-77.0428&limit=6&bbox=-77.35,-12.35,-76.7,-11.7`;
+        const res = await fetch(photonUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.features && Array.isArray(data.features)) {
+            data.features.forEach((feat: any, idx: number) => {
+              const props = feat.properties || {};
+              const geom = feat.geometry?.coordinates || [];
+              if (geom.length >= 2) {
+                const pLng = geom[0];
+                const pLat = geom[1];
+                const name = props.name || props.street || '';
+                const street = props.street || '';
+                const houseNum = props.housenumber || '';
+                const district = findMatchingDistrict(props.district || props.city || props.county || 'Lima');
+                
+                let title = name || cleanStreetName(street, houseNum);
+                let subtitle = [street !== name ? street : '', props.district, props.city || 'Lima'].filter(Boolean).join(', ');
+
+                results.push({
+                  id: `photon-${idx}-${pLat}-${pLng}`,
+                  title: title || 'Lugar encontrado',
+                  subtitle: subtitle || `${district}, Lima`,
+                  district,
+                  lat: pLat,
+                  lng: pLng
+                });
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Photon search fallback:', err);
+      }
+
+      // 2. Nominatim Search si Photon no dio suficientes
+      if (results.length < 3) {
+        try {
+          const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ' Lima Peru')}&format=jsonv2&addressdetails=1&limit=5&countrycodes=pe`;
+          const res = await fetch(nomUrl, {
+            headers: {
+              'Accept-Language': 'es',
+              'User-Agent': 'EncomiPerúApp/1.0 (contacto@comikids.pe)'
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+              data.forEach((item: any) => {
+                const pLat = parseFloat(item.lat);
+                const pLng = parseFloat(item.lon);
+                if (!results.some(r => Math.abs(r.lat - pLat) < 0.0005 && Math.abs(r.lng - pLng) < 0.0005)) {
+                  const addr = item.address || {};
+                  const district = findMatchingDistrict(addr.city_district || addr.suburb || addr.town || 'Lima', item.display_name);
+                  results.push({
+                    id: `nom-${item.place_id || pLat}`,
+                    title: cleanStreetName(addr.road || item.name || item.display_name?.split(',')[0] || query),
+                    subtitle: item.display_name?.split(',').slice(1, 3).join(',').trim() || `${district}, Lima`,
+                    district,
+                    lat: pLat,
+                    lng: pLng
+                  });
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Nominatim search fallback:', err);
+        }
+      }
+
+      // 3. Coincidencias con distritos de Lima
+      DISTRITOS_LIMA.forEach(dist => {
+        if (normalizeText(dist).includes(normalizeText(query)) && !results.some(r => r.title.toLowerCase().includes(dist.toLowerCase()))) {
+          results.push({
+            id: `dist-${dist}`,
+            title: `Distrito de ${dist}`,
+            subtitle: 'Lima Metropolitana, Perú',
+            district: dist,
+            lat: coords.lat,
+            lng: coords.lng
+          });
+        }
+      });
+
+      setSuggestions(results);
+      setShowSuggestions(results.length > 0);
+      setIsSearching(false);
+    }, 280);
+  };
+
+  // Seleccionar una sugerencia del autocompletador
+  const handleSelectSuggestion = (sug: PlaceSuggestion) => {
+    setSearchQuery(sug.title);
+    setShowSuggestions(false);
+
+    if (leafletMapRef.current) {
+      leafletMapRef.current.flyTo([sug.lat, sug.lng], 19, { duration: 1 });
+    }
+    if (googleMapRef.current) {
+      googleMapRef.current.panTo({ lat: sug.lat, lng: sug.lng });
+      googleMapRef.current.setZoom(19);
+    }
+
+    updateDeliveryPosition(sug.lat, sug.lng, `${sug.title} (${sug.subtitle})`, sug.district);
+  };
+
+  // Pedir GPS en tiempo real con calibración y transición a pantalla de mapa
+  const requestCurrentLocationWithCalibration = useCallback(() => {
+    setScreenState('loading_gps');
+    setGpsCalibratingStep('🛰️ Conectando con satélites GPS...');
+
+    if (!('geolocation' in navigator)) {
+      setLocationPermissionDenied(true);
+      setScreenState('map');
+      return;
+    }
+
+    const t1 = setTimeout(() => setGpsCalibratingStep('📡 Calibrando señal de alta precisión...'), 900);
+    const t2 = setTimeout(() => setGpsCalibratingStep('📍 Fijando coordenadas de tu ubicación exacta...'), 1800);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
         const accuracy = position.coords.accuracy ? Math.round(position.coords.accuracy) : 10;
 
         setUserGpsCoords({ lat: userLat, lng: userLng });
-        setIsLocating(false);
+        setCoords({ lat: userLat, lng: userLng });
         setLocationPermissionDenied(false);
         setStatusMessage(`📍 Precisión GPS: ${accuracy}m`);
-        setTimeout(() => setStatusMessage(''), 3000);
 
-        if (leafletMapRef.current) {
-          if (!userLocationMarkerRef.current) {
-            userLocationMarkerRef.current = L.marker([userLat, userLng], {
-              icon: createUserLocationDotIcon(),
-              zIndexOffset: 200,
-            }).addTo(leafletMapRef.current);
-          } else {
-            userLocationMarkerRef.current.setLatLng([userLat, userLng]);
+        // Pasar a pantalla de mapa
+        setScreenState('map');
+
+        setTimeout(() => {
+          if (leafletMapRef.current) {
+            if (!userLocationMarkerRef.current) {
+              userLocationMarkerRef.current = L.marker([userLat, userLng], {
+                icon: createUserLocationDotIcon(),
+                zIndexOffset: 200,
+              }).addTo(leafletMapRef.current);
+            } else {
+              userLocationMarkerRef.current.setLatLng([userLat, userLng]);
+            }
+
+            leafletMapRef.current.setView([userLat, userLng], 19, { animate: true });
           }
 
-          leafletMapRef.current.setView([userLat, userLng], 19, {
-            animate: true,
-          });
-        }
+          if (googleMapRef.current) {
+            googleMapRef.current.panTo({ lat: userLat, lng: userLng });
+            googleMapRef.current.setZoom(19);
+          }
 
-        if (googleMapRef.current) {
-          googleMapRef.current.panTo({ lat: userLat, lng: userLng });
-          googleMapRef.current.setZoom(19);
-        }
-
-        // Posicionar el pin de entrega directamente en la ubicación exacta del usuario
-        updateDeliveryPosition(userLat, userLng);
+          updateDeliveryPosition(userLat, userLng);
+        }, 300);
       },
       (error) => {
-        setIsLocating(false);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        setScreenState('map');
+
         if (error.code === error.PERMISSION_DENIED) {
           setLocationPermissionDenied(true);
           setStatusMessage('Por favor concede permiso de ubicación en tu navegador.');
         } else {
           setStatusMessage('No se pudo obtener señal GPS en este momento.');
         }
-        setTimeout(() => setStatusMessage(''), 4000);
       },
       {
         enableHighAccuracy: true,
@@ -438,9 +595,9 @@ export const PlacesMapPicker: React.FC<Props> = ({
     );
   }, [updateDeliveryPosition]);
 
-  // Inicializar Leaflet / Google Maps
+  // Inicializar Leaflet / Google Maps cuando la pantalla sea 'map'
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    if (screenState !== 'map' || !mapContainerRef.current) return;
 
     let isMounted = true;
 
@@ -493,7 +650,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
           googleMapRef.current = gMap;
           googleMarkerRef.current = gMarker;
 
-          requestCurrentLocation();
+          fetchAddressFromCoords(coords.lat, coords.lng);
           return;
         } catch (err) {
           console.warn('Fallo Google Maps, usando Leaflet:', err);
@@ -532,6 +689,13 @@ export const PlacesMapPicker: React.FC<Props> = ({
           updateDeliveryPosition(lat, lng);
         });
 
+        if (userGpsCoords) {
+          userLocationMarkerRef.current = L.marker([userGpsCoords.lat, userGpsCoords.lng], {
+            icon: createUserLocationDotIcon(),
+            zIndexOffset: 200,
+          }).addTo(map);
+        }
+
         deliveryMarkerRef.current = deliveryMarker;
         leafletMapRef.current = map;
 
@@ -539,7 +703,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
           map.invalidateSize();
         }, 250);
 
-        requestCurrentLocation();
+        fetchAddressFromCoords(coords.lat, coords.lng);
       }
     });
 
@@ -554,7 +718,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
       googleMapRef.current = null;
       googleMarkerRef.current = null;
     };
-  }, []);
+  }, [screenState]);
 
   const handleCenterOnUserGps = () => {
     if (userGpsCoords) {
@@ -567,7 +731,37 @@ export const PlacesMapPicker: React.FC<Props> = ({
       }
       updateDeliveryPosition(userGpsCoords.lat, userGpsCoords.lng);
     } else {
-      requestCurrentLocation();
+      setIsLocating(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const uLat = pos.coords.latitude;
+          const uLng = pos.coords.longitude;
+          setUserGpsCoords({ lat: uLat, lng: uLng });
+          setIsLocating(false);
+
+          if (leafletMapRef.current) {
+            if (!userLocationMarkerRef.current) {
+              userLocationMarkerRef.current = L.marker([uLat, uLng], {
+                icon: createUserLocationDotIcon(),
+                zIndexOffset: 200,
+              }).addTo(leafletMapRef.current);
+            } else {
+              userLocationMarkerRef.current.setLatLng([uLat, uLng]);
+            }
+            leafletMapRef.current.flyTo([uLat, uLng], 19, { duration: 1 });
+          }
+          if (googleMapRef.current) {
+            googleMapRef.current.panTo({ lat: uLat, lng: uLng });
+            googleMapRef.current.setZoom(19);
+          }
+          updateDeliveryPosition(uLat, uLng);
+        },
+        () => {
+          setIsLocating(false);
+          setLocationPermissionDenied(true);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
     }
   };
 
@@ -591,78 +785,207 @@ export const PlacesMapPicker: React.FC<Props> = ({
     }
   };
 
+  // =========================================================================
+  // PANTALLA 1: SOLICITUD DE PERMISO GPS (PROMPT INICIAL)
+  // =========================================================================
+  if (screenState === 'prompt') {
+    return (
+      <div className="p-5 sm:p-7 rounded-3xl bg-slate-900 border-2 border-cyan-500/40 shadow-2xl space-y-6 text-center animate-fadeIn max-w-lg mx-auto">
+        {/* Visual Radar Animation */}
+        <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping"></div>
+          <div className="absolute inset-2 rounded-full bg-cyan-500/30 animate-pulse"></div>
+          <div className="relative w-16 h-16 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-indigo-600 flex items-center justify-center text-white text-3xl shadow-xl shadow-cyan-500/40 border border-cyan-300">
+            📍
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-black uppercase tracking-wider">
+            <Compass className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
+            <span>GPS de Alta Precisión</span>
+          </div>
+          <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            Fijar Ubicación de Entrega Exacta
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed px-2">
+            Para que el motorizado llegue directamente a la puerta de tu casa o trabajo sin pérdidas, necesitamos sincronizar tu posición en el mapa.
+          </p>
+        </div>
+
+        <div className="space-y-3 pt-2">
+          <button
+            type="button"
+            onClick={requestCurrentLocationWithCalibration}
+            className="w-full py-4.5 px-6 rounded-2xl bg-linear-to-r from-cyan-500 via-blue-600 to-cyan-500 hover:brightness-110 text-white font-black text-base sm:text-lg flex items-center justify-center gap-3 shadow-xl shadow-cyan-500/40 transition-all cursor-pointer active:scale-95 border-2 border-cyan-400"
+          >
+            <Navigation className="w-5 h-5 fill-current" />
+            <span>🛰️ Activar GPS y Fijar Ubicación</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setScreenState('map')}
+            className="w-full py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+          >
+            🗺️ Abrir Mapa y Buscar por Dirección Manualmente
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // PANTALLA 2: CARGANDO Y CALIBRANDO GPS CON SATÉLITES
+  // =========================================================================
+  if (screenState === 'loading_gps') {
+    return (
+      <div className="p-8 sm:p-10 rounded-3xl bg-slate-900 border-2 border-cyan-500/40 shadow-2xl space-y-6 text-center animate-fadeIn max-w-lg mx-auto">
+        <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full border-4 border-cyan-500/30 border-t-cyan-400 animate-spin"></div>
+          <div className="w-16 h-16 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-300 text-3xl animate-bounce">
+            🛰️
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <h4 className="text-lg font-black text-white">
+            Obteniendo Posición Satelital...
+          </h4>
+          <p className="text-xs sm:text-sm text-cyan-300 font-mono font-bold animate-pulse">
+            {gpsCalibratingStep}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            Estamos triangulando tu ubicación con precisión de pocos metros para cargar el mapa en tu dirección actual.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // PANTALLA 3: MAPA COMPLETO CON AUTOCOMPLETADOR Y BÚSQUEDA
+  // =========================================================================
   return (
     <div className="space-y-3 animate-fadeIn w-full">
       
-      {/* Aviso de permiso GPS si es necesario */}
+      {/* Aviso de permiso GPS si fue denegado */}
       {locationPermissionDenied && (
         <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2.5 animate-fadeIn">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>Permiso de GPS desactivado. Actívalo para detectar tu casa automáticamente.</span>
+            <span>Permiso de GPS no concedido. Puedes buscar tu dirección en la barra o mover el mapa.</span>
           </div>
           <button
             type="button"
-            onClick={requestCurrentLocation}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs transition-colors shrink-0 cursor-pointer"
+            onClick={handleCenterOnUserGps}
+            className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs transition-colors shrink-0 cursor-pointer"
           >
-            Activar GPS
+            Reintentar GPS
           </button>
         </div>
       )}
 
       {/* MAPA MOTORIZADO CON ALTURA OPTIMIZADA */}
-      <div className="relative w-full h-117.5 sm:h-127.5 min-h-105 rounded-3xl overflow-hidden border-2 border-white/20 bg-slate-950 shadow-2xl">
+      <div className="relative w-full h-120 sm:h-135 min-h-110 rounded-3xl overflow-hidden border-2 border-white/20 bg-slate-950 shadow-2xl">
         <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-        {/* Leyenda sutil: Puntito Azul = Tu ubicación física | Pin = Punto de entrega */}
-        <div className="absolute bottom-24 left-4 z-400 pointer-events-none hidden sm:flex items-center gap-3 px-3.5 py-2 rounded-xl bg-slate-950/90 backdrop-blur-md border border-white/15 text-[11px] text-slate-300 shadow-xl">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 border border-white shadow-[0_0_8px_rgba(6,182,212,1)] inline-block"></span>
-            <span className="font-semibold text-white">Tu ubicación GPS</span>
-          </div>
-          <span className="text-slate-600">•</span>
-          <div className="flex items-center gap-1.5">
-            <span>📍</span>
-            <span className="font-semibold text-white">Punto de Entrega</span>
-          </div>
-        </div>
+        {/* ═══ BARRA SUPERIOR FLOTANTE DE BÚSQUEDA Y AUTOCOMPLETADOR ═══ */}
+        <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 z-400 space-y-2">
+          
+          {/* Caja de Búsqueda con Autocompletado */}
+          <div className="relative">
+            <div className="flex items-center rounded-2xl bg-slate-950/95 backdrop-blur-2xl border-2 border-cyan-500/50 shadow-2xl p-1.5 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/25 transition-all">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0 ml-1">
+                {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              </div>
+              
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => handleSearchInputChange(e.target.value)}
+                onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                placeholder="🔍 Busca tu calle, avenida, negocio, tienda, mall..."
+                className="w-full px-3 py-2 text-xs sm:text-sm font-bold text-white placeholder-slate-400 bg-transparent focus:outline-none"
+              />
 
-        {/* Banner Superior Flotante: Dirección en Tiempo Real Completa */}
-        <div className="absolute top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 z-400">
-          <div className="p-3 sm:p-4 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border-2 border-white/25 shadow-2xl flex items-center justify-between gap-2.5 text-xs text-white">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-cyan-500/25 text-cyan-400 flex items-center justify-center shrink-0 shadow-md">
-                <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSuggestions([]);
+                    setShowSuggestions(false);
+                  }}
+                  className="p-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCenterOnUserGps}
+                disabled={isLocating}
+                className="px-3 py-2 rounded-xl bg-cyan-500/25 hover:bg-cyan-500/35 text-cyan-300 text-xs font-black flex items-center gap-1.5 border border-cyan-500/40 transition-all cursor-pointer shadow-md shrink-0 active:scale-95"
+                title="Centrar en mi ubicación GPS exacta"
+              >
+                <Navigation className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
+                <span className="hidden xs:inline sm:inline">{isLocating ? 'GPS...' : 'Mi GPS'}</span>
+              </button>
+            </div>
+
+            {/* Menú Desplegable de Sugerencias de Autocompletado */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1.5 z-50 max-h-60 overflow-y-auto rounded-2xl bg-slate-900/98 backdrop-blur-3xl border-2 border-cyan-500/40 p-1.5 shadow-2xl space-y-1 animate-scaleUp">
+                {suggestions.map((sug) => (
+                  <button
+                    key={sug.id}
+                    type="button"
+                    onClick={() => handleSelectSuggestion(sug)}
+                    className="w-full text-left p-2.5 rounded-xl hover:bg-cyan-500/20 border border-transparent hover:border-cyan-500/30 transition-all flex items-start gap-2.5 cursor-pointer group"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
+                      <MapPin className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-black text-white truncate group-hover:text-cyan-300">
+                        {sug.title}
+                      </p>
+                      <p className="text-[10px] text-slate-400 truncate">
+                        {sug.subtitle}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Banner con Dirección Detectada en Tiempo Real */}
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/90 backdrop-blur-xl border border-white/20 shadow-xl flex items-center justify-between gap-2.5 text-xs text-white">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+                <MapPin className="w-4 h-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] sm:text-[11px] font-black uppercase text-cyan-300 tracking-wider">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-black uppercase text-cyan-300 tracking-wider">
                     {detectedDistrict ? `DISTRITO: ${detectedDistrict.toUpperCase()}` : 'UBICACIÓN SELECCIONADA'}
                   </span>
                   {isGeocoding && <Loader2 className="w-3 h-3 text-cyan-400 animate-spin" />}
                 </div>
-                <p className="font-black text-white text-xs sm:text-sm leading-snug line-clamp-2 wrap-break-word mt-0.5">
+                <p className="font-black text-white text-xs leading-snug truncate mt-0.5">
                   {detectedAddress || statusMessage || 'Mueve o toca el mapa en la puerta de entrega...'}
                 </p>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={handleCenterOnUserGps}
-              disabled={isLocating}
-              className="px-3 py-2 rounded-xl bg-cyan-500/25 hover:bg-cyan-500/35 text-cyan-300 text-xs font-black flex items-center gap-1.5 border border-cyan-500/40 transition-all cursor-pointer shadow-md shrink-0 active:scale-95"
-              title="Centrar en mi ubicación GPS"
-            >
-              <Navigation className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
-              <span>{isLocating ? 'GPS...' : 'Mi GPS'}</span>
-            </button>
           </div>
+
         </div>
 
-        {/* Controles Flotantes de Zoom & GPS reubicados debajo del banner */}
-        <div className="absolute right-3.5 top-28 sm:top-28 z-400 flex flex-col gap-2">
+        {/* Controles Flotantes de Zoom & GPS */}
+        <div className="absolute right-3.5 bottom-24 z-400 flex flex-col gap-2">
           <button
             type="button"
             onClick={() => {

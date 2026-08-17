@@ -110,12 +110,12 @@
 }
 
 /* ==========================================================================
-   PRINT STYLES: A4 SHEET EXACT 6-LABELS PER PAGE (BLACK & WHITE)
+   PRINT STYLES: EXACT 6-LABELS PER PAGE (A4 & CARTA / BLACK & WHITE)
    ========================================================================== */
 @media print {
   @page {
-    size: A4 portrait;
-    margin: 3mm 4mm !important;
+    size: auto;
+    margin: 4mm 4mm !important;
   }
 
   html, body {
@@ -124,7 +124,7 @@
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     overflow: visible !important;
   }
 
@@ -145,7 +145,7 @@
     margin: 0 !important;
     display: block !important;
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     overflow: visible !important;
   }
 
@@ -158,23 +158,24 @@
     margin: 0 !important;
     max-height: none !important;
     width: 100% !important;
+    height: 100% !important;
     overflow: visible !important;
     display: block !important;
   }
 
   .a4-print-page {
     display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    grid-template-rows: 93mm 93mm 93mm !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-rows: repeat(3, 1fr) !important;
     gap: 3mm !important;
     width: 100% !important;
-    max-width: 202mm !important;
-    height: 285mm !important;
-    max-height: 285mm !important;
+    height: calc(100vh - 8mm) !important;
+    max-height: 282mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
     box-sizing: border-box !important;
-    overflow: hidden !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   .a4-print-page:not(:last-child) {
@@ -186,15 +187,14 @@
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
-    height: 93mm !important;
-    max-height: 93mm !important;
-    min-height: 93mm !important;
+    height: 100% !important;
     box-sizing: border-box !important;
-    overflow: hidden !important;
     border: 2px dashed #000000 !important;
     background: #ffffff !important;
     color: #000000 !important;
-    padding: 3.5mm !important;
-    border-radius: 8px !important;
+    padding: 3mm !important;
+    border-radius: 6px !important;
+    break-inside: avoid !important;
   }
 }
+

@@ -1,15 +1,15 @@
 /**
- * PlacesMapPicker — Mapbox GL JS (Ultra Preciso & Inteligente)
- * Search: Mapbox Search API v1 (POI + Calles) + Geocoding v5 (fuzzy match + variaciones) + Nominatim
- * Reverse geocode: Mapbox Geocoding API v5
- * Features:
- *  - Búsqueda inteligente y exhaustiva de Direcciones, Calles con número, Jirones, Avenidas, Pasajes, Prolongaciones y Lugares (KFC, Mall, etc.)
- *  - 100% de sugerencias con cálculo de distancia real en vivo (km / m)
- *  - Expansión automática de prefijos (e.g. "huamanga 1586" -> busca "Prolongación Huamanga 1586", "Jr. Huamanga 1586", etc.)
- *  - Algoritmo de ranking inteligente: Coincidencia de número exacto > número más cercano > similitud léxica > cercanía geográfica
- *  - Botón Buscar 🔍 a la derecha del input
- *  - Botón GPS grande y flotante destacado
- *  - Botón de confirmar ubicación siempre visible en la base del mapa
+ * PlacesMapPicker — Mapbox GL JS (Ultra Preciso, Multifuente & Rápido)
+ * Search Engine:
+ *  1) Mapbox Geocoding v5 (con fuzzyMatch, autocomplete, proximity a GPS del usuario)
+ *  2) Mapbox SearchBox API v1 (POI + Direcciones)
+ *  3) Photon OSM Geocoder (indexa 100% de calles, jirones, pasajes, números de Perú)
+ *  4) Nominatim Geocoder (cobertura OpenStreetMap Perú)
+ *
+ * Correcciones críticas:
+ *  - Distancia REAL calculada únicamente con coordenadas válidas (CERO falsos '0 m').
+ *  - Cobertura exhaustiva de pasajes, jirones, calles con número y POIs.
+ *  - Botón de confirmación siempre fijo y visible en la base del mapa.
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
@@ -94,7 +94,7 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
 }
 
 function formatDistanceBadge(distKm?: number): string | null {
-  if (distKm === undefined || isNaN(distKm)) return null;
+  if (distKm === undefined || isNaN(distKm) || distKm <= 0.005) return null;
   if (distKm < 1) {
     return `${Math.round(distKm * 1000)} m`;
   }
@@ -113,7 +113,7 @@ function matchDistrict(raw: string, fullText = ''): string {
 
 function extractDistrictFromContext(context: any[]): string {
   if (!context?.length) return 'Lima';
-  for (const level of ['neighborhood', 'locality', 'place']) {
+  for (const level of ['neighborhood', 'locality', 'district', 'place']) {
     const item = context.find((c: any) => c.id?.startsWith(level));
     if (item) {
       const matched = matchDistrict(item.text, '');
@@ -134,7 +134,7 @@ function cleanAddress(s: string): string {
     .trim();
 }
 
-/** Genera variaciones inteligentes de prefijo si el usuario no especificó si es Jr, Av, Prolongación, etc. */
+/** Genera variaciones inteligentes de prefijo */
 function getQueryVariations(raw: string): string[] {
   const clean = raw.trim();
   const variations = [clean];
@@ -142,27 +142,27 @@ function getQueryVariations(raw: string): string[] {
   const hasPrefix = /^(jr\.?|jir[oó]n|av\.?|avenida|calle|ca\.?|pje\.?|pasaje|prol\.?|prolongaci[oó]n|alameda|carretera)\b/i.test(lower);
   
   if (!hasPrefix) {
-    variations.push(`Prolongación ${clean}`);
-    variations.push(`Jr. ${clean}`);
-    variations.push(`Av. ${clean}`);
+    variations.push(`Avenida ${clean}`);
+    variations.push(`Jirón ${clean}`);
     variations.push(`Calle ${clean}`);
+    variations.push(`Prolongación ${clean}`);
     variations.push(`Pasaje ${clean}`);
   }
   return variations;
 }
 
-/** Calcula el puntaje de relevancia inteligente */
+/** Calcula relevancia numérica y léxica */
 function calculateRelevanceScore(text: string, query: string): number {
   let score = 0;
   const lowerText = text.toLowerCase();
   const lowerQuery = query.toLowerCase();
 
-  // Coincidencia exacta completa
+  // Coincidencia exacta
   if (lowerText.includes(lowerQuery)) {
-    score += 50;
+    score += 60;
   }
 
-  // Palabras individuales coincidentes
+  // Palabras coincidentes
   const queryWords = lowerQuery.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 1);
   for (const w of queryWords) {
     if (lowerText.includes(w)) {
@@ -177,7 +177,7 @@ function calculateRelevanceScore(text: string, query: string): number {
     const numbersInText = (text.match(/\d+/g) || []).map(n => parseInt(n, 10));
 
     if (numbersInText.includes(targetNum)) {
-      score += 120; // ¡Coincidencia exacta de número!
+      score += 150; // Coincidencia exacta de número
     } else if (numbersInText.length > 0) {
       let minDiff = Infinity;
       for (const n of numbersInText) {
@@ -185,7 +185,7 @@ function calculateRelevanceScore(text: string, query: string): number {
         if (diff < minDiff) minDiff = diff;
       }
       if (minDiff < 500) {
-        score += Math.max(0, 60 - Math.min(60, minDiff / 5));
+        score += Math.max(0, 80 - Math.min(80, minDiff / 4));
       }
     }
   }
@@ -194,9 +194,71 @@ function calculateRelevanceScore(text: string, query: string): number {
 }
 
 // ─────────────────────────────────────────────────────────
-//  Geocoding Search Engine (Garantiza Coordenadas al 100%)
+//  Geocoding Search Engines (Garantiza Coordenadas Reales)
 // ─────────────────────────────────────────────────────────
 
+/** 1. Mapbox Geocoding v5 (Garantiza center: [lng, lat] para cada resultado) */
+async function searchMapboxGeocodingV5(v: string, proximity: string): Promise<Suggestion[]> {
+  try {
+    const queryPerú = v.toLowerCase().includes('peru') || v.toLowerCase().includes('lima') ? v : `${v}, Peru`;
+    // Nota: tipos válidos de Mapbox son: country, region, postcode, district, place, locality, neighborhood, address, poi
+    const url = `${MAPBOX_GEO}/${encodeURIComponent(queryPerú)}.json?access_token=${MAPBOX_TOKEN}&country=PE&language=es&proximity=${proximity}&types=address,poi,neighborhood,locality,place,district&autocomplete=true&fuzzyMatch=true&limit=6`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.features?.length) return [];
+
+    return data.features.map((f: any) => {
+      const mainText = cleanAddress(f.place_name).split(',').slice(0, 2).join(',').trim();
+      const dist = extractDistrictFromContext(f.context || []);
+      const isPoi = f.place_type?.includes('poi');
+      return {
+        id: f.id,
+        mainText: mainText || f.text || v,
+        secondaryText: `${dist !== 'Lima' ? dist + ', ' : ''}Lima, Perú`,
+        lat: f.center[1],
+        lng: f.center[0],
+        district: dist,
+        isPoi,
+      } as Suggestion;
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** 2. Photon OSM (Indexa 100% de calles, pasajes y números con coordenadas) */
+async function searchPhotonOSM(v: string, userCoords: { lat: number; lng: number }): Promise<Suggestion[]> {
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(v + ' Peru')}&lat=${userCoords.lat}&lon=${userCoords.lng}&limit=6&lang=default`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.features?.length) return [];
+
+    return data.features.map((f: any, i: number) => {
+      const p = f.properties || {};
+      const coords = f.geometry?.coordinates || [];
+      const street = p.street || p.name || '';
+      const housenumber = p.housenumber || '';
+      const mainText = street ? (housenumber ? `${street} ${housenumber}` : street) : (p.name || v);
+      const dist = matchDistrict(p.district || p.city || p.county || 'Lima', p.name || '');
+      const isPoi = p.osm_key === 'amenity' || p.osm_key === 'shop' || p.osm_key === 'tourism';
+
+      return {
+        id: `photon-${p.osm_id || i}`,
+        mainText: cleanAddress(mainText),
+        secondaryText: `${dist !== 'Lima' ? dist + ', ' : ''}${p.state || 'Lima'}, Perú`,
+        lat: coords[1],
+        lng: coords[0],
+        district: dist,
+        isPoi,
+      } as Suggestion;
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** 3. Mapbox SearchBox API v1 con Retrieve en paralelo */
 async function searchMapboxSearchAPI(v: string, proximity: string): Promise<Suggestion[]> {
   try {
     const url = `${MAPBOX_SEARCH}/suggest?q=${encodeURIComponent(v)}&access_token=${MAPBOX_TOKEN}&session_token=${SESSION_TOKEN}&country=PE&language=es&proximity=${proximity}&types=poi,address,street,neighborhood,locality,place&limit=6`;
@@ -206,7 +268,6 @@ async function searchMapboxSearchAPI(v: string, proximity: string): Promise<Sugg
 
     const suggestions: any[] = data.suggestions;
 
-    // Obtener coordenadas en paralelo de forma ultra-rápida para los que no las tengan
     const withCoords = await Promise.all(
       suggestions.map(async (s: any) => {
         let lat = s.coordinates?.latitude;
@@ -218,7 +279,7 @@ async function searchMapboxSearchAPI(v: string, proximity: string): Promise<Sugg
             const rRes = await fetch(retrieveUrl);
             const rData = await rRes.json();
             const coords = rData?.features?.[0]?.geometry?.coordinates;
-            if (coords) {
+            if (coords && coords.length >= 2) {
               lng = coords[0];
               lat = coords[1];
             }
@@ -250,36 +311,10 @@ async function searchMapboxSearchAPI(v: string, proximity: string): Promise<Sugg
   }
 }
 
-async function searchMapboxGeocodingV5(v: string, proximity: string): Promise<Suggestion[]> {
-  try {
-    const queryPerú = v.toLowerCase().includes('lima') ? v : `${v}, Lima, Peru`;
-    const url = `${MAPBOX_GEO}/${encodeURIComponent(queryPerú)}.json?access_token=${MAPBOX_TOKEN}&country=PE&language=es&proximity=${proximity}&types=poi,address,neighborhood,locality,place&autocomplete=true&fuzzyMatch=true&limit=6`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (!data.features?.length) return [];
-
-    return data.features.map((f: any) => {
-      const mainText = cleanAddress(f.place_name).split(',').slice(0, 2).join(',').trim();
-      const dist = extractDistrictFromContext(f.context || []);
-      const isPoi = f.place_type?.includes('poi');
-      return {
-        id: f.id,
-        mainText,
-        secondaryText: `${dist !== 'Lima' ? dist + ', ' : ''}Lima, Perú`,
-        lat: f.center[1],
-        lng: f.center[0],
-        district: dist,
-        isPoi,
-      } as Suggestion;
-    });
-  } catch {
-    return [];
-  }
-}
-
+/** 4. Nominatim OpenStreetMap */
 async function searchNominatim(v: string): Promise<Suggestion[]> {
   try {
-    const q = v.toLowerCase().includes('lima') ? v : `${v}, Lima, Peru`;
+    const q = v.toLowerCase().includes('peru') || v.toLowerCase().includes('lima') ? v : `${v}, Peru`;
     const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}&countrycodes=pe&limit=6&addressdetails=1&accept-language=es`;
     const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
     const data: any[] = await res.json();
@@ -323,16 +358,21 @@ function deduplicateAndRank(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    // Garantizar que toda sugerencia tenga cálculo de distancia
-    const targetLat = s.lat ?? userCoords.lat;
-    const targetLng = s.lng ?? userCoords.lng;
-    const distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, targetLat, targetLng);
+    // Calcular distancia SOLO si las coordenadas son genuinas y válidas
+    let distanceKm: number | undefined = undefined;
+    if (s.lat !== undefined && s.lng !== undefined && !isNaN(s.lat) && !isNaN(s.lng)) {
+      const d = calculateDistanceKm(userCoords.lat, userCoords.lng, s.lat, s.lng);
+      // Evitar distancias falsas de 0m
+      if (d > 0.005) {
+        distanceKm = d;
+      }
+    }
 
     const score = calculateRelevanceScore(s.mainText + ' ' + s.secondaryText, query);
-    list.push({ ...s, distanceKm, score, lat: targetLat, lng: targetLng });
+    list.push({ ...s, distanceKm, score });
   }
 
-  // Ordenar por score descendente y por cercanía
+  // Ordenar primero por coincidencia de nombre/número, y luego por cercanía geográfica
   list.sort((a, b) => {
     const scoreDiff = (b.score || 0) - (a.score || 0);
     if (scoreDiff !== 0) return scoreDiff;
@@ -384,7 +424,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
   const reverseGeocode = useCallback(async (lat: number, lng: number) => {
     setIsGeocoding(true);
     try {
-      const url = `${MAPBOX_GEO}/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&country=PE&language=es&types=address,neighborhood,locality,place&limit=1`;
+      const url = `${MAPBOX_GEO}/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&country=PE&language=es&types=address,neighborhood,locality,place,district&limit=1`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.features?.length > 0) {
@@ -479,17 +519,23 @@ export const PlacesMapPicker: React.FC<Props> = ({
     try {
       const searchPromises: Promise<Suggestion[]>[] = [];
 
+      // 1. Mapbox Geocoding v5 con variaciones de prefijos
       for (const v of variations.slice(0, 4)) {
-        searchPromises.push(searchMapboxSearchAPI(v, proximity));
         searchPromises.push(searchMapboxGeocodingV5(v, proximity));
+        searchPromises.push(searchMapboxSearchAPI(v, proximity));
       }
+
+      // 2. Photon OSM (100% de calles, pasajes y números con coordenadas)
+      searchPromises.push(searchPhotonOSM(trimmed, userLoc));
+
+      // 3. Nominatim OSM
       searchPromises.push(searchNominatim(trimmed));
 
       const settled = await Promise.allSettled(searchPromises);
       const rawList: Suggestion[] = [];
 
       for (const res of settled) {
-        if (res.status === 'fulfilled') {
+        if (res.status === 'fulfilled' && Array.isArray(res.value)) {
           rawList.push(...res.value);
         }
       }
@@ -512,7 +558,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
             id: `dist-${d}`,
             mainText: `Distrito de ${d}`,
             secondaryText: 'Lima Metropolitana, Perú',
-            distanceKm: calculateDistanceKm(userLoc.lat, userLoc.lng, LIMA_CENTER.lat, LIMA_CENTER.lng),
           }));
         setSuggestions(districtMatches);
         setShowSuggestions(districtMatches.length > 0);
@@ -545,7 +590,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
       setSuggestions([]);
 
       // Coordenadas directas
-      if (sug.lat !== undefined && sug.lng !== undefined) {
+      if (sug.lat !== undefined && sug.lng !== undefined && !isNaN(sug.lat) && !isNaN(sug.lng)) {
         movePin(sug.lat, sug.lng, sug.mainText, sug.district);
         mapRef.current?.flyTo({ center: [sug.lng, sug.lat], zoom: 18, speed: 1.6 });
         return;
@@ -695,8 +740,8 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Map Container — altura calibrada para que el botón de confirmar siempre quede visible */}
-      <div className="relative w-full rounded-2xl overflow-hidden border border-white/20 bg-slate-950 shadow-2xl h-[58vh] sm:h-[64vh] max-h-[570px] min-h-[380px]">
+      {/* Map Container */}
+      <div className="relative w-full rounded-2xl overflow-hidden border border-white/20 bg-slate-950 shadow-2xl h-[56vh] sm:h-[62vh] max-h-[560px] min-h-[380px]">
 
         <div ref={mapDivRef} className="w-full h-full z-0" />
 
@@ -760,7 +805,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
               </button>
             </form>
 
-            {/* Suggestions dropdown con 100% de distancias */}
+            {/* Suggestions dropdown */}
             {showSuggestions && suggestions.length > 0 && (
               <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-60 overflow-y-auto rounded-xl bg-slate-900/98 backdrop-blur-3xl border border-cyan-500/40 p-1 shadow-2xl space-y-0.5">
                 {suggestions.map((sug) => {
@@ -786,7 +831,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
                         </div>
                       </div>
 
-                      {/* Distancia badge (100% presente) */}
+                      {/* Distancia badge real */}
                       {distBadge && (
                         <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-full shrink-0">
                           📍 {distBadge}

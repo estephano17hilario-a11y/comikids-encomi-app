@@ -43,7 +43,7 @@ export function loadGoogleMapsScript(apiKey?: string): Promise<typeof google.map
 
     const script = document.createElement('script');
     script.id = 'google-maps-sdk-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=places,geometry,marker&region=PE&language=es&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=weekly&libraries=places,geometry,marker&region=PE&language=es`;
     script.async = true;
     script.defer = true;
 

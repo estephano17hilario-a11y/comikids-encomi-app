@@ -259,8 +259,8 @@ export const PlacesMapPicker: React.FC<Props> = ({
 
       try {
         const gmaps = (window as any).google?.maps;
+        // Try new Places API AutocompleteSuggestion first
         if (gmaps?.places?.AutocompleteSuggestion) {
-          // New Places API — session-based autocomplete
           if (!autocompleteSessionRef.current) {
             autocompleteSessionRef.current = new gmaps.places.AutocompleteSessionToken();
           }
@@ -268,12 +268,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
             await gmaps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
               input,
               sessionToken: autocompleteSessionRef.current,
-              locationBias: {
-                circle: {
-                  center: LIMA_CENTER,
-                  radius: 40000,
-                },
-              },
+              locationBias: { circle: { center: LIMA_CENTER, radius: 40000 } },
               includedRegionCodes: ['PE'],
               language: 'es',
             });
@@ -288,9 +283,28 @@ export const PlacesMapPicker: React.FC<Props> = ({
               placeId: p.placeId,
             });
           }
+        } else if (gmaps?.places?.AutocompleteService) {
+          // Fallback: legacy AutocompleteService (still works on v=weekly)
+          const svc = new gmaps.places.AutocompleteService();
+          const predResp = await new Promise<any>((res) =>
+            svc.getPlacePredictions(
+              { input, componentRestrictions: { country: 'pe' }, language: 'es' },
+              (preds: any, status: string) => res({ preds, status })
+            )
+          );
+          if (predResp.status === 'OK') {
+            for (const pred of predResp.preds ?? []) {
+              results.push({
+                id: pred.place_id ?? String(Math.random()),
+                title: pred.structured_formatting?.main_text ?? pred.description,
+                subtitle: pred.structured_formatting?.secondary_text ?? '',
+                placeId: pred.place_id,
+              });
+            }
+          }
         }
       } catch (e) {
-        console.warn('AutocompleteSuggestion error, using geocoder fallback:', e);
+        console.warn('Autocomplete error, using district fallback:', e);
       }
 
       // Fallback: district matching
@@ -337,25 +351,28 @@ export const PlacesMapPicker: React.FC<Props> = ({
       if (sug.placeId) {
         try {
           const gmaps = (window as any).google?.maps;
-          const { Place } = await gmaps.importLibrary('places');
-          const place = new Place({ id: sug.placeId, requestedLanguage: 'es' });
-          await place.fetchFields({ fields: ['location', 'formattedAddress', 'addressComponents'] });
-          const loc = place.location;
-          if (loc) {
-            const distComp = place.addressComponents?.find((c: any) =>
-              c.types?.includes('sublocality_level_1') || c.types?.includes('administrative_area_level_3')
-            );
-            const cleanAddr = (place.formattedAddress ?? sug.title)
-              .replace(/,?\s*(Lima \d{5}|Provincia de Lima|Lima|Perú|Peru)\s*$/gi, '')
-              .trim();
-            movePin(
-              loc.lat(),
-              loc.lng(),
-              cleanAddr || sug.title,
-              matchDistrict(distComp?.longText ?? '', place.formattedAddress ?? '')
-            );
-            mapRef.current?.setZoom(18);
-            return;
+          // Use Place class directly from namespace (classic loading)
+          const PlaceClass = gmaps.places?.Place;
+          if (PlaceClass) {
+            const place = new PlaceClass({ id: sug.placeId, requestedLanguage: 'es' });
+            await place.fetchFields({ fields: ['location', 'formattedAddress', 'addressComponents'] });
+            const loc = place.location;
+            if (loc) {
+              const distComp = place.addressComponents?.find((c: any) =>
+                c.types?.includes('sublocality_level_1') || c.types?.includes('administrative_area_level_3')
+              );
+              const cleanAddr = (place.formattedAddress ?? sug.title)
+                .replace(/,?\s*(Lima \d{5}|Provincia de Lima|Lima|Perú|Peru)\s*$/gi, '')
+                .trim();
+              movePin(
+                loc.lat(),
+                loc.lng(),
+                cleanAddr || sug.title,
+                matchDistrict(distComp?.longText ?? '', place.formattedAddress ?? '')
+              );
+              mapRef.current?.setZoom(18);
+              return;
+            }
           }
         } catch (e) {
           console.warn('Place.fetchFields failed, falling back to geocodeText:', e);
@@ -387,10 +404,11 @@ export const PlacesMapPicker: React.FC<Props> = ({
         return;
       }
 
-      const { Map } = await gmaps.importLibrary('maps');
-      const { AdvancedMarkerElement } = await gmaps.importLibrary('marker');
+      // Use direct namespace — works with classic (non-async bootstrap) loading
+      const MapClass = gmaps.Map as typeof google.maps.Map;
+      const AdvancedMarkerElement = gmaps.marker?.AdvancedMarkerElement as typeof google.maps.marker.AdvancedMarkerElement;
 
-      const map: google.maps.Map = new Map(mapDivRef.current, {
+      const map: google.maps.Map = new MapClass(mapDivRef.current, {
         center: { lat: initialLat, lng: initialLng },
         zoom: 17,
         mapId: 'COMIKIDS_DELIVERY_MAP',
@@ -419,7 +437,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
           <div style="width:7px;height:7px;border-radius:50%;background:#06b6d4;border:1.5px solid #fff;margin-top:2px"></div>
         </div>`;
 
-      const marker: google.maps.marker.AdvancedMarkerElement = new AdvancedMarkerElement({
+      const marker: google.maps.marker.AdvancedMarkerElement = new AdvancedMarkerElement!({
         map,
         position: { lat: initialLat, lng: initialLng },
         content: pinEl.firstElementChild as HTMLElement,

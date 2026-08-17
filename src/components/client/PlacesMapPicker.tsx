@@ -155,23 +155,59 @@ export const PlacesMapPicker: React.FC<Props> = ({
   // ── Reverse geocode via JS Geocoder (no CORS, full address details) ──
   const reverseGeocode = useCallback((lat: number, lng: number) => {
     const geocoder = geocoderRef.current;
-    if (!geocoder) return;
     setIsGeocoding(true);
+
+    const applyNominatim = async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=19&addressdetails=1&accept-language=es`,
+          { headers: { 'Accept-Language': 'es' } }
+        );
+        if (!res.ok) throw new Error('nominatim error');
+        const data = await res.json();
+        const addr = data.address || {};
+        const parts: string[] = [];
+        const road = addr.road || addr.pedestrian || addr.path || '';
+        const houseNum = addr.house_number || '';
+        const urb = addr.residential || addr.neighbourhood || addr.suburb || addr.quarter || '';
+        if (road) parts.push(houseNum ? `${road} ${houseNum}` : road);
+        if (urb && urb !== road) parts.push(urb);
+        const rawDistrict = addr.city_district || addr.suburb || addr.town || addr.city || 'Lima';
+        const dist = matchDistrict(rawDistrict, data.display_name || '');
+        const formattedAddr = parts.length > 0
+          ? parts.join(', ')
+          : (data.display_name || '').split(',')[0].trim();
+        setAddress(formattedAddr || `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        setDistrict(dist);
+      } catch (e) {
+        console.warn('Nominatim fallback also failed:', e);
+        setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        setDistrict('Lima');
+      } finally {
+        setIsGeocoding(false);
+      }
+    };
+
+    if (!geocoder) {
+      applyNominatim();
+      return;
+    }
+
     geocoder.geocode(
-      { location: { lat, lng }, language: 'es', region: 'PE' } as any,
-      (results, status) => {
+      { location: { lat, lng } } as any,
+      (results: any, status: string) => {
         if (status === 'OK' && results && results.length > 0) {
           const best = results[0];
           const formattedAddr = formatAddress(best);
           const dist = extractDistrictFromComponents(best.address_components);
           setAddress(formattedAddr);
           setDistrict(dist);
+          setIsGeocoding(false);
         } else {
-          setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-          setDistrict('Lima');
-          console.warn('Geocoder status:', status);
+          // Google Geocoding API no disponible o sin cuota — usar Nominatim
+          console.warn('Google Geocoder status:', status, '— usando Nominatim como respaldo');
+          applyNominatim();
         }
-        setIsGeocoding(false);
       }
     );
   }, []);

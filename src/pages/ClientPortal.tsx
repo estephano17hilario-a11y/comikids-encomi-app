@@ -44,8 +44,8 @@ export const ClientPortal: React.FC = () => {
         <header className="glass-panel border-b border-cyan-500/20 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-6 sticky top-0 z-40 backdrop-blur-xl shadow-lg transition-all">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-lg shadow-md shadow-cyan-500/20">
-                📦
+              <div className="w-9 h-9 rounded-2xl overflow-hidden shadow-md shadow-cyan-500/20 border border-white/20">
+                <img src="/Comikids.png" alt="ComiKids" className="w-full h-full object-contain" />
               </div>
               <div>
                 <h1 className="text-base font-black text-white leading-tight">Encomi</h1>
@@ -55,7 +55,7 @@ export const ClientPortal: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <span className="px-4 py-2 rounded-2xl text-sm sm:text-base font-black bg-linear-to-r from-pink-500/30 via-purple-500/30 to-cyan-500/30 text-pink-200 border-2 border-pink-400/50 flex items-center gap-2 shadow-xl shadow-pink-500/25 tracking-wide">
-                <span className="text-base sm:text-lg">📦</span>
+                <img src="/Comikids.png" alt="ComiKids" className="w-6 h-6 object-contain" />
                 <span>ComiKids</span>
               </span>
             </div>

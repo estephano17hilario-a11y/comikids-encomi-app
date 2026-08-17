@@ -1,6 +1,7 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OrderProvider } from './context/OrderContext';
+import { GeolocationProvider } from './context/GeolocationContext';
 import { ClientPortal } from './pages/ClientPortal';
 import { AdminPortal } from './pages/AdminPortal';
 import { OrderAlertModal } from './components/common/OrderAlertModal';
@@ -25,11 +26,13 @@ const MainAppContent: React.FC = () => {
 
 export function App() {
   return (
-    <AuthProvider>
-      <OrderProvider>
-        <MainAppContent />
-      </OrderProvider>
-    </AuthProvider>
+    <GeolocationProvider>
+      <AuthProvider>
+        <OrderProvider>
+          <MainAppContent />
+        </OrderProvider>
+      </AuthProvider>
+    </GeolocationProvider>
   );
 }
 

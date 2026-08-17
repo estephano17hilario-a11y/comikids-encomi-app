@@ -775,21 +775,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         </div>
       ) : (
         /* Main Flow Container */
-        <div className="glass-panel p-5 sm:p-7 space-y-5 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/35 backdrop-blur-2xl shadow-2xl shadow-cyan-500/15">
+        <div className="glass-panel p-4 sm:p-5 space-y-4 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/35 backdrop-blur-2xl shadow-2xl shadow-cyan-500/15">
           
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-white/8 pb-3.5">
+          {/* Header — compacto */}
+          <div className="flex items-center justify-between border-b border-white/8 pb-2">
             <div>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 bg-white/6 px-3 py-1 rounded-full border border-white/10">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 bg-white/6 px-2.5 py-0.5 rounded-full border border-white/10">
                 Paso {organicStep} de 3
               </span>
-              <h2 className="text-lg sm:text-xl font-bold text-white mt-1.5 tracking-tight">
+              <h2 className="text-base font-bold text-white mt-1 tracking-tight">
                 {organicStep === 1 && (
                   <span className="flex items-center gap-2 flex-wrap">
                     <span>Envío de Mercadería</span>
                     <span>📦</span>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-black">
-                      <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-black">
+                      <MessageCircle className="w-3 h-3 fill-current" />
                       <span>WhatsApp</span>
                     </span>
                   </span>
@@ -804,12 +804,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     </span>
                   ) : selectedMethod?.tipo_formulario === 'mapa_direccion' ? (
                     motorizadoSubStep === 'map' ? (
-                      <span>Selecciona la ubicación de entrega 📍</span>
+                      <span>Selecciona punto de entrega 🏍️</span>
                     ) : (
                       <span>Confirmar Datos de Entrega 🛵</span>
                     )
                   ) : (
-                    <span>Datos de Entrega & Destinatario 📍</span>
+                    <span>Datos de Entrega & Destinatario 🏍️</span>
                   )
                 )}
               </h2>
@@ -824,7 +824,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   }
                   setOrganicStep((prev) => (prev - 1) as 1 | 2);
                 }}
-                className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
                 title="Volver"
               >
                 <ArrowLeft className="w-4 h-4" />

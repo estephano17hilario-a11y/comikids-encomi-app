@@ -1,7 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
-import { X, Printer } from 'lucide-react';
+import { X, Printer, Download, CheckCircle, Loader2 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 interface Props {
   pedidos: Pedido[];
@@ -10,7 +12,11 @@ interface Props {
   onPrintComplete?: (printedOrderIds: string[]) => void;
 }
 
-export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose, onPrintComplete }) => {
+export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _tallerConfig, onClose, onPrintComplete }) => {
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState('');
+  const [successMsg, setSuccessMsg] = useState(false);
+
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
@@ -25,6 +31,82 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
     window.print();
     if (onPrintComplete) {
       onPrintComplete(uniquePedidos.map(p => p.id));
+    }
+  };
+
+  // Generador de PDF multi-página A4
+  const handleDownloadPdf = async () => {
+    const pageElements = document.querySelectorAll<HTMLElement>('.a4-print-page');
+    if (!pageElements || pageElements.length === 0) {
+      alert('No se encontraron rótulos para generar el PDF.');
+      return;
+    }
+
+    setDownloading(true);
+    setDownloadProgress('Preparando PDF...');
+
+    try {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      for (let i = 0; i < pageElements.length; i++) {
+        setDownloadProgress(`Procesando hoja ${i + 1} de ${pageElements.length}...`);
+        const el = pageElements[i];
+
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+
+        if (i > 0) {
+          pdf.addPage('a4', 'portrait');
+        }
+
+        // Ajustar imagen a tamaño A4 con margen de 5mm
+        const margin = 5;
+        const availableW = pdfWidth - (margin * 2);
+        const availableH = pdfHeight - (margin * 2);
+        const imgRatio = canvas.height / canvas.width;
+        let renderW = availableW;
+        let renderH = renderW * imgRatio;
+
+        if (renderH > availableH) {
+          renderH = availableH;
+          renderW = renderH / imgRatio;
+        }
+
+        const posX = margin + (availableW - renderW) / 2;
+        const posY = margin + (availableH - renderH) / 2;
+
+        pdf.addImage(imgData, 'JPEG', posX, posY, renderW, renderH);
+      }
+
+      setDownloadProgress('Descargando archivo...');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      pdf.save(`Rotulos_Encomi_ComiKids_${dateStr}_(${uniquePedidos.length}pedidos).pdf`);
+
+      if (onPrintComplete) {
+        onPrintComplete(uniquePedidos.map(p => p.id));
+      }
+
+      setSuccessMsg(true);
+      setTimeout(() => setSuccessMsg(false), 4000);
+    } catch (err) {
+      console.error('Error generando PDF de rótulos:', err);
+      alert('Hubo un problema al generar el PDF. Puedes usar la opción de Imprimir.');
+    } finally {
+      setDownloading(false);
+      setDownloadProgress('');
     }
   };
 
@@ -47,14 +129,12 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
   };
 
   const getClientDni = (pedido: Pedido) => {
-    // 1. DNI directo del usuario si no es celular
     if (pedido.usuario?.dni && pedido.usuario.dni.length === 8 && !pedido.usuario.dni.startsWith('9')) {
       return pedido.usuario.dni;
     }
     if (pedido.usuario?.dni_default) {
       return pedido.usuario.dni_default;
     }
-    // 2. Extraer del texto de destino e.g. "DNI/CE Recojo: 74561234"
     if (pedido.destino_detalle) {
       const match = pedido.destino_detalle.match(/(?:DNI|CE|Recojo)[\s:]*([0-9A-Za-z]{7,12})/i);
       if (match && match[1] && match[1].toLowerCase() !== 'recojo') {
@@ -74,35 +154,65 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
       <div className="bulk-print-modal-box w-full max-w-4xl max-h-[92vh] flex flex-col bg-slate-900 border border-white/15 rounded-3xl overflow-hidden shadow-2xl">
         
         {/* Header de Controles (No imprimible) */}
-        <div className="print:hidden p-4 sm:p-5 border-b border-white/10 flex items-center justify-between bg-slate-950/90 shrink-0" data-no-print="true">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/10 text-white flex items-center justify-center text-xl font-bold border border-white/20">
+        <div className="print:hidden p-3.5 sm:p-5 border-b border-white/10 flex flex-wrap items-center justify-between gap-3 bg-slate-950/95 shrink-0" data-no-print="true">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-lg font-bold border border-cyan-500/30 shrink-0">
               📄
             </div>
-            <div>
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <span>Rótulos A4 Blanco y Negro (6 por Hoja)</span>
-                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-white/10 text-slate-200 border border-white/20">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2 flex-wrap">
+                <span>Rótulos A4 Oficiales</span>
+                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                   {uniquePedidos.length} {uniquePedidos.length === 1 ? 'rótulo' : 'rótulos'} • {pages.length} {pages.length === 1 ? 'hoja A4' : 'hojas A4'}
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">
-                Logo Encomi • Logos Shalom / Motorizado • Textos adaptables • 100% Hoja A4
+              <p className="text-[11px] text-slate-400 truncate">
+                Logo ComiKids • Shalom / Motorizado • Formato A4 Blanco y Negro
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Botón Descargar PDF (Funciona en Celulares y PC) */}
             <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={downloading}
+              className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-2 shadow-lg shadow-cyan-500/30 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {downloading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>{downloadProgress || 'Generando PDF...'}</span>
+                </>
+              ) : successMsg ? (
+                <>
+                  <CheckCircle className="w-4 h-4 text-emerald-300" />
+                  <span>¡PDF Guardado!</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Descargar PDF A4 ({uniquePedidos.length})</span>
+                </>
+              )}
+            </button>
+
+            {/* Botón Imprimir Nativo */}
+            <button
+              type="button"
               onClick={handlePrint}
-              className="py-2.5 px-4 sm:px-5 rounded-2xl bg-white hover:bg-slate-200 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
+              className="py-2.5 px-3.5 rounded-xl bg-white hover:bg-slate-200 active:scale-95 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
             >
               <Printer className="w-4 h-4" />
-              <span>Imprimir en Hoja A4 ({uniquePedidos.length})</span>
+              <span className="hidden sm:inline">Imprimir</span>
             </button>
+
+            {/* Botón Cerrar */}
             <button
+              type="button"
               onClick={onClose}
-              className="p-2 rounded-2xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -126,7 +236,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                 return (
                   <div
                     key={pedido.id}
-                    className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden"
+                    className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden min-h-[220px]"
                   >
                     {/* Header: Logo Oficial ComiKids Grande & Slogan & Badge con Logo Shalom / Moto */}
                     <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
@@ -171,10 +281,10 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                       </div>
                     </div>
 
-                    {/* Essential Shipment Details (Diseño adaptable a nombres largos y agencias extensas) */}
+                    {/* Essential Shipment Details */}
                     <div className="flex-1 flex flex-col justify-around py-1 space-y-1 overflow-hidden">
                       
-                      {/* Destinatario (Hasta 2 líneas fluidas) */}
+                      {/* Destinatario */}
                       <div className="border-b border-dashed border-slate-300 pb-0.5">
                         <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
                           DESTINATARIO:
@@ -205,7 +315,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                         </div>
                       )}
 
-                      {/* Agencia Shalom Completa o Dirección Motorizado (Hasta 3 líneas completas) */}
+                      {/* Agencia Shalom Completa o Dirección Motorizado */}
                       <div className="pt-0.5">
                         <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
                           {isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA:'}

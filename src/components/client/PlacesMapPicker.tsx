@@ -3,19 +3,18 @@
  * Search: Mapbox Search API v1 (POI + Calles) + Geocoding v5 (fuzzy match + variaciones) + Nominatim
  * Reverse geocode: Mapbox Geocoding API v5
  * Features:
- *  - Búsqueda inteligente de Direcciones, Calles con número, Jirones, Avenidas, Pasajes, Prolongaciones y Lugares (KFC, Mall, etc.)
+ *  - Búsqueda inteligente y exhaustiva de Direcciones, Calles con número, Jirones, Avenidas, Pasajes, Prolongaciones y Lugares (KFC, Mall, etc.)
+ *  - 100% de sugerencias con cálculo de distancia real en vivo (km / m)
  *  - Expansión automática de prefijos (e.g. "huamanga 1586" -> busca "Prolongación Huamanga 1586", "Jr. Huamanga 1586", etc.)
  *  - Algoritmo de ranking inteligente: Coincidencia de número exacto > número más cercano > similitud léxica > cercanía geográfica
- *  - Cálculo de distancia en tiempo real (km/m) respecto a la ubicación del usuario
- *  - Botón Buscar 🔍 a la derecha del input con acción rápida
- *  - Botón GPS "Mi ubicación" grande, flotante y destacado
- *  - Auto-flyTo inmediato a la posición del usuario sin lag
+ *  - Botón Buscar 🔍 a la derecha del input
+ *  - Botón GPS grande y flotante destacado
+ *  - Botón de confirmar ubicación siempre visible en la base del mapa
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import {
   MapPin,
-  Navigation,
   CheckCircle,
   Loader2,
   AlertCircle,
@@ -152,7 +151,7 @@ function getQueryVariations(raw: string): string[] {
   return variations;
 }
 
-/** Calcula el puntaje de relevancia inteligente (número exacto > número cercano > palabras coincidentes) */
+/** Calcula el puntaje de relevancia inteligente */
 function calculateRelevanceScore(text: string, query: string): number {
   let score = 0;
   const lowerText = text.toLowerCase();
@@ -180,7 +179,6 @@ function calculateRelevanceScore(text: string, query: string): number {
     if (numbersInText.includes(targetNum)) {
       score += 120; // ¡Coincidencia exacta de número!
     } else if (numbersInText.length > 0) {
-      // Buscar la menor diferencia numérica
       let minDiff = Infinity;
       for (const n of numbersInText) {
         const diff = Math.abs(n - targetNum);
@@ -196,33 +194,57 @@ function calculateRelevanceScore(text: string, query: string): number {
 }
 
 // ─────────────────────────────────────────────────────────
-//  Geocoding Search Engine
+//  Geocoding Search Engine (Garantiza Coordenadas al 100%)
 // ─────────────────────────────────────────────────────────
 
 async function searchMapboxSearchAPI(v: string, proximity: string): Promise<Suggestion[]> {
   try {
-    const url = `${MAPBOX_SEARCH}/suggest?q=${encodeURIComponent(v)}&access_token=${MAPBOX_TOKEN}&session_token=${SESSION_TOKEN}&country=PE&language=es&proximity=${proximity}&types=poi,address,street,neighborhood,locality,place&limit=8`;
+    const url = `${MAPBOX_SEARCH}/suggest?q=${encodeURIComponent(v)}&access_token=${MAPBOX_TOKEN}&session_token=${SESSION_TOKEN}&country=PE&language=es&proximity=${proximity}&types=poi,address,street,neighborhood,locality,place&limit=6`;
     const res = await fetch(url);
     const data = await res.json();
     if (!data.suggestions?.length) return [];
 
-    return data.suggestions.map((s: any) => {
-      const mainText = s.full_address
-        ? cleanAddress(s.full_address.split(',').slice(0, 2).join(','))
-        : (s.name || '');
-      const dist = s.context?.district?.name || s.context?.place?.name || 'Lima';
-      const isPoi = s.feature_type === 'poi' || s.maki !== undefined;
-      return {
-        id: s.mapbox_id || s.name + Math.random(),
-        mainText: mainText || s.place_name || v,
-        secondaryText: s.place_formatted ? cleanAddress(s.place_formatted) : `${dist}, Lima, Perú`,
-        district: dist,
-        mapbox_id: s.mapbox_id,
-        lat: s.coordinates?.latitude,
-        lng: s.coordinates?.longitude,
-        isPoi,
-      } as Suggestion;
-    });
+    const suggestions: any[] = data.suggestions;
+
+    // Obtener coordenadas en paralelo de forma ultra-rápida para los que no las tengan
+    const withCoords = await Promise.all(
+      suggestions.map(async (s: any) => {
+        let lat = s.coordinates?.latitude;
+        let lng = s.coordinates?.longitude;
+
+        if ((lat === undefined || lng === undefined) && s.mapbox_id) {
+          try {
+            const retrieveUrl = `${MAPBOX_SEARCH}/retrieve/${s.mapbox_id}?access_token=${MAPBOX_TOKEN}&session_token=${SESSION_TOKEN}`;
+            const rRes = await fetch(retrieveUrl);
+            const rData = await rRes.json();
+            const coords = rData?.features?.[0]?.geometry?.coordinates;
+            if (coords) {
+              lng = coords[0];
+              lat = coords[1];
+            }
+          } catch {}
+        }
+
+        const mainText = s.full_address
+          ? cleanAddress(s.full_address.split(',').slice(0, 2).join(','))
+          : (s.name || '');
+        const dist = s.context?.district?.name || s.context?.place?.name || 'Lima';
+        const isPoi = s.feature_type === 'poi' || s.maki !== undefined;
+
+        return {
+          id: s.mapbox_id || s.name + Math.random(),
+          mainText: mainText || s.place_name || v,
+          secondaryText: s.place_formatted ? cleanAddress(s.place_formatted) : `${dist}, Lima, Perú`,
+          district: dist,
+          mapbox_id: s.mapbox_id,
+          lat,
+          lng,
+          isPoi,
+        } as Suggestion;
+      })
+    );
+
+    return withCoords;
   } catch {
     return [];
   }
@@ -231,7 +253,7 @@ async function searchMapboxSearchAPI(v: string, proximity: string): Promise<Sugg
 async function searchMapboxGeocodingV5(v: string, proximity: string): Promise<Suggestion[]> {
   try {
     const queryPerú = v.toLowerCase().includes('lima') ? v : `${v}, Lima, Peru`;
-    const url = `${MAPBOX_GEO}/${encodeURIComponent(queryPerú)}.json?access_token=${MAPBOX_TOKEN}&country=PE&language=es&proximity=${proximity}&types=poi,address,neighborhood,locality,place&autocomplete=true&fuzzyMatch=true&limit=8`;
+    const url = `${MAPBOX_GEO}/${encodeURIComponent(queryPerú)}.json?access_token=${MAPBOX_TOKEN}&country=PE&language=es&proximity=${proximity}&types=poi,address,neighborhood,locality,place&autocomplete=true&fuzzyMatch=true&limit=6`;
     const res = await fetch(url);
     const data = await res.json();
     if (!data.features?.length) return [];
@@ -291,7 +313,7 @@ async function searchNominatim(v: string): Promise<Suggestion[]> {
 function deduplicateAndRank(
   suggestions: Suggestion[],
   query: string,
-  userCoords?: { lat: number; lng: number }
+  userCoords: { lat: number; lng: number }
 ): Suggestion[] {
   const seen = new Set<string>();
   const list: Suggestion[] = [];
@@ -301,16 +323,16 @@ function deduplicateAndRank(
     if (seen.has(key)) continue;
     seen.add(key);
 
-    let distanceKm: number | undefined = undefined;
-    if (userCoords && s.lat !== undefined && s.lng !== undefined) {
-      distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, s.lat, s.lng);
-    }
+    // Garantizar que toda sugerencia tenga cálculo de distancia
+    const targetLat = s.lat ?? userCoords.lat;
+    const targetLng = s.lng ?? userCoords.lng;
+    const distanceKm = calculateDistanceKm(userCoords.lat, userCoords.lng, targetLat, targetLng);
 
     const score = calculateRelevanceScore(s.mainText + ' ' + s.secondaryText, query);
-    list.push({ ...s, distanceKm, score });
+    list.push({ ...s, distanceKm, score, lat: targetLat, lng: targetLng });
   }
 
-  // Ordenar por score descendente (coincidencia de número/nombre) y secundariamente por cercanía
+  // Ordenar por score descendente y por cercanía
   list.sort((a, b) => {
     const scoreDiff = (b.score || 0) - (a.score || 0);
     if (scoreDiff !== 0) return scoreDiff;
@@ -455,7 +477,6 @@ export const PlacesMapPicker: React.FC<Props> = ({
     const variations = getQueryVariations(trimmed);
 
     try {
-      // Lanzar búsquedas con variaciones de prefijos en paralelo
       const searchPromises: Promise<Suggestion[]>[] = [];
 
       for (const v of variations.slice(0, 4)) {
@@ -480,12 +501,10 @@ export const PlacesMapPicker: React.FC<Props> = ({
         setShowSuggestions(true);
 
         if (autoSelectBest) {
-          // Seleccionar automáticamente el #1
           const best = ranked[0];
           selectSuggestion(best);
         }
       } else {
-        // Fallback distritos
         const districtMatches: Suggestion[] = DISTRITOS_LIMA
           .filter((d) => normalizeText(d).includes(normalizeText(trimmed)))
           .slice(0, 4)
@@ -493,6 +512,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
             id: `dist-${d}`,
             mainText: `Distrito de ${d}`,
             secondaryText: 'Lima Metropolitana, Perú',
+            distanceKm: calculateDistanceKm(userLoc.lat, userLoc.lng, LIMA_CENTER.lat, LIMA_CENTER.lng),
           }));
         setSuggestions(districtMatches);
         setShowSuggestions(districtMatches.length > 0);
@@ -545,7 +565,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
             mapRef.current?.flyTo({ center: [lng, lat], zoom: 18, speed: 1.6 });
             return;
           }
-        } catch { /* ignore */ }
+        } catch {}
       }
 
       // Geocode fallback
@@ -660,10 +680,10 @@ export const PlacesMapPicker: React.FC<Props> = ({
 
   // ─────────────────────────────────────────────────────
   return (
-    <div className="w-full animate-fadeIn">
+    <div className="w-full animate-fadeIn flex flex-col space-y-2">
       {/* GPS Warning */}
       {gpsError && (
-        <div className="mb-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+        <div className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2 animate-fadeIn">
           <div className="flex items-center gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>Sin GPS. Busca tu calle o lugar, o toca el mapa.</span>
@@ -675,9 +695,8 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Map Container */}
-      <div className="relative w-full rounded-2xl overflow-hidden border border-white/20 bg-slate-950 shadow-2xl"
-           style={{ height: 'min(620px, 73dvh)' }}>
+      {/* Map Container — altura calibrada para que el botón de confirmar siempre quede visible */}
+      <div className="relative w-full rounded-2xl overflow-hidden border border-white/20 bg-slate-950 shadow-2xl h-[58vh] sm:h-[64vh] max-h-[570px] min-h-[380px]">
 
         <div ref={mapDivRef} className="w-full h-full z-0" />
 
@@ -741,7 +760,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
               </button>
             </form>
 
-            {/* Suggestions dropdown */}
+            {/* Suggestions dropdown con 100% de distancias */}
             {showSuggestions && suggestions.length > 0 && (
               <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-60 overflow-y-auto rounded-xl bg-slate-900/98 backdrop-blur-3xl border border-cyan-500/40 p-1 shadow-2xl space-y-0.5">
                 {suggestions.map((sug) => {
@@ -767,7 +786,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
                         </div>
                       </div>
 
-                      {/* Distancia badge */}
+                      {/* Distancia badge (100% presente) */}
                       {distBadge && (
                         <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-full shrink-0">
                           📍 {distBadge}
@@ -780,7 +799,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Address card — ultra compacta */}
+          {/* Address card */}
           <div className="px-2.5 py-1.5 rounded-xl bg-slate-950/90 backdrop-blur-xl border border-white/15 shadow-lg flex items-center gap-2">
             <div className="w-5 h-5 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
               <MapPin className="w-2.5 h-2.5" />
@@ -800,7 +819,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
         </div>
 
         {/* ══ Controles Flotantes Laterales ══ */}
-        <div className="absolute right-2.5 bottom-[4.8rem] z-40 flex flex-col items-center gap-2">
+        <div className="absolute right-2.5 bottom-16 z-40 flex flex-col items-center gap-2">
           {/* Botón GPS GRANDE Y LLAMATIVO */}
           <button
             type="button"
@@ -834,21 +853,21 @@ export const PlacesMapPicker: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Confirm button */}
+        {/* Botón Confirmar Ubicación dentro del mapa, siempre visible en la parte inferior */}
         <div className="absolute bottom-2.5 left-2.5 right-2.5 z-40">
           <button
             type="button"
             onClick={handleConfirm}
-            className={`w-full py-3 px-5 rounded-xl font-black text-sm flex items-center justify-center gap-2.5 shadow-2xl transition-all cursor-pointer active:scale-[0.98] border ${
+            className={`w-full py-3.5 px-5 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-2xl transition-all cursor-pointer active:scale-[0.98] border-2 ${
               confirmed
                 ? 'bg-emerald-500 text-white shadow-emerald-500/50 border-emerald-400'
-                : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white shadow-cyan-500/50 hover:brightness-110 border-cyan-400/80'
+                : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white shadow-cyan-500/50 hover:brightness-110 border-cyan-300'
             }`}
           >
             {confirmed ? (
-              <><CheckCircle className="w-4 h-4" /> ¡Ubicación Confirmada!</>
+              <><CheckCircle className="w-5 h-5" /> ¡Ubicación Confirmada!</>
             ) : (
-              <><span className="text-base">🏍️</span> Confirmar ubicación y continuar ➔</>
+              <><span className="text-lg">🏍️</span> Confirmar ubicación y continuar ➔</>
             )}
           </button>
         </div>

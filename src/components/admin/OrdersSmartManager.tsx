@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
 import { useOrders } from '../../context/OrderContext';
 import { BulkPrintModal } from './BulkPrintModal';
+import { ShalomLabelModal } from './ShalomLabelModal';
 import { EditOrderModal } from './EditOrderModal';
 import { ShalomRegisterModal } from './ShalomRegisterModal';
 import { OrderStatusNotifyModal } from './OrderStatusNotifyModal';
@@ -52,6 +53,7 @@ export const OrdersSmartManager: React.FC = () => {
 
   // Modals
   const [showBulkPrint, setShowBulkPrint] = useState(false);
+  const [selectedLabelOrder, setSelectedLabelOrder] = useState<Pedido | null>(null);
   const [showShalomRegister, setShowShalomRegister] = useState(false);
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -386,7 +388,16 @@ export const OrdersSmartManager: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowBulkPrint(true)}
+              className="py-2 px-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
+              title="Imprimir o descargar todos los rótulos A4"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Imprimir Rótulos A4 ({selectedIds.length > 0 ? selectedIds.length : filteredOrders.length})</span>
+            </button>
+
             <button
               onClick={selectAll}
               className="py-2 px-3 rounded-2xl bg-white/5 hover:bg-white/10 text-cyan-400 font-bold text-xs flex items-center gap-1.5 border border-cyan-500/20 transition-all cursor-pointer"
@@ -613,22 +624,35 @@ export const OrdersSmartManager: React.FC = () => {
                       )}
                     </button>
 
-                    {/* Etiqueta Rotulado (Toggleable) */}
+                    {/* Botón Ver/Imprimir Rótulo Individual */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLabelOrder(order);
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-purple-500/20 hover:bg-purple-500/35 text-purple-200 border border-purple-500/35 text-[11px] font-black transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                      title="Ver e imprimir rótulo individual"
+                    >
+                      <Printer className="w-3 h-3 text-cyan-300" />
+                      <span>Rótulo</span>
+                    </button>
+
+                    {/* Checkbox / Estado Rotulado */}
                     <button
                       type="button"
                       onClick={async (e) => {
                         e.stopPropagation();
                         await updatePedido(order.id, { rotulado: !order.rotulado });
                       }}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
+                      className={`px-2 py-1 rounded-xl text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
                         order.rotulado
                           ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/30 shadow-sm'
                           : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300 hover:bg-white/10'
                       }`}
                       title={order.rotulado ? 'Marcado como Rotulado (Clic para quitar)' : 'Clic para marcar como Rotulado'}
                     >
-                      <span>🏷️</span>
-                      <span>{order.rotulado ? 'Rotulado ✓' : '+ Rotular'}</span>
+                      <span>{order.rotulado ? '✓ Rotulado' : '+ Marcar'}</span>
                     </button>
 
                     {/* Etiqueta Registrado en Shalom (Toggleable) */}
@@ -798,10 +822,19 @@ export const OrdersSmartManager: React.FC = () => {
       {/* Bulk Print Modal (Shalom y Motorizado) */}
       {showBulkPrint && (
         <BulkPrintModal
-          pedidos={selectedOrders}
+          pedidos={selectedOrders.length > 0 ? selectedOrders : filteredOrders}
           tallerConfig={tallerConfig}
           onClose={() => setShowBulkPrint(false)}
           onPrintComplete={handleBulkPrintComplete}
+        />
+      )}
+
+      {/* Single Shalom/Motorizado Label Modal */}
+      {selectedLabelOrder && (
+        <ShalomLabelModal
+          pedido={selectedLabelOrder}
+          tallerConfig={tallerConfig}
+          onClose={() => setSelectedLabelOrder(null)}
         />
       )}
 

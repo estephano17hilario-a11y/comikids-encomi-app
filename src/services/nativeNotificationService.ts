@@ -1,4 +1,5 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Capacitor } from '@capacitor/core';
 import { WidgetService } from './widgetService';
 
 const CHANNEL_ID = 'comikids_orders_high_priority';
@@ -7,7 +8,7 @@ export class NativeNotificationService {
   private static channelCreated = false;
 
   static async initChannel(): Promise<void> {
-    if (this.channelCreated) return;
+    if (this.channelCreated || !Capacitor.isNativePlatform()) return;
     try {
       await LocalNotifications.createChannel({
         id: CHANNEL_ID,

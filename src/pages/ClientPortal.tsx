@@ -44,8 +44,8 @@ export const ClientPortal: React.FC = () => {
         <header className="glass-panel border-b border-cyan-500/20 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-6 sticky top-0 z-40 backdrop-blur-xl shadow-lg transition-all">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl overflow-hidden shadow-md shadow-cyan-500/20 border border-white/20">
-                <img src="/Comikids.png" alt="ComiKids" className="w-full h-full object-contain" />
+              <div className="w-9 h-9 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-lg shadow-md shadow-cyan-500/20">
+                📦
               </div>
               <div>
                 <h1 className="text-base font-black text-white leading-tight">Encomi</h1>

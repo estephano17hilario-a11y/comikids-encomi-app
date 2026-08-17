@@ -78,43 +78,18 @@ function extractDistrictFromComponents(addressComponents: google.maps.GeocoderAd
   return 'Lima';
 }
 
+/**
+ * Usa directamente el formatted_address de Google —
+ * idéntico a lo que muestra Google Maps, limpiando sólo el sufijo país/postal.
+ */
 function formatAddress(result: google.maps.GeocoderResult): string {
-  const comps = result.address_components;
-  const get = (type: string) => comps.find((c) => c.types.includes(type))?.long_name ?? '';
-  const getShort = (type: string) => comps.find((c) => c.types.includes(type))?.short_name ?? '';
-
-  const streetNumber = get('street_number');
-  const route = get('route');
-  const subpremise = get('subpremise');
-  const sublocality2 = get('sublocality_level_2');
-  const sublocality1 = get('sublocality_level_1');
-  const neighborhood = get('neighborhood');
-
-  const parts: string[] = [];
-
-  // Street + number
-  if (route) {
-    parts.push(streetNumber ? `${route} ${streetNumber}` : route);
-  }
-
-  // Subpremise (apt, dpto)
-  if (subpremise) parts.push(`Interior ${subpremise}`);
-
-  // Urbanización / barrio
-  const urb = sublocality2 || neighborhood;
-  if (urb && urb !== route) parts.push(urb);
-
-  // District
-  if (sublocality1) parts.push(sublocality1);
-
-  if (parts.length === 0) {
-    // Fallback: take the first part of formatted_address stripping country/postal
-    return result.formatted_address
-      .replace(/,?\s*(Lima \d{5}|Lima|Perú|Peru|Provincia de Lima)\s*$/gi, '')
-      .trim();
-  }
-
-  return parts.filter(Boolean).join(', ');
+  return result.formatted_address
+    .replace(/,?\s*Lima \d{4,6}/gi, '')   // quitar código postal como "Lima 15046"
+    .replace(/,?\s*Provincia de Lima/gi, '')
+    .replace(/,?\s*Perú\s*$/gi, '')
+    .replace(/,?\s*Peru\s*$/gi, '')
+    .replace(/,\s*$/, '')
+    .trim();
 }
 
 // ─────────────────────────────────────────────────────────
@@ -276,13 +251,58 @@ export const PlacesMapPicker: React.FC<Props> = ({
   // ── Autocomplete search ───────────────────────────────
   const fetchSuggestions = useCallback((input: string) => {
     const svc = autocompleteServiceRef.current;
-    if (!svc || !input.trim() || input.trim().length < 2) {
+    if (!input.trim() || input.trim().length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
 
     setIsFetchingSuggestions(true);
+
+    const tryGeocoder = () => {
+      // Fallback: usar Geocoding API con texto (siempre disponible)
+      geocoderRef.current?.geocode(
+        { address: `${input}, Lima, Peru`, language: 'es', region: 'PE' } as any,
+        (results: any, status: string) => {
+          setIsFetchingSuggestions(false);
+          if (status === 'OK' && results && results.length > 0) {
+            const mapped: Suggestion[] = results.slice(0, 5).map((r: any, i: number) => {
+              const addr = formatAddress(r);
+              const dist = extractDistrictFromComponents(r.address_components);
+              return {
+                id: `geo-${i}`,
+                mainText: addr,
+                secondaryText: dist ? `${dist}, Lima` : 'Lima',
+                placeId: '',
+                lat: r.geometry.location.lat(),
+                lng: r.geometry.location.lng(),
+                district: dist,
+              } as any;
+            });
+            setSuggestions(mapped);
+            setShowSuggestions(true);
+          } else {
+            // Last resort: district matching
+            const districtMatches: Suggestion[] = DISTRITOS_LIMA
+              .filter((d) => normalizeText(d).includes(normalizeText(input)))
+              .slice(0, 4)
+              .map((d) => ({
+                id: `dist-${d}`,
+                mainText: `Distrito de ${d}`,
+                secondaryText: 'Lima Metropolitana, Perú',
+                placeId: '',
+              }));
+            setSuggestions(districtMatches);
+            setShowSuggestions(districtMatches.length > 0);
+          }
+        }
+      );
+    };
+
+    if (!svc) {
+      tryGeocoder();
+      return;
+    }
 
     svc.getPlacePredictions(
       {
@@ -291,12 +311,11 @@ export const PlacesMapPicker: React.FC<Props> = ({
         location: new (window as any).google.maps.LatLng(LIMA_CENTER.lat, LIMA_CENTER.lng),
         radius: 40000,
         language: 'es',
-        types: ['geocode', 'establishment'],
       },
-      (predictions, status) => {
-        setIsFetchingSuggestions(false);
+      (predictions: any, status: string) => {
         if (status === 'OK' && predictions && predictions.length > 0) {
-          const mapped: Suggestion[] = predictions.map((p) => ({
+          setIsFetchingSuggestions(false);
+          const mapped: Suggestion[] = predictions.map((p: any) => ({
             id: p.place_id,
             mainText: p.structured_formatting?.main_text ?? p.description,
             secondaryText: p.structured_formatting?.secondary_text ?? '',
@@ -305,21 +324,12 @@ export const PlacesMapPicker: React.FC<Props> = ({
           setSuggestions(mapped);
           setShowSuggestions(true);
         } else {
-          // Fallback: district matching
-          const districtMatches: Suggestion[] = DISTRITOS_LIMA
-            .filter((d) => normalizeText(d).includes(normalizeText(input)))
-            .slice(0, 4)
-            .map((d) => ({
-              id: `dist-${d}`,
-              mainText: `Distrito de ${d}`,
-              secondaryText: 'Lima Metropolitana, Perú',
-              placeId: '',
-            }));
-          setSuggestions(districtMatches);
-          setShowSuggestions(districtMatches.length > 0);
+          // Places API no disponible — usar Geocoding API como fallback
+          tryGeocoder();
         }
       }
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onQueryChange = (val: string) => {
@@ -335,13 +345,19 @@ export const PlacesMapPicker: React.FC<Props> = ({
       setShowSuggestions(false);
       setSuggestions([]);
 
-      // District-only fallback (no placeId)
+      // Sugerencia con coordenadas directas (viene del geocoder, no de Places API)
+      if (!sug.placeId && (sug as any).lat !== undefined) {
+        movePin((sug as any).lat, (sug as any).lng, sug.mainText, (sug as any).district);
+        mapRef.current?.setZoom(17);
+        return;
+      }
+
+      // District-only fallback (no placeId, no coords)
       if (!sug.placeId) {
         const districtName = sug.mainText.replace('Distrito de ', '');
-        // Geocode by district name
         geocoderRef.current?.geocode(
           { address: `${districtName}, Lima, Peru`, language: 'es', region: 'PE' } as any,
-          (results, status) => {
+          (results: any, status: string) => {
             if (status === 'OK' && results && results.length > 0) {
               const loc = results[0].geometry.location;
               movePin(loc.lat(), loc.lng(), sug.mainText, districtName);

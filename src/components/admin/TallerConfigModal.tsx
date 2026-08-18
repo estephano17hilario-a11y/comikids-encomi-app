@@ -116,9 +116,9 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
               <input
                 type="text"
                 required
-                value={formData.agencia_shalom_origen || 'LA VICTORIA - AV 28 DE JULIO'}
+                value={formData.agencia_shalom_origen || 'AV MEXICO CO'}
                 onChange={e => setFormData({ ...formData, agencia_shalom_origen: e.target.value.toUpperCase() })}
-                placeholder="LA VICTORIA - AV 28 DE JULIO"
+                placeholder="AV MEXICO CO"
                 className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500"
               />
             </div>

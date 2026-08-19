@@ -79,7 +79,15 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
             </div>
             <div>
               <h3 className="text-base font-black text-white">Editar Datos del Despacho</h3>
-              <p className="text-xs text-slate-400 font-mono">#{pedido.codigo_seguimiento}</p>
+              <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-400 font-mono">
+                <span className="text-cyan-300 font-bold">#{pedido.codigo_seguimiento}</span>
+                {pedido.created_at && (
+                  <span>• Creado: {new Date(pedido.created_at).toLocaleDateString('es-PE')} {new Date(pedido.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+                )}
+                {pedido.updated_at && (
+                  <span className="text-amber-300">• Última ed: {new Date(pedido.updated_at).toLocaleDateString('es-PE')} {new Date(pedido.updated_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}</span>
+                )}
+              </div>
             </div>
           </div>
           <button
@@ -89,6 +97,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
             <X className="w-5 h-5" />
           </button>
         </div>
+
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">

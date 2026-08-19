@@ -72,6 +72,74 @@ export const OrdersSmartManager: React.FC = () => {
     return 'En Almacén';
   };
 
+  // Helper para formato de fecha y hora exacta
+  const formatOrderTime = (isoString?: string): string => {
+    if (!isoString) return '';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return '';
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
+    } catch {
+      return '';
+    }
+  };
+
+  const wasEdited = (createdAt?: string, updatedAt?: string): boolean => {
+    if (!createdAt || !updatedAt) return false;
+    try {
+      const t1 = new Date(createdAt).getTime();
+      const t2 = new Date(updatedAt).getTime();
+      return Math.abs(t2 - t1) > 60000;
+    } catch {
+      return false;
+    }
+  };
+
+  // Detección inteligente de pedidos duplicados o simultáneos por la misma clienta
+  const duplicateOrdersMap = useMemo(() => {
+    const map = new Map<string, { count: number; orderIds: string[]; clientName: string }>();
+
+    for (const order of pedidos) {
+      if (order.estado_envio === 'entregado') continue;
+
+      const rawKey = (
+        order.usuario?.dni?.trim() ||
+        order.usuario?.telefono_default?.trim() ||
+        order.usuario?.nombre_completo?.trim().toLowerCase() ||
+        ''
+      );
+
+      if (!rawKey || rawKey === 'cliente' || rawKey === '00000000' || rawKey.toLowerCase() === 'encomi envíos') continue;
+
+      if (!map.has(rawKey)) {
+        map.set(rawKey, {
+          count: 0,
+          orderIds: [],
+          clientName: order.usuario?.nombre_completo || 'Cliente',
+        });
+      }
+
+      const item = map.get(rawKey)!;
+      item.count += 1;
+      item.orderIds.push(order.id);
+    }
+
+    return map;
+  }, [pedidos]);
+
+  const duplicateClientsCount = useMemo(() => {
+    let count = 0;
+    for (const [, info] of duplicateOrdersMap.entries()) {
+      if (info.count >= 2) count++;
+    }
+    return count;
+  }, [duplicateOrdersMap]);
+
   // Swipe detection touch state - track BOTH axes to avoid false positives during scroll
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
@@ -110,6 +178,7 @@ export const OrdersSmartManager: React.FC = () => {
       return order.estado_envio !== 'entregado';
     });
   }, [pedidos, searchTerm, statusFilter, transportFilter]);
+
 
   // Selection handlers
   const toggleSelect = (id: string) => {
@@ -488,6 +557,38 @@ export const OrdersSmartManager: React.FC = () => {
 
       </div>
 
+      {/* Alerta de Pedidos Duplicados / Simultáneos por la misma Clienta */}
+      {duplicateClientsCount > 0 && (
+        <div className="p-3.5 sm:p-4 rounded-3xl bg-linear-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-2 border-amber-500/45 text-amber-200 flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-amber-500/10 animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/25 border border-amber-500/45 text-amber-300 flex items-center justify-center text-xl font-bold shrink-0">
+              ⚠️
+            </div>
+            <div>
+              <strong className="text-xs sm:text-sm font-black text-amber-200 block">
+                ¡Atención! Se detectaron {duplicateClientsCount} clientas con pedidos simultáneos o duplicados
+              </strong>
+              <p className="text-[11px] text-amber-300/80">
+                Revisa las órdenes marcadas con la insignia de alerta para confirmar si corresponden a pedidos combinados.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const firstDup = Array.from(duplicateOrdersMap.values()).find(v => v.count >= 2);
+                if (firstDup) setSearchTerm(firstDup.clientName);
+              }}
+              className="py-2 px-3.5 rounded-xl bg-amber-500/30 hover:bg-amber-500/50 active:scale-95 text-white text-xs font-black transition-all cursor-pointer shadow-sm"
+            >
+              🔍 Filtrar Duplicados
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* --- CARDS LIST VIEW --- */}
       {filteredOrders.length === 0 ? (
         <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
@@ -506,6 +607,14 @@ export const OrdersSmartManager: React.FC = () => {
           {filteredOrders.map(order => {
             const isSelected = selectedIds.includes(order.id);
             const dni = order.usuario?.dni || order.usuario?.dni_default || '';
+            const rawKey = (
+              order.usuario?.dni?.trim() ||
+              order.usuario?.telefono_default?.trim() ||
+              order.usuario?.nombre_completo?.trim().toLowerCase() ||
+              ''
+            );
+            const dupInfo = rawKey ? duplicateOrdersMap.get(rawKey) : null;
+            const isDuplicateOrSimultaneous = Boolean(dupInfo && dupInfo.count >= 2);
 
             return (
               <div
@@ -517,6 +626,8 @@ export const OrdersSmartManager: React.FC = () => {
                 className={`p-4 sm:p-5 rounded-3xl border transition-all space-y-3 cursor-pointer select-none relative ${
                   isSelected
                     ? 'bg-cyan-950/40 border-cyan-400/80 shadow-lg shadow-cyan-500/10'
+                    : isDuplicateOrSimultaneous
+                    ? 'bg-slate-900/90 border-amber-500/50 hover:border-amber-400 shadow-md shadow-amber-500/5'
                     : 'bg-slate-900/80 border-white/10 hover:border-white/20 hover:bg-slate-900/95 shadow-md'
                 }`}
               >
@@ -551,6 +662,26 @@ export const OrdersSmartManager: React.FC = () => {
                   </span>
                 </div>
 
+                {/* Insignia de Pedido Duplicado / Simultáneo */}
+                {isDuplicateOrSimultaneous && (
+                  <div className="p-2 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-2 shadow-sm animate-pulse">
+                    <div className="flex items-center gap-1.5 font-bold truncate">
+                      <span>⚠️</span>
+                      <span className="truncate">¡{dupInfo?.count} pedidos simultáneos activos!</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSearchTerm(order.usuario?.nombre_completo || order.usuario?.dni || '');
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-amber-500/40 hover:bg-amber-500/60 text-white font-black text-[10px] transition-colors shrink-0"
+                    >
+                      Ver
+                    </button>
+                  </div>
+                )}
+
                 {/* Client Info */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -566,13 +697,13 @@ export const OrdersSmartManager: React.FC = () => {
 
                   <div className="flex items-start gap-1.5 text-xs text-slate-300">
                     <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
-                    <p className="leading-snug text-[11px] line-clamp-2 text-slate-300">
+                    <p className="leading-snug text-[11px] text-slate-300 break-words">
                       {order.destino_detalle}
                     </p>
                   </div>
 
                   {order.observaciones_cliente && (
-                    <p className="text-[10px] text-slate-400 italic line-clamp-1 bg-white/5 p-1.5 rounded-lg">
+                    <p className="text-[10px] text-slate-400 italic bg-white/5 p-1.5 rounded-lg break-words">
                       Ref: {order.observaciones_cliente}
                     </p>
                   )}
@@ -594,8 +725,22 @@ export const OrdersSmartManager: React.FC = () => {
                   </div>
                 )}
 
+                {/* Timestamps: Creación y Última Edición */}
+                <div className="pt-1.5 border-t border-white/6 flex flex-wrap items-center justify-between gap-1 text-[10px] font-mono text-slate-400">
+                  <div className="flex items-center gap-1 text-slate-300">
+                    <span>🕒</span>
+                    <span>Creado: <strong>{formatOrderTime(order.created_at)}</strong></span>
+                  </div>
+                  {wasEdited(order.created_at, order.updated_at) && (
+                    <div className="flex items-center gap-1 text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded-md border border-cyan-500/30" title={`Última edición: ${formatOrderTime(order.updated_at)}`}>
+                      <span>✏️</span>
+                      <span>Editado: <strong>{formatOrderTime(order.updated_at)}</strong></span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Status Badges & Quick Action Pills */}
-                <div className="pt-2.5 border-t border-white/8 flex flex-wrap items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+                <div className="pt-2 border-t border-white/8 flex flex-wrap items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
                   
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Status Indicator & Swipe Hint */}
@@ -706,6 +851,7 @@ export const OrdersSmartManager: React.FC = () => {
           })}
         </div>
       )}
+
 
       {/* --- SWIPE / MOVE STATUS ACTION DIALOG (ITEM 5) --- */}
       {swipeTargetOrder && createPortal(

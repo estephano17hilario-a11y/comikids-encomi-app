@@ -214,16 +214,21 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-2 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-white/5 shrink-0">
-                    <span className="px-2.5 py-1 rounded-xl text-[11px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      📍 {destino}
-                    </span>
-                  </div>
+                    <div className="flex flex-col sm:items-end justify-between sm:justify-center gap-1 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-white/5 shrink-0 max-w-full sm:max-w-xs text-left sm:text-right">
+                      <span className="px-2.5 py-1 rounded-xl text-[11px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30 inline-block w-fit sm:ml-auto">
+                        📍 {destino}
+                      </span>
+                      <p className="text-[10px] text-slate-400 truncate max-w-xs leading-tight">
+                        {p.destino_detalle?.replace(/^Agencia Shalom:\s*/i, '')}
+                      </p>
+                    </div>
                 </div>
               );
             })
           )}
         </div>
+
+
 
         {/* Action Buttons */}
         <div className="pt-3 border-t border-white/10 flex items-center gap-3 shrink-0">

@@ -367,15 +367,16 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                           </div>
                         </div>
 
-                        {/* Agencia o Dirección */}
+                        {/* Agencia o Dirección Completa */}
                         <div className="pt-0.5">
-                          <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
+                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block leading-none">
                             {isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA:'}
                           </span>
-                          <p className="text-xs font-black text-black leading-snug pt-0.5 line-clamp-2">
+                          <p className="text-[10px] font-black text-black leading-tight pt-0.5 break-words">
                             {isShalom ? shalomAgency : pedido.destino_detalle}
                           </p>
                         </div>
+
 
                       </div>
 

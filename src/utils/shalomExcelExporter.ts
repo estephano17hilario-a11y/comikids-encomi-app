@@ -17,14 +17,28 @@ const normalizeKey = (str: string): string => {
     .trim();
 };
 
+const normalizeCompact = (str: string): string => {
+  return (str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+};
+
 const destLookup = new Map<string, string>();
+const destCompactLookup = new Map<string, string>();
 for (const d of OFFICIAL_DESTINATIONS) {
+  destLookup.set(d.toUpperCase().trim(), d);
   destLookup.set(normalizeKey(d), d);
+  destCompactLookup.set(normalizeCompact(d), d);
 }
 
 const originLookup = new Map<string, string>();
+const originCompactLookup = new Map<string, string>();
 for (const o of OFFICIAL_ORIGINS) {
+  originLookup.set(o.toUpperCase().trim(), o);
   originLookup.set(normalizeKey(o), o);
+  originCompactLookup.set(normalizeCompact(o), o);
 }
 
 const sortedDestinations = [...OFFICIAL_DESTINATIONS].sort((a, b) => b.length - a.length);
@@ -42,7 +56,10 @@ export const extractShalomOrigen = (tallerConfigOrName?: TallerConfig | string):
   if (!rawInput) return 'AV MEXICO CO';
   const norm = normalizeKey(rawInput);
   if (norm === 'CENTRAL' || norm === 'LIMA CENTRAL' || !norm) return 'AV MEXICO CO';
+  
+  if (originLookup.has(rawInput.toUpperCase().trim())) return originLookup.get(rawInput.toUpperCase().trim())!;
   if (originLookup.has(norm)) return originLookup.get(norm)!;
+  if (originCompactLookup.has(normalizeCompact(rawInput))) return originCompactLookup.get(normalizeCompact(rawInput))!;
 
   for (const off of sortedOrigins) {
     const offNorm = normalizeKey(off);
@@ -55,94 +72,80 @@ export const extractShalomOrigen = (tallerConfigOrName?: TallerConfig | string):
 
 /**
  * Normaliza y extrae ÚNICAMENTE el nombre canónico EXACTO de la agencia de destino (DESTINO - Columna G)
- * eliminando direcciones, números de lote, manzanas y referencias, garantizando coincidencia con Hoja2 Columna C.
+ * utilizando resolución jerárquica de segmentos (Departamento / Provincia / Distrito / Local),
+ * eliminando ambigüedades con nombres de calles o avenidas.
  */
 export const extractShalomDestino = (destinoDetalle: string): string => {
   if (!destinoDetalle) return OFFICIAL_DESTINATIONS[0] || 'LIMA TINGO MARÍA';
 
-  let text = destinoDetalle
-    .replace(/Agencia Shalom:\s*/i, '')
+  // 1. Limpieza inicial de prefijos y datos adicionales
+  let clean = destinoDetalle
+    .replace(/^Agencia Shalom:\s*/i, '')
     .replace(/\(DNI\/CE.*?\)/i, '')
     .replace(/\(.*?DNI.*?\)/i, '')
     .trim();
 
-  const rawNorm = normalizeKey(text);
-  if (destLookup.has(rawNorm)) {
-    return destLookup.get(rawNorm)!;
+  // Si hay guión largo o corto separando ruta geográfica de la dirección física
+  const parts = clean.split(/[-–—]/);
+  const locationPath = parts[0].trim();
+
+  // 2. Extraer segmentos de departamento / provincia / distrito / local
+  const segments = locationPath
+    .split('/')
+    .map(s => s.trim().toUpperCase())
+    .filter(Boolean);
+
+  // 3. Probar el último segmento (nombre exacto / local de la sucursal)
+  if (segments.length > 0) {
+    const lastSeg = segments[segments.length - 1];
+    const lastClean = lastSeg.replace(/[()]/g, '').trim();
+
+    if (destLookup.has(lastSeg)) return destLookup.get(lastSeg)!;
+    if (destLookup.has(lastClean)) return destLookup.get(lastClean)!;
+    
+    const compactLast = normalizeCompact(lastClean);
+    if (destCompactLookup.has(compactLast)) return destCompactLookup.get(compactLast)!;
   }
 
-  // Patrones específicos de alias conocidos
-  if (rawNorm.includes('RAUL MATA')) {
-    const found = OFFICIAL_DESTINATIONS.find(d => normalizeKey(d).includes('RAUL MATA'));
-    if (found) return found;
-  }
-  if (rawNorm.includes('AMERICAS') && rawNorm.includes('PRECURSORES')) {
-    const found = OFFICIAL_DESTINATIONS.find(d => normalizeKey(d).includes('PRECURSORES') && normalizeKey(d).includes('AMERICAS'));
-    if (found) return found;
-  }
-  if (rawNorm.includes('CUTERVO')) {
-    const found = OFFICIAL_DESTINATIONS.find(d => normalizeKey(d) === 'CUTERVO');
-    if (found) return found;
+  // 4. Probar el penúltimo segmento (distrito o cabecera distrital)
+  if (segments.length >= 2) {
+    const distSeg = segments[segments.length - 2];
+    const distClean = distSeg.replace(/[()]/g, '').trim();
+
+    if (destLookup.has(distSeg)) return destLookup.get(distSeg)!;
+    if (destLookup.has(distClean)) return destLookup.get(distClean)!;
+
+    const compactDist = normalizeCompact(distClean);
+    if (destCompactLookup.has(compactDist)) return destCompactLookup.get(compactDist)!;
   }
 
-  // Separar por guiones o barras para aislar el nombre de la agencia de la dirección
-  const parts = text.split(/[-–—/|]/).map(p => p.trim()).filter(Boolean);
-  for (const part of parts) {
-    const partNorm = normalizeKey(part);
-    if (destLookup.has(partNorm)) {
-      return destLookup.get(partNorm)!;
-    }
+  // 5. Probar el segundo segmento (provincia)
+  if (segments.length >= 3) {
+    const provSeg = segments[1].replace(/[()]/g, '').trim();
+    if (destLookup.has(provSeg)) return destLookup.get(provSeg)!;
+    const compactProv = normalizeCompact(provSeg);
+    if (destCompactLookup.has(compactProv)) return destCompactLookup.get(compactProv)!;
   }
 
-  // Coincidencia de prefijo / límite de palabra con la lista oficial ordenada por longitud
+  // 6. Búsqueda de coincidencia en la lista oficial
+  const rawNorm = normalizeKey(clean);
+  if (destLookup.has(rawNorm)) return destLookup.get(rawNorm)!;
+
   for (const official of sortedDestinations) {
     const offNorm = normalizeKey(official);
-    const regex = new RegExp('(?:^|\\s)' + offNorm.replace(/\s+/g, '\\s+') + '(?:\\s|$)', 'i');
-    if (regex.test(rawNorm)) {
+    if (offNorm.length >= 4 && (rawNorm.includes(offNorm) || rawNorm.startsWith(offNorm))) {
       return official;
     }
   }
 
-  // Coincidencia de subcadena por segmento
-  for (const part of parts) {
-    const pNorm = normalizeKey(part);
-    for (const official of sortedDestinations) {
-      const offNorm = normalizeKey(official);
-      if (offNorm.length >= 4 && (pNorm.includes(offNorm) || offNorm.includes(pNorm))) {
-        return official;
-      }
-    }
-  }
-
-  // Puntuación de tokens de respaldo
-  const stopWords = ['URB', 'AVENIDA', 'JIRON', 'CALLE', 'PASAJE', 'MZ', 'LOTE', 'LT', 'CDRA', 'REFERENCIA', 'FRENTE', 'CLINICA', 'NUMERO'];
-  const inputWords = rawNorm.split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
-
-  let bestMatch = OFFICIAL_DESTINATIONS[0] || 'LIMA TINGO MARÍA';
-  let bestScore = 0;
-
-  for (const official of OFFICIAL_DESTINATIONS) {
-    const offNorm = normalizeKey(official);
-    const offWords = offNorm.split(/\s+/).filter(w => w.length > 2);
-    let score = 0;
-    for (const w of offWords) {
-      if (inputWords.includes(w)) score += 2;
-      else if (rawNorm.includes(w)) score += 1;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = official;
-    }
-  }
-
-  return bestMatch;
+  return OFFICIAL_DESTINATIONS[0] || 'LIMA TINGO MARÍA';
 };
 
 /**
- * Extrae el DNI o Carnet de Extranjería del pedido
+ * Extrae el DNI o Carnet de Extranjería del pedido de forma estricta
  */
 export const extractShalomDni = (pedido: Pedido): string => {
-  // 1. Extraer del texto de destino
+  // 1. Extraer del texto de destino (DNI/CE Recojo: XXXXXXXX)
   if (pedido.destino_detalle) {
     const match = pedido.destino_detalle.match(/(?:DNI\/CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{8,12})/i);
     if (match && match[1] && match[1].toLowerCase() !== 'recojo') {
@@ -154,10 +157,10 @@ export const extractShalomDni = (pedido: Pedido): string => {
     }
   }
 
-  // 2. Revisar dni_default
+  // 2. Revisar usuario.dni_default
   if (pedido.usuario?.dni_default) {
     const doc = pedido.usuario.dni_default.trim();
-    if (doc.length === 8 || doc.length === 9 || doc.length === 12) {
+    if (doc.length >= 8 && doc.length <= 12 && !doc.startsWith('9')) {
       return doc;
     }
   }
@@ -168,12 +171,12 @@ export const extractShalomDni = (pedido: Pedido): string => {
     if (raw.length === 8 && !raw.startsWith('9')) {
       return raw;
     }
-    if (raw.length >= 9 && raw.length <= 12 && !raw.startsWith('9')) {
+    if (raw.length >= 8 && raw.length <= 12 && !raw.startsWith('9')) {
       return raw;
     }
   }
 
-  // 4. Buscar secuencia de 8 dígitos
+  // 4. Buscar secuencia de 8 dígitos en observaciones o destino
   const combined = `${pedido.destino_detalle || ''} ${pedido.observaciones_cliente || ''}`;
   const digitMatches = combined.match(/\b([0-9]{8})\b/g);
   if (digitMatches && digitMatches.length > 0) {
@@ -183,11 +186,11 @@ export const extractShalomDni = (pedido: Pedido): string => {
     }
   }
 
-  return '70503353';
+  return pedido.usuario?.dni || '70503353';
 };
 
 /**
- * Extrae el número de celular del pedido (9 dígitos)
+ * Extrae el número de celular del pedido (9 dígitos de Perú)
  */
 export const extractShalomPhone = (pedido: Pedido): string => {
   const phone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
@@ -226,7 +229,7 @@ const loadOfficialBaseWorkbook = async (): Promise<XLSX.WorkBook> => {
 
 /**
  * Genera y descarga el archivo Excel oficial de Envíos Masivos Shalom
- * 100% compatible con el validador oficial.
+ * 100% compatible con el validador oficial de Shalom.
  */
 export const downloadShalomExcel = async (pedidos: Pedido[], tallerConfig: TallerConfig) => {
   const shalomPedidos = pedidos.filter(p => p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom'));
@@ -246,11 +249,11 @@ export const downloadShalomExcel = async (pedidos: Pedido[], tallerConfig: Talle
     const dni = extractShalomDni(pedido);
     const phone = extractShalomPhone(pedido);
     const destino = extractShalomDestino(pedido.destino_detalle);
-    const mercaderia = 'PAQUETE XXS';
+    const clientName = pedido.usuario?.nombre_completo || 'CLIENTE';
 
     wsHoja1[`A${r}`] = { t: 's', v: dni };
     wsHoja1[`B${r}`] = { t: 's', v: phone };
-    wsHoja1[`C${r}`] = { t: 's', v: '' };
+    wsHoja1[`C${r}`] = { t: 's', v: clientName };
     wsHoja1[`D${r}`] = { t: 's', v: '' };
     wsHoja1[`E${r}`] = { t: 's', v: '' };
     wsHoja1[`F${r}`] = { t: 's', v: origen || 'AV MEXICO CO' };

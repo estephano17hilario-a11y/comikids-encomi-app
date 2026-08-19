@@ -37,8 +37,11 @@ export interface EvolutionMessageContent {
     url?: string;
     mimetype?: string;
     title?: string;
+    fileName?: string;
+    caption?: string;
     fileLength?: string | number;
   };
+
 }
 
 export interface EvolutionMessageData {

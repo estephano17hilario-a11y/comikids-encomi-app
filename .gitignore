@@ -16,6 +16,10 @@ dist-ssr
 .env
 .env.*
 !.env.example
+scripts/deploy_*.py
+scripts/test_*.py
+
+
 
 # Editor directories and files
 .vscode/*

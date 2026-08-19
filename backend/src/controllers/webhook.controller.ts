@@ -26,7 +26,13 @@ export class WebhookController {
       const messagesList = Array.isArray(data) ? data : [data];
 
       for (const msgItem of messagesList) {
-        if (!msgItem?.key) continue;
+        if (!msgItem?.key?.remoteJid) continue;
+        const remoteJid = msgItem.key.remoteJid;
+
+        // Ignorar grupos y broadcasts en webhooks
+        if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) {
+          continue;
+        }
 
         // CASO A: Mensaje dirigido al BOT MASTER (Interacción activa del dueño con su Copiloto)
         if (
@@ -35,11 +41,14 @@ export class WebhookController {
           instance === 'comikids_whatsapp'
         ) {
           if (!msgItem.key.fromMe) {
-            const senderNumber = msgItem.key.remoteJid.replace('@s.whatsapp.net', '');
+            const senderNumber = remoteJid.replace('@s.whatsapp.net', '');
             const queryText =
               msgItem.message?.conversation ||
               msgItem.message?.extendedTextMessage?.text ||
               msgItem.message?.imageMessage?.caption ||
+              msgItem.message?.documentMessage?.caption ||
+              msgItem.message?.documentMessage?.title ||
+              (msgItem.message?.documentMessage ? 'Reenvía este documento' : '') ||
               '';
 
             console.log(`[MASTER BOT ROUTE] Encolando consulta de ${senderNumber} al Copiloto: "${queryText}"`);
@@ -47,7 +56,7 @@ export class WebhookController {
             await enqueueCopilotQuery(
               {
                 userPhone: senderNumber,
-                remoteJid: msgItem.key.remoteJid,
+                remoteJid: remoteJid,
                 queryText,
                 messageData: msgItem,
                 timestamp: msgItem.messageTimestamp || Date.now(),
@@ -56,6 +65,7 @@ export class WebhookController {
             );
           }
         }
+
 
         // CASO B: Mensaje en una SUB-INSTANCIA (Ingesta Pasiva Silenciosa 24/7)
         else if (instance?.startsWith('tenant_') || instance?.startsWith('tienda_')) {

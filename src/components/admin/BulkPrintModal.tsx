@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
-import { X, Printer, Download, CheckCircle, Loader2, Share2 } from 'lucide-react';
+import { X, Printer, Download, CheckCircle, Loader2, Share2, Layers } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -24,8 +24,10 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     };
   }, []);
 
-  // Deduplica pedidos por ID
-  const uniquePedidos = Array.from(new Map(pedidos.map(p => [p.id, p])).values());
+  // Deduplicación estricta por ID y código de seguimiento para evitar cualquier repetición
+  const uniquePedidos = Array.from(
+    new Map(pedidos.map(p => [p.id || p.codigo_seguimiento, p])).values()
+  );
 
   const handlePrintNative = () => {
     window.print();
@@ -34,7 +36,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     }
   };
 
-  // Helper para generar el objeto jsPDF con todas las páginas renderizadas
+  // Generador de PDF A4 centrado y calibrado exactamente para 6 rótulos por página (2x3)
   const generatePdfInstance = async (): Promise<jsPDF | null> => {
     const pageElements = document.querySelectorAll<HTMLElement>('.a4-print-page');
     if (!pageElements || pageElements.length === 0) {
@@ -46,45 +48,30 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
       orientation: 'portrait',
       unit: 'mm',
       format: 'a4',
+      compress: true,
     });
 
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-
     for (let i = 0; i < pageElements.length; i++) {
-      setDownloadProgress(`Renderizando hoja ${i + 1} de ${pageElements.length}...`);
+      setDownloadProgress(`Procesando hoja ${i + 1} de ${pageElements.length}...`);
       const el = pageElements[i];
 
       const canvas = await html2canvas(el, {
-        scale: 2.2,
+        scale: 2.5,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
+        windowWidth: 794,
+        windowHeight: 1123,
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
 
       if (i > 0) {
         pdf.addPage('a4', 'portrait');
       }
 
-      // Márgenes mínimos para aprovechar el 98% de la hoja A4 sin espacios muertos
-      const margin = 4;
-      const availableW = pdfWidth - (margin * 2);
-      const availableH = pdfHeight - (margin * 2);
-      const imgRatio = canvas.height / canvas.width;
-      let renderW = availableW;
-      let renderH = renderW * imgRatio;
-
-      if (renderH > availableH) {
-        renderH = availableH;
-        renderW = renderH / imgRatio;
-      }
-
-      const posX = margin + (availableW - renderW) / 2;
-      const posY = margin + (availableH - renderH) / 2;
-
-      pdf.addImage(imgData, 'JPEG', posX, posY, renderW, renderH);
+      // Exactamente 210mm x 297mm (A4 estándar sin bordes cortados)
+      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
     }
 
     return pdf;
@@ -93,7 +80,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
   // Imprimir con Apps de Impresoras (Epson iPrint, HP Smart, Mopria, etc.)
   const handleShareToPrinterApp = async () => {
     setDownloading(true);
-    setDownloadProgress('Preparando para app de impresora...');
+    setDownloadProgress('Preparando archivo para impresora...');
 
     try {
       const pdf = await generatePdfInstance();
@@ -111,7 +98,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
         });
       } else {
         pdf.save(fileName);
-        alert('Se descargó el PDF oficial. Puedes abrirlo directamente con tu aplicación de Epson, HP o visor de impresión.');
+        alert('Se descargó el PDF calibrado. Puedes abrirlo directamente con tu aplicación de Epson o HP.');
       }
 
       if (onPrintComplete) {
@@ -156,7 +143,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     }
   };
 
-  // Divide en grupos de 6 pedidos por cada hoja A4 (2x3)
+  // Divide en grupos de exactamente 6 pedidos por cada hoja A4 (2 columnas x 3 filas)
   const chunkArray = <T,>(arr: T[], size: number): T[][] => {
     const chunks: T[][] = [];
     for (let i = 0; i < arr.length; i += size) {
@@ -175,22 +162,19 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
   };
 
   const getClientDni = (pedido: Pedido) => {
-    if (pedido.usuario?.dni && pedido.usuario.dni.length === 8 && !pedido.usuario.dni.startsWith('9')) {
+    if (pedido.usuario?.dni && pedido.usuario.dni.length >= 8 && !pedido.usuario.dni.startsWith('9')) {
       return pedido.usuario.dni;
     }
     if (pedido.usuario?.dni_default) {
       return pedido.usuario.dni_default;
     }
     if (pedido.destino_detalle) {
-      const match = pedido.destino_detalle.match(/(?:DNI|CE|Recojo)[\s:]*([0-9A-Za-z]{7,12})/i);
-      if (match && match[1] && match[1].toLowerCase() !== 'recojo') {
+      const match = pedido.destino_detalle.match(/(?:DNI|CE|Doc)[\s:]*([0-9A-Za-z]{7,12})/i);
+      if (match && match[1]) {
         return match[1];
       }
     }
-    if (pedido.usuario?.dni && pedido.usuario.dni.toLowerCase() !== 'recojo') {
-      return pedido.usuario.dni;
-    }
-    return 'No registrado';
+    return pedido.usuario?.dni || 'No registrado';
   };
 
   return createPortal(
@@ -203,17 +187,17 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
         <div className="print:hidden p-3.5 sm:p-5 border-b border-white/10 flex flex-wrap items-center justify-between gap-3 bg-slate-950/95 shrink-0" data-no-print="true">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-lg font-bold border border-cyan-500/30 shrink-0">
-              📄
+              <Layers className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2 flex-wrap">
-                <span>Rótulos Oficiales ComiKids</span>
+                <span>Rótulos de Despacho (Formato 6 por Hoja A4)</span>
                 <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  {uniquePedidos.length} {uniquePedidos.length === 1 ? 'rótulo' : 'rótulos'} • {pages.length} {pages.length === 1 ? 'hoja' : 'hojas'}
+                  {uniquePedidos.length} {uniquePedidos.length === 1 ? 'rótulo' : 'rótulos'} • {pages.length} {pages.length === 1 ? 'página' : 'páginas'}
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400 truncate">
-                Optimizado A4 & Carta • Centrado sin bordes muertos • 6 rótulos por hoja
+                Calibrado 2x3 Centrado • 6 rótulos exactos por hoja A4 sin descuadres
               </p>
             </div>
           </div>
@@ -224,7 +208,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
               type="button"
               onClick={handleShareToPrinterApp}
               disabled={downloading}
-              className="py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
+              className="py-2.5 px-3.5 rounded-xl bg-linear-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
               title="Abrir con Epson iPrint, HP Smart o servicio de impresión del celular"
             >
               <Share2 className="w-4 h-4" />
@@ -236,7 +220,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
               type="button"
               onClick={handleDownloadPdf}
               disabled={downloading}
-              className="py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/30 transition-all cursor-pointer disabled:opacity-50"
+              className="py-2.5 px-3.5 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/30 transition-all cursor-pointer disabled:opacity-50"
             >
               {downloading ? (
                 <>
@@ -251,7 +235,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  <span>Descargar PDF</span>
+                  <span>Descargar PDF A4</span>
                 </>
               )}
             </button>
@@ -264,7 +248,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
               title="Impresión directa del navegador o PC"
             >
               <Printer className="w-4 h-4" />
-              <span>Impresión Nativa</span>
+              <span>Impresión Directa</span>
             </button>
 
             {/* Botón Cerrar */}
@@ -279,128 +263,138 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
         </div>
 
         {/* Área de Visualización y Rótulos Imprimibles */}
-        <div className="flex-1 p-2 sm:p-4 overflow-y-auto bg-slate-950 print:bg-white print:p-0 print:m-0 print:overflow-visible">
+        <div className="flex-1 p-2 sm:p-4 overflow-y-auto bg-slate-950 print:bg-white print:p-0 print:m-0 print:overflow-visible flex flex-col items-center">
           
           {pages.map((pageOrders, pageIndex) => (
             <div
               key={pageIndex}
-              className="a4-print-page grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white text-black p-2 sm:p-3 print:p-0 rounded-2xl print:rounded-none shadow-xl print:shadow-none mb-4 print:mb-0"
+              className="a4-print-page bg-white text-black p-3 print:p-0 rounded-2xl print:rounded-none shadow-2xl print:shadow-none mb-6 print:mb-0 box-border"
+              style={{
+                width: '100%',
+                maxWidth: '794px',
+                minHeight: '1123px',
+                boxSizing: 'border-box',
+              }}
             >
-              {pageOrders.map((pedido) => {
-                const isShalom = pedido.metodo_envio_codigo === 'shalom';
-                const clientDni = getClientDni(pedido);
-                const shalomAgency = getShalomAgencyOnly(pedido.destino_detalle);
-                const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
+              <div className="grid grid-cols-2 grid-rows-3 gap-3 w-full h-full">
+                {pageOrders.map((pedido) => {
+                  const isShalom = pedido.metodo_envio_codigo === 'shalom';
+                  const clientDni = getClientDni(pedido);
+                  const shalomAgency = getShalomAgencyOnly(pedido.destino_detalle);
+                  const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
-                return (
-                  <div
-                    key={pedido.id}
-                    className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-2.5 sm:p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden min-h-[210px]"
-                  >
-                    {/* Header: Logo Oficial ComiKids Grande & Slogan & Badge con Logo Shalom / Moto */}
-                    <div className="flex items-center justify-between border-b-2 border-black pb-1 shrink-0">
-                      <div className="flex items-center gap-2">
-                        <img 
-                          src="/Comikids.png" 
-                          alt="ComiKids" 
-                          className="w-10 h-10 sm:w-12 sm:h-12 object-contain shrink-0" 
-                        />
-                        <div>
-                          <strong className="text-sm sm:text-base font-black tracking-tight uppercase block leading-none">
-                            ComiKids
-                          </strong>
+                  return (
+                    <div
+                      key={pedido.id}
+                      className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden box-border h-[345px] max-h-[350px]"
+                    >
+                      {/* Header: Logo Oficial ComiKids & Badge Shalom / Moto */}
+                      <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
+                        <div className="flex items-center gap-2">
+                          <img 
+                            src="/Comikids.png" 
+                            alt="ComiKids" 
+                            className="w-9 h-9 object-contain shrink-0" 
+                          />
+                          <div>
+                            <strong className="text-sm font-black tracking-tight uppercase block leading-none text-black">
+                              ComiKids
+                            </strong>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 block mt-0.5">
+                              ENCOMI ENVÍOS
+                            </span>
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="text-right flex flex-col items-end">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-900 leading-none">
-                          ENCOMI
-                        </span>
-                        <div className="flex items-center gap-1 px-2 py-0.5 rounded border-2 border-black bg-slate-100 mt-0.5 leading-none">
-                          {isShalom ? (
-                            <>
-                              <img 
-                                src="/Shalom-Courier-Logo.webp" 
-                                alt="Shalom" 
-                                className="h-3.5 w-auto object-contain shrink-0"
-                              />
-                              <span className="text-[9px] font-black uppercase tracking-wider text-black">
-                                SHALOM
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-xs leading-none">🛵</span>
-                              <span className="text-[9px] font-black uppercase tracking-wider text-black">
-                                MOTORIZADO
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Essential Shipment Details */}
-                    <div className="flex-1 flex flex-col justify-around py-1 space-y-0.5 overflow-hidden">
-                      
-                      {/* Destinatario */}
-                      <div className="border-b border-dashed border-slate-300 pb-0.5">
-                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block leading-none">
-                          DESTINATARIO:
-                        </span>
-                        <strong className="text-sm sm:text-base font-black text-black block leading-tight pt-0.5 line-clamp-2 uppercase">
-                          {pedido.usuario?.nombre_completo || 'Cliente'}
-                        </strong>
-                      </div>
-
-                      {/* DNI (Shalom) or WhatsApp Phone (Motorizado) */}
-                      {isShalom ? (
-                        <div className="border-b border-dashed border-slate-300 pb-0.5">
-                          <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block leading-none">
-                            DNI / DOCUMENTO RECOJO:
+                        <div className="text-right flex flex-col items-end">
+                          <div className="flex items-center gap-1 px-2 py-0.5 rounded border border-black bg-slate-100 leading-none">
+                            {isShalom ? (
+                              <>
+                                <img 
+                                  src="/Shalom-Courier-Logo.webp" 
+                                  alt="Shalom" 
+                                  className="h-3 w-auto object-contain shrink-0"
+                                />
+                                <span className="text-[9px] font-black uppercase tracking-wider text-black">
+                                  SHALOM
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-xs leading-none">🛵</span>
+                                <span className="text-[9px] font-black uppercase tracking-wider text-black">
+                                  MOTORIZADO
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          <span className="font-mono text-[10px] font-bold text-slate-800 mt-0.5">
+                            #{pedido.codigo_seguimiento}
                           </span>
-                          <strong className="text-sm sm:text-base font-mono font-black text-black block leading-tight pt-0.5">
-                            {clientDni}
-                          </strong>
                         </div>
-                      ) : (
-                        <div className="border-b border-dashed border-slate-300 pb-0.5">
+                      </div>
+
+                      {/* Shipment Details */}
+                      <div className="flex-1 flex flex-col justify-around py-1.5 space-y-1 overflow-hidden">
+                        
+                        {/* Destinatario */}
+                        <div className="border-b border-dashed border-slate-300 pb-1">
                           <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block leading-none">
-                            TELÉFONO / WHATSAPP:
+                            DESTINATARIO:
                           </span>
-                          <strong className="text-sm sm:text-base font-mono font-black text-black block leading-tight pt-0.5">
-                            {clientPhone ? `+51 ${clientPhone}` : 'No registrado'}
+                          <strong className="text-sm font-black text-black block leading-tight pt-0.5 line-clamp-1 uppercase">
+                            {pedido.usuario?.nombre_completo || 'Cliente'}
                           </strong>
                         </div>
-                      )}
 
-                      {/* Agencia Shalom Completa o Dirección Motorizado */}
-                      <div className="pt-0.5">
-                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block leading-none">
-                          {isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA:'}
-                        </span>
-                        <p className="text-xs sm:text-[13px] font-black text-black leading-snug pt-0.5 line-clamp-3">
-                          {isShalom ? shalomAgency : pedido.destino_detalle}
-                        </p>
+                        {/* DNI o Teléfono */}
+                        <div className="grid grid-cols-2 gap-2 border-b border-dashed border-slate-300 pb-1">
+                          <div>
+                            <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
+                              {isShalom ? 'DNI / DOC RECOJO:' : 'DNI / DOC:'}
+                            </span>
+                            <strong className="text-xs font-mono font-black text-black block leading-tight pt-0.5 truncate">
+                              {clientDni}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
+                              TELÉFONO:
+                            </span>
+                            <strong className="text-xs font-mono font-black text-black block leading-tight pt-0.5 truncate">
+                              {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default || 'No registrado')}
+                            </strong>
+                          </div>
+                        </div>
+
+                        {/* Agencia o Dirección */}
+                        <div className="pt-0.5">
+                          <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
+                            {isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA:'}
+                          </span>
+                          <p className="text-xs font-black text-black leading-snug pt-0.5 line-clamp-2">
+                            {isShalom ? shalomAgency : pedido.destino_detalle}
+                          </p>
+                        </div>
+
+                      </div>
+
+                      {/* Footer */}
+                      <div className="pt-1 border-t-2 border-black flex items-center justify-between text-[8.5px] font-black text-slate-700 leading-none shrink-0">
+                        <div className="flex items-center gap-1">
+                          <span>📦</span>
+                          <span>Paquete de Despacho Seguro</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span>★ ★ ★</span>
+                          <span>ComiKids</span>
+                        </div>
                       </div>
 
                     </div>
-
-                    {/* Footer */}
-                    <div className="pt-1 border-t-2 border-black flex items-center justify-between text-[9px] font-black text-slate-700 leading-none shrink-0">
-                      <div className="flex items-center gap-1">
-                        <span>📦</span>
-                        <span>Paquete de Despacho Seguro</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span>★ ★ ★</span>
-                        <span>Encomi Envíos</span>
-                      </div>
-                    </div>
-
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           ))}
 

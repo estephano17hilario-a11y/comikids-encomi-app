@@ -655,6 +655,7 @@ class OrdersService {
     }
   }
 
+
   // --- ACCIONES MASIVAS Y EDICIÓN DE PEDIDOS ---
   async updatePedido(pedidoId: string, updates: Partial<Pedido>): Promise<Pedido | null> {
     const orders = this.getLocalOrders();
@@ -676,7 +677,14 @@ class OrdersService {
       try {
         const dbUpdates = this.sanitizePedidoForDb(updates);
         delete dbUpdates.id; // Don't modify primary key
-        await supabase.from('pedidos').update(dbUpdates).eq('id', pedidoId);
+        dbUpdates.updated_at = new Date().toISOString();
+
+        if (Object.keys(dbUpdates).length > 0) {
+          const { error: updErr } = await supabase.from('pedidos').update(dbUpdates).eq('id', pedidoId);
+          if (updErr) {
+            console.error('Error actualizando pedido en Supabase:', updErr);
+          }
+        }
 
         // Si se actualizó el nombre o teléfono del usuario, actualizar en Supabase usuarios
         if (updates.usuario && (updates.usuario.id || oldOrder.usuario_id)) {
@@ -684,6 +692,8 @@ class OrdersService {
           const userPayload: Record<string, any> = {};
           if (updates.usuario.nombre_completo) userPayload.nombre_completo = updates.usuario.nombre_completo.trim();
           if (updates.usuario.telefono_default) userPayload.telefono_default = updates.usuario.telefono_default.trim();
+          if (updates.usuario.dni) userPayload.dni = updates.usuario.dni.trim();
+
           if (Object.keys(userPayload).length > 0) {
             await supabase.from('usuarios').update(userPayload).eq('id', uId);
             // Actualizar también en la memoria de usuarios locales
@@ -696,12 +706,13 @@ class OrdersService {
           }
         }
       } catch (e) {
-        console.warn('Error actualizando pedido en Supabase:', e);
+        console.error('Error actualizando pedido en Supabase:', e);
       }
     }
 
     return orders[idx];
   }
+
 
   async deletePedido(pedidoId: string): Promise<boolean> {
     this.addDeletedOrderIds([pedidoId]);

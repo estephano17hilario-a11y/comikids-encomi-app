@@ -9,10 +9,11 @@ import { CopilotService } from '../services/copilot.service.js';
 export const copilotWorker = new Worker<CopilotJobData>(
   COPILOT_QUEUE_NAME,
   async (job: Job<CopilotJobData>) => {
-    const { userPhone, remoteJid, queryText } = job.data;
+    const { userPhone, remoteJid, queryText, messageData } = job.data;
     console.log(`[COPILOT WORKER] Procesando consulta interactiva de ${userPhone}...`);
 
-    await CopilotService.answerCopilotQuery(userPhone, remoteJid, queryText);
+    await CopilotService.answerCopilotQuery(userPhone, remoteJid, queryText, messageData);
+
   },
   {
     connection: redisConnectionOptions,

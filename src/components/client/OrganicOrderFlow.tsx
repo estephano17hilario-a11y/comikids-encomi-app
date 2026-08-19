@@ -34,8 +34,10 @@ import {
   MessageCircle,
   FileCheck2,
   RotateCcw,
-  Maximize2
+  Maximize2,
+  Calendar
 } from 'lucide-react';
+
 
 interface Props {
   onSuccess?: () => void;
@@ -103,13 +105,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     return currentUser?.nombre_completo || localStorage.getItem('incomi_saved_fullname') || '';
   });
 
-  const [tiktokUsuario, setTiktokUsuario] = useState<string>(() => {
-    return currentUser?.tiktok_usuario || localStorage.getItem('incomi_saved_tiktok') || '';
+  const [fechaEnvioDeseada, setFechaEnvioDeseada] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
   });
 
   const [dniShalom, setDniShalom] = useState<string>(() => {
     return currentUser?.dni_default || localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
   });
+
 
   const [distritoQuery, setDistritoQuery] = useState<string>(() => {
     return currentUser?.distrito_default || localStorage.getItem('incomi_saved_district') || '';
@@ -131,7 +134,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   useEffect(() => {
     if (currentUser) {
       if (currentUser.nombre_completo) setNombreCompleto(currentUser.nombre_completo);
-      if (currentUser.tiktok_usuario) setTiktokUsuario(currentUser.tiktok_usuario);
       if (currentUser.telefono_default) setWhatsapp(currentUser.telefono_default);
       if (currentUser.dni_default) setDniShalom(currentUser.dni_default);
       if (currentUser.distrito_default) setDistritoQuery(currentUser.distrito_default);
@@ -150,12 +152,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   }, [nombreCompleto]);
 
   useEffect(() => {
-    if (tiktokUsuario) localStorage.setItem('incomi_saved_tiktok', tiktokUsuario);
-  }, [tiktokUsuario]);
-
-  useEffect(() => {
     if (dniShalom) localStorage.setItem('incomi_saved_doc', dniShalom);
   }, [dniShalom]);
+
 
   useEffect(() => {
     if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery);
@@ -371,8 +370,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
     // Persistir todos los datos
     localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
-    const cleanTiktok = tiktokUsuario.trim().replace(/^@/, '');
-    if (cleanTiktok) localStorage.setItem('incomi_saved_tiktok', cleanTiktok);
     localStorage.setItem('incomi_saved_doc', dniShalom.trim());
     if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery.trim());
     if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta.trim());
@@ -390,7 +387,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           nombre_completo: nombreCompleto.trim(),
           telefono_default: whatsapp.trim() || activeUser.telefono_default,
         };
-        if (cleanTiktok) userUpdates.tiktok_usuario = cleanTiktok;
         activeUser = { ...activeUser, ...userUpdates };
         await ordersService.updateUserProfile(activeUser.id, userUpdates);
       } else {
@@ -403,10 +399,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           whatsapp.trim()
         );
         activeUser = regRes.user || null;
-        if (activeUser && cleanTiktok) {
-          await ordersService.updateUserProfile(activeUser.id, { tiktok_usuario: cleanTiktok } as any);
-          activeUser.tiktok_usuario = cleanTiktok;
-        }
         if (currentUser?.rol !== 'empresa' && activeUser) {
           await login(userIdentifier, 'incomi2026');
         }
@@ -429,11 +421,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         id: 'usr-' + Date.now().toString(36),
         dni: userIdentifier,
         nombre_completo: nombreCompleto.trim(),
-        tiktok_usuario: cleanTiktok || undefined,
         telefono_default: whatsapp.trim(),
         rol: 'client',
         created_at: new Date().toISOString()
       };
+
 
       const newOrder = await createPedido({
         usuario_id: clientUserData.id,
@@ -445,7 +437,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         latitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLat : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lat : undefined),
         longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
         observaciones_cliente: referencia.trim() || undefined,
-        fecha_limite: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0],
+        fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
       });
 
       triggerConfetti();
@@ -481,10 +473,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       tipoEnvio: selectedMethod?.nombre || (selectedMethod?.tipo_formulario === 'shalom' ? 'Agencia Shalom Nacional' : 'Motorizado Local Lima'),
       destinoDetalle: destinoTexto,
       codigoSeguimiento: order?.codigo_seguimiento,
+      fechaDeseadaEnvio: fechaEnvioDeseada,
       referencia: referencia.trim() || undefined,
       coordenadasMapsUrl: mapsUrl,
     };
   };
+
 
   const datosComprobanteActuales = getDatosComprobanteActual(createdOrder);
   const whatsappUrl = buildWhatsAppComprobanteUrl(datosComprobanteActuales);
@@ -589,17 +583,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     <span className="text-slate-400 block text-[11px] font-medium">👤 Destinatario:</span>
                     <span className="text-white font-bold text-sm">{nombreCompleto}</span>
                   </div>
-                  {tiktokUsuario && (
-                    <div>
-                      <span className="text-slate-400 block text-[11px] font-medium">🎵 Usuario TikTok:</span>
-                      <span className="text-pink-300 font-bold text-sm font-mono">@{tiktokUsuario.replace(/^@/, '')}</span>
-                    </div>
-                  )}
+                  <div>
+                    <span className="text-slate-400 block text-[11px] font-medium">📅 Fecha Deseada de Envío:</span>
+                    <span className="text-cyan-300 font-bold text-sm font-mono">{fechaEnvioDeseada}</span>
+                  </div>
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">🚚 Tipo de Despacho:</span>
                     <span className="text-white font-bold text-sm">{selectedMethod?.nombre || 'Motorizado Local'}</span>
                   </div>
                 </div>
+
 
                 <div className="pt-2 border-t border-white/6 text-xs space-y-0.5">
                   <span className="text-slate-400 text-[11px] font-medium block">📍 Dirección de Entrega:</span>
@@ -638,12 +631,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     <span className="text-slate-400 block text-[11px] font-medium">👤 Destinatario:</span>
                     <span className="text-white font-bold text-xs sm:text-sm truncate block">{nombreCompleto}</span>
                   </div>
-                  {tiktokUsuario && (
-                    <div>
-                      <span className="text-slate-400 block text-[11px] font-medium">🎵 Usuario TikTok:</span>
-                      <span className="text-pink-300 font-bold text-xs sm:text-sm font-mono truncate block">@{tiktokUsuario.replace(/^@/, '')}</span>
-                    </div>
-                  )}
+                  <div>
+                    <span className="text-slate-400 block text-[11px] font-medium">📅 Fecha Deseada de Envío:</span>
+                    <span className="text-cyan-300 font-bold text-xs sm:text-sm font-mono truncate block">{fechaEnvioDeseada}</span>
+                  </div>
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">📱 WhatsApp:</span>
                     <span className="text-white font-bold text-xs sm:text-sm font-mono">+51 {whatsapp}</span>
@@ -657,6 +648,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     <span className="text-white font-bold text-xs sm:text-sm">{selectedMethod?.nombre}</span>
                   </div>
                 </div>
+
 
                 {selectedAgencyObject && (
                   <div className="pt-2 border-t border-white/6 text-xs space-y-2">
@@ -1333,22 +1325,24 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     </div>
                   </div>
 
-                  {/* Casilla: Nombre completo de usuario de TikTok */}
+                  {/* Casilla: Fecha Deseada de Envío / Despacho */}
                   <div className="space-y-2">
                     <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                      🎵 Nombre completo de usuario de TikTok <span className="text-slate-500 font-normal">(Opcional)</span>
+                      📅 Fecha en la que deseas el Envío / Despacho *
                     </label>
                     <div className="relative flex items-center">
                       <input
-                        type="text"
-                        value={tiktokUsuario}
-                        onChange={e => setTiktokUsuario(e.target.value)}
-                        placeholder="usuario_tiktok"
-                        className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-pink-300 placeholder-slate-400 focus:outline-none focus:border-pink-500 shadow-inner font-mono"
+                        type="date"
+                        required
+                        value={fechaEnvioDeseada}
+                        min={new Date().toISOString().split('T')[0]}
+                        onChange={e => setFechaEnvioDeseada(e.target.value)}
+                        className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-cyan-300 placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner font-mono cursor-pointer"
                       />
-                      <span className="text-pink-400 font-black text-lg absolute left-4 pointer-events-none">@</span>
+                      <Calendar className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
                     </div>
                   </div>
+
 
                   {errorMsg && (
                     <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3 rounded-2xl border border-rose-500/20">

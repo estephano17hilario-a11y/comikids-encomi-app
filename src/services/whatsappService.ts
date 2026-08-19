@@ -3,7 +3,6 @@ import { Pedido } from '../types/database.types';
 // Número fijo oficial de recepción
 export const NUMERO_WHATSAPP_RECEPTOR = "51927781412";
 
-// Paso 1: Estructura estándar para cualquier tipo de comprobante
 export interface DatosComprobante {
   destinatario: string;
   telefonoCliente: string;
@@ -11,6 +10,7 @@ export interface DatosComprobante {
   tipoEnvio: string;
   destinoDetalle: string;
   codigoSeguimiento?: string;
+  fechaDeseadaEnvio?: string;
   referencia?: string;
   montoTotal?: string | number;
   coordenadasMapsUrl?: string;
@@ -27,6 +27,7 @@ export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => 
 
   // Campos condicionales
   const lineaCodigo = datos.codigoSeguimiento ? `📦 *Código / Orden:* #${datos.codigoSeguimiento}\n` : "";
+  const lineaFecha = datos.fechaDeseadaEnvio ? `📅 *Fecha Deseada de Envío:* ${datos.fechaDeseadaEnvio}\n` : "";
   const lineaReferencia = datos.referencia ? `🏷️ *Referencia:* ${datos.referencia}\n` : "";
   const lineaMonto = datos.montoTotal ? `💰 *Monto Total:* S/ ${datos.montoTotal}\n` : "";
   const lineaMaps = datos.coordenadasMapsUrl ? `🗺️ *Ubicación en Google Maps:*\n${datos.coordenadasMapsUrl}\n` : "";
@@ -40,8 +41,7 @@ ${lineaCodigo}👤 *Destinatario:* ${nombre}
 📱 *WhatsApp:* ${telefono}
 🪪 *DNI / CE Recojo:* ${documento}
 🚚 *Tipo de Envío:* ${metodo}
-${lineaMonto}
-📍 *Destino / Agencia:*
+${lineaFecha}${lineaMonto}📍 *Destino / Agencia:*
 ${destino}
 ${lineaReferencia}${lineaMaps}-----------------------------------
 Gracias por la confianza 💖✨🙏`;
@@ -50,6 +50,7 @@ Gracias por la confianza 💖✨🙏`;
   const textoCodificado = encodeURIComponent(cuerpoMensaje);
   return `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${textoCodificado}`;
 };
+
 
 export const enviarComprobanteAWhatsapp = (datos: DatosComprobante): string => {
   const enlaceFinal = buildWhatsAppComprobanteUrl(datos);

@@ -138,193 +138,209 @@ export const ExecutiveBriefingModal: React.FC<Props> = ({
         <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
           
           {/* =========================================================================
-              MODO A: NUEVOS PEDIDOS REGISTRADOS DESDE QUE TE FUISTE
+              MODO A: NUEVOS PEDIDOS REGISTRADOS (CONCISO Y CORTO)
               ========================================================================= */}
-          {mode === 'new_orders' && (
+          {mode === 'new_orders' ? (
             <div className="space-y-3 animate-fadeIn">
               <div className="p-3 bg-pink-500/10 border border-pink-500/25 rounded-2xl flex items-center gap-2.5 text-xs text-pink-200">
                 <Sparkles className="w-4 h-4 text-pink-400 shrink-0" />
-                <span>Se registraron <strong>{newOrders.length} nuevos envíos</strong> mientras estabas ausente. Aquí tienes la información directa:</span>
+                <span>Se registró <strong>{newOrders.length === 1 ? '1 nuevo pedido' : `${newOrders.length} nuevos pedidos`}</strong> en el sistema:</span>
               </div>
 
-              <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+              <div className="space-y-2.5 max-h-80 overflow-y-auto custom-scrollbar">
                 {newOrders.map((ord) => {
                   const clientName = ord.usuario?.nombre_completo || 'Cliente';
-                  const tiktok = ord.usuario?.tiktok_usuario;
+                  const clientPhone = ord.usuario?.telefono_default || ord.usuario?.dni;
                   const isShalom = ord.metodo_envio_codigo === 'shalom' || ord.destino_detalle?.toLowerCase().includes('shalom');
+                  const fechaDeseada = ord.fecha_limite;
+
                   return (
                     <div
                       key={ord.id}
-                      className="p-3.5 rounded-2xl bg-white/4 border border-white/8 hover:border-pink-500/40 transition-all flex items-start justify-between gap-3 text-xs"
+                      className="p-4 rounded-2xl bg-white/5 border border-pink-500/30 shadow-md space-y-2 text-xs"
                     >
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono font-black text-cyan-300 text-xs">#{ord.codigo_seguimiento}</span>
-                          <span className="font-black text-white text-sm">{clientName}</span>
-                          {tiktok && (
-                            <span className="px-1.5 py-0.5 rounded-md bg-pink-500/20 text-pink-300 font-mono text-[10px] font-bold">
-                              @{tiktok.replace(/^@/, '')}
-                            </span>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-black text-cyan-300 text-xs">#{ord.codigo_seguimiento}</span>
+                            <span className="font-black text-white text-sm">{clientName}</span>
+                          </div>
+                          {clientPhone && (
+                            <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                              📱 Tel: {clientPhone}
+                            </p>
                           )}
                         </div>
-                        <p className="text-slate-300 text-[11px] truncate flex items-center gap-1.5">
-                          <span>{isShalom ? '📦' : '🛵'}</span>
-                          <span>{ord.destino_detalle}</span>
-                        </p>
-                        <p className="text-slate-400 text-[10px]">
-                          Bordado: {ord.detalles_bordado}
-                        </p>
+                        <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 border shrink-0 ${
+                          isShalom ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                        }`}>
+                          {isShalom ? '📦 Shalom' : '🛵 Motorizado'}
+                        </span>
                       </div>
-                      <span className="px-2 py-1 rounded-xl bg-cyan-500/15 text-cyan-300 font-bold text-[10px] shrink-0 border border-cyan-500/25">
-                        {ord.metodo_envio_nombre || (isShalom ? 'Shalom' : 'Motorizado')}
-                      </span>
+
+                      <div className="pt-2 border-t border-white/6 space-y-1">
+                        <p className="text-slate-200 text-xs font-medium leading-snug">
+                          <strong>📍 Destino:</strong> {ord.destino_detalle}
+                        </p>
+                        {fechaDeseada && (
+                          <p className="text-cyan-300 font-mono text-[11px]">
+                            📅 <strong>Fecha deseada de envío:</strong> {fechaDeseada}
+                          </p>
+                        )}
+                        {ord.detalles_bordado && ord.detalles_bordado !== `Envío de Mercadería para ${clientName}` && (
+                          <p className="text-slate-400 text-[11px] italic">
+                            📝 {ord.detalles_bordado}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
             </div>
-          )}
-
-          {/* =========================================================================
-              MODO B Y C: STATUS BREAKDOWN GRID (4 Columns)
-              ========================================================================= */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {/* 1. En Almacén */}
-            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-0.5">
-              <div className="flex items-center justify-between text-amber-400 text-xs font-bold">
-                <span>En Almacén</span>
-                <Clock className="w-3.5 h-3.5" />
-              </div>
-              <p className="text-2xl font-black text-white font-mono">{enAlmacen}</p>
-              <span className="text-[10px] text-amber-300 font-medium block">Por atender</span>
-            </div>
-
-            {/* 2. Alistándolo */}
-            <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/25 space-y-0.5">
-              <div className="flex items-center justify-between text-purple-300 text-xs font-bold">
-                <span>Alistándolo</span>
-                <Package className="w-3.5 h-3.5" />
-              </div>
-              <p className="text-2xl font-black text-white font-mono">{alistando}</p>
-              <span className="text-[10px] text-purple-300 font-medium block">En preparación</span>
-            </div>
-
-            {/* 3. Dejando en Shalom */}
-            <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 space-y-0.5">
-              <div className="flex items-center justify-between text-cyan-300 text-xs font-bold">
-                <span>Dejando Shalom</span>
-                <Truck className="w-3.5 h-3.5" />
-              </div>
-              <p className="text-2xl font-black text-white font-mono">{dejandoShalom}</p>
-              <span className="text-[10px] text-cyan-300 font-medium block">En ruta / agencia</span>
-            </div>
-
-            {/* 4. Entregados */}
-            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 space-y-0.5">
-              <div className="flex items-center justify-between text-emerald-400 text-xs font-bold">
-                <span>Entregados</span>
-                <CheckCircle2 className="w-3.5 h-3.5" />
-              </div>
-              <p className="text-2xl font-black text-white font-mono">{entregados}</p>
-              <span className="text-[10px] text-emerald-300 font-medium block">Con éxito</span>
-            </div>
-          </div>
-
-          {/* Transport Breakdown & Clientes */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Canal de Despacho */}
-            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Building2 className="w-4 h-4 text-cyan-400" />
-                  <span>Canal de Despacho</span>
-                </span>
-                <span className="font-mono text-cyan-300 text-xs">{total} envíos</span>
-              </h4>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs bg-white/5 p-2.5 rounded-xl border border-white/5">
-                  <span className="text-slate-300 flex items-center gap-2">
-                    <span className="text-base">📦</span>
-                    <strong>Agencia Shalom Nacional:</strong>
-                  </span>
-                  <span className="font-mono font-black text-white text-sm bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">
-                    {shalomTotal}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs bg-white/5 p-2.5 rounded-xl border border-white/5">
-                  <span className="text-slate-300 flex items-center gap-2">
-                    <span className="text-base">🛵</span>
-                    <strong>Motorizado Local Lima:</strong>
-                  </span>
-                  <span className="font-mono font-black text-white text-sm bg-cyan-500/20 px-2 py-0.5 rounded border border-cyan-500/30">
-                    {motorizadoTotal}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Nuevos Clientes & Pendientes Operativos */}
-            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-pink-400" />
-                  <span>Clientes & Flujo</span>
-                </span>
-                <span className="font-mono text-pink-300 text-xs">{uniqueClientsCount} clientas</span>
-              </h4>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/25">
-                  <span className="text-amber-200 flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Pendientes de rotular:</span>
-                  </span>
-                  <strong className="font-mono font-black text-amber-300 text-sm">
-                    {pendientesRotular}
-                  </strong>
-                </div>
-                <div className="flex items-center justify-between text-xs bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/25">
-                  <span className="text-blue-200 flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-300" />
-                    <span>Pendientes registro Shalom:</span>
-                  </span>
-                  <strong className="font-mono font-black text-blue-300 text-sm">
-                    {pendientesShalomReg}
-                  </strong>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* =========================================================================
-              DETALLE DE ENVÍOS NO ENTREGADOS (Requerimiento Específico)
-              ========================================================================= */}
-          {noEntregados.length > 0 && (
-            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-black uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-rose-400" />
-                  <span>Envíos Registrados No Entregados ({noEntregados.length})</span>
-                </h4>
-                <span className="text-[10px] text-rose-300 font-bold">Requieren atención</span>
-              </div>
-              <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
-                {noEntregados.map(p => (
-                  <div key={p.id} className="p-2 bg-black/40 rounded-xl border border-rose-500/20 flex items-center justify-between text-xs">
-                    <div className="min-w-0 pr-2">
-                      <span className="font-mono text-cyan-300 font-bold mr-1.5">#{p.codigo_seguimiento}</span>
-                      <span className="text-white font-bold">{p.usuario?.nombre_completo || 'Cliente'}</span>
-                      <span className="text-slate-400 text-[10px] block truncate">{p.destino_detalle}</span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
-                      {p.estado_produccion === 'en_cola' ? 'En Almacén' : p.estado_produccion === 'bordando' ? 'En Preparación' : 'Por Despachar'}
-                    </span>
+          ) : (
+            <>
+              {/* =========================================================================
+                  MODO B Y C: STATUS BREAKDOWN GRID (4 Columns) PARA CIERRE O INFORME
+                  ========================================================================= */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {/* 1. En Almacén */}
+                <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-0.5">
+                  <div className="flex items-center justify-between text-amber-400 text-xs font-bold">
+                    <span>En Almacén</span>
+                    <Clock className="w-3.5 h-3.5" />
                   </div>
-                ))}
+                  <p className="text-2xl font-black text-white font-mono">{enAlmacen}</p>
+                  <span className="text-[10px] text-amber-300 font-medium block">Por atender</span>
+                </div>
+
+                {/* 2. Alistándolo */}
+                <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/25 space-y-0.5">
+                  <div className="flex items-center justify-between text-purple-300 text-xs font-bold">
+                    <span>Alistándolo</span>
+                    <Package className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-2xl font-black text-white font-mono">{alistando}</p>
+                  <span className="text-[10px] text-purple-300 font-medium block">En preparación</span>
+                </div>
+
+                {/* 3. Dejando en Shalom */}
+                <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 space-y-0.5">
+                  <div className="flex items-center justify-between text-cyan-300 text-xs font-bold">
+                    <span>Dejando Shalom</span>
+                    <Truck className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-2xl font-black text-white font-mono">{dejandoShalom}</p>
+                  <span className="text-[10px] text-cyan-300 font-medium block">En ruta / agencia</span>
+                </div>
+
+                {/* 4. Entregados */}
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 space-y-0.5">
+                  <div className="flex items-center justify-between text-emerald-300 text-xs font-bold">
+                    <span>Entregados</span>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-2xl font-black text-white font-mono">{entregados}</p>
+                  <span className="text-[10px] text-emerald-300 font-medium block">Completados</span>
+                </div>
               </div>
-            </div>
+
+              {/* Transport Breakdown & Clientes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Canal de Despacho */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Building2 className="w-4 h-4 text-cyan-400" />
+                      <span>Canal de Despacho</span>
+                    </span>
+                    <span className="font-mono text-cyan-300 text-xs">{total} envíos</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs bg-white/5 p-2.5 rounded-xl border border-white/5">
+                      <span className="text-slate-300 flex items-center gap-2">
+                        <span className="text-base">📦</span>
+                        <strong>Agencia Shalom Nacional:</strong>
+                      </span>
+                      <span className="font-mono font-black text-white text-sm bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">
+                        {shalomTotal}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs bg-white/5 p-2.5 rounded-xl border border-white/5">
+                      <span className="text-slate-300 flex items-center gap-2">
+                        <span className="text-base">🛵</span>
+                        <strong>Motorizado Local Lima:</strong>
+                      </span>
+                      <span className="font-mono font-black text-white text-sm bg-cyan-500/20 px-2 py-0.5 rounded border border-cyan-500/30">
+                        {motorizadoTotal}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Nuevos Clientes & Pendientes Operativos */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-pink-400" />
+                      <span>Clientes & Flujo</span>
+                    </span>
+                    <span className="font-mono text-pink-300 text-xs">{uniqueClientsCount} clientas</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/25">
+                      <span className="text-amber-200 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Pendientes de rotular:</span>
+                      </span>
+                      <strong className="font-mono font-black text-amber-300 text-sm">
+                        {pendientesRotular}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between text-xs bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/25">
+                      <span className="text-blue-200 flex items-center gap-1.5">
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-300" />
+                        <span>Pendientes registro Shalom:</span>
+                      </span>
+                      <strong className="font-mono font-black text-blue-300 text-sm">
+                        {pendientesShalomReg}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* DETALLE DE ENVÍOS NO ENTREGADOS */}
+              {noEntregados.length > 0 && (
+                <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 text-rose-400" />
+                      <span>Envíos Registrados No Entregados ({noEntregados.length})</span>
+                    </h4>
+                    <span className="text-[10px] text-rose-300 font-bold">Requieren atención</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                    {noEntregados.map(p => (
+                      <div key={p.id} className="p-2 bg-black/40 rounded-xl border border-rose-500/20 flex items-center justify-between text-xs">
+                        <div className="min-w-0 pr-2">
+                          <span className="font-mono text-cyan-300 font-bold mr-1.5">#{p.codigo_seguimiento}</span>
+                          <span className="text-white font-bold">{p.usuario?.nombre_completo || 'Cliente'}</span>
+                          <span className="text-slate-400 text-[10px] block truncate">{p.destino_detalle}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                          {p.estado_produccion === 'en_cola' ? 'En Almacén' : p.estado_produccion === 'bordando' ? 'En Preparación' : 'Por Despachar'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
         </div>
+
 
         {/* Footer Actions */}
         <div className="pt-3.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 shrink-0">

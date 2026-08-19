@@ -4,6 +4,7 @@ import { Pedido, TallerConfig } from '../../types/database.types';
 import { X, Printer, Download, CheckCircle, Loader2, Share2, Layers } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { shareOrPrintPdf, triggerNativePrint } from '../../utils/nativePrintService';
 
 interface Props {
   pedidos: Pedido[];
@@ -29,10 +30,20 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     new Map(pedidos.map(p => [p.id || p.codigo_seguimiento, p])).values()
   );
 
-  const handlePrintNative = () => {
-    window.print();
-    if (onPrintComplete) {
-      onPrintComplete(uniquePedidos.map(p => p.id));
+  const handlePrintNative = async () => {
+    setDownloading(true);
+    setDownloadProgress('Preparando impresión...');
+    try {
+      await triggerNativePrint(generatePdfInstance, `Rotulos_Encomi_${uniquePedidos.length}pedidos.pdf`);
+      if (onPrintComplete) {
+        onPrintComplete(uniquePedidos.map(p => p.id));
+      }
+    } catch (e) {
+      console.error('Error al imprimir:', e);
+      window.print();
+    } finally {
+      setDownloading(false);
+      setDownloadProgress('');
     }
   };
 
@@ -86,20 +97,13 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
       const pdf = await generatePdfInstance();
       if (!pdf) return;
 
-      const pdfBlob = pdf.output('blob');
       const fileName = `Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`;
-      const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: 'Rótulos ComiKids A4',
-          text: 'Imprimir con Epson iPrint, HP Smart o servicio de impresión.',
-        });
-      } else {
-        pdf.save(fileName);
-        alert('Se descargó el PDF calibrado. Puedes abrirlo directamente con tu aplicación de Epson o HP.');
-      }
+      await shareOrPrintPdf(
+        pdf,
+        fileName,
+        `Rótulos ComiKids A4 (${uniquePedidos.length} pedidos)`,
+        'Imprimir con Epson iPrint, HP Smart o servicio de impresión.'
+      );
 
       if (onPrintComplete) {
         onPrintComplete(uniquePedidos.map(p => p.id));
@@ -109,6 +113,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
       setTimeout(() => setSuccessMsg(false), 4000);
     } catch (err) {
       console.error('Error al enviar a app de impresora:', err);
+      alert('Se generó el archivo. Si no abrió la app, puedes usar la opción de Descargar PDF.');
     } finally {
       setDownloading(false);
       setDownloadProgress('');
@@ -126,7 +131,14 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
 
       setDownloadProgress('Guardando archivo...');
       const dateStr = new Date().toISOString().slice(0, 10);
-      pdf.save(`Rotulos_Encomi_ComiKids_${dateStr}_(${uniquePedidos.length}pedidos).pdf`);
+      const fileName = `Rotulos_Encomi_ComiKids_${dateStr}_(${uniquePedidos.length}pedidos).pdf`;
+      
+      await shareOrPrintPdf(
+        pdf,
+        fileName,
+        `Rótulos Encomi ComiKids (${uniquePedidos.length} pedidos)`,
+        'Guardar o Imprimir Rótulos A4'
+      );
 
       if (onPrintComplete) {
         onPrintComplete(uniquePedidos.map(p => p.id));
@@ -136,12 +148,13 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
       setTimeout(() => setSuccessMsg(false), 4000);
     } catch (err) {
       console.error('Error generando PDF de rótulos:', err);
-      alert('Hubo un problema al generar el PDF. Puedes usar la opción de Impresión Nativa.');
+      alert('Hubo un problema al generar el PDF.');
     } finally {
       setDownloading(false);
       setDownloadProgress('');
     }
   };
+
 
   // Divide en grupos de exactamente 6 pedidos por cada hoja A4 (2 columnas x 3 filas)
   const chunkArray = <T,>(arr: T[], size: number): T[][] => {

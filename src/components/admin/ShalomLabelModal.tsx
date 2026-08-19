@@ -12,6 +12,8 @@ import {
   FileText
 } from 'lucide-react';
 
+import { shareOrPrintPdf, triggerNativePrint } from '../../utils/nativePrintService';
+
 interface Props {
   pedido: Pedido;
   tallerConfig: TallerConfig;
@@ -29,88 +31,74 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
     };
   }, []);
 
-  const handlePrint = () => {
-    window.print();
+  const generateSinglePdf = async (): Promise<jsPDF | null> => {
+    const printArea = document.getElementById('shalom-print-area');
+    if (!printArea) return null;
+
+    const canvas = await html2canvas(printArea, {
+      scale: 2.5,
+      useCORS: true,
+      backgroundColor: '#ffffff'
+    });
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a6'
+    });
+
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    return pdf;
+  };
+
+  const handlePrint = async () => {
+    await triggerNativePrint(generateSinglePdf, `Rotulo_${pedido.codigo_seguimiento}.pdf`);
   };
 
   const handleDownloadPdf = async () => {
-    const printArea = document.getElementById('shalom-print-area');
-    if (!printArea) return;
-
     setDownloading(true);
     try {
-      const canvas = await html2canvas(printArea, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
+      const pdf = await generateSinglePdf();
+      if (!pdf) return;
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a6'
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Rotulo_Shalom_${pedido.codigo_seguimiento}.pdf`);
-
+      const fileName = `Rotulo_${pedido.codigo_seguimiento}.pdf`;
+      await shareOrPrintPdf(pdf, fileName, `Rótulo #${pedido.codigo_seguimiento}`, 'Guardar o Imprimir Rótulo');
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 3000);
     } catch (err) {
       console.error('Error generando PDF:', err);
-      alert('No se pudo generar el PDF directamente. Puedes usar el botón de Imprimir.');
+      alert('No se pudo generar el PDF directamente.');
     } finally {
       setDownloading(false);
     }
   };
 
   const handleShareToPrinterApp = async () => {
-    const printArea = document.getElementById('shalom-print-area');
-    if (!printArea) return;
-
     setDownloading(true);
     try {
-      const canvas = await html2canvas(printArea, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#ffffff'
-      });
+      const pdf = await generateSinglePdf();
+      if (!pdf) return;
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a6'
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      const pdfBlob = pdf.output('blob');
       const fileName = `Rotulo_${pedido.codigo_seguimiento}.pdf`;
-      const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: `Rótulo #${pedido.codigo_seguimiento}`,
-          text: 'Imprimir rótulo de envío con app de impresora (Epson, HP, etc.)',
-        });
-      } else {
-        pdf.save(fileName);
-        alert('Se descargó el PDF del rótulo.');
-      }
+      await shareOrPrintPdf(
+        pdf,
+        fileName,
+        `Rótulo #${pedido.codigo_seguimiento}`,
+        'Imprimir rótulo de envío con app de impresora (Epson, HP, etc.)'
+      );
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 3000);
     } catch (err) {
       console.error('Error al compartir con app:', err);
+      alert('No se pudo abrir la app de impresora.');
     } finally {
       setDownloading(false);
     }
   };
+
 
   const clientName = pedido.usuario?.nombre_completo || 'Cliente';
   const clientPhone = (pedido.usuario?.telefono_default || pedido.usuario?.dni || '').replace(/\D/g, '');

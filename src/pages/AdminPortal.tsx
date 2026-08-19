@@ -89,40 +89,10 @@ export const AdminPortal: React.FC = () => {
       }
     }
 
-    // 2. Verificar si es hora de Cierre Diario (23:59 o al día siguiente por la mañana)
-    const isLateNight = now.getHours() === 23 && now.getMinutes() >= 55;
-    const isMorning = now.getHours() < 13; // Mañana (ej. 7:00 AM)
-
-    const closingTargetDate = isLateNight ? todayKey : isMorning ? yesterdayKey : null;
-    if (closingTargetDate) {
-      const closingSeenKey = `incomi_daily_closing_seen_${closingTargetDate}`;
-      const hasSeenClosing = localStorage.getItem(closingSeenKey);
-
-      if (!hasSeenClosing) {
-        // Enviar notificación local si el plugin o el navegador lo soportan
-        try {
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('📊 Resumen Diario de Envíos ComiKids', {
-              body: `El resumen detallado de despachos del ${closingTargetDate} está listo para revisar.`,
-              icon: '/favicon.ico'
-            });
-          }
-        } catch {}
-
-        localStorage.setItem(closingSeenKey, 'true');
-        setBriefingConfig({
-          show: true,
-          mode: 'daily_closing',
-          referenceDate: closingTargetDate
-        });
-        localStorage.setItem('incomi_last_seen_orders_time', Date.now().toString());
-        return;
-      }
-    }
-
     // Guardar timestamp actual para la próxima sesión
     localStorage.setItem('incomi_last_seen_orders_time', Date.now().toString());
   }, [pedidos]);
+
 
   const pendingOrdersCount = pedidos.filter(p => p.estado_envio !== 'entregado').length;
 

@@ -172,7 +172,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ onClose, onS
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-4">
           {/* Foto de la prenda */}
           <div className="p-3 bg-white/4 rounded-2xl border border-white/8">
-            <label className="text-[11px] uppercase font-bold text-slate-300 block mb-2 flex items-center justify-between">
+            <label className="text-[11px] uppercase font-bold text-slate-300 mb-2 flex items-center justify-between">
               <span>📸 Foto de la Prenda</span>
               {selectedImage && (
                 <button

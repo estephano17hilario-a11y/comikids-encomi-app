@@ -1,0 +1,41 @@
+services:
+  backend_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend_api
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3000:3000"
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      REDIS_HOST: evolution_redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-password_redis_seguro}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-qwen/qwen3.7-flash}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      SUPABASE_URL: ${SUPABASE_URL:-https://uwmdjsxwetjvsxsdngko.supabase.co}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      EVOLUTION_API_URL: http://evolution_api:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-comikids_evolution_master_key_2026}
+      EVOLUTION_INSTANCE_NAME: ${EVOLUTION_INSTANCE_NAME:-comikids_whatsapp}
+
+      SHALOM_API_URL: ${SHALOM_API_URL:-}
+      SHALOM_CLIENT_ID: ${SHALOM_CLIENT_ID:-}
+      SHALOM_CLIENT_SECRET: ${SHALOM_CLIENT_SECRET:-}
+    networks:
+      - internal-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  internal-network:
+    external: true

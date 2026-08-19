@@ -799,7 +799,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
 
       {/* Map Container */}
       <div
-        className="relative w-full rounded-2xl overflow-hidden border border-white/20 bg-slate-950 shadow-2xl h-[56vh] sm:h-[62vh] max-h-[560px] min-h-[380px]"
+        className="relative w-full rounded-2xl overflow-hidden border border-white/20 bg-slate-950 shadow-2xl h-[56vh] sm:h-[62vh] max-h-140 min-h-95"
         style={{ minHeight: '380px', height: '56vh' }}
       >
         <div
@@ -934,7 +934,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
             onClick={locateMe}
             disabled={isLocating}
             title="Mi ubicación actual"
-            className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-600 via-cyan-500 to-blue-600 hover:brightness-110 active:scale-95 text-white flex flex-col items-center justify-center shadow-2xl shadow-cyan-500/60 border-2 border-cyan-300/60 transition-all cursor-pointer group"
+            className="w-12 h-12 rounded-2xl bg-linear-to-tr from-cyan-600 via-cyan-500 to-blue-600 hover:brightness-110 active:scale-95 text-white flex flex-col items-center justify-center shadow-2xl shadow-cyan-500/60 border-2 border-cyan-300/60 transition-all cursor-pointer group"
           >
             <Crosshair className={`w-5 h-5 ${isLocating ? 'animate-spin' : 'group-hover:scale-110 transition-transform'}`} />
             <span className="text-[8px] font-black uppercase tracking-tighter leading-none mt-0.5 text-cyan-100">
@@ -969,7 +969,7 @@ export const PlacesMapPicker: React.FC<Props> = ({
             className={`w-full py-3.5 px-5 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-2xl transition-all cursor-pointer active:scale-[0.98] border-2 ${
               confirmed
                 ? 'bg-emerald-500 text-white shadow-emerald-500/50 border-emerald-400'
-                : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white shadow-cyan-500/50 hover:brightness-110 border-cyan-300'
+                : 'bg-linear-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white shadow-cyan-500/50 hover:brightness-110 border-cyan-300'
             }`}
           >
             {confirmed ? (

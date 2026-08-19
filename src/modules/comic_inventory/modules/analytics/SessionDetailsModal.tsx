@@ -187,7 +187,7 @@ export const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-rose-950/80 to-slate-900 border-b border-white/5 flex justify-between items-center shrink-0">
+        <div className="p-4 sm:p-5 bg-linear-to-r from-rose-950/80 to-slate-900 border-b border-white/5 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-2.5">
             {editingGroup && (
               <button
@@ -277,7 +277,7 @@ export const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                           key={v.id}
                           type="button"
                           onClick={() => handleVariantClick(v)}
-                          className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-[4.5rem] ${
+                          className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-18 ${
                             isActive
                               ? 'bg-purple-600/30 border-cyan-400 shadow-lg ring-2 ring-cyan-400/40'
                               : isSelected
@@ -353,7 +353,7 @@ export const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                       onClick={() => handleActiveQtyChange(activeQty + 1)}
                       className="w-10 h-10 rounded-xl bg-cyan-500 hover:bg-cyan-400 flex items-center justify-center text-slate-950 active:scale-90 transition-transform cursor-pointer font-bold shadow-md shadow-cyan-500/20"
                     >
-                      <Plus className="w-4 h-4 stroke-[3]" />
+                      <Plus className="w-4 h-4 stroke-3" />
                     </button>
                   </div>
 
@@ -394,7 +394,7 @@ export const SessionDetailsModal: React.FC<SessionDetailsModalProps> = ({
                   className={`w-2/3 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
                     totalEditItems === 0
                       ? 'bg-white/10 text-slate-500 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-900/40'
+                      : 'bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-900/40'
                   }`}
                 >
                   <Check className="w-4 h-4" />

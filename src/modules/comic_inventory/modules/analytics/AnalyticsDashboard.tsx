@@ -184,7 +184,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history,
           onClick={() => setMetricTab('yape')}
           className={`flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
             metricTab === 'yape'
-              ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-md shadow-pink-600/30 scale-[1.02]'
+              ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-md shadow-pink-600/30 scale-[1.02]'
               : 'text-purple-300 hover:text-white'
           }`}
         >

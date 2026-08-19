@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { lookupDni, getFuenteLabel } from '../../services/dniLookupService';
 import {
   Eye,
   EyeOff,
@@ -35,6 +36,11 @@ export const AuthScreen: React.FC = () => {
   const [loginDni, setLoginDni] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+
+  // DNI Lookup state
+  const [dniLookupLoading, setDniLookupLoading] = useState(false);
+  const [dniVerifMsg, setDniVerifMsg] = useState<string | null>(null);
+  const [dniVerifOk, setDniVerifOk] = useState(false);
 
   // Errors & Loading
   const [errorMsg, setErrorMsg] = useState('');
@@ -189,24 +195,69 @@ export const AuthScreen: React.FC = () => {
                 </div>
               )}
 
-              {/* STEP 2 (2/4): DNI / CE */}
+              {/* STEP 2 (2/4): DNI / CE — con autocompletado de nombre */}
               {step === 2 && (
                 <div className="space-y-3 animate-fadeIn">
                   <label className="block text-sm font-black text-white leading-tight">
                     ¿Cuál es tu DNI o Carnet de Extranjería? 🆔
                   </label>
                   <p className="text-[11px] text-slate-400">
-                    Necesario para rotular tus paquetes y guías en Shalom
+                    Si tienes DNI peruano (8 dígitos) buscamos tu nombre automáticamente
                   </p>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    value={dni}
-                    onChange={e => setDni(e.target.value)}
-                    placeholder="Ej. 74561234"
-                    className="w-full px-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors shadow-inner font-mono"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      value={dni}
+                      onChange={async e => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+                        setDni(val);
+                        setDniVerifMsg(null);
+                        setDniVerifOk(false);
+                        // Trigger lookup solo para DNI de 8 dígitos
+                        if (val.length === 8) {
+                          setDniLookupLoading(true);
+                          try {
+                            const result = await lookupDni(val);
+                            if (result.success && result.nombreCompleto) {
+                              // Autocompletar nombre solo si el usuario no lo ha escrito
+                              if (!nombreCompleto.trim() || nombreCompleto === dni) {
+                                setNombreCompleto(result.nombreCompleto);
+                              }
+                              setDniVerifMsg(getFuenteLabel(result.fuente));
+                              setDniVerifOk(true);
+                            } else if (result.fuente === 'timeout') {
+                              setDniVerifMsg('⏱ Sin respuesta — ingresa tu nombre manualmente');
+                              setDniVerifOk(false);
+                            } else {
+                              setDniVerifMsg('ℹ️ No encontrado — ingresa tu nombre manualmente');
+                              setDniVerifOk(false);
+                            }
+                          } finally {
+                            setDniLookupLoading(false);
+                          }
+                        }
+                      }}
+                      placeholder="Ej. 74561234"
+                      className="w-full px-4 py-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors shadow-inner font-mono pr-10"
+                    />
+                    {dniLookupLoading && (
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                        <svg className="animate-spin w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
+                  {dniVerifMsg && !dniLookupLoading && (
+                    <p className={`text-[11px] font-semibold animate-fadeIn ${
+                      dniVerifOk ? 'text-emerald-400' : 'text-amber-400'
+                    }`}>
+                      {dniVerifMsg}
+                    </p>
+                  )}
                 </div>
               )}
 

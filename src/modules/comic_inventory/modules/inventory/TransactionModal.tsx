@@ -306,7 +306,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
                 onClick={() => handleActiveQtyChange(activeQty + 1)}
                 className="w-10 h-10 rounded-xl bg-cyan-500 hover:bg-cyan-400 flex items-center justify-center text-slate-950 active:scale-90 transition-transform cursor-pointer font-bold shadow-md shadow-cyan-500/20"
               >
-                <Plus className="w-4 h-4 stroke-[3]" />
+                <Plus className="w-4 h-4 stroke-3" />
               </button>
             </div>
 

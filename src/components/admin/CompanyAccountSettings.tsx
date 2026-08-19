@@ -3,7 +3,9 @@ import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { Colaborador, CompanyAchievement } from '../../types/database.types';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { EvolutionWhatsAppManager } from './EvolutionWhatsAppManager';
 import { yapeReaderService } from '../../services/yapeReaderService';
+
 import { Volume2 } from 'lucide-react';
 import {
   Store,
@@ -154,8 +156,12 @@ export const CompanyAccountSettings: React.FC = () => {
         </div>
       </div>
 
+      {/* --- SECCIÓN EVOLUTION WHATSAPP MASTER & MULTI-TENANT --- */}
+      <EvolutionWhatsAppManager />
+
       {/* --- SECCIÓN 0: LECTOR DE VOZ YAPE NATIVO (WAKELOCK + TTS) --- */}
       <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-purple-500/30 bg-purple-950/20 backdrop-blur-2xl space-y-4 shadow-xl">
+
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-300 flex items-center justify-center">
             <Volume2 className="w-5 h-5" />

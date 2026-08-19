@@ -391,7 +391,7 @@ export const OrdersSmartManager: React.FC = () => {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setShowBulkPrint(true)}
-              className="py-2 px-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
+              className="py-2 px-3.5 rounded-2xl bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
               title="Imprimir o descargar todos los rótulos A4"
             >
               <Printer className="w-4 h-4" />

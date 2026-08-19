@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalomDestino, extractShalomOrigen } from '../../utils/shalomExcelExporter';
@@ -10,7 +10,8 @@ import {
   Package,
   ShieldCheck,
   Building2,
-  Filter
+  Filter,
+  Loader2
 } from 'lucide-react';
 
 interface Props {
@@ -28,6 +29,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   onClose,
   onRegistered
 }) => {
+  const [exporting, setExporting] = useState(false);
+
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
@@ -69,16 +72,20 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const motorizadoFilteredOut = totalSelectedCount - pedidos.length;
 
   const handleConfirm = async () => {
-    if (!canRegister) return;
+    if (!canRegister || exporting) return;
+    setExporting(true);
     try {
-      downloadShalomExcel(pedidos, tallerConfig);
+      await downloadShalomExcel(pedidos, tallerConfig);
       await onRegistered(pedidos.map(p => p.id));
       onClose();
     } catch (err) {
       console.error('Error al generar Excel de Shalom:', err);
       alert('Ocurrió un error al generar el archivo Excel.');
+    } finally {
+      setExporting(false);
     }
   };
+
 
   return createPortal(
     <div className="fixed inset-0 z-9999 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
@@ -242,17 +249,27 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           
           <button
             type="button"
-            disabled={!canRegister}
+            disabled={!canRegister || exporting}
             onClick={handleConfirm}
             className={`w-2/3 py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-lg transition-all ${
-              canRegister
+              canRegister && !exporting
                 ? 'bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/25 cursor-pointer active:scale-95'
                 : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
             }`}
           >
-            <FileSpreadsheet className="w-4 h-4 text-yellow-300" />
-            <span>Descargar y Registrar en Shalom ({totalCount})</span>
+            {exporting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-yellow-300" />
+                <span>Generando Excel...</span>
+              </>
+            ) : (
+              <>
+                <FileSpreadsheet className="w-4 h-4 text-yellow-300" />
+                <span>Descargar y Registrar en Shalom ({totalCount})</span>
+              </>
+            )}
           </button>
+
         </div>
 
       </div>

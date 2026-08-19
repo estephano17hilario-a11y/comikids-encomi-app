@@ -9,10 +9,12 @@ import {
   Printer,
   Download,
   MessageCircle,
-  FileText
+  FileText,
+  Share2
 } from 'lucide-react';
 
-import { shareOrPrintPdf, triggerNativePrint } from '../../utils/nativePrintService';
+import { sharePdfFile, printPdfDirect } from '../../utils/nativePrintService';
+
 
 interface Props {
   pedido: Pedido;
@@ -55,7 +57,37 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
   };
 
   const handlePrint = async () => {
-    await triggerNativePrint(generateSinglePdf, `Rotulo_${pedido.codigo_seguimiento}.pdf`);
+    setDownloading(true);
+    try {
+      await printPdfDirect(generateSinglePdf, `Rotulo_${pedido.codigo_seguimiento}.pdf`);
+    } catch (err) {
+      console.error('Error al imprimir:', err);
+      alert('No se pudo enviar a imprimir.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleSharePdf = async () => {
+    setDownloading(true);
+    try {
+      const pdf = await generateSinglePdf();
+      if (!pdf) return;
+
+      const fileName = `Rotulo_${pedido.codigo_seguimiento}.pdf`;
+      await sharePdfFile(
+        pdf,
+        fileName,
+        `Rótulo #${pedido.codigo_seguimiento}`
+      );
+      setDownloadSuccess(true);
+      setTimeout(() => setDownloadSuccess(false), 3000);
+    } catch (err) {
+      console.error('Error al compartir PDF:', err);
+      alert('No se pudo compartir el archivo.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const handleDownloadPdf = async () => {
@@ -65,40 +97,16 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
       if (!pdf) return;
 
       const fileName = `Rotulo_${pedido.codigo_seguimiento}.pdf`;
-      await shareOrPrintPdf(pdf, fileName, `Rótulo #${pedido.codigo_seguimiento}`, 'Guardar o Imprimir Rótulo');
+      pdf.save(fileName);
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 3000);
     } catch (err) {
-      console.error('Error generando PDF:', err);
-      alert('No se pudo generar el PDF directamente.');
+      console.error('Error descargando PDF:', err);
+      alert('No se pudo descargar el PDF.');
     } finally {
       setDownloading(false);
     }
   };
-
-  const handleShareToPrinterApp = async () => {
-    setDownloading(true);
-    try {
-      const pdf = await generateSinglePdf();
-      if (!pdf) return;
-
-      const fileName = `Rotulo_${pedido.codigo_seguimiento}.pdf`;
-      await shareOrPrintPdf(
-        pdf,
-        fileName,
-        `Rótulo #${pedido.codigo_seguimiento}`,
-        'Imprimir rótulo de envío con app de impresora (Epson, HP, etc.)'
-      );
-      setDownloadSuccess(true);
-      setTimeout(() => setDownloadSuccess(false), 3000);
-    } catch (err) {
-      console.error('Error al compartir con app:', err);
-      alert('No se pudo abrir la app de impresora.');
-    } finally {
-      setDownloading(false);
-    }
-  };
-
 
   const clientName = pedido.usuario?.nombre_completo || 'Cliente';
   const clientPhone = (pedido.usuario?.telefono_default || pedido.usuario?.dni || '').replace(/\D/g, '');
@@ -143,40 +151,45 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
         {/* Action Buttons */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 print:hidden" data-no-print="true">
           
-          <button
-            type="button"
-            onClick={handleShareToPrinterApp}
-            disabled={downloading}
-            className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-lg shadow-emerald-600/30 cursor-pointer"
-            title="Abrir con Epson iPrint, HP Smart o servicio de impresión del celular"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>App Epson/HP</span>
-          </button>
-
+          {/* Opción 1: Imprimir */}
           <button
             type="button"
             onClick={handlePrint}
-            className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition-all active:scale-95 shadow-md cursor-pointer"
+            disabled={downloading}
+            className="py-2.5 px-3 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-md cursor-pointer disabled:opacity-50"
           >
-            <Printer className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Nativo / PC</span>
+            <Printer className="w-3.5 h-3.5 text-slate-950" />
+            <span>Imprimir</span>
           </button>
 
+          {/* Opción 2: Compartir PDF */}
+          <button
+            type="button"
+            onClick={handleSharePdf}
+            disabled={downloading}
+            className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
+            title="Compartir PDF por WhatsApp, Telegram, Drive, etc."
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>Compartir</span>
+          </button>
+
+          {/* Opción 3: Descargar PDF */}
           <button
             type="button"
             onClick={handleDownloadPdf}
             disabled={downloading}
-            className="py-2.5 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-lg shadow-cyan-600/30 cursor-pointer"
+            className="py-2.5 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-lg shadow-cyan-600/30 cursor-pointer disabled:opacity-50"
           >
             {downloading ? (
               <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
               <Download className="w-3.5 h-3.5" />
             )}
-            <span>{downloadSuccess ? '¡Listo!' : 'PDF A6'}</span>
+            <span>{downloadSuccess ? '¡Listo!' : 'Descargar'}</span>
           </button>
 
+          {/* Opción 4: WhatsApp */}
           <a
             href={whatsappNotifyUrl}
             target="_blank"
@@ -193,4 +206,5 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
     </div>,
     document.body
   );
+
 };

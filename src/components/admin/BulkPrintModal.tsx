@@ -4,7 +4,8 @@ import { Pedido, TallerConfig } from '../../types/database.types';
 import { X, Printer, Download, CheckCircle, Loader2, Share2, Layers } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { shareOrPrintPdf, triggerNativePrint } from '../../utils/nativePrintService';
+import { sharePdfFile, printPdfDirect } from '../../utils/nativePrintService';
+
 
 interface Props {
   pedidos: Pedido[];
@@ -30,22 +31,6 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     new Map(pedidos.map(p => [p.id || p.codigo_seguimiento, p])).values()
   );
 
-  const handlePrintNative = async () => {
-    setDownloading(true);
-    setDownloadProgress('Preparando impresión...');
-    try {
-      await triggerNativePrint(generatePdfInstance, `Rotulos_Encomi_${uniquePedidos.length}pedidos.pdf`);
-      if (onPrintComplete) {
-        onPrintComplete(uniquePedidos.map(p => p.id));
-      }
-    } catch (e) {
-      console.error('Error al imprimir:', e);
-      window.print();
-    } finally {
-      setDownloading(false);
-      setDownloadProgress('');
-    }
-  };
 
   // Generador de PDF A4 centrado y calibrado exactamente para 6 rótulos por página (2x3)
   const generatePdfInstance = async (): Promise<jsPDF | null> => {
@@ -88,21 +73,20 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     return pdf;
   };
 
-  // Imprimir con Apps de Impresoras (Epson iPrint, HP Smart, Mopria, etc.)
-  const handleShareToPrinterApp = async () => {
+  // Compartir archivo PDF de los rótulos (WhatsApp, Telegram, Drive, Correo, etc.)
+  const handleSharePdf = async () => {
     setDownloading(true);
-    setDownloadProgress('Preparando archivo para impresora...');
+    setDownloadProgress('Preparando PDF...');
 
     try {
       const pdf = await generatePdfInstance();
       if (!pdf) return;
 
       const fileName = `Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`;
-      await shareOrPrintPdf(
+      await sharePdfFile(
         pdf,
         fileName,
-        `Rótulos ComiKids A4 (${uniquePedidos.length} pedidos)`,
-        'Imprimir con Epson iPrint, HP Smart o servicio de impresión.'
+        `Rótulos ComiKids A4 (${uniquePedidos.length} pedidos)`
       );
 
       if (onPrintComplete) {
@@ -112,8 +96,31 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
       setSuccessMsg(true);
       setTimeout(() => setSuccessMsg(false), 4000);
     } catch (err) {
-      console.error('Error al enviar a app de impresora:', err);
-      alert('Se generó el archivo. Si no abrió la app, puedes usar la opción de Descargar PDF.');
+      console.error('Error al compartir PDF:', err);
+      alert('No se pudo compartir el archivo.');
+    } finally {
+      setDownloading(false);
+      setDownloadProgress('');
+    }
+  };
+
+  // Imprimir Rótulos (Web: Impresión nativa del navegador / Android: Diálogo de impresión del sistema)
+  const handlePrintDirect = async () => {
+    setDownloading(true);
+    setDownloadProgress('Preparando impresión...');
+
+    try {
+      await printPdfDirect(
+        generatePdfInstance,
+        `Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`
+      );
+
+      if (onPrintComplete) {
+        onPrintComplete(uniquePedidos.map(p => p.id));
+      }
+    } catch (err) {
+      console.error('Error al imprimir rótulos:', err);
+      alert('No se pudo enviar a imprimir.');
     } finally {
       setDownloading(false);
       setDownloadProgress('');
@@ -133,12 +140,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
       const dateStr = new Date().toISOString().slice(0, 10);
       const fileName = `Rotulos_Encomi_ComiKids_${dateStr}_(${uniquePedidos.length}pedidos).pdf`;
       
-      await shareOrPrintPdf(
-        pdf,
-        fileName,
-        `Rótulos Encomi ComiKids (${uniquePedidos.length} pedidos)`,
-        'Guardar o Imprimir Rótulos A4'
-      );
+      pdf.save(fileName);
 
       if (onPrintComplete) {
         onPrintComplete(uniquePedidos.map(p => p.id));
@@ -216,19 +218,31 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Opción 1: Imprimir con App (Epson / HP / Mopria) */}
+            {/* Opción 1: Imprimir Rótulos Directo (Impresora / PC / App) */}
             <button
               type="button"
-              onClick={handleShareToPrinterApp}
+              onClick={handlePrintDirect}
               disabled={downloading}
-              className="py-2.5 px-3.5 rounded-xl bg-linear-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
-              title="Abrir con Epson iPrint, HP Smart o servicio de impresión del celular"
+              className="py-2.5 px-3.5 rounded-xl bg-white hover:bg-slate-200 active:scale-95 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg transition-all cursor-pointer disabled:opacity-50"
+              title="Imprimir rótulos en tu impresora"
             >
-              <Share2 className="w-4 h-4" />
-              <span>Imprimir con App (Epson/HP)</span>
+              <Printer className="w-4 h-4 text-slate-950" />
+              <span>Imprimir Rótulos</span>
             </button>
 
-            {/* Opción 2: Descargar PDF A4 */}
+            {/* Opción 2: Compartir Documento PDF */}
+            <button
+              type="button"
+              onClick={handleSharePdf}
+              disabled={downloading}
+              className="py-2.5 px-3.5 rounded-xl bg-linear-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
+              title="Compartir PDF por WhatsApp, Drive, Correo o cualquier app"
+            >
+              <Share2 className="w-4 h-4" />
+              <span>Compartir PDF</span>
+            </button>
+
+            {/* Opción 3: Descargar PDF A4 */}
             <button
               type="button"
               onClick={handleDownloadPdf}
@@ -248,20 +262,9 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  <span>Descargar PDF A4</span>
+                  <span>Descargar PDF</span>
                 </>
               )}
-            </button>
-
-            {/* Opción 3: Impresión Nativa (Navegador / PC) */}
-            <button
-              type="button"
-              onClick={handlePrintNative}
-              className="py-2.5 px-3.5 rounded-xl bg-white hover:bg-slate-200 active:scale-95 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-              title="Impresión directa del navegador o PC"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Impresión Directa</span>
             </button>
 
             {/* Botón Cerrar */}
@@ -274,6 +277,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
             </button>
           </div>
         </div>
+
 
         {/* Área de Visualización y Rótulos Imprimibles */}
         <div className="flex-1 p-2 sm:p-4 overflow-y-auto bg-slate-950 print:bg-white print:p-0 print:m-0 print:overflow-visible flex flex-col items-center">

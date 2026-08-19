@@ -1,9 +1,10 @@
 import axios from 'axios';
 import { supabaseAdmin } from '../config/supabase.js';
-import { GeminiService } from './gemini.service.js';
+import { queryCopilotContext, generateAssistantResponse } from './ai.service.js';
 import { EvolutionService } from './evolution.service.js';
 import { env } from '../config/env.js';
 import { EvolutionMessageData } from '../types/evolution.types.js';
+
 
 interface SubInstanceMeta {
   instanceName: string;
@@ -163,10 +164,8 @@ ${chatsSummary}
 REGLA DE VERACIDAD: Si las listas indican que no hay registros, responde transparentemente: "Actualmente no tienes registros pendientes en tu sistema." NUNCA inventes clientes ni montos.
 `;
 
-      const aiResponse = await GeminiService.generateAssistantResponse(masterPrompt, {
-        storeName: 'Comikids Bordados & Estilo',
-        customerName: userName,
-      });
+      const aiResponse = await queryCopilotContext(masterPrompt, queryText);
+
 
       const masterInstance = env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
 

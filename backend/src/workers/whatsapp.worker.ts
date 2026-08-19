@@ -3,8 +3,14 @@ import { redisConnectionOptions } from '../config/redis.js';
 import { EvolutionWebhookPayload } from '../types/evolution.types.js';
 import { WHATSAPP_QUEUE_NAME } from '../queues/whatsapp.queue.js';
 import { EvolutionService } from '../services/evolution.service.js';
-import { GeminiService } from '../services/gemini.service.js';
+import {
+  auditPaymentVoucher,
+  parsePaymentVoucher,
+  generateAssistantResponse,
+  processAudioMessage,
+} from '../services/ai.service.js';
 import { SupabaseService } from '../services/supabase.service.js';
+
 import { ShalomService } from '../services/shalom.service.js';
 import { env } from '../config/env.js';
 
@@ -59,8 +65,8 @@ export const whatsappWorker = new Worker<EvolutionWebhookPayload>(
           return;
         }
 
-        // 2. Extraer información con Motor de IA Multimodal (OpenRouter qwen3.7-flash o Gemini)
-        const voucherData = await GeminiService.parsePaymentVoucher(
+        // 2. Extraer información con Motor de IA Multimodal (OpenRouter qwen/qwen3.7-flash)
+        const voucherData = await parsePaymentVoucher(
           mediaData.buffer,
           mediaData.mimeType
         );
@@ -119,7 +125,7 @@ export const whatsappWorker = new Worker<EvolutionWebhookPayload>(
           return;
         }
 
-        const aiReply = await GeminiService.processAudioMessage(
+        const aiReply = await processAudioMessage(
           mediaData.buffer,
           mediaData.mimeType || 'audio/ogg; codecs=opus',
           {
@@ -149,24 +155,27 @@ export const whatsappWorker = new Worker<EvolutionWebhookPayload>(
         console.log(`[WORKER] [Tienda: ${instanceName}] Texto recibido: "${text}"`);
         const textUpper = text.toUpperCase().trim();
 
-        // 1. Detectar si el usuario consulta estado de guía de envío (Shalom / Olva)
+        // 1. Detección automática de consulta de Guía / Tracking Shalom
         const isTrackingQuery =
           textUpper.includes('GUIA') ||
+          textUpper.includes('GUÍA') ||
           textUpper.includes('SEGUIMIENTO') ||
-          textUpper.includes('PEDIDO') ||
-          textUpper.includes('DONDE ESTA') ||
           textUpper.includes('SHALOM') ||
-          textUpper.includes('OLVA');
+          textUpper.includes('DONDE ESTA MI PEDIDO') ||
+          textUpper.includes('DÓNDE ESTÁ MI PEDIDO') ||
+          textUpper.includes('ESTADO');
 
-        if (isTrackingQuery && (pendingOrder || textUpper.length >= 4)) {
-          processingType = 'consulta_logistica';
+        const numbersInText = text.match(/\d{6,12}/g);
+        const candidateTrackingCode =
+          numbersInText?.[0] || pendingOrder?.codigo_seguimiento;
 
-          const trackingCode = pendingOrder?.codigo_seguimiento || text.replace(/[^a-zA-Z0-9-]/g, '');
-          const tracking = await ShalomService.trackShipment(trackingCode);
+        if (isTrackingQuery && candidateTrackingCode) {
+          processingType = 'tracking_shalom';
+          const tracking = await ShalomService.trackShipment(candidateTrackingCode);
 
           if (tracking) {
             responseText =
-              `📦 *Estado de tu Envío*\n\n` +
+              `🚚 *Estado de tu Envío Shalom:*\n\n` +
               `🔖 *Guía / Pedido:* ${tracking.guiaNumero}\n` +
               `🚚 *Estado:* ${tracking.estado}\n` +
               `📍 *Origen:* ${tracking.origen}\n` +
@@ -182,11 +191,11 @@ export const whatsappWorker = new Worker<EvolutionWebhookPayload>(
           await EvolutionService.sendWhatsAppMessage(instanceName, remoteJid, responseText);
         }
 
-        // 2. Consulta conversacional general con IA Multimodal
+        // 2. Consulta conversacional general con IA Multimodal (Qwen 3.7 Flash)
         else {
           processingType = 'conversacion_general';
 
-          const aiReply = await GeminiService.generateAssistantResponse(text, {
+          const aiReply = await generateAssistantResponse(text, {
             storeName: storeInfo?.nombre,
             customerName: pushName || user?.nombre_completo,
             orderStatus: pendingOrder?.estado_produccion,

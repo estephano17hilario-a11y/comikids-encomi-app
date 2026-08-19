@@ -110,11 +110,17 @@ export class CopilotService {
         ? `Cuenta vinculada al Sub-QR: Instancia "${linkedSub.instanceName}", Número propio: +${linkedSub.ownerPhone} (${linkedSub.profileName}), Estado: ${linkedSub.status}`
         : 'Sub-QR pendiente de sincronización.';
 
-      const hasAttachedDoc = Boolean(
-        messageData?.message?.documentMessage ||
-        messageData?.message?.imageMessage
-      );
-      const attachedDocName = messageData?.message?.documentMessage?.fileName || messageData?.message?.documentMessage?.title || 'documento.pdf';
+      const isImage = Boolean(messageData?.message?.imageMessage);
+      const isDoc = Boolean(messageData?.message?.documentMessage);
+      const hasAttachedMedia = isImage || isDoc;
+      const attachedFileName =
+        messageData?.message?.documentMessage?.fileName ||
+        messageData?.message?.documentMessage?.title ||
+        (isImage ? 'imagen_adjunta.jpg' : 'documento.pdf');
+      const attachedMimeType =
+        messageData?.message?.documentMessage?.mimetype ||
+        messageData?.message?.imageMessage?.mimetype ||
+        (isImage ? 'image/jpeg' : 'application/pdf');
 
       const masterPrompt = `
 Eres el "Copiloto Master de Inteligencia de Negocios y Control de WhatsApp" de Encomi SaaS.
@@ -122,29 +128,30 @@ Estás comunicándote directamente con el dueño del negocio: ${userName} (Núme
 
 INFORMACIÓN DE SU CUENTA Y LÍNEA VINCULADA:
 - ${accountInfo}
-- Documento o archivo adjunto en este mensaje del dueño: ${hasAttachedDoc ? `SÍ (${attachedDocName})` : 'NO'}
+- Archivo o documento adjunto en este mensaje: ${hasAttachedMedia ? `SÍ (${isImage ? 'FOTO/IMAGEN' : 'DOCUMENTO'}: ${attachedFileName})` : 'NO'}
 
 INSTRUCCIÓN DEL ADMINISTRADOR:
 "${queryText}"
 
 --- REGLAS DE EJECUCIÓN ESTRICTAS ---
 
-1. ORDEN DE ENVIAR MENSAJE O ARCHIVO / DOCUMENTO:
-Si el usuario te pide enviar un mensaje, archivo o documento a un número o cliente (ej: "manda un mensaje a 987654321 diciendo...", "envía a 987654321 este documento...", "escribe a..."):
+1. ORDEN DE ENVIAR MENSAJE, ARCHIVO, FOTO, IMAGEN O DOCUMENTO:
+Si el usuario te pide enviar un mensaje, archivo, comprobante, foto, imagen o documento a un número o cliente (ej: "manda un mensaje a 987654321 diciendo...", "envía a 987654321 este documento...", "manda esta foto a 987654321", "envía esta imagen al 987...", "reenvía a 987..."):
 Debes responder ÚNICAMENTE con este JSON:
 \`\`\`json
 {
   "action": "SEND_WHATSAPP_MESSAGE",
   "targetPhone": "987654321",
-  "text": "Texto que se enviará al cliente",
-  "mediaUrl": "https://... (o null si el archivo vino adjunto)",
-  "sendAttachedDoc": ${hasAttachedDoc},
-  "fileName": "${attachedDocName}"
+  "text": "Texto explicativo o mensaje que acompañará al archivo/mensaje",
+  "mediaUrl": null,
+  "sendAttachedDoc": ${hasAttachedMedia},
+  "mediaType": "${isImage ? 'image' : (isDoc ? 'document' : 'image')}",
+  "fileName": "${attachedFileName}"
 }
 \`\`\`
 
 2. PREGUNTAS SOBRE SU CUENTA, SUB-QR O ESTADO:
-Explica con claridad que su cuenta está vinculada a su Sub-QR con su número personal (+${userSenderPhone}) y que las respuestas o envíos a clientes salen desde SU número propio.
+Explica con claridad que su cuenta está vinculada a su Sub-QR con su número personal (+${userSenderPhone}) y que los envíos o respuestas a clientes salen desde SU número propio.
 
 3. PREGUNTAS GENERALES O CONVERSACIONALES (ej. "¿Cuánto es 1+1?", "Hola", "¿Cómo estás?"):
 Responde DIRECTAMENTE de forma amable y concisa. NUNCA inventes ni menciones pagos, comprobantes ni pedidos si no te los han preguntado.
@@ -166,7 +173,6 @@ REGLA DE VERACIDAD: Si las listas indican que no hay registros, responde transpa
 
       const aiResponse = await queryCopilotContext(masterPrompt, queryText);
 
-
       const masterInstance = env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
 
       // 5. Verificar si la IA determinó una ACCIÓN de envío
@@ -185,38 +191,47 @@ REGLA DE VERACIDAD: Si las listas indican que no hay registros, responde transpa
 
             const messageText = actionData.text || '';
             const mediaUrl = actionData.mediaUrl;
-            const fileName = actionData.fileName || attachedDocName || 'documento.pdf';
+            const targetMediaType = actionData.mediaType || (isImage ? 'image' : 'document');
+            const fileName = actionData.fileName || attachedFileName || (targetMediaType === 'image' ? 'imagen.jpg' : 'documento.pdf');
 
-            console.log(`[COPILOT ACTION] 🚀 Despachando desde instancia "${userSenderInstance}" (+${userSenderPhone}) a ${target}: "${messageText}"`);
+            console.log(`[COPILOT ACTION] 🚀 Despachando ${hasAttachedMedia ? targetMediaType : 'texto'} desde instancia "${userSenderInstance}" (+${userSenderPhone}) a +${target}: "${messageText}"`);
 
-            // Si el dueño adjuntó un documento en este mismo mensaje
-            if (hasAttachedDoc && messageData) {
+            // Si el dueño adjuntó un documento o imagen en este mensaje
+            if (hasAttachedMedia && messageData) {
               try {
+                console.log(`[COPILOT ACTION] Descargando buffer multimedia desde ${masterInstance}...`);
                 const media = await EvolutionService.getMediaBuffer(messageData, masterInstance);
-                const base64Clean = `data:${media.mimeType || 'application/pdf'};base64,${media.buffer.toString('base64')}`;
+                const rawBase64 = media.buffer.toString('base64');
+                const actualMime = media.mimeType || attachedMimeType;
+                const finalMediaType = actualMime.startsWith('image/') ? 'image' : (actualMime.startsWith('audio/') ? 'audio' : 'document');
 
-                await EvolutionService.sendWhatsAppMedia(userSenderInstance, target, base64Clean, {
+                console.log(`[COPILOT ACTION] Media listo (${media.buffer.length} bytes, ${actualMime}). Despachando a +${target}...`);
+
+                await EvolutionService.sendWhatsAppMedia(userSenderInstance, target, rawBase64, {
                   caption: messageText,
                   fileName: fileName,
-                  mediaType: 'document',
+                  mediaType: finalMediaType,
+                  mimeType: actualMime,
                 });
-              } catch (mediaErr) {
-                console.error('[COPILOT FORWARD DOC ERROR]', mediaErr);
+
+                console.log(`[COPILOT ACTION] ✅ Archivo ${fileName} (${finalMediaType}) despachado con éxito.`);
+              } catch (mediaErr: any) {
+                console.error('[COPILOT FORWARD MEDIA ERROR]', mediaErr?.response?.data || mediaErr?.message || mediaErr);
                 // Fallback a texto
-                await EvolutionService.sendWhatsAppMessage(userSenderInstance, target, messageText);
+                await EvolutionService.sendWhatsAppMessage(userSenderInstance, target, messageText || 'Te comparto el archivo adjunto.');
               }
             } else if (mediaUrl && mediaUrl.startsWith('http')) {
               await EvolutionService.sendWhatsAppMedia(userSenderInstance, target, mediaUrl, {
                 caption: messageText,
                 fileName: fileName,
-                mediaType: 'document',
+                mediaType: targetMediaType,
               });
             } else {
               await EvolutionService.sendWhatsAppMessage(userSenderInstance, target, messageText);
             }
 
             // Confirmar al dueño en el Master Bot
-            const confirmMsg = `✅ *Mensaje despachado exitosamente desde tu número propio (+${userSenderPhone})*\n\n📱 *Destinatario:* +${target}\n💬 *Mensaje:* "${messageText}"${hasAttachedDoc || mediaUrl ? `\n📎 *Documento enviado:* ${fileName}` : ''}`;
+            const confirmMsg = `✅ *Mensaje despachado exitosamente desde tu número propio (+${userSenderPhone})*\n\n📱 *Destinatario:* +${target}\n💬 *Mensaje:* "${messageText}"${hasAttachedMedia || mediaUrl ? `\n📎 *Archivo enviado:* ${fileName} (${targetMediaType})` : ''}`;
             await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, confirmMsg);
             return confirmMsg;
           }
@@ -224,6 +239,7 @@ REGLA DE VERACIDAD: Si las listas indican que no hay registros, responde transpa
           console.warn('[COPILOT ACTION PARSE WARN]', parseErr);
         }
       }
+
 
       // 6. Respuesta conversacional limpia al dueño
       await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, aiResponse);

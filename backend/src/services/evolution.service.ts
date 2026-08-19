@@ -230,22 +230,51 @@ export class EvolutionService {
       phoneClean = `51${phoneClean}`;
     }
 
+    // Limpiar base64 si trae prefijo data:...;base64,
+    let cleanMedia = mediaUrlOrBase64;
+    if (cleanMedia.startsWith('data:')) {
+      cleanMedia = cleanMedia.replace(/^data:[^;]+;base64,/, '');
+    }
+
+    // Determinar mediatype
+    let detectedType: 'image' | 'document' | 'audio' | 'video' = options?.mediaType || 'image';
+    if (!options?.mediaType) {
+      if (options?.mimeType?.startsWith('image/') || cleanMedia.match(/\.(jpg|jpeg|png|webp|gif)($|\?)/i)) {
+        detectedType = 'image';
+      } else if (
+        options?.mimeType?.startsWith('application/') ||
+        options?.mimeType?.startsWith('text/') ||
+        cleanMedia.match(/\.(pdf|doc|docx|xls|xlsx|txt)($|\?)/i) ||
+        options?.fileName?.match(/\.(pdf|doc|docx|xls|xlsx|txt)$/i)
+      ) {
+        detectedType = 'document';
+      } else if (options?.mimeType?.startsWith('audio/') || cleanMedia.match(/\.(mp3|ogg|wav|m4a|opus)($|\?)/i)) {
+        detectedType = 'audio';
+      }
+    }
+
     try {
       const payload: any = {
         number: phoneClean,
-        mediatype: options?.mediaType || (mediaUrlOrBase64.endsWith('.pdf') ? 'document' : 'image'),
-        media: mediaUrlOrBase64,
+        mediatype: detectedType,
+        media: cleanMedia,
         caption: options?.caption || '',
       };
-      if (options?.fileName) payload.fileName = options.fileName;
-      if (options?.mimeType) payload.mimetype = options.mimeType;
+      if (options?.fileName || detectedType === 'document') {
+        payload.fileName = options?.fileName || (detectedType === 'document' ? 'documento.pdf' : 'imagen.jpg');
+      }
+      if (options?.mimeType) {
+        payload.mimetype = options.mimeType;
+      }
+
+      console.log(`[EVOLUTION SEND MEDIA] Despachando ${detectedType} a ${phoneClean} via ${targetInstance} (fileName: ${payload.fileName || 'none'})`);
 
       const response = await axios.post(
         `${env.EVOLUTION_API_URL}/message/sendMedia/${targetInstance}`,
         payload,
         {
           headers: this.getHeaders(),
-          timeout: 25000,
+          timeout: 30000,
         }
       );
 
@@ -265,37 +294,47 @@ export class EvolutionService {
 
 
   /**
-   * Descarga el buffer de imagen o audio directamente desde Evolution API o URL directa.
+   * Descarga el buffer de imagen, documento o audio directamente desde Evolution API o URL directa.
    */
   public static async getMediaBuffer(
     messageData: EvolutionMessageData,
     instanceName: string = env.EVOLUTION_INSTANCE_NAME
   ): Promise<{ buffer: Buffer; mimeType: string }> {
-    try {
-      // 1. Intentar obtener base64 a través del endpoint oficial de Evolution API v2
-      const targetInstance = instanceName || env.EVOLUTION_INSTANCE_NAME;
-      const response = await axios.post(
-        `${env.EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${targetInstance}`,
-        {
-          message: messageData,
-          convertToMp4: false,
-        },
-        {
-          headers: this.getHeaders(),
-          timeout: 20000,
-        }
-      );
+    const targetInstance = instanceName || env.EVOLUTION_INSTANCE_NAME;
 
-      if (response.data && response.data.base64) {
-        const base64Clean = response.data.base64.replace(/^data:[a-zA-Z0-9/.-]+;base64,/, '');
-        const buffer = Buffer.from(base64Clean, 'base64');
-        const mimeType = response.data.mimetype || 'image/jpeg';
-        return { buffer, mimeType };
+    try {
+      // 1. Intentar con getBase64FromMediaMessage en Evolution API v2
+      const attempts = [
+        { message: messageData, convertToMp4: false },
+        { message: messageData?.message || messageData, convertToMp4: false }
+      ];
+
+      for (const payload of attempts) {
+        try {
+          const response = await axios.post(
+            `${env.EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${targetInstance}`,
+            payload,
+            {
+              headers: this.getHeaders(),
+              timeout: 20000,
+            }
+          );
+
+          if (response.data && response.data.base64) {
+            const rawBase64 = String(response.data.base64).replace(/^data:[a-zA-Z0-9/.-]+;base64,/, '');
+            const buffer = Buffer.from(rawBase64, 'base64');
+            const mimeType = response.data.mimetype || 'image/jpeg';
+            return { buffer, mimeType };
+          }
+        } catch (subErr) {
+          // Continuar al siguiente intento si falla
+        }
       }
 
-      // 2. Si viene una URL directa accesible
+      // 2. Si viene una URL directa accesible (documento, imagen, audio)
       const mediaUrl =
         messageData.message?.imageMessage?.url ||
+        messageData.message?.documentMessage?.url ||
         messageData.message?.audioMessage?.url;
 
       if (mediaUrl && mediaUrl.startsWith('http')) {
@@ -305,8 +344,10 @@ export class EvolutionService {
         });
         const mimeType = String(
           directRes.headers['content-type'] ||
+            messageData.message?.documentMessage?.mimetype ||
+            messageData.message?.imageMessage?.mimetype ||
             messageData.message?.audioMessage?.mimetype ||
-            'image/jpeg'
+            'application/octet-stream'
         );
         return { buffer: Buffer.from(directRes.data), mimeType };
       }
@@ -317,4 +358,5 @@ export class EvolutionService {
       throw error;
     }
   }
+
 }

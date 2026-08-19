@@ -41,6 +41,7 @@ export class WebhookController {
           instance === 'comikids_whatsapp'
         ) {
           if (!msgItem.key.fromMe) {
+
             const senderNumber = remoteJid.replace('@s.whatsapp.net', '');
             const queryText =
               msgItem.message?.conversation ||
@@ -48,10 +49,12 @@ export class WebhookController {
               msgItem.message?.imageMessage?.caption ||
               msgItem.message?.documentMessage?.caption ||
               msgItem.message?.documentMessage?.title ||
-              (msgItem.message?.documentMessage ? 'Reenvía este documento' : '') ||
+              msgItem.message?.documentMessage?.fileName ||
+              (msgItem.message?.imageMessage ? 'Reenvía esta imagen adjunta' : '') ||
+              (msgItem.message?.documentMessage ? 'Reenvía este documento adjunto' : '') ||
               '';
 
-            console.log(`[MASTER BOT ROUTE] Encolando consulta de ${senderNumber} al Copiloto: "${queryText}"`);
+            console.log(`[MASTER BOT ROUTE] Encolando consulta de ${senderNumber} al Copiloto: "${queryText}" (Tipo: ${msgItem.messageType || 'desconocido'})`);
 
             await enqueueCopilotQuery(
               {
@@ -65,6 +68,7 @@ export class WebhookController {
             );
           }
         }
+
 
 
         // CASO B: Mensaje en una SUB-INSTANCIA (Ingesta Pasiva Silenciosa 24/7)

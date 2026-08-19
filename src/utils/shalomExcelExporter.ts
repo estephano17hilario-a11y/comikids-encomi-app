@@ -2,6 +2,14 @@ import * as XLSX from 'xlsx';
 import { Pedido, TallerConfig } from '../types/database.types';
 import officialAgenciesData from '../data/shalom_official_agencies.json';
 import { SHALOM_OFFICIAL_TEMPLATE_BASE64 } from '../data/shalom_template_base64';
+import {
+  SHALOM_CODE_TO_OFFICIAL_MAP,
+  SHALOM_NAME_TO_OFFICIAL_MAP,
+  SHALOM_LOCAL_TO_OFFICIAL_MAP
+} from '../data/shalomAgencyCanonicalMap';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 export const OFFICIAL_DESTINATIONS: string[] = officialAgenciesData.destinations || [];
 export const OFFICIAL_ORIGINS: string[] = officialAgenciesData.origins || [];
@@ -72,13 +80,20 @@ export const extractShalomOrigen = (tallerConfigOrName?: TallerConfig | string):
 
 /**
  * Normaliza y extrae ÚNICAMENTE el nombre canónico EXACTO de la agencia de destino (DESTINO - Columna G)
- * utilizando resolución jerárquica de segmentos (Departamento / Provincia / Distrito / Local),
- * eliminando ambigüedades con nombres de calles o avenidas.
+ * utilizando el diccionario estático oficial de 544 agencias y resolución jerárquica de alta precisión.
  */
-export const extractShalomDestino = (destinoDetalle: string): string => {
+export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string): string => {
+  // 1. Si se proporciona código de agencia exacto (ej. CBT, SRA, AVGAL)
+  if (agencyCode) {
+    const codeClean = agencyCode.toUpperCase().trim();
+    if (SHALOM_CODE_TO_OFFICIAL_MAP[codeClean]) {
+      return SHALOM_CODE_TO_OFFICIAL_MAP[codeClean];
+    }
+  }
+
   if (!destinoDetalle) return OFFICIAL_DESTINATIONS[0] || 'LIMA TINGO MARÍA';
 
-  // 1. Limpieza inicial de prefijos y datos adicionales
+  // 2. Limpieza inicial de prefijos y metadatos
   let clean = destinoDetalle
     .replace(/^Agencia Shalom:\s*/i, '')
     .replace(/\(DNI\/CE.*?\)/i, '')
@@ -88,46 +103,55 @@ export const extractShalomDestino = (destinoDetalle: string): string => {
   // Si hay guión largo o corto separando ruta geográfica de la dirección física
   const parts = clean.split(/[-–—]/);
   const locationPath = parts[0].trim();
+  const compactLocation = normalizeCompact(locationPath);
 
-  // 2. Extraer segmentos de departamento / provincia / distrito / local
+  // 3. Comprobar directamente en el mapa canónico oficial
+  if (SHALOM_NAME_TO_OFFICIAL_MAP[locationPath.toUpperCase()]) {
+    return SHALOM_NAME_TO_OFFICIAL_MAP[locationPath.toUpperCase()];
+  }
+  if (SHALOM_NAME_TO_OFFICIAL_MAP[compactLocation]) {
+    return SHALOM_NAME_TO_OFFICIAL_MAP[compactLocation];
+  }
+
+  // 4. Extraer segmentos geográficos: [DEP, PROV, DIST, LOCAL]
   const segments = locationPath
     .split('/')
     .map(s => s.trim().toUpperCase())
     .filter(Boolean);
 
-  // 3. Probar el último segmento (nombre exacto / local de la sucursal)
+  // 5. Prioridad Máxima: Último segmento (Local / Nombre Específico de la Agencia)
+  // Ej: 'AV ENRIQUE MEIGGS', 'TRES DE OCTUBRE', 'AV  JOSE GALVEZ', 'SANTA'
   if (segments.length > 0) {
     const lastSeg = segments[segments.length - 1];
     const lastClean = lastSeg.replace(/[()]/g, '').trim();
+    const compactLast = normalizeCompact(lastClean);
 
+    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[lastClean]) {
+      return SHALOM_LOCAL_TO_OFFICIAL_MAP[lastClean];
+    }
+    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[compactLast]) {
+      return SHALOM_LOCAL_TO_OFFICIAL_MAP[compactLast];
+    }
     if (destLookup.has(lastSeg)) return destLookup.get(lastSeg)!;
     if (destLookup.has(lastClean)) return destLookup.get(lastClean)!;
-    
-    const compactLast = normalizeCompact(lastClean);
     if (destCompactLookup.has(compactLast)) return destCompactLookup.get(compactLast)!;
   }
 
-  // 4. Probar el penúltimo segmento (distrito o cabecera distrital)
+  // 6. Penúltimo segmento (distrito)
   if (segments.length >= 2) {
     const distSeg = segments[segments.length - 2];
     const distClean = distSeg.replace(/[()]/g, '').trim();
+    const compactDist = normalizeCompact(distClean);
 
+    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[distClean]) {
+      return SHALOM_LOCAL_TO_OFFICIAL_MAP[distClean];
+    }
     if (destLookup.has(distSeg)) return destLookup.get(distSeg)!;
     if (destLookup.has(distClean)) return destLookup.get(distClean)!;
-
-    const compactDist = normalizeCompact(distClean);
     if (destCompactLookup.has(compactDist)) return destCompactLookup.get(compactDist)!;
   }
 
-  // 5. Probar el segundo segmento (provincia)
-  if (segments.length >= 3) {
-    const provSeg = segments[1].replace(/[()]/g, '').trim();
-    if (destLookup.has(provSeg)) return destLookup.get(provSeg)!;
-    const compactProv = normalizeCompact(provSeg);
-    if (destCompactLookup.has(compactProv)) return destCompactLookup.get(compactProv)!;
-  }
-
-  // 6. Búsqueda de coincidencia en la lista oficial
+  // 7. Búsqueda de coincidencia en la lista oficial
   const rawNorm = normalizeKey(clean);
   if (destLookup.has(rawNorm)) return destLookup.get(rawNorm)!;
 
@@ -229,7 +253,7 @@ const loadOfficialBaseWorkbook = async (): Promise<XLSX.WorkBook> => {
 
 /**
  * Genera y descarga el archivo Excel oficial de Envíos Masivos Shalom
- * 100% compatible con el validador oficial de Shalom.
+ * Soporta tanto navegadores Web (descarga directa) como Android / Capacitor (guardado nativo y apertura con app).
  */
 export const downloadShalomExcel = async (pedidos: Pedido[], tallerConfig: TallerConfig) => {
   const shalomPedidos = pedidos.filter(p => p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom'));
@@ -281,5 +305,25 @@ export const downloadShalomExcel = async (pedidos: Pedido[], tallerConfig: Talle
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const filename = `Formato-Pro-Masivo-Shalom-ComiKids_${dateStr}.xlsx`;
-  XLSX.writeFile(wb, filename);
+
+  if (Capacitor.isNativePlatform()) {
+    // En Capacitor Android: Escribir a sistema de archivos nativo y compartir/abrir
+    const base64Data = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    const savedFile = await Filesystem.writeFile({
+      path: filename,
+      data: base64Data,
+      directory: Directory.Cache,
+      recursive: true
+    });
+
+    await Share.share({
+      title: 'Formato Masivo Shalom',
+      text: `Excel de ${targetPedidos.length} envíos para Shalom`,
+      url: savedFile.uri,
+      dialogTitle: 'Guardar o Abrir Formato Shalom'
+    });
+  } else {
+    // En Navegador Web
+    XLSX.writeFile(wb, filename);
+  }
 };

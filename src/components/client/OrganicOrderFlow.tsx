@@ -105,9 +105,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     return currentUser?.nombre_completo || localStorage.getItem('incomi_saved_fullname') || '';
   });
 
+  const getLocalDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [fechaEnvioDeseada, setFechaEnvioDeseada] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getLocalDateString();
   });
+
 
   const [dniShalom, setDniShalom] = useState<string>(() => {
     return currentUser?.dni_default || localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
@@ -1335,13 +1344,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         type="date"
                         required
                         value={fechaEnvioDeseada}
-                        min={new Date().toISOString().split('T')[0]}
                         onChange={e => setFechaEnvioDeseada(e.target.value)}
                         className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-cyan-300 placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner font-mono cursor-pointer"
                       />
                       <Calendar className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
                     </div>
                   </div>
+
 
 
                   {errorMsg && (

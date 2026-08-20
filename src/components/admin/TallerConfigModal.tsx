@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useOrders } from '../../context/OrderContext';
 import { TallerConfig } from '../../types/database.types';
+import { ShalomApiService } from '../../services/shalomApiService';
 import { X, Settings, Save, Store, Phone, MapPin, Check } from 'lucide-react';
 
 interface Props {
@@ -12,6 +13,8 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
   const { tallerConfig, updateTallerConfig } = useOrders();
   const [formData, setFormData] = useState<TallerConfig>(tallerConfig);
   const [saved, setSaved] = useState(false);
+  const [testingShalom, setTestingShalom] = useState(false);
+  const [testStatus, setTestStatus] = useState<{ valid: boolean; message: string } | null>(null);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -19,6 +22,24 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
       document.body.style.overflow = '';
     };
   }, []);
+
+  const handleTestShalom = async () => {
+    if (!formData.shalom_email || !formData.shalom_password) return;
+    setTestingShalom(true);
+    setTestStatus(null);
+    try {
+      const res = await ShalomApiService.testShalomAuth({
+        email: formData.shalom_email,
+        password: formData.shalom_password,
+      });
+      setTestStatus(res);
+    } catch (err: any) {
+      setTestStatus({ valid: false, message: err.message || 'Error de conexión' });
+    } finally {
+      setTestingShalom(false);
+    }
+  };
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,6 +145,67 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
             </div>
           </div>
 
+          <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                <Store className="w-3.5 h-3.5" />
+                <span>Credenciales de Shalom Pro (API)</span>
+              </span>
+              {testStatus && (
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  testStatus.valid ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                }`}>
+                  {testStatus.valid ? '✓ Conectado' : '✕ Error'}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] text-slate-300 mb-1">Email Shalom Pro</label>
+                <input
+                  type="email"
+                  value={formData.shalom_email || ''}
+                  onChange={e => setFormData({ ...formData, shalom_email: e.target.value })}
+                  placeholder="usuario@gmail.com"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-300 mb-1">Contraseña Shalom Pro</label>
+                <input
+                  type="password"
+                  value={formData.shalom_password || ''}
+                  onChange={e => setFormData({ ...formData, shalom_password: e.target.value })}
+                  placeholder="••••••••"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleTestShalom}
+              disabled={testingShalom || !formData.shalom_email || !formData.shalom_password}
+              className="w-full py-1.5 px-3 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {testingShalom ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-cyan-300 border-t-transparent rounded-full animate-spin" />
+                  <span>Verificando con Shalom Pro...</span>
+                </>
+              ) : (
+                <span>Probar Conexión con Shalom Pro</span>
+              )}
+            </button>
+
+            {testStatus && (
+              <p className={`text-[10px] leading-tight ${testStatus.valid ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {testStatus.message}
+              </p>
+            )}
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">WhatsApp para Pedidos y Clientes</label>
             <input
@@ -153,6 +235,7 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
               </>
             )}
           </button>
+
         </form>
 
       </div>

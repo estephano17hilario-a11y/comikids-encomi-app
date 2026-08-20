@@ -78,7 +78,10 @@ export interface TallerConfig {
   ciudad_origen: string;
   agencia_shalom_origen?: string;
   anuncio_publico_clientes?: string;
+  shalom_email?: string;
+  shalom_password?: string;
 }
+
 
 export interface ShalomAgency {
   id: number | string;

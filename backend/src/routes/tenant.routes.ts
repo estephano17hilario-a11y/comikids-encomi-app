@@ -12,4 +12,6 @@ export async function tenantRoutes(fastify: FastifyInstance) {
   fastify.get('/api/tenant/instance/:tenantId/status', TenantController.getStatus);
   fastify.delete('/api/tenant/:tenantId', TenantController.deleteInstance);
   fastify.delete('/api/tenant/instance/:tenantId', TenantController.deleteInstance);
+  fastify.post('/api/tenant/sync-dispatch-whatsapp', TenantController.syncDispatchWhatsApp);
 }
+

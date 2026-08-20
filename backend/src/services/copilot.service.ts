@@ -186,7 +186,6 @@ export class CopilotService {
             .limit(5);
 
           if (agencies && agencies.length > 0) {
-            // Priorizar coincidencia que tenga más palabras en común
             const best = agencies.find(a => 
               cleanTerms.some(t => 
                 (a.province && a.province.toUpperCase().includes(t)) || 
@@ -456,7 +455,7 @@ export class CopilotService {
             const currentTokens = await this.getDailyTokenUsage(sessionData.accountCode);
             const remainingTokens = Math.max(0, DAILY_TOKEN_LIMIT - currentTokens);
 
-            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea Sub-QR Activa:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles Hoy:* ${remainingTokens.toLocaleString()} / 500,000 tokens\n\n🛠️ *Acceso Total Habilitado a Comikids:*\n• 📦 *Registrar pedidos:* Envíame DNI, Nombre, Destino Shalom, WhatsApp y Prendas para registrarlo con su agencia oficial y comprobante.\n• 🔍 *Consultar pedidos y envíos:* Pregúntame "¿cuántos envíos hay para hoy?", busca por cliente (ej: "busca el paquete de Estephano") o estados.\n• ✏️ *Actualizar pedidos:* Cambia producción o envíos en tiempo real.\n• 🚀 *Despachos WhatsApp:* Envío directo a clientas desde +${sessionData.ownerPhone}.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
+            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea Sub-QR Activa:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles Hoy:* ${remainingTokens.toLocaleString()} / 500,000 tokens\n\n🛠️ *Acceso Total Habilitado a Comikids:*\n• 📦 *Registrar pedidos:* Solo envíame Nombre, DNI, WhatsApp y Destino (Agencia Shalom o Dirección Motorizado).\n• 🔍 *Consultar pedidos y envíos:* Pregúntame "¿cuántos envíos hay para hoy?", busca por cliente (ej: "busca el paquete de Estephano") o estados.\n• ✏️ *Actualizar pedidos:* Cambia producción o envíos en tiempo real.\n• 🚀 *Despachos WhatsApp:* Envío directo a clientas desde +${sessionData.ownerPhone}.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
 
             await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, welcomeMsg);
             return welcomeMsg;
@@ -561,7 +560,7 @@ export class CopilotService {
         (isImage ? 'image/jpeg' : 'application/pdf');
 
       // -------------------------------------------------------------
-      // PASO 7: PROMPT DEL SISTEMA CON VISTA TOTAL Y REGLAS ESTRICTAS
+      // PASO 7: PROMPT DEL SISTEMA CON 4 CAMPOS Y COMPROBANTE ESTÁNDAR
       // -------------------------------------------------------------
       const masterPrompt = `
 Eres el "Copiloto Master de Inteligencia de Negocios y Operaciones de Base de Datos" de Encomi SaaS (encomi.vercel.app).
@@ -596,19 +595,24 @@ MENSAJE / INSTRUCCIÓN DEL ADMINISTRADOR:
   - Revisa la lista de arriba y responde con los datos exactos del pedido encontrado.
   - Usa SIEMPRE el nombre exacto de la persona (ej: "Estephano Andree Hilario Ampuero").
 
-2. REGISTRO DE NUEVO PEDIDO (CUANDO EL USUARIO LO PIDE):
-Si el usuario te pide registrar un pedido (ej: "registra pedido: Juan Perez, DNI 45892134, cel 987654321, destino Talara, 2 pijamas"):
-Extrae todos los datos y responde con este formato JSON estricto:
+2. REGISTRO DE NUEVO PEDIDO (SOLO 4 DATOS REQUERIDOS):
+Para registrar un nuevo pedido, SOLO SE NECESITAN ESTOS 4 DATOS (NO pidas prendas ni bordado):
+  1. Nombre completo de la clienta (nombre)
+  2. DNI o Carnet de Extranjería (dni)
+  3. Teléfono / WhatsApp (telefono - 9 dígitos)
+  4. Destino (agencia Shalom o dirección para motorizado con referencia si tiene)
+
+Si el usuario te envía estos datos, responde con este formato JSON estricto:
 \`\`\`json
 {
   "action": "CREATE_ORDER",
   "clienteNombre": "Nombre completo",
   "clienteDni": "12345678",
   "clienteTelefono": "987654321",
-  "destino": "Talara o ciudad o dirección",
-  "prendasBordado": "2 Pijamas térmicas bordadas",
-  "metodoEnvio": "Agencia Shalom",
-  "observaciones": ""
+  "destino": "Agencia Shalom o Dirección exacta de entrega",
+  "referencia": "Opcional",
+  "metodoEnvio": "shalom / motorizado",
+  "prendasBordado": "Bordado personalizado (o las prendas si las mencionó)"
 }
 \`\`\`
 
@@ -661,7 +665,7 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
           const actionData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
 
           // =========================================================
-          // ACCIÓN A: CREAR PEDIDO EN BASE DE DATOS CON RESOLUCIÓN SHALOM
+          // ACCIÓN A: CREAR PEDIDO EN BASE DE DATOS (4 DATOS + COMPROBANTE WEB)
           // =========================================================
           if (actionData.action === 'CREATE_ORDER' || actionData.action === 'REGISTRAR_PEDIDO') {
             // 1. Extracción robusta de campos
@@ -700,18 +704,26 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               ''
             ).trim();
 
-            let prendasBordado = String(
+            const referencia = String(actionData.referencia || actionData.ref || '').trim();
+            const prendasBordado = String(
               actionData.prendasBordado ||
               actionData.prendas ||
               actionData.detalles ||
               actionData.detallesBordado ||
               actionData.items ||
               actionData.producto ||
-              ''
+              'Bordado personalizado'
             ).trim();
 
-            const metodoEnvio = actionData.metodoEnvio || 'Agencia Shalom';
-            const observaciones = actionData.observaciones || '';
+            const metodoEnvioRaw = String(actionData.metodoEnvio || '').toLowerCase();
+            const isMotorizado =
+              metodoEnvioRaw.includes('motorizado') ||
+              destino.toLowerCase().includes('motorizado') ||
+              destino.toLowerCase().includes('delivery') ||
+              destino.toLowerCase().includes('domicilio');
+
+            const metodoEnvioNombre = isMotorizado ? 'Motorizado Local' : 'Agencia Shalom Nacional';
+            const metodoEnvioCodigo = isMotorizado ? 'motorizado' : 'shalom';
 
             // 2. Extracción de respaldo por Regex del texto original si faltó algo
             if (!clienteDni || clienteDni.length < 8) {
@@ -731,26 +743,29 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               }
             }
 
-            // 3. Validación de los 5 campos requeridos
+            // 3. Validación estricta de SOLO los 4 campos requeridos
             const missingList: string[] = [];
             if (!clienteNombre || clienteNombre.toLowerCase() === 'clienta') missingList.push('• Nombre completo de la clienta');
             if (!clienteDni || clienteDni.length < 8) missingList.push('• DNI o Carnet de Extranjería (8 dígitos)');
-            if (!clienteTelefono || clienteTelefono.length < 9) missingList.push('• Número de WhatsApp (9 dígitos, ej: 987654321)');
-            if (!destino) missingList.push('• Lugar de destino / Agencia Shalom (ej: Talara, Arequipa, Trujillo)');
-            if (!prendasBordado) missingList.push('• Prendas o detalles del bordado (ej: 2 Pijamas térmicas)');
+            if (!clienteTelefono || clienteTelefono.length < 9) missingList.push('• Teléfono WhatsApp (9 dígitos, ej: 987654321)');
+            if (!destino) missingList.push('• Destino (Agencia Shalom o Dirección para Motorizado)');
 
             if (missingList.length > 0) {
-              const missingFieldsMsg = `📋 *Faltan datos obligatorios para registrar el pedido:*\n\n${missingList.join('\n')}\n\n💬 *Por favor envíame los datos completos para emitir el Comprobante Oficial.*`;
+              const missingFieldsMsg = `📋 *Para registrar el pedido, solo necesito estos 4 datos obligatorios:*\n\n${missingList.join('\n')}\n\n💬 *Por favor envíame los datos completos para emitir tu Comprobante Oficial.*`;
               await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, missingFieldsMsg);
               return missingFieldsMsg;
             }
 
-            if (clienteTelefono.length === 9) {
-              clienteTelefono = `51${clienteTelefono}`;
-            }
+            const cleanPhoneDisplay = clienteTelefono.length === 9 ? clienteTelefono : clienteTelefono.slice(-9);
+            const cleanPhoneFull = clienteTelefono.length === 9 ? `51${clienteTelefono}` : clienteTelefono;
 
-            // 4. Resolver la Agencia Oficial de Shalom con búsqueda profunda en Supabase
-            const resolvedDestination = await this.resolveOfficialShalomAgency(destino, clienteDni);
+            // 4. Resolver Destino según Método
+            let resolvedDestination = '';
+            if (isMotorizado) {
+              resolvedDestination = destino.replace(/^motorizado\s*:?\s*/i, '').trim();
+            } else {
+              resolvedDestination = await this.resolveOfficialShalomAgency(destino, clienteDni);
+            }
 
             // 5. Upsert de Usuario en Supabase con rol válido 'client'
             const { data: existingUser } = await supabaseAdmin
@@ -764,9 +779,10 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
             if (targetUserId) {
               await supabaseAdmin.from('usuarios').update({
                 nombre_completo: clienteNombre.trim(),
-                telefono_default: clienteTelefono,
+                telefono_default: cleanPhoneFull,
                 dni_default: clienteDni,
                 direccion_default: resolvedDestination,
+                referencia_default: referencia || null,
               }).eq('id', targetUserId);
             } else {
               targetUserId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
@@ -774,9 +790,10 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
                 id: targetUserId,
                 dni: clienteDni,
                 nombre_completo: clienteNombre.trim(),
-                telefono_default: clienteTelefono,
+                telefono_default: cleanPhoneFull,
                 dni_default: clienteDni,
                 direccion_default: resolvedDestination,
+                referencia_default: referencia || null,
                 avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${clienteDni}`,
                 password_hash: clienteDni,
                 rol: 'client',
@@ -801,13 +818,13 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               codigo_seguimiento: trackingCode,
               usuario_id: targetUserId,
               detalles_bordado: prendasBordado,
-              metodo_envio_codigo: 'shalom',
-              metodo_envio_nombre: metodoEnvio || 'Agencia Shalom',
+              metodo_envio_codigo: metodoEnvioCodigo,
+              metodo_envio_nombre: metodoEnvioNombre,
               destino_detalle: resolvedDestination,
               estado_produccion: 'en_cola',
               estado_envio: 'pendiente',
-              shalom_clave_recojo: '0808',
-              observaciones_cliente: observaciones || null,
+              shalom_clave_recojo: isMotorizado ? null : '0808',
+              observaciones_cliente: referencia ? `Ref: ${referencia}` : null,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             });
@@ -823,11 +840,12 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               clienteNombre,
               clienteDni,
               destino: resolvedDestination,
-              prendasBordado,
+              metodoEnvio: metodoEnvioNombre,
             });
 
-            // 9. Emitir Comprobante Oficial de Registro de Encomi
-            const receiptMsg = `🎉 *¡Comprobante Oficial de Registro de Pedido!* 📦✨\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🔖 *Código de Orden:* *#${trackingCode.replace(/\D/g, '')}*\n🔍 *Código de Seguimiento:* ${trackingCode}\n👤 *Cliente:* ${clienteNombre}\n🪪 *DNI / Documento:* ${clienteDni}\n📱 *WhatsApp:* +${clienteTelefono}\n📍 *Destino Oficial:* ${resolvedDestination}\n🧵 *Prendas / Bordado:* ${prendasBordado}\n🚚 *Método de Envío:* ${metodoEnvio || 'Agencia Shalom'}\n🔐 *Clave de Recojo:* 0808\n⏳ *Estado Producción:* En Cola de Bordado\n🚚 *Estado Envío:* Pendiente de Despacho\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n💾 *Registrado y respaldado en la base de datos de ${sessionData.displayName}.*\n🌐 *Rastreo en vivo:* https://encomi.vercel.app`;
+            // 9. Emitir Comprobante Oficial Idéntico al de la Web Encomi / Comikids
+            const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
+            const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* ${metodoEnvioNombre}\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
 
             await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, receiptMsg);
             return receiptMsg;

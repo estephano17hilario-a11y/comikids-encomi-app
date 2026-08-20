@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido } from '../../types/database.types';
 import { buildWhatsAppStatusNotifyUrl } from '../../services/whatsappService';
+import { ShalomApiService } from '../../services/shalomApiService';
 import {
   MessageCircle,
   CheckCircle2,
@@ -14,7 +15,10 @@ import {
   Package,
   Clock,
   ExternalLink,
-  ThumbsUp
+  ThumbsUp,
+  Send,
+  Loader2,
+  Zap
 } from 'lucide-react';
 
 interface Props {
@@ -52,6 +56,8 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
   });
 
   const [dismissCompleted, setDismissCompleted] = useState(false);
+  const [isSendingAllAuto, setIsSendingAllAuto] = useState(false);
+
 
   const pendingItems = items.filter(it => !it.sent);
   const completedItems = items.filter(it => it.sent);
@@ -59,6 +65,33 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
   const completedCount = completedItems.length;
   const isAllCompleted = completedCount === totalCount && totalCount > 0;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 100;
+
+  const handleSendAllAuto = async () => {
+    if (isSendingAllAuto) return;
+    setIsSendingAllAuto(true);
+    const pendingItemsList = items.filter(it => !it.sent);
+    const payload = pendingItemsList.map(it => {
+      const o = orders.find(ord => ord.id === it.orderId);
+      return {
+        phone: it.phone,
+        customerName: o?.usuario?.nombre_completo || 'Clienta',
+        trackingCode: o?.codigo_seguimiento || '',
+        guideNumber: o?.shalom_numero_guia || (statusName.includes('Shalom') ? 'En camino a Agencia Shalom' : statusName),
+        agencyName: o?.destino_detalle || 'Destino',
+        orderCode: o?.codigo_seguimiento || it.orderId,
+      };
+    });
+
+
+    try {
+      await ShalomApiService.syncDispatchedWhatsApp(payload);
+      setItems(prev => prev.map(it => ({ ...it, sent: true })));
+    } catch (err) {
+      console.error('[AUTO WHATSAPP NOTIFY ERROR]', err);
+    } finally {
+      setIsSendingAllAuto(false);
+    }
+  };
 
   const handleSendWhatsApp = (order: Pedido, itemState: ToDoItemState) => {
     const clientName = order.usuario?.nombre_completo || 'Cliente';
@@ -125,7 +158,7 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Envía el aviso privado a cada clienta con 1 solo clic
+                Envía la actualización a cada clienta desde la línea <strong className="text-emerald-400">+51 927 781 412</strong>
               </p>
             </div>
           </div>
@@ -331,31 +364,52 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-3.5 sm:p-4 bg-slate-900 border-t border-white/10 flex items-center justify-between gap-3 shrink-0">
+        <div className="p-3.5 sm:p-4 bg-slate-900 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs cursor-pointer transition-colors"
+            className="py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs cursor-pointer transition-colors w-full sm:w-auto"
           >
             {isAllCompleted ? 'Cerrar' : 'Cerrar / Omitir restantes'}
           </button>
 
           {!isAllCompleted && (
-            <button
-              type="button"
-              onClick={() => {
-                // Enviar la primera pendiente directamente
-                const firstPending = items.find(it => !it.sent);
-                if (firstPending) {
-                  const order = orders.find(o => o.id === firstPending.orderId);
-                  if (order) handleSendWhatsApp(order, firstPending);
-                }
-              }}
-              className="py-2 px-4 rounded-xl bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
-            >
-              <span>Enviar Siguiente Pendiente</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                type="button"
+                disabled={isSendingAllAuto}
+                onClick={handleSendAllAuto}
+                className="flex-1 sm:flex-none py-2 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-600/25 cursor-pointer disabled:opacity-50 active:scale-95 transition-all"
+              >
+                {isSendingAllAuto ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Enviando por WhatsApp API (+51 927 781 412)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-yellow-300" />
+                    <span>Enviar Todos Automático por WhatsApp</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={isSendingAllAuto}
+                onClick={() => {
+                  const firstPending = items.find(it => !it.sent);
+                  if (firstPending) {
+                    const order = orders.find(o => o.id === firstPending.orderId);
+                    if (order) handleSendWhatsApp(order, firstPending);
+                  }
+                }}
+                className="flex-1 sm:flex-none py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
+              >
+                <span>Enviar Siguiente Manual</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
         </div>
 
@@ -364,3 +418,4 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
     document.body
   );
 };
+

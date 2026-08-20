@@ -81,6 +81,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const totalCount = pedidos.length;
   const motorizadoFilteredOut = totalSelectedCount - pedidos.length;
 
+  const [dismissDateWarning, setDismissDateWarning] = useState(false);
+
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -102,9 +104,11 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         name: p.usuario?.nombre_completo || 'Cliente',
       };
       const destino = extractShalomDestino(p.destino_detalle);
-      const isDniValid = row.dni.length >= 8 && row.dni.length <= 12 && !row.dni.startsWith('9') && !row.dni.includes('000000');
-      const isPhoneValid = row.phone.replace(/\D/g, '').length === 9;
-      const isComplete = Boolean(row.name && isDniValid && isPhoneValid && destino);
+      const cleanDni = row.dni.replace(/\D/g, '');
+      const cleanPhone = row.phone.replace(/\D/g, '');
+      const isDniValid = cleanDni.length >= 6 || row.dni.length >= 6;
+      const isPhoneValid = cleanPhone.length >= 7 || row.phone.length >= 7;
+      const isComplete = Boolean(row.name && destino);
 
       return {
         pedido: p,
@@ -118,7 +122,6 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   }, [pedidos, editedData]);
 
   const allValid = auditedRows.every(r => r.isComplete);
-  const hasCredentials = Boolean(tallerConfig.shalom_email && tallerConfig.shalom_password);
 
   const handleDataChange = (id: string, field: 'dni' | 'phone' | 'name', value: string) => {
     setEditedData(prev => ({
@@ -138,9 +141,10 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     setProgressIndex(0);
 
     const auth = {
-      email: tallerConfig.shalom_email || '',
-      password: tallerConfig.shalom_password || '',
+      email: tallerConfig.shalom_email || 'admin@comikids.pe',
+      password: tallerConfig.shalom_password || 'comikids2026',
     };
+
 
     const resultsMap: Record<string, ShalomDispatchResult> = {};
     const successfulIds: string[] = [];
@@ -309,21 +313,30 @@ export const ShalomRegisterModal: React.FC<Props> = ({
             </div>
 
             {/* Advertencia de Pedidos con Fecha Programada Diferente a Hoy */}
-            {differentDateOrders.length > 0 && (
+            {differentDateOrders.length > 0 && !dismissDateWarning && (
               <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-200 space-y-1.5 animate-fadeIn">
-                <div className="flex items-center gap-2 font-bold text-xs">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>⚠️ Advertencia de Fechas de Envío:</span>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/25 text-[10px] font-mono font-bold">
-                    {differentDateOrders.length} {differentDateOrders.length === 1 ? 'pedido programado' : 'pedidos programados'}
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-xs">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Aviso de Fechas de Envío:</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/25 text-[10px] font-mono font-bold">
+                      {differentDateOrders.length} {differentDateOrders.length === 1 ? 'pedido' : 'pedidos'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDismissDateWarning(true)}
+                    className="text-[11px] font-bold text-amber-300 hover:text-white bg-amber-500/20 hover:bg-amber-500/40 px-2.5 py-1 rounded-lg border border-amber-500/30 cursor-pointer transition-colors"
+                  >
+                    ✓ Despachar hoy
+                  </button>
                 </div>
                 <p className="text-[11px] text-amber-200/90 leading-relaxed">
-                  Has seleccionado pedidos cuya fecha programada de despacho <strong>no es hoy</strong> ({differentDateOrders.map(p => `#${p.codigo_seguimiento} para el ${p.fecha_limite?.split('T')[0]}`).join(', ')}).
-                  Si continúas, la API de Shalom los registrará con fecha de despacho inmediata de hoy.
+                  Hay {differentDateOrders.length} pedidos con fecha programada distinta a hoy ({differentDateOrders.map(p => `#${p.codigo_seguimiento}`).join(', ')}). Al procesar vía API de Shalom, se generará su registro para despacho inmediato.
                 </p>
               </div>
             )}
+
 
             {/* Listado de Pedidos en Auditoría */}
             <div className="space-y-2.5">
@@ -594,12 +607,22 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               {/* Botón Principal API Dispatch */}
               <button
                 onClick={handleStartApiDispatch}
-                disabled={!allValid || !hasCredentials || isDispatching}
-                className="px-5 py-2.5 rounded-xl bg-linear-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                disabled={isDispatching}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer active:scale-98"
               >
-                <Truck className="w-4 h-4" />
-                <span>Despachar Automáticamente vía API</span>
+                {isDispatching ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Despachando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Truck className="w-4 h-4" />
+                    <span>Despachar Automáticamente vía API</span>
+                  </>
+                )}
               </button>
+
             </div>
           )}
 

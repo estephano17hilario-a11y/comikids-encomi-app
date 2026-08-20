@@ -149,7 +149,7 @@ export class CopilotService {
   }
 
   /**
-   * Resuelve de forma inteligente la Agencia Oficial de Shalom buscando en la base de datos shalom_agencies
+   * Resuelve de forma inteligente y exhaustiva la Agencia Oficial de Shalom buscando en la tabla shalom_agencies
    */
   private static async resolveOfficialShalomAgency(destinationInput: string, dni: string): Promise<string> {
     const cleanDni = dni.replace(/[^0-9A-Za-z]/g, '').trim();
@@ -165,29 +165,34 @@ export class CopilotService {
     }
 
     try {
-      // Extraer palabras de búsqueda de la ciudad/provincia/distrito
-      const searchTerms = rawDest
-        .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, ' ')
+      // 1. Extraer y limpiar términos de búsqueda
+      const cleanTerms = rawDest
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]/g, ' ')
         .split(/\s+/)
-        .filter(w => w.length >= 3 && !['AGENCIA', 'SHALOM', 'PARA', 'DESTINO', 'RECOJO', 'EN', 'EL', 'LA', 'DE'].includes(w.toUpperCase()));
+        .map(w => w.trim().toUpperCase())
+        .filter(w => w.length >= 3 && !['AGENCIA', 'SHALOM', 'PARA', 'DESTINO', 'RECOJO', 'EN', 'EL', 'LA', 'DE', 'AV', 'AVENIDA', 'JR', 'JIRON', 'CALLE'].includes(w));
 
       let matchedAgency: any = null;
 
-      if (searchTerms.length > 0) {
-        for (const term of searchTerms) {
+      // 2. Intento de búsqueda exacta por cada término significativo
+      if (cleanTerms.length > 0) {
+        for (const term of cleanTerms) {
           const { data: agencies } = await supabaseAdmin
             .from('shalom_agencies')
             .select('id, name, department, province, district, address, full_name')
-            .or(`name.ilike.%${term}%,province.ilike.%${term}%,district.ilike.%${term}%,department.ilike.%${term}%,address.ilike.%${term}%`)
+            .or(`name.ilike.%${term}%,province.ilike.%${term}%,district.ilike.%${term}%,department.ilike.%${term}%,address.ilike.%${term}%,full_name.ilike.%${term}%`)
             .limit(5);
 
           if (agencies && agencies.length > 0) {
-            // Priorizar la agencia que coincida con más palabras
+            // Priorizar coincidencia que tenga más palabras en común
             const best = agencies.find(a => 
-              searchTerms.some(t => 
-                (a.province && a.province.toUpperCase().includes(t.toUpperCase())) || 
-                (a.district && a.district.toUpperCase().includes(t.toUpperCase())) ||
-                (a.name && a.name.toUpperCase().includes(t.toUpperCase()))
+              cleanTerms.some(t => 
+                (a.province && a.province.toUpperCase().includes(t)) || 
+                (a.district && a.district.toUpperCase().includes(t)) ||
+                (a.name && a.name.toUpperCase().includes(t)) ||
+                (a.address && a.address.toUpperCase().includes(t))
               )
             ) || agencies[0];
 
@@ -197,18 +202,67 @@ export class CopilotService {
         }
       }
 
+      // 3. Intento de búsqueda difusa por raíces de 3 o 4 caracteres (ej: "MEGG" -> "MEIGG", "TALA" -> "TALARA", "CHIMB" -> "CHIMBOTE")
+      if (!matchedAgency && cleanTerms.length > 0) {
+        for (const term of cleanTerms) {
+          const prefix = term.slice(0, 4);
+          if (prefix.length >= 3) {
+            const { data: fuzzyAgencies } = await supabaseAdmin
+              .from('shalom_agencies')
+              .select('id, name, department, province, district, address, full_name')
+              .or(`name.ilike.%${prefix}%,address.ilike.%${prefix}%,district.ilike.%${prefix}%,province.ilike.%${prefix}%,full_name.ilike.%${prefix}%`)
+              .limit(5);
+
+            if (fuzzyAgencies && fuzzyAgencies.length > 0) {
+              matchedAgency = fuzzyAgencies[0];
+              break;
+            }
+          }
+        }
+      }
+
+      // 4. Mapeos comunes de nombres populares de agencias
+      if (!matchedAgency) {
+        const lowerRaw = rawDest.toLowerCase();
+        let fallbackSearch = '';
+        if (lowerRaw.includes('megg') || lowerRaw.includes('meigg') || lowerRaw.includes('enrique')) {
+          fallbackSearch = 'MEIGGS';
+        } else if (lowerRaw.includes('tala')) {
+          fallbackSearch = 'TALARA';
+        } else if (lowerRaw.includes('chacha') || lowerRaw.includes('grau')) {
+          fallbackSearch = 'GRAU';
+        } else if (lowerRaw.includes('tingo') || lowerRaw.includes('jaime')) {
+          fallbackSearch = 'TINGO';
+        } else if (lowerRaw.includes('canada') || lowerRaw.includes('canadá')) {
+          fallbackSearch = 'CANADA';
+        }
+
+        if (fallbackSearch) {
+          const { data: fallbackList } = await supabaseAdmin
+            .from('shalom_agencies')
+            .select('id, name, department, province, district, address, full_name')
+            .or(`name.ilike.%${fallbackSearch}%,address.ilike.%${fallbackSearch}%,district.ilike.%${fallbackSearch}%,full_name.ilike.%${fallbackSearch}%`)
+            .limit(1);
+
+          if (fallbackList && fallbackList.length > 0) {
+            matchedAgency = fallbackList[0];
+          }
+        }
+      }
+
+      // Si encontramos la agencia oficial en la base de datos de Shalom
       if (matchedAgency) {
-        const dep = (matchedAgency.department || 'LIMA').toUpperCase();
-        const prov = (matchedAgency.province || matchedAgency.district || 'LIMA').toUpperCase();
-        const dist = (matchedAgency.district || matchedAgency.name || 'CENTRO').toUpperCase();
-        const addr = matchedAgency.address ? ` – ${matchedAgency.address}` : '';
+        const dep = (matchedAgency.department || 'LIMA').toUpperCase().trim();
+        const prov = (matchedAgency.province || matchedAgency.district || 'LIMA').toUpperCase().trim();
+        const dist = (matchedAgency.district || matchedAgency.name || 'CENTRO').toUpperCase().trim();
+        const addr = matchedAgency.address ? ` – ${matchedAgency.address.trim()}` : '';
         return `Agencia Shalom: ${dep} / ${prov} / ${dist}${addr} (DNI/CE Recojo: ${cleanDni})`;
       }
     } catch (err) {
       console.warn('[RESOLVE SHALOM AGENCY WARN]', err);
     }
 
-    // Fallback limpio con mayúsculas y DNI de recojo
+    // Fallback limpio
     const cleanDestUpper = rawDest.replace(/^Agencia\s*Shalom\s*:?\s*/i, '').trim().toUpperCase();
     return `Agencia Shalom: ${cleanDestUpper} (DNI/CE Recojo: ${cleanDni})`;
   }
@@ -221,14 +275,15 @@ export class CopilotService {
     statsSummary: string;
     todayOrdersCount: number;
     totalCount: number;
+    rawOrders: any[];
   }> {
     const todayStr = this.getTodayDateString();
     const startOfTodayIso = `${todayStr}T00:00:00.000Z`;
 
-    // 1. Consultar todos los pedidos en vivo desde Supabase (hasta 60 registros)
+    // 1. Consultar todos los pedidos en vivo desde Supabase (hasta 60 registros) con JOIN a usuarios
     const { data: allOrders, count: totalOrdersCount } = await supabaseAdmin
       .from('pedidos')
-      .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario:usuarios(nombre_completo, dni, telefono_default)', { count: 'exact' })
+      .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario_id, usuario:usuarios(id, nombre_completo, dni, telefono_default)', { count: 'exact' })
       .order('created_at', { ascending: false })
       .limit(60);
 
@@ -246,50 +301,29 @@ export class CopilotService {
     const completedDeliv = ordersList.filter(o => o.estado_envio === 'entregado').length;
 
     const statsSummary = `
-📊 ESTADÍSTICAS EN VIVO DEL SISTEMA (${todayStr}):
-- Total de pedidos en base de datos: ${totalOrdersCount || ordersList.length}
+📊 ESTADÍSTICAS EN VIVO DEL SISTEMA COMIKIDS (${todayStr}):
+- Total de pedidos/envíos en base de datos: ${totalOrdersCount || ordersList.length} pedidos
 - Pedidos registrados hoy (${todayStr}): ${todayOrders.length} pedidos
 - Pedidos en producción/bordado: ${pendingProd}
-- Pedidos pendientes de envío / en tránsito: ${pendingDeliv}
+- Pedidos en preparación / tránsito: ${pendingDeliv}
 - Pedidos entregados a Shalom / clientes: ${completedDeliv}`;
 
-    // 2. Filtrado y ordenamiento de pedidos con coincidencia de búsqueda prioritaria
-    const searchTerms = queryText.toLowerCase()
-      .replace(/[^\w\sáéíóúñÁÉÍÓÚÑ-]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length >= 3 && !['DIME', 'LOS', 'PEDIDOS', 'PEDIDO', 'ENVIOS', 'ENVIO', 'BUSCA', 'BUSCAR', 'PAQUETE', 'CON', 'NOMBRE', 'PARA', 'DE', 'QUE', 'HAY', 'POR', 'FAVOR', 'HOY'].includes(w.toUpperCase()));
-
-    const formattedOrders: string[] = [];
-
-    ordersList.forEach((o) => {
+    // 2. Formatear cada orden de manera clara con el nombre y DNI real
+    const formattedOrders = ordersList.map((o) => {
       const user = Array.isArray(o.usuario) ? o.usuario[0] : o.usuario;
       const name = user?.nombre_completo || 'Cliente';
-      const dni = user?.dni || 'S/DNI';
+      const dni = user?.dni || (o.destino_detalle?.match(/(?:DNI\/CE|DNI|CE)\s*Recojo:\s*([0-9A-Za-z]+)/i)?.[1]) || 'S/DNI';
       const cel = user?.telefono_default || '';
       const dateLocal = o.created_at ? new Date(o.created_at).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : 'Reciente';
       const isToday = o.created_at && (new Date(o.created_at).toISOString().slice(0, 10) === todayStr || o.created_at >= startOfTodayIso);
 
-      const orderBlock = `[Orden #${o.codigo_seguimiento || o.id?.slice(0, 8)}] ${isToday ? '⭐ (REGISTRADO HOY)' : ''}
+      return `[Orden #${o.codigo_seguimiento || o.id?.slice(0, 8)}] ${isToday ? '⭐ (REGISTRADO HOY)' : ''}
   • Cliente: ${name} (DNI: ${dni}${cel ? `, Cel: ${cel}` : ''})
   • Destino: ${o.destino_detalle || 'Agencia Shalom'}
   • Estado Producción: ${o.estado_produccion || 'en_cola'} | Estado Envío: ${o.estado_envio || 'pendiente'}
   • Prendas / Bordado: ${o.detalles_bordado || 'Bordado'}
   • Clave Recojo: ${o.shalom_clave_recojo || '0808'}
   • Fecha y Hora: ${dateLocal}`;
-
-      // Comprobar si coincide con la búsqueda del usuario
-      const matchesSearch = searchTerms.some(term => 
-        name.toLowerCase().includes(term) ||
-        dni.includes(term) ||
-        (o.codigo_seguimiento && o.codigo_seguimiento.toLowerCase().includes(term)) ||
-        (o.destino_detalle && o.destino_detalle.toLowerCase().includes(term))
-      );
-
-      if (matchesSearch) {
-        formattedOrders.unshift(`🔥 COINCIDENCIA DIRECTA DE BÚSQUEDA:\n${orderBlock}`);
-      } else {
-        formattedOrders.push(orderBlock);
-      }
     });
 
     return {
@@ -297,6 +331,7 @@ export class CopilotService {
       statsSummary,
       todayOrdersCount: todayOrders.length,
       totalCount: totalOrdersCount || ordersList.length,
+      rawOrders: ordersList,
     };
   }
 
@@ -385,7 +420,6 @@ export class CopilotService {
           const pendingAccount = JSON.parse(pendingAuthRaw);
           const enteredPassword = textTrimmed;
 
-          // Obtener la contraseña oficial esperada desde Supabase taller_config o usuario empresa
           let expectedPassword = pendingAccount.expectedPassword || '989834969MI';
           try {
             const { data: configRow } = await supabaseAdmin
@@ -401,7 +435,6 @@ export class CopilotService {
             console.warn('[CONFIG FETCH WARN]', cfgErr);
           }
 
-          // Validar contraseña ingresada
           const isValidPass =
             enteredPassword === expectedPassword ||
             enteredPassword === '989834969MI' ||
@@ -417,14 +450,13 @@ export class CopilotService {
               displayName: pendingAccount.displayName,
             };
 
-            // Activar sesión por 7 días
             await redisClient.set(sessionKey, JSON.stringify(sessionData), 'EX', 86400 * 7);
             await redisClient.del(pendingAuthKey);
 
             const currentTokens = await this.getDailyTokenUsage(sessionData.accountCode);
             const remainingTokens = Math.max(0, DAILY_TOKEN_LIMIT - currentTokens);
 
-            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea Sub-QR Activa:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles Hoy:* ${remainingTokens.toLocaleString()} / 500,000 tokens\n\n🛠️ *Acceso Total Habilitado:*\n• 📦 *Registrar pedidos:* Envíame DNI, Nombre, Destino Shalom, WhatsApp y Prendas para registrarlo con su agencia oficial y generar su comprobante.\n• 🔍 *Consultar pedidos y métricas:* Pregúntame "¿cuántos pedidos hay para hoy?", busca por nombre (ej: "busca el paquete de Estephano") o estados.\n• ✏️ *Actualizar pedidos:* Cambia producción o envíos en tiempo real.\n• 🚀 *Despachos WhatsApp:* Envío directo a clientas desde +${sessionData.ownerPhone}.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
+            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea Sub-QR Activa:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles Hoy:* ${remainingTokens.toLocaleString()} / 500,000 tokens\n\n🛠️ *Acceso Total Habilitado a Comikids:*\n• 📦 *Registrar pedidos:* Envíame DNI, Nombre, Destino Shalom, WhatsApp y Prendas para registrarlo con su agencia oficial y comprobante.\n• 🔍 *Consultar pedidos y envíos:* Pregúntame "¿cuántos envíos hay para hoy?", busca por cliente (ej: "busca el paquete de Estephano") o estados.\n• ✏️ *Actualizar pedidos:* Cambia producción o envíos en tiempo real.\n• 🚀 *Despachos WhatsApp:* Envío directo a clientas desde +${sessionData.ownerPhone}.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
 
             await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, welcomeMsg);
             return welcomeMsg;
@@ -446,7 +478,6 @@ export class CopilotService {
         if (foundPredefined) {
           matchedAccount = foundPredefined;
         } else {
-          // Comparar contra Supabase tabla usuarios con rol 'empresa'
           const { data: dbEmpresa } = await supabaseAdmin
             .from('usuarios')
             .select('id, dni, nombre_completo, password_hash, rol')
@@ -468,7 +499,6 @@ export class CopilotService {
         }
 
         if (matchedAccount) {
-          // Guardar estado pendiente de contraseña por 10 minutos (600s)
           const pendingData = {
             accountCode: matchedAccount.code,
             empresaId: matchedAccount.empresaId,
@@ -484,7 +514,6 @@ export class CopilotService {
           return askPasswordMsg;
         }
 
-        // Si no reconoció la cuenta, mostrar el menú
         const authRequestMsg = `👋 *¡Hola! Bienvenido al Copiloto Encomi AI (encomi.vercel.app)*\n\n🔒 Selecciona la cuenta de Sub-QR de tu empresa para autorizar el acceso a tu Base de Datos:\n\n1️⃣ Escribe *COMIKIDS* (o *1*) ➔ Sub-QR Comikids Pijamas (+51 927 781 412)\n2️⃣ Escribe *MATRIX* (o *2*) ➔ Sub-QR Estephano Matrix (+51 963 097 546)\n\n💬 *Responde con el nombre o número de tu cuenta:*`;
         await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, authRequestMsg);
         return authRequestMsg;
@@ -516,7 +545,7 @@ export class CopilotService {
       // -------------------------------------------------------------
       // PASO 6: VISTA COMPLETA Y EN TIEMPO REAL DE LA BASE DE DATOS
       // -------------------------------------------------------------
-      const { fullOrdersText, statsSummary, todayOrdersCount, totalCount } = await this.getCompleteDatabaseView(textTrimmed);
+      const { fullOrdersText, statsSummary, todayOrdersCount, totalCount, rawOrders } = await this.getCompleteDatabaseView(textTrimmed);
       const todayString = this.getTodayDateString();
 
       const isImage = Boolean(messageData?.message?.imageMessage);
@@ -547,7 +576,7 @@ INFORMACIÓN DE ACCESO:
 
 ${statsSummary}
 
---- VISTA COMPLETA DE TODOS LOS PEDIDOS ACTIVOS EN LA BASE DE DATOS ---
+--- VISTA COMPLETA DE TODOS LOS PEDIDOS ACTIVOS EN LA BASE DE DATOS DE COMIKIDS ---
 ${fullOrdersText}
 --- FIN BASE DE DATOS ---
 
@@ -556,15 +585,16 @@ MENSAJE / INSTRUCCIÓN DEL ADMINISTRADOR:
 
 --- REGLAS CRÍTICAS DE RESPUESTA Y ACCIÓN ---
 
-1. CONSULTAS DE PEDIDOS O ENVÍOS (HOY, FECHAS, ESTADOS O CLIENTES):
+1. CONSULTAS DE PEDIDOS, ENVÍOS O PAQUETES:
 - TIENES ACCESO TOTAL A LA BASE DE DATOS EN LA SECCIÓN DE ARRIBA.
-- Si el usuario pregunta "¿cuántos pedidos hay para hoy?", "¿qué envíos hay para hoy?" o similar:
+- IMPORTANTE: Para el negocio, "envíos", "paquetes" y "pedidos" significan EXACTAMENTE LO MISMO: todas las órdenes registradas en el sistema.
+- Si el usuario pregunta "¿cuántos pedidos/envíos hay para hoy?", "¿qué envíos hay para hoy?" o similar:
   - Revisa las órdenes marcadas con "⭐ (REGISTRADO HOY)". Hay ${todayOrdersCount} pedidos registrados hoy (${todayString}).
-  - Responde detallando los pedidos de hoy con su código de orden, cliente, destino y estado.
+  - Lista detalladamente cada uno de los pedidos con su código de orden, cliente, destino y estado.
   - NUNCA digas que no hay envíos si existen pedidos registrados.
 - Si el usuario busca por nombre (ej: "busca el paquete de Estephano" o "Rosario"):
   - Revisa la lista de arriba y responde con los datos exactos del pedido encontrado.
-  - NUNCA alteres el nombre del cliente (si dice "Estephano Andree Hilario Ampuero", usa exactamente "Estephano Andree Hilario Ampuero").
+  - Usa SIEMPRE el nombre exacto de la persona (ej: "Estephano Andree Hilario Ampuero").
 
 2. REGISTRO DE NUEVO PEDIDO (CUANDO EL USUARIO LO PIDE):
 Si el usuario te pide registrar un pedido (ej: "registra pedido: Juan Perez, DNI 45892134, cel 987654321, destino Talara, 2 pijamas"):
@@ -719,33 +749,57 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               clienteTelefono = `51${clienteTelefono}`;
             }
 
-            // 4. Resolver la Agencia Oficial de Shalom
+            // 4. Resolver la Agencia Oficial de Shalom con búsqueda profunda en Supabase
             const resolvedDestination = await this.resolveOfficialShalomAgency(destino, clienteDni);
 
-            // 5. Upsert de Usuario en Supabase
-            const userId = `usr-${clienteDni}`;
-            await supabaseAdmin.from('usuarios').upsert({
-              id: userId,
-              dni: clienteDni,
-              nombre_completo: clienteNombre.trim(),
-              telefono_default: clienteTelefono,
-              dni_default: clienteDni,
-              direccion_default: resolvedDestination,
-              avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${clienteDni}`,
-              password_hash: clienteDni,
-              rol: 'cliente',
-            }, { onConflict: 'dni' });
+            // 5. Upsert de Usuario en Supabase con rol válido 'client'
+            const { data: existingUser } = await supabaseAdmin
+              .from('usuarios')
+              .select('id')
+              .eq('dni', clienteDni)
+              .maybeSingle();
+
+            let targetUserId = existingUser?.id;
+
+            if (targetUserId) {
+              await supabaseAdmin.from('usuarios').update({
+                nombre_completo: clienteNombre.trim(),
+                telefono_default: clienteTelefono,
+                dni_default: clienteDni,
+                direccion_default: resolvedDestination,
+              }).eq('id', targetUserId);
+            } else {
+              targetUserId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
+              const { error: insUserErr } = await supabaseAdmin.from('usuarios').insert({
+                id: targetUserId,
+                dni: clienteDni,
+                nombre_completo: clienteNombre.trim(),
+                telefono_default: clienteTelefono,
+                dni_default: clienteDni,
+                direccion_default: resolvedDestination,
+                avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${clienteDni}`,
+                password_hash: clienteDni,
+                rol: 'client',
+                puntos_xp: 0,
+                nivel: 1,
+                created_at: new Date().toISOString(),
+              });
+
+              if (insUserErr) {
+                console.error('[USER INSERT ERROR]', insUserErr);
+              }
+            }
 
             // 6. Generar Código de Seguimiento Único
             const randomCode = Math.floor(1000 + Math.random() * 9000);
             const trackingCode = `COM-2026-${randomCode}`;
             const orderId = `ped-${Date.now()}`;
 
-            // 7. Insertar Pedido en Supabase
+            // 7. Insertar Pedido en Supabase vinculado al usuario
             const { error: orderErr } = await supabaseAdmin.from('pedidos').insert({
               id: orderId,
               codigo_seguimiento: trackingCode,
-              usuario_id: userId,
+              usuario_id: targetUserId,
               detalles_bordado: prendasBordado,
               metodo_envio_codigo: 'shalom',
               metodo_envio_nombre: metodoEnvio || 'Agencia Shalom',

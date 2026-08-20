@@ -5,7 +5,9 @@ import { env } from './config/env.js';
 import { webhookRoutes } from './routes/webhook.routes.js';
 import { healthRoutes } from './routes/health.routes.js';
 import { tenantRoutes } from './routes/tenant.routes.js';
+import { shalomRoutes } from './routes/shalom.routes.js';
 import { ingestionWorker } from './workers/ingestion.worker.js';
+
 import { copilotWorker } from './workers/copilot.worker.js';
 import { redisClient } from './config/redis.js';
 
@@ -43,6 +45,7 @@ async function start() {
     await app.register(healthRoutes);
     await app.register(webhookRoutes, { prefix: '/webhook' });
     await app.register(tenantRoutes);
+    await app.register(shalomRoutes);
 
 
     // 3. Iniciar Servidor HTTP

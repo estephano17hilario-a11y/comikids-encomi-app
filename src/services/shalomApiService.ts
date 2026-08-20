@@ -4,9 +4,8 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
-const SHALOM_API_URL = (import.meta.env.VITE_SHALOM_API_URL || 'https://api.shalom-api-peru.com').replace(/\/+$/, '');
 const SHALOM_API_KEY = import.meta.env.VITE_SHALOM_API_KEY || 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://89.117.73.97:3000';
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://89.117.73.97:3000').replace(/\/+$/, '');
 
 export interface ShalomAuthCredentials {
   email: string;
@@ -53,26 +52,7 @@ export interface ShalomDispatchResult {
 
 export class ShalomApiService {
   /**
-   * Obtiene los headers estándar de autenticación para la API de Shalom Pro.
-   */
-  private static getHeaders(auth: ShalomAuthCredentials): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-API-Key': SHALOM_API_KEY,
-    };
-
-    if (auth.sessionToken) {
-      headers['X-Shalom-Session'] = auth.sessionToken;
-    } else if (auth.email && auth.password) {
-      headers['X-Shalom-Email'] = auth.email.trim();
-      headers['X-Shalom-Password'] = auth.password;
-    }
-
-    return headers;
-  }
-
-  /**
-   * Prueba las credenciales de Shalom Pro contra el gateway.
+   * Prueba las credenciales de Shalom Pro a través del backend proxy (evita bloqueos de CORS en navegadores).
    */
   public static async testShalomAuth(credentials: ShalomAuthCredentials): Promise<{ valid: boolean; message: string; sessionToken?: string }> {
     if (!credentials.email || !credentials.password) {
@@ -80,47 +60,37 @@ export class ShalomApiService {
     }
 
     try {
-      const response = await fetch(`${SHALOM_API_URL}/v1/auth/login`, {
+      const response = await fetch(`${BACKEND_URL}/api/shalom/auth/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': SHALOM_API_KEY,
         },
         body: JSON.stringify({
           email: credentials.email.trim(),
           password: credentials.password,
+          apiKey: SHALOM_API_KEY,
         }),
       });
 
       const data = await response.json().catch(() => ({}));
 
-      if (response.ok && (data?.session_token || data?.token || data?.status === 'success' || data?.user)) {
+      if (response.ok && data?.valid) {
         return {
           valid: true,
-          message: `Conexión exitosa con Shalom Pro (${credentials.email})`,
-          sessionToken: data.session_token || data.token,
+          message: data.message || `Conexión exitosa con Shalom Pro (${credentials.email})`,
+          sessionToken: data?.data?.session_token || data?.data?.token,
         };
       }
 
-      if (response.status === 401 || response.status === 403 || data?.error) {
-        return {
-          valid: false,
-          message: data?.error?.message || data?.message || 'Credenciales de Shalom Pro no válidas.',
-        };
-      }
-
-      // Si el endpoint de login retorna 200/201
-      return {
-        valid: true,
-        message: 'Credenciales validadas con Shalom Pro',
-        sessionToken: data?.session_token,
-      };
-    } catch (err: any) {
-      console.warn('[SHALOM API AUTH TEST WARN]', err);
-      // Validar si es por timeout o conexión
       return {
         valid: false,
-        message: 'No se pudo conectar con el servidor de Shalom Pro. Verifica tu conexión a internet.',
+        message: data?.message || 'Credenciales de Shalom Pro no válidas.',
+      };
+    } catch (err: any) {
+      console.warn('[SHALOM PROXY AUTH WARN]', err);
+      return {
+        valid: false,
+        message: 'No se pudo conectar con el servidor de autenticación. Verifica tu conexión.',
       };
     }
   }
@@ -134,7 +104,6 @@ export class ShalomApiService {
     const destino = extractShalomDestino(pedido.destino_detalle);
     const origen = extractShalomOrigen(tallerConfig);
     const clientName = pedido.usuario?.nombre_completo || 'CLIENTE';
-
 
     return {
       pedidoId: pedido.id,
@@ -161,44 +130,54 @@ export class ShalomApiService {
   }
 
   /**
-   * Registra una orden de envío en Shalom Pro vía API.
+   * Registra una orden de envío en Shalom Pro vía API a través del proxy del backend (Anti-CORS).
    */
   public static async registerOrder(
     payload: ShalomOrderPayload,
     auth: ShalomAuthCredentials
   ): Promise<ShalomDispatchResult> {
-    const headers = this.getHeaders(auth);
-
     try {
-      const response = await fetch(`${SHALOM_API_URL}/v1/orders`, {
+      const orderBody = {
+        sender: {
+          name: payload.remitente.nombre,
+          document_number: payload.remitente.documento,
+          phone: payload.remitente.telefono,
+          origin_agency: payload.remitente.agenciaOrigen,
+        },
+        receiver: {
+          name: payload.destinatario.nombre,
+          document_number: payload.destinatario.documento,
+          phone: payload.destinatario.telefono,
+          destination_agency: payload.destinatario.agenciaDestino,
+          address: payload.destinatario.direccionFisica,
+        },
+        package: {
+          description: payload.paquete.descripcion,
+          pieces: payload.paquete.cantidadBultos,
+          payment_type: payload.paquete.tipoEnvio,
+          internal_code: payload.codigoSeguimiento,
+        },
+      };
+
+      const response = await fetch(`${BACKEND_URL}/api/shalom/orders`, {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          sender: {
-            name: payload.remitente.nombre,
-            document_number: payload.remitente.documento,
-            phone: payload.remitente.telefono,
-            origin_agency: payload.remitente.agenciaOrigen,
-          },
-          receiver: {
-            name: payload.destinatario.nombre,
-            document_number: payload.destinatario.documento,
-            phone: payload.destinatario.telefono,
-            destination_agency: payload.destinatario.agenciaDestino,
-            address: payload.destinatario.direccionFisica,
-          },
-          package: {
-            description: payload.paquete.descripcion,
-            pieces: payload.paquete.cantidadBultos,
-            payment_type: payload.paquete.tipoEnvio,
-            internal_code: payload.codigoSeguimiento,
+          order: orderBody,
+          auth: {
+            email: auth.email.trim(),
+            password: auth.password,
+            apiKey: SHALOM_API_KEY,
           },
         }),
       });
 
-      const data = await response.json().catch(() => ({}));
+      const resJson = await response.json().catch(() => ({}));
 
-      if (response.ok && (data?.ose_id || data?.id || data?.guide_number)) {
+      if (response.ok && resJson.success && resJson.data) {
+        const data = resJson.data;
         const oseId = data.ose_id || data.id;
         const guideNumber = data.guide_number || data.numero_guia || `SH-${oseId}`;
         const trackingCode = data.tracking_code || data.codigo_rastreo || String(oseId);
@@ -216,7 +195,7 @@ export class ShalomApiService {
         };
       }
 
-      const errorMsg = data?.error?.message || data?.message || 'Error desconocido devuelto por Shalom Pro';
+      const errorMsg = resJson?.error || resJson?.message || 'Error desconocido al registrar en Shalom Pro';
       return {
         pedidoId: payload.pedidoId,
         codigoSeguimiento: payload.codigoSeguimiento,
@@ -240,19 +219,21 @@ export class ShalomApiService {
   }
 
   /**
-   * Descarga el rótulo oficial en PDF generado por Shalom.
+   * Descarga el rótulo oficial en PDF generado por Shalom a través del backend proxy.
    */
   public static async downloadLabelPdf(
     oseId: string | number,
     auth: ShalomAuthCredentials,
     fileName: string = `Rotulo_Shalom_${oseId}.pdf`
   ): Promise<void> {
-    const headers = this.getHeaders(auth);
-
     try {
-      const response = await fetch(`${SHALOM_API_URL}/v1/orders/${oseId}/label`, {
+      const response = await fetch(`${BACKEND_URL}/api/shalom/orders/${oseId}/label`, {
         method: 'GET',
-        headers,
+        headers: {
+          'X-API-Key': SHALOM_API_KEY,
+          'X-Shalom-Email': auth.email.trim(),
+          'X-Shalom-Password': auth.password || '',
+        },
       });
 
       if (!response.ok) {

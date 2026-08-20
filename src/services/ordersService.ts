@@ -74,7 +74,10 @@ export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   direccion_taller: 'Av. Gamarra 1234, Oficina 402, La Victoria, Lima',
   ciudad_origen: 'LIMA',
   agencia_shalom_origen: 'AV MEXICO CO',
+  shalom_email: 'milagrosjanetamis@gmail.com',
+  shalom_password: '986398Mi$',
 };
+
 
 
 class OrdersService {

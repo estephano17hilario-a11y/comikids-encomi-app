@@ -58,10 +58,17 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const [overallSuccess, setOverallSuccess] = useState(false);
   const [currentStepText, setCurrentStepText] = useState('');
   const [searchingId, setSearchingId] = useState<string | null>(null);
+  const auditedRef = React.useRef(false);
 
-  // 1. AUDITORÍA AUTOMÁTICA EN SHALOM PRO AL ABRIR EL MODAL
+  // 1. AUDITORÍA AUTOMÁTICA EN SHALOM PRO AL ABRIR EL MODAL (1 sola vez por apertura)
   useEffect(() => {
-    if (!isOpen || orders.length === 0) return;
+    if (!isOpen) {
+      auditedRef.current = false;
+      return;
+    }
+
+    if (auditedRef.current) return;
+    auditedRef.current = true;
 
     const initial: DeliveryOrderProgress[] = orders.map((o) => {
       const clientName = o.usuario?.nombre_completo || (o as any).nombre_cliente || 'Clienta';
@@ -78,7 +85,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         dni,
         trackingCode: o.codigo_seguimiento || o.id.slice(0, 8),
         guideNumber,
-        manualGuideInput: guideNumber !== 'S/G' ? guideNumber : '',
+        manualGuideInput: guideNumber !== 'S/G' && !guideNumber.startsWith('SH-') ? guideNumber : '',
         agencyName: o.destino_detalle || 'Agencia Shalom',
         fileName,
         auditStatus: 'auditing',
@@ -89,12 +96,12 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     setProgressList(initial);
     setIsAuditing(true);
     setOverallSuccess(false);
-    setCurrentStepText('Buscando Guías Oficiales en tu cuenta de Shalom Pro API...');
+    setCurrentStepText('Consultando Guía Oficial en Shalom Pro API (milagrosjanetamis@gmail.com)...');
 
-    const auth = tallerConfig?.shalom_email ? {
-      email: tallerConfig.shalom_email,
-      password: tallerConfig.shalom_password || '',
-    } : undefined;
+    const auth = {
+      email: tallerConfig?.shalom_email || 'milagrosjanetamis@gmail.com',
+      password: tallerConfig?.shalom_password || '986398Mi$',
+    };
 
     // Ejecutar búsqueda profunda en Shalom Pro API
     const runAudit = async () => {
@@ -109,10 +116,10 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           originalOrder?.shalom_ose_id,
           originalOrder?.shalom_numero_guia,
           item.guideNumber !== 'S/G' ? item.guideNumber : null,
-          item.trackingCode,
           item.dni,
           item.phone,
           item.customerName,
+          item.trackingCode,
         ].filter(Boolean) as string[];
 
         let pdfData: string | null = null;
@@ -149,7 +156,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     };
 
     runAudit();
-  }, [isOpen, orders, tallerConfig]);
+  }, [isOpen]);
+
 
   if (!isOpen) return null;
 

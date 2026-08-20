@@ -4,17 +4,18 @@ import { supabaseAdmin } from '../config/supabase.js';
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
 const DEFAULT_API_KEY = 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
+const DEFAULT_SHALOM_EMAIL = 'milagrosjanetamis@gmail.com';
+const DEFAULT_SHALOM_PASSWORD = '986398Mi$';
 
 export class ShalomController {
   /**
-   * Resuelve las credenciales de Shalom Pro (de los headers o desde la base de datos taller_config)
+   * Resuelve las credenciales de Shalom Pro (de los headers, de Supabase taller_config o credenciales oficiales)
    */
   private static async getShalomCredentials(headers: Record<string, any>): Promise<{ email: string; password?: string; apiKey: string }> {
     let email = (headers['x-shalom-email'] as string) || '';
     let password = (headers['x-shalom-password'] as string) || '';
     const apiKey = (headers['x-api-key'] as string) || DEFAULT_API_KEY;
 
-    // Si falta email o password, leer automáticamente desde la tabla taller_config en Supabase
     if (!email || !password) {
       try {
         const { data: configRow } = await supabaseAdmin
@@ -32,12 +33,16 @@ export class ShalomController {
       }
     }
 
+    if (!email) email = DEFAULT_SHALOM_EMAIL;
+    if (!password) password = DEFAULT_SHALOM_PASSWORD;
+
     return {
       email: email.trim(),
       password: password ? password.trim() : undefined,
       apiKey,
     };
   }
+
 
   /**
    * Valida credenciales contra la API de Shalom Pro
@@ -209,6 +214,7 @@ export class ShalomController {
   ) {
     try {
       const { oseId } = request.params;
+      const cleanSearch = decodeURIComponent(oseId || '').trim();
       const credentials = await ShalomController.getShalomCredentials(request.headers);
 
       const headers: Record<string, string> = {
@@ -219,27 +225,27 @@ export class ShalomController {
         headers['X-Shalom-Password'] = credentials.password;
       }
 
-      console.log(`[SHALOM PROXY LABEL] Consultando PDF oficial para "${oseId}" en cuenta "${credentials.email}"...`);
+      console.log(`[SHALOM PROXY LABEL] Consultando PDF oficial para "${cleanSearch}" en cuenta "${credentials.email}"...`);
 
       // 1. Intento Directo por ID / OSE
       try {
         const response = await axios.get(
-          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(oseId)}/label`,
+          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/label`,
           {
             headers,
             responseType: 'arraybuffer',
-            timeout: 15000,
+            timeout: 12000,
           }
         );
 
         if (response.data && response.data.length > 100) {
-          console.log(`[SHALOM PROXY LABEL] ✓ PDF oficial descargado directamente para "${oseId}"`);
+          console.log(`[SHALOM PROXY LABEL] ✓ PDF oficial descargado directamente para "${cleanSearch}"`);
           reply.header('Content-Type', 'application/pdf');
-          reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${oseId}.pdf"`);
+          reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${cleanSearch}.pdf"`);
           return reply.send(response.data);
         }
       } catch (directErr: any) {
-        console.log(`[SHALOM PROXY LABEL] Intento directo para ${oseId} no encontrado (${directErr?.response?.status || directErr.message}), ejecutando búsqueda profunda...`);
+        console.log(`[SHALOM PROXY LABEL] Intento directo para ${cleanSearch} no encontrado (${directErr?.response?.status || directErr.message})`);
       }
 
       // 2. Intento de Búsqueda en Órdenes de la Cuenta de Shalom por DNI, Guía o Código
@@ -248,15 +254,15 @@ export class ShalomController {
           `${SHALOM_BASE_URL}/v1/orders`,
           {
             params: {
-              search: oseId,
-              limit: 10,
+              search: cleanSearch,
+              limit: 20,
             },
             headers,
             timeout: 12000,
           }
         );
 
-        const ordersList = Array.isArray(searchRes.data?.data)
+        const ordersList: any[] = Array.isArray(searchRes.data?.data)
           ? searchRes.data.data
           : Array.isArray(searchRes.data?.orders)
           ? searchRes.data.orders
@@ -264,25 +270,29 @@ export class ShalomController {
           ? searchRes.data
           : [];
 
-        const foundOrder = ordersList.find((o: any) =>
-          String(o.id) === oseId ||
-          String(o.ose_id) === oseId ||
-          String(o.numero_guia || o.guide_number).toLowerCase().includes(oseId.toLowerCase()) ||
-          String(o.tracking_code || o.codigo_rastreo).toLowerCase().includes(oseId.toLowerCase()) ||
-          String(o.destinatario?.documento || o.destinatario?.dni || o.documento_destinatario).includes(oseId) ||
-          String(o.destinatario?.nombre || o.nombre_destinatario || '').toLowerCase().includes(oseId.toLowerCase())
-        ) || ordersList[0];
+        const searchLower = cleanSearch.toLowerCase();
+        const foundOrder = ordersList.find((o: any) => {
+          if (!o || typeof o !== 'object') return false;
+          const idMatch = o.id && String(o.id) === cleanSearch;
+          const oseMatch = o.ose_id && String(o.ose_id) === cleanSearch;
+          const guiaMatch = (o.numero_guia || o.guide_number || o.guia) && String(o.numero_guia || o.guide_number || o.guia).toLowerCase().includes(searchLower);
+          const trackingMatch = (o.tracking_code || o.codigo_rastreo || o.codigo_seguimiento) && String(o.tracking_code || o.codigo_rastreo || o.codigo_seguimiento).toLowerCase().includes(searchLower);
+          const dniMatch = (o.destinatario?.documento || o.destinatario?.dni || o.documento_destinatario || o.dni) && String(o.destinatario?.documento || o.destinatario?.dni || o.documento_destinatario || o.dni).includes(cleanSearch);
+          const nameMatch = (o.destinatario?.nombre || o.nombre_destinatario || o.destinatario_nombre) && String(o.destinatario?.nombre || o.nombre_destinatario || o.destinatario_nombre).toLowerCase().includes(searchLower);
+
+          return idMatch || oseMatch || guiaMatch || trackingMatch || dniMatch || nameMatch;
+        });
 
         const realOseId = foundOrder?.id || foundOrder?.ose_id || foundOrder?.order_id;
 
-        if (realOseId && String(realOseId) !== oseId) {
-          console.log(`[SHALOM PROXY LABEL] ✓ Encontrada orden en cuenta #${realOseId} asociada a "${oseId}", descargando PDF...`);
+        if (realOseId) {
+          console.log(`[SHALOM PROXY LABEL] ✓ Encontrada orden en cuenta #${realOseId} asociada a "${cleanSearch}", descargando PDF...`);
           const labelRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(realOseId)}/label`,
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(realOseId))}/label`,
             {
               headers,
               responseType: 'arraybuffer',
-              timeout: 15000,
+              timeout: 12000,
             }
           );
 
@@ -293,19 +303,20 @@ export class ShalomController {
           }
         }
       } catch (searchErr: any) {
-        console.warn(`[SHALOM PROXY LABEL] Búsqueda complementaria para ${oseId} falló:`, searchErr?.message);
+        console.warn(`[SHALOM PROXY LABEL] Búsqueda complementaria para ${cleanSearch} falló:`, searchErr?.message);
       }
 
       return reply.code(404).send({
-        error: `No se encontró una orden o guía registrada en Shalom Pro para "${oseId}".`,
+        error: `No se encontró una orden o guía registrada en Shalom Pro para "${cleanSearch}".`,
       });
     } catch (error: any) {
-      request.log.error(error);
-      return reply.code(500).send({
-        error: error?.message || 'Error al obtener el rótulo PDF de Shalom',
+      console.error('[SHALOM PROXY LABEL ERROR]', error?.message);
+      return reply.code(404).send({
+        error: error?.message || 'No se encontró la guía en Shalom Pro',
       });
     }
   }
 }
+
 
 

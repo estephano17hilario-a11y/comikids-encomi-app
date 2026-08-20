@@ -188,10 +188,22 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
       try {
         const res = await ShalomApiService.registerOrder(payload, auth);
-        resultsMap[row.pedido.id] = res;
-        if (res.success) {
+        
+        // Descargar inmediatamente el PDF oficial de la Guía de Remisión de Shalom Pro
+        if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
           successfulIds.push(row.pedido.id);
+          try {
+            const pdfKey = String(res.oseId || res.guideNumber || res.trackingCode || row.data.phone);
+            const pdfBase64 = await ShalomApiService.fetchLabelPdfBase64(pdfKey, auth);
+            if (pdfBase64 && pdfBase64.length > 100) {
+              res.pdfBase64 = pdfBase64;
+            }
+          } catch (pdfErr) {
+            console.warn('[FETCH SHALOM PDF AFTER REGISTRATION WARN]', pdfErr);
+          }
         }
+
+        resultsMap[row.pedido.id] = res;
       } catch (err: any) {
         resultsMap[row.pedido.id] = {
           pedidoId: row.pedido.id,
@@ -205,7 +217,6 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       }
       setDispatchResults({ ...resultsMap });
     }
-
 
     setIsDispatching(false);
     setActiveTab('finished');
@@ -227,8 +238,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     }
   };
 
-
-  // 2. SINCRONIZACIÓN DE WHATSAPP BUSINESS CRM TRAS EL DESPACHO
+  // 2. SINCRONIZACIÓN DE WHATSAPP BUSINESS CRM TRAS EL DESPACHO CON PDF ADJUNTO
   const handleSyncWhatsApp = async () => {
     if (isSyncingWhatsApp) return;
     setIsSyncingWhatsApp(true);
@@ -241,6 +251,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       guideNumber: res.guideNumber || `SH-${res.oseId || ''}`,
       agencyName: res.agencyName || 'Agencia Shalom',
       orderCode: res.codigoSeguimiento,
+      pdfBase64: res.pdfBase64,
     }));
 
     try {
@@ -253,6 +264,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       setIsSyncingWhatsApp(false);
     }
   };
+
 
   // 3. DESCARGA TRADICIONAL EXCEL (FALLBACK)
   const handleExportExcelFallback = async () => {
@@ -522,9 +534,16 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                         </span>
                       </div>
                       {res.success ? (
-                        <p className="text-[11px] text-cyan-300">
-                          Guía Oficial: <strong>{String(res.guideNumber || 'Generada')}</strong> • OSE #{String(res.oseId || '')}
-                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-[11px] text-cyan-300">
+                            Guía Oficial: <strong>{String(res.guideNumber || 'Generada')}</strong> • OSE #{String(res.oseId || '')}
+                          </p>
+                          {res.pdfBase64 && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              📎 Guía PDF Oficial Lista
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <p className="text-[11px] text-rose-300">
                           Motivo: {typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || 'Error en registro')}
@@ -542,7 +561,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                           { email: tallerConfig.shalom_email || '', password: tallerConfig.shalom_password || '' }
                         )
                       }
-                      className="px-2.5 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Rótulo PDF</span>
@@ -559,15 +578,15 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                   <div className="flex items-center gap-2">
                     <MessageSquare className="w-5 h-5 text-emerald-400" />
                     <div>
-                      <h4 className="text-xs font-bold text-white">Sincronización WhatsApp CRM</h4>
+                      <h4 className="text-xs font-bold text-white">Envío de Guía de Remisión Oficial en PDF</h4>
                       <p className="text-[11px] text-emerald-300">
-                        Etiqueta "Despachando en Shalom" y aviso automático con número de guía
+                        Envía a cada clienta su mensaje con su Guía PDF oficial adjunta y clave <strong>0808</strong>
                       </p>
                     </div>
                   </div>
                   {whatsAppSyncDone && (
                     <span className="text-[11px] font-bold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      ✓ {whatsAppSyncCount} Notificados
+                      ✓ {whatsAppSyncCount} Notificados con PDF
                     </span>
                   )}
                 </div>
@@ -576,27 +595,28 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                   <button
                     onClick={handleSyncWhatsApp}
                     disabled={isSyncingWhatsApp}
-                    className="w-full py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer active:scale-95"
                   >
                     {isSyncingWhatsApp ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Sincronizando WhatsApp...</span>
+                        <span>Enviando Guías en PDF por WhatsApp (+51 927 781 412)...</span>
                       </>
                     ) : (
                       <>
                         <Send className="w-4 h-4" />
-                        <span>Notificar a {successfulList.length} Clientas por WhatsApp</span>
+                        <span>Enviar Mensaje con Guía PDF a {successfulList.length} Clientas por WhatsApp</span>
                       </>
                     )}
                   </button>
                 ) : (
-                  <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-200 text-xs text-center font-medium">
-                    🎉 ¡Mensajes de seguimiento enviados y etiquetas actualizadas correctamente!
+                  <div className="p-2.5 rounded-lg bg-emerald-500/20 text-emerald-200 text-xs text-center font-medium border border-emerald-500/30">
+                    🎉 ¡Guías Oficiales en PDF enviadas y mensajes de seguimiento entregados con éxito!
                   </div>
                 )}
               </div>
             )}
+
 
           </div>
         )}

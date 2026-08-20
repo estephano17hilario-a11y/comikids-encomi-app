@@ -46,7 +46,9 @@ export interface ShalomDispatchResult {
   trackingCode?: string;
   errorMessage?: string;
   labelPdfBase64?: string;
+  pdfBase64?: string;
   customerPhone?: string;
+
   customerName?: string;
   agencyName?: string;
 }
@@ -295,7 +297,10 @@ export class ShalomApiService {
       guideNumber: string;
       agencyName: string;
       orderCode: string;
+      pdfBase64?: string;
+      fileName?: string;
     }>
+
   ): Promise<{ success: boolean; notifiedCount: number; errors: any[] }> {
     try {
       const response = await fetch(`${getApiBaseUrl()}/tenant/sync-dispatch-whatsapp`, {

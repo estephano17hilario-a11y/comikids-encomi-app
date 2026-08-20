@@ -234,9 +234,30 @@ export class TenantController {
           await new Promise(r => setTimeout(r, randomDelay));
         }
 
-        const messageText = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\nTu pedido *#${order.orderCode || order.trackingCode}* ya fue registrado y despachado hacia *Agencia Shalom (${order.agencyName || 'Destino'})* 📦🚀\n\n📋 *Número de Guía:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* 0808\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+        const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
+        const formattedFileName = (order as any).fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;
 
+        const messageText = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\nTu pedido *#${order.orderCode || order.trackingCode}* ya fue registrado y despachado hacia *Agencia Shalom (${order.agencyName || 'Destino'})* 📦🚀\n\n📋 *Número de Guía:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* 0808\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
 
+        let pdfToSend = (order as any).pdfBase64;
+
+        if (!pdfToSend) {
+          // Intentar obtener automáticamente el PDF desde el proxy de Shalom
+          const searchKey = order.guideNumber || order.trackingCode || order.orderCode || phoneClean.slice(-9);
+          if (searchKey) {
+            try {
+              const pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/label`, {
+                responseType: 'arraybuffer',
+                timeout: 10000,
+              });
+              if (pdfRes.status === 200 && pdfRes.data) {
+                pdfToSend = Buffer.from(pdfRes.data).toString('base64');
+              }
+            } catch (pdfErr: any) {
+              console.warn(`[SYNC DISPATCH PDF FETCH WARN ${searchKey}]`, pdfErr?.message);
+            }
+          }
+        }
 
         try {
           // Intentar asignar etiqueta si la API lo permite
@@ -259,15 +280,26 @@ export class TenantController {
             // No crítico si no es cuenta WA Business con etiquetas
           }
 
-          // Enviar mensaje de WhatsApp
-          await EvolutionService.sendWhatsAppMessage(userSenderInstance, phoneClean, messageText);
-          results.push({ phone: phoneClean, status: 'success' });
+          // Enviar documento PDF por WhatsApp si está disponible, o mensaje de texto
+          if (pdfToSend && pdfToSend.length > 100) {
+            await EvolutionService.sendWhatsAppMedia(userSenderInstance, phoneClean, pdfToSend, {
+              caption: messageText,
+              fileName: formattedFileName,
+              mediaType: 'document',
+              mimeType: 'application/pdf',
+            });
+          } else {
+            await EvolutionService.sendWhatsAppMessage(userSenderInstance, phoneClean, messageText);
+          }
+
+          results.push({ phone: phoneClean, status: 'success', withPdf: Boolean(pdfToSend) });
           successCount++;
         } catch (msgErr: any) {
           console.error(`[SYNC DISPATCH MSG ERROR ${phoneClean}]`, msgErr?.response?.data || msgErr?.message);
           results.push({ phone: phoneClean, status: 'error', error: msgErr?.message });
         }
       }
+
 
       return reply.code(200).send({
         success: true,

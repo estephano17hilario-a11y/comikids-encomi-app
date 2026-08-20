@@ -240,7 +240,24 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
             )}
           </div>
 
-          {/* List of Orders (Responsive Cards) */}
+          {/* Warning: pedidos sin registro API */}
+          {progressList.some(p => !p.hasOseId) && !processing && !overallSuccess && (
+            <div className="bg-amber-950/30 border border-amber-500/40 rounded-xl p-3 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-amber-300">
+                  {progressList.filter(p => !p.hasOseId).length === progressList.length
+                    ? 'Ningún pedido fue registrado vía API de Shalom'
+                    : `${progressList.filter(p => !p.hasOseId).length} pedido(s) sin registro vía API`
+                  }
+                </p>
+                <p className="text-[11px] text-amber-200/80 mt-0.5">
+                  Estos pedidos <strong>no tienen Guía Oficial de Shalom</strong> porque fueron registrados manualmente (Excel o web de Shalom). Se enviará el aviso por WhatsApp <strong>sin adjunto PDF</strong>. Si quieres enviar el PDF oficial, primero regístralos vía API desde el botón "Registrar en Shalom".
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             {progressList.map((item, idx) => (
               <div
@@ -375,7 +392,17 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                 {processing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                    <span>Enviando Guías PDF...</span>
+                    <span>Enviando notificaciones...</span>
+                  </>
+                ) : progressList.every(p => !p.hasOseId) ? (
+                  <>
+                    <Send className="w-4 h-4 shrink-0" />
+                    <span>Avisar por WhatsApp (sin PDF)</span>
+                  </>
+                ) : progressList.some(p => !p.hasOseId) ? (
+                  <>
+                    <Send className="w-4 h-4 shrink-0" />
+                    <span>Enviar (algunos sin PDF oficial)</span>
                   </>
                 ) : (
                   <>

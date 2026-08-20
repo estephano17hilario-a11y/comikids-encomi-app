@@ -173,6 +173,7 @@ export class ShalomController {
   ) {
     try {
       const { oseId } = request.params;
+      const query = request.query as any;
       const email = (request.headers['x-shalom-email'] as string) || '';
       const password = (request.headers['x-shalom-password'] as string) || '';
       const apiKey = (request.headers['x-api-key'] as string) || DEFAULT_API_KEY;
@@ -185,18 +186,66 @@ export class ShalomController {
         headers['X-Shalom-Password'] = password;
       }
 
-      const response = await axios.get(
-        `${SHALOM_BASE_URL}/v1/orders/${oseId}/label`,
-        {
-          headers,
-          responseType: 'arraybuffer',
-          timeout: 15000,
-        }
-      );
+      console.log(`[SHALOM PROXY LABEL] Consultando PDF oficial de guía/rótulo para identificador "${oseId}"...`);
 
-      reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `inline; filename="Rotulo_Shalom_${oseId}.pdf"`);
-      return reply.send(response.data);
+      // 1. Intento Directo por ID / OSE
+      try {
+        const response = await axios.get(
+          `${SHALOM_BASE_URL}/v1/orders/${oseId}/label`,
+          {
+            headers,
+            responseType: 'arraybuffer',
+            timeout: 15000,
+          }
+        );
+
+        if (response.data && response.data.length > 0) {
+          reply.header('Content-Type', 'application/pdf');
+          reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${oseId}.pdf"`);
+          return reply.send(response.data);
+        }
+      } catch (directErr: any) {
+        console.log(`[SHALOM PROXY LABEL] Intento directo para ${oseId} falló (${directErr?.response?.status || directErr.message}), probando búsqueda en cuenta...`);
+      }
+
+      // 2. Intento de Búsqueda en Órdenes de la Cuenta de Shalom por DNI, Guía o Código
+      try {
+        const searchRes = await axios.get(
+          `${SHALOM_BASE_URL}/v1/orders`,
+          {
+            params: {
+              search: oseId,
+              limit: 5,
+            },
+            headers,
+            timeout: 10000,
+          }
+        );
+
+        const foundOrder = searchRes.data?.data?.[0] || searchRes.data?.orders?.[0] || searchRes.data?.[0];
+        const realOseId = foundOrder?.id || foundOrder?.ose_id || foundOrder?.order_id;
+
+        if (realOseId && realOseId !== oseId) {
+          console.log(`[SHALOM PROXY LABEL] Encontrada orden en Shalom #${realOseId} asociada a "${oseId}", descargando PDF...`);
+          const labelRes = await axios.get(
+            `${SHALOM_BASE_URL}/v1/orders/${realOseId}/label`,
+            {
+              headers,
+              responseType: 'arraybuffer',
+              timeout: 15000,
+            }
+          );
+          reply.header('Content-Type', 'application/pdf');
+          reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${realOseId}.pdf"`);
+          return reply.send(labelRes.data);
+        }
+      } catch (searchErr: any) {
+        console.warn(`[SHALOM PROXY LABEL] Búsqueda complementaria para ${oseId} no arrojó resultados:`, searchErr?.message);
+      }
+
+      return reply.code(404).send({
+        error: `No se encontró una orden o guía registrada en Shalom Pro para "${oseId}".`,
+      });
     } catch (error: any) {
       request.log.error(error);
       return reply.code(500).send({
@@ -205,3 +254,4 @@ export class ShalomController {
     }
   }
 }
+

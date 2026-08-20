@@ -104,21 +104,35 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       setProgressList([...updatedList]);
 
       const originalOrder = orders.find((o) => o.id === item.orderId);
-      // Usar shalom_ose_id guardado en Supabase al momento de registrar en Shalom
-      const oseId = originalOrder?.shalom_ose_id || (originalOrder as any)?.ose_id;
+      
+      // Lista de identificadores posibles para buscar en Shalom API
+      const searchIds = [
+        originalOrder?.shalom_ose_id,
+        originalOrder?.shalom_numero_guia,
+        item.guideNumber !== 'S/G' ? item.guideNumber : null,
+        originalOrder?.codigo_seguimiento,
+        originalOrder?.usuario?.dni,
+        originalOrder?.usuario?.dni_default,
+      ].filter(Boolean) as string[];
 
       let pdfData: string | null = null;
 
-      if (oseId) {
+      for (const searchKey of searchIds) {
         try {
-          pdfData = await ShalomApiService.fetchLabelPdfBase64(oseId);
-          console.log(`[DELIVERY PDF] PDF oficial de Shalom obtenido para OSE ${oseId}`);
-        } catch (err) {
-          console.warn(`[DELIVERY PDF WARN] No se pudo obtener PDF oficial de Shalom (OSE: ${oseId}):`, err);
+          pdfData = await ShalomApiService.fetchLabelPdfBase64(searchKey);
+          if (pdfData) {
+            console.log(`[DELIVERY PDF] ✓ PDF oficial de Shalom obtenido usando identificador "${searchKey}"`);
+            break;
+          }
+        } catch {
+          // Probar siguiente identificador
         }
-      } else {
-        console.warn(`[DELIVERY PDF WARN] Pedido ${item.orderId} no tiene shalom_ose_id — fue registrado manualmente o fuera de Shalom API. Se enviará mensaje sin adjunto PDF.`);
       }
+
+      if (!pdfData) {
+        console.warn(`[DELIVERY PDF WARN] No se encontró guía oficial en Shalom para pedido ${item.orderId} (probados: ${searchIds.join(', ')}). Se enviará el mensaje informativo por WhatsApp.`);
+      }
+
 
       item.pdfBase64 = pdfData || undefined;
       item.status = 'sending_wa';

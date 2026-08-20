@@ -1082,6 +1082,7 @@ export const OrdersSmartManager: React.FC = () => {
         <ShalomDeliveryModal
           isOpen={Boolean(deliveryTargetOrders)}
           orders={deliveryTargetOrders}
+          tallerConfig={tallerConfig}
           onClose={() => setDeliveryTargetOrders(null)}
           onOrdersDelivered={async (deliveredIds) => {
             for (const id of deliveredIds) {
@@ -1092,6 +1093,7 @@ export const OrdersSmartManager: React.FC = () => {
           }}
         />
       )}
+
 
     </div>
   );

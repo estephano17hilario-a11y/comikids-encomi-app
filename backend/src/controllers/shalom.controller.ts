@@ -1,10 +1,44 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import axios from 'axios';
+import { supabaseAdmin } from '../config/supabase.js';
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
 const DEFAULT_API_KEY = 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
 
 export class ShalomController {
+  /**
+   * Resuelve las credenciales de Shalom Pro (de los headers o desde la base de datos taller_config)
+   */
+  private static async getShalomCredentials(headers: Record<string, any>): Promise<{ email: string; password?: string; apiKey: string }> {
+    let email = (headers['x-shalom-email'] as string) || '';
+    let password = (headers['x-shalom-password'] as string) || '';
+    const apiKey = (headers['x-api-key'] as string) || DEFAULT_API_KEY;
+
+    // Si falta email o password, leer automáticamente desde la tabla taller_config en Supabase
+    if (!email || !password) {
+      try {
+        const { data: configRow } = await supabaseAdmin
+          .from('taller_config')
+          .select('shalom_email, shalom_password')
+          .limit(1)
+          .maybeSingle();
+
+        if (configRow) {
+          if (!email && configRow.shalom_email) email = configRow.shalom_email;
+          if (!password && configRow.shalom_password) password = configRow.shalom_password;
+        }
+      } catch (err) {
+        console.warn('[SHALOM CONTROLLER] Error leyendo credenciales de Supabase:', err);
+      }
+    }
+
+    return {
+      email: email.trim(),
+      password: password ? password.trim() : undefined,
+      apiKey,
+    };
+  }
+
   /**
    * Valida credenciales contra la API de Shalom Pro
    */
@@ -58,7 +92,6 @@ export class ShalomController {
         const status = postErr.response?.status;
         const msg = postErr.response?.data?.message || postErr.message;
         
-        // Si el endpoint de login devuelve 401 o 403, las credenciales son incorrectas
         if (status === 401 || status === 403) {
           return reply.code(200).send({
             valid: false,
@@ -66,7 +99,6 @@ export class ShalomController {
           });
         }
 
-        // Si es 404/405 (endpoint distinto), validar vía health/agencies con headers
         if (status === 404 || status === 405) {
           try {
             const checkRes = await axios.get(`${SHALOM_BASE_URL}/v1/agencies`, {
@@ -107,8 +139,8 @@ export class ShalomController {
     request: FastifyRequest<{
       Body: {
         order: any;
-        auth: {
-          email: string;
+        auth?: {
+          email?: string;
           password?: string;
           apiKey?: string;
         };
@@ -118,7 +150,11 @@ export class ShalomController {
   ) {
     try {
       const { order, auth } = request.body || {};
-      const apiKey = auth?.apiKey || DEFAULT_API_KEY;
+      const credentials = await ShalomController.getShalomCredentials({
+        'x-shalom-email': auth?.email,
+        'x-shalom-password': auth?.password,
+        'x-api-key': auth?.apiKey,
+      });
 
       if (!order) {
         return reply.code(400).send({
@@ -127,15 +163,15 @@ export class ShalomController {
         });
       }
 
-      console.log(`[SHALOM PROXY CREATE ORDER] Despachando pedido #${order.codigoSeguimiento}...`);
+      console.log(`[SHALOM PROXY CREATE ORDER] Despachando pedido #${order.codigoSeguimiento} con cuenta "${credentials.email}"...`);
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        'X-API-Key': apiKey,
-        'X-Shalom-Email': auth?.email || '',
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
       };
-      if (auth?.password) {
-        headers['X-Shalom-Password'] = auth.password;
+      if (credentials.password) {
+        headers['X-Shalom-Password'] = credentials.password;
       }
 
       const response = await axios.post(
@@ -162,7 +198,7 @@ export class ShalomController {
   }
 
   /**
-   * Obtiene el PDF del rótulo oficial de Shalom
+   * Obtiene el PDF del rótulo oficial de Shalom con búsqueda profunda
    */
   public static async getOrderLabel(
     request: FastifyRequest<{
@@ -173,25 +209,22 @@ export class ShalomController {
   ) {
     try {
       const { oseId } = request.params;
-      const query = request.query as any;
-      const email = (request.headers['x-shalom-email'] as string) || '';
-      const password = (request.headers['x-shalom-password'] as string) || '';
-      const apiKey = (request.headers['x-api-key'] as string) || DEFAULT_API_KEY;
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
 
       const headers: Record<string, string> = {
-        'X-API-Key': apiKey,
-        'X-Shalom-Email': email,
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
       };
-      if (password) {
-        headers['X-Shalom-Password'] = password;
+      if (credentials.password) {
+        headers['X-Shalom-Password'] = credentials.password;
       }
 
-      console.log(`[SHALOM PROXY LABEL] Consultando PDF oficial de guía/rótulo para identificador "${oseId}"...`);
+      console.log(`[SHALOM PROXY LABEL] Consultando PDF oficial para "${oseId}" en cuenta "${credentials.email}"...`);
 
       // 1. Intento Directo por ID / OSE
       try {
         const response = await axios.get(
-          `${SHALOM_BASE_URL}/v1/orders/${oseId}/label`,
+          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(oseId)}/label`,
           {
             headers,
             responseType: 'arraybuffer',
@@ -199,13 +232,14 @@ export class ShalomController {
           }
         );
 
-        if (response.data && response.data.length > 0) {
+        if (response.data && response.data.length > 100) {
+          console.log(`[SHALOM PROXY LABEL] ✓ PDF oficial descargado directamente para "${oseId}"`);
           reply.header('Content-Type', 'application/pdf');
           reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${oseId}.pdf"`);
           return reply.send(response.data);
         }
       } catch (directErr: any) {
-        console.log(`[SHALOM PROXY LABEL] Intento directo para ${oseId} falló (${directErr?.response?.status || directErr.message}), probando búsqueda en cuenta...`);
+        console.log(`[SHALOM PROXY LABEL] Intento directo para ${oseId} no encontrado (${directErr?.response?.status || directErr.message}), ejecutando búsqueda profunda...`);
       }
 
       // 2. Intento de Búsqueda en Órdenes de la Cuenta de Shalom por DNI, Guía o Código
@@ -215,32 +249,51 @@ export class ShalomController {
           {
             params: {
               search: oseId,
-              limit: 5,
+              limit: 10,
             },
             headers,
-            timeout: 10000,
+            timeout: 12000,
           }
         );
 
-        const foundOrder = searchRes.data?.data?.[0] || searchRes.data?.orders?.[0] || searchRes.data?.[0];
+        const ordersList = Array.isArray(searchRes.data?.data)
+          ? searchRes.data.data
+          : Array.isArray(searchRes.data?.orders)
+          ? searchRes.data.orders
+          : Array.isArray(searchRes.data)
+          ? searchRes.data
+          : [];
+
+        const foundOrder = ordersList.find((o: any) =>
+          String(o.id) === oseId ||
+          String(o.ose_id) === oseId ||
+          String(o.numero_guia || o.guide_number).toLowerCase().includes(oseId.toLowerCase()) ||
+          String(o.tracking_code || o.codigo_rastreo).toLowerCase().includes(oseId.toLowerCase()) ||
+          String(o.destinatario?.documento || o.destinatario?.dni || o.documento_destinatario).includes(oseId) ||
+          String(o.destinatario?.nombre || o.nombre_destinatario || '').toLowerCase().includes(oseId.toLowerCase())
+        ) || ordersList[0];
+
         const realOseId = foundOrder?.id || foundOrder?.ose_id || foundOrder?.order_id;
 
-        if (realOseId && realOseId !== oseId) {
-          console.log(`[SHALOM PROXY LABEL] Encontrada orden en Shalom #${realOseId} asociada a "${oseId}", descargando PDF...`);
+        if (realOseId && String(realOseId) !== oseId) {
+          console.log(`[SHALOM PROXY LABEL] ✓ Encontrada orden en cuenta #${realOseId} asociada a "${oseId}", descargando PDF...`);
           const labelRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${realOseId}/label`,
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(realOseId)}/label`,
             {
               headers,
               responseType: 'arraybuffer',
               timeout: 15000,
             }
           );
-          reply.header('Content-Type', 'application/pdf');
-          reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${realOseId}.pdf"`);
-          return reply.send(labelRes.data);
+
+          if (labelRes.data && labelRes.data.length > 100) {
+            reply.header('Content-Type', 'application/pdf');
+            reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${realOseId}.pdf"`);
+            return reply.send(labelRes.data);
+          }
         }
       } catch (searchErr: any) {
-        console.warn(`[SHALOM PROXY LABEL] Búsqueda complementaria para ${oseId} no arrojó resultados:`, searchErr?.message);
+        console.warn(`[SHALOM PROXY LABEL] Búsqueda complementaria para ${oseId} falló:`, searchErr?.message);
       }
 
       return reply.code(404).send({
@@ -254,4 +307,5 @@ export class ShalomController {
     }
   }
 }
+
 

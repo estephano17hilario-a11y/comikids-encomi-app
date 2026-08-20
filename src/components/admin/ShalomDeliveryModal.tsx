@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Pedido } from '../../types/database.types';
+import { Pedido, TallerConfig } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
 import { generateShalomDeliveryPdfBase64 } from '../../utils/shalomDeliveryPdfGenerator';
 import {
@@ -26,6 +26,7 @@ interface ShalomDeliveryModalProps {
   isOpen: boolean;
   onClose: () => void;
   orders: Pedido[];
+  tallerConfig?: TallerConfig;
   onOrdersDelivered: (deliveredOrderIds: string[]) => void;
 }
 
@@ -48,8 +49,10 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   isOpen,
   onClose,
   orders,
+  tallerConfig,
   onOrdersDelivered,
 }) => {
+
   const [processing, setProcessing] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
   const [progressList, setProgressList] = useState<DeliveryOrderProgress[]>([]);
@@ -107,10 +110,16 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         let pdfData: string | null = null;
         let origin: 'api_official' | 'generated_official' = 'generated_official';
 
-        // Intento 1: API de Shalom Pro
+        const auth = tallerConfig?.shalom_email ? {
+          email: tallerConfig.shalom_email,
+          password: tallerConfig.shalom_password || '',
+        } : undefined;
+
+
+        // Intento 1: API de Shalom Pro con cuenta autenticada
         for (const searchKey of searchIds) {
           try {
-            pdfData = await ShalomApiService.fetchLabelPdfBase64(searchKey);
+            pdfData = await ShalomApiService.fetchLabelPdfBase64(searchKey, auth);
             if (pdfData && pdfData.length > 100) {
               origin = 'api_official';
               console.log(`[SHALOM AUDIT API SUCCESS] ✓ Guía oficial obtenida de Shalom Pro para #${item.trackingCode}`);
@@ -120,6 +129,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
             // Continuar
           }
         }
+
 
         // Intento 2: Generador de Guía de Remisión Oficial Shalom (si no vino de API)
         if (!pdfData && originalOrder) {

@@ -235,19 +235,29 @@ class OrdersService {
     this.saveUsers(filteredUsers);
 
     const orders = this.getLocalOrders();
+    const userOrderIds = orders.filter((o: Pedido) => o.usuario_id === userId).map((o: Pedido) => o.id);
     const filteredOrders = orders.filter((o: Pedido) => o.usuario_id !== userId);
     this.saveLocalOrders(filteredOrders);
 
     if (isSupabaseConfigured && supabase) {
       try {
+        if (userOrderIds.length > 0) {
+          await supabase.from('comprobantes_pago').delete().in('pedido_id', userOrderIds);
+        }
+        await supabase.from('comprobantes_pago').delete().eq('usuario_id', userId);
+        await supabase.from('logros_usuario').delete().eq('usuario_id', userId);
         await supabase.from('pedidos').delete().eq('usuario_id', userId);
-        await supabase.from('usuarios').delete().eq('id', userId);
+        const { error: userDelError } = await supabase.from('usuarios').delete().eq('id', userId);
+        if (userDelError) {
+          console.warn('[DELETE USER SUPABASE ERROR]', userDelError);
+        }
       } catch (e) {
         console.warn('Error deleting user in supabase', e);
       }
     }
     return true;
   }
+
 
   // --- MÉTODOS DE ENVÍO / DESTINOS (Configurables por la empresa) ---
   getShippingMethods(): MetodoEnvio[] {

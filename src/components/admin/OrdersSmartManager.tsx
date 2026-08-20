@@ -959,9 +959,14 @@ export const OrdersSmartManager: React.FC = () => {
           onClose={() => setShowShalomRegister(false)}
           onRegistered={async (registeredIds) => {
             for (const id of registeredIds) {
-              await updatePedido(id, { registrado_shalom: true });
+              await updatePedido(id, {
+                registrado_shalom: true,
+                rotulado: true,
+                estado_envio: 'en_camino',
+              });
             }
           }}
+
         />
       )}
 

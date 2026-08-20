@@ -81,6 +81,18 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const totalCount = pedidos.length;
   const motorizadoFilteredOut = totalSelectedCount - pedidos.length;
 
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  // Pedidos con fecha programada diferente a hoy
+  const differentDateOrders = useMemo(() => {
+    return pedidos.filter(p => {
+      if (!p.fecha_limite) return false;
+      const orderDate = p.fecha_limite.split('T')[0];
+      return orderDate !== todayStr;
+    });
+  }, [pedidos, todayStr]);
+
   // Validación de datos por fila
   const auditedRows = useMemo(() => {
     return pedidos.map(p => {
@@ -118,7 +130,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     }));
   };
 
-  // 1. DESPACHO AUTOMÁTICO VÍA API
+  // 1. DESPACHO AUTOMÁTICO VÍA API CON RATE LIMITING (Máximo 50 req/min)
   const handleStartApiDispatch = async () => {
     if (isDispatching) return;
     setIsDispatching(true);
@@ -136,6 +148,11 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     for (let i = 0; i < auditedRows.length; i++) {
       const row = auditedRows[i];
       setProgressIndex(i + 1);
+
+      // Rate Limiting: Pausa de 1.2s entre peticiones a la API de Shalom para no exceder 60 req/min
+      if (i > 0) {
+        await new Promise(r => setTimeout(r, 1200));
+      }
 
       const payload = {
         pedidoId: row.pedido.id,
@@ -179,6 +196,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       }
       setDispatchResults({ ...resultsMap });
     }
+
 
     setIsDispatching(false);
     setActiveTab('finished');
@@ -290,8 +308,26 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               </span>
             </div>
 
+            {/* Advertencia de Pedidos con Fecha Programada Diferente a Hoy */}
+            {differentDateOrders.length > 0 && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-200 space-y-1.5 animate-fadeIn">
+                <div className="flex items-center gap-2 font-bold text-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>⚠️ Advertencia de Fechas de Envío:</span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/25 text-[10px] font-mono font-bold">
+                    {differentDateOrders.length} {differentDateOrders.length === 1 ? 'pedido programado' : 'pedidos programados'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                  Has seleccionado pedidos cuya fecha programada de despacho <strong>no es hoy</strong> ({differentDateOrders.map(p => `#${p.codigo_seguimiento} para el ${p.fecha_limite?.split('T')[0]}`).join(', ')}).
+                  Si continúas, la API de Shalom los registrará con fecha de despacho inmediata de hoy.
+                </p>
+              </div>
+            )}
+
             {/* Listado de Pedidos en Auditoría */}
             <div className="space-y-2.5">
+
               {auditedRows.map((row, idx) => (
                 <div
                   key={row.pedido.id}

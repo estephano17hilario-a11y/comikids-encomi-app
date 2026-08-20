@@ -203,12 +203,13 @@ export class TenantController {
         console.warn('[SYNC DISPATCH INSTANCE CHECK WARN]', err);
       }
 
-      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}"...`);
+      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}" con protección Anti-Ban (3-6s)...`);
 
       const results = [];
       let successCount = 0;
 
-      for (const order of orders) {
+      for (let i = 0; i < orders.length; i++) {
+        const order = orders[i];
         let phoneClean = String(order.phone || '').replace(/[^0-9]/g, '');
         if (phoneClean.length === 9) phoneClean = `51${phoneClean}`;
 
@@ -217,7 +218,15 @@ export class TenantController {
           continue;
         }
 
+        // Delay Anti-Ban: Pausa intercalada de 3 a 6 segundos entre mensajes para no ser bloqueados
+        if (i > 0) {
+          const randomDelay = Math.floor(Math.random() * 3000) + 3000; // 3000ms a 6000ms
+          console.log(`[ANTI-BAN WHATSAPP] Esperando ${randomDelay}ms antes de notificar al contacto ${phoneClean}...`);
+          await new Promise(r => setTimeout(r, randomDelay));
+        }
+
         const messageText = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\nTu pedido *#${order.orderCode || order.trackingCode}* ya fue registrado y despachado hacia *Agencia Shalom (${order.agencyName || 'Destino'})* 📦🚀\n\n📋 *Número de Guía:* ${order.guideNumber || 'En trámite'}\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia! Cualquier consulta estamos a tu servicio.`;
+
 
         try {
           // Intentar asignar etiqueta si la API lo permite

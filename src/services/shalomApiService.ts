@@ -375,6 +375,108 @@ export class ShalomApiService {
 
 
   /**
+   * Obtiene el PDF del Ticket Oficial / Voucher (Formato Físico POS con QR) en Base64.
+   */
+  public static async fetchVoucherPdfBase64(
+    oseId: number | string,
+    auth?: ShalomAuthCredentials
+  ): Promise<string | null> {
+    try {
+      const headers: Record<string, string> = {
+        'X-API-Key': SHALOM_API_KEY,
+      };
+      if (auth?.email) headers['X-Shalom-Email'] = auth.email.trim();
+      if (auth?.password) headers['X-Shalom-Password'] = auth.password;
+
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/voucher`, {
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status} al obtener PDF del ticket`);
+      }
+
+      const blob = await response.blob();
+      if (!blob || blob.size < 100) {
+        throw new Error('El PDF del ticket recibido está vacío');
+      }
+
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn(`[SHALOM VOUCHER PDF BASE64 WARN ${oseId}]`, err);
+      return null;
+    }
+  }
+
+  /**
+   * Descarga el PDF del Ticket Shalom Oficial (formato físico de agencia con QR).
+   */
+  public static async downloadVoucherPdf(
+    oseId: number | string,
+    auth: ShalomAuthCredentials,
+    fileName: string = `Ticket_Shalom_${oseId}.pdf`
+  ): Promise<void> {
+    try {
+      const headers: Record<string, string> = {
+        'X-API-Key': SHALOM_API_KEY,
+      };
+      if (auth?.email) headers['X-Shalom-Email'] = auth.email.trim();
+      if (auth?.password) headers['X-Shalom-Password'] = auth.password;
+
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/voucher`, {
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`No se pudo obtener el PDF del ticket (HTTP ${response.status})`);
+      }
+
+      const blob = await response.blob();
+
+      if (Capacitor.isNativePlatform()) {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64Data = (reader.result as string).split(',')[1];
+          const savedFile = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache,
+          });
+
+          await Share.share({
+            title: 'Ticket Shalom Oficial',
+            text: `Ticket de Envío Shalom Orden #${oseId}`,
+            url: savedFile.uri,
+            dialogTitle: 'Compartir o Imprimir Ticket Shalom',
+          });
+        };
+      } else {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.error('[SHALOM DOWNLOAD VOUCHER ERROR]', err);
+      throw err;
+    }
+  }
+
+  /**
    * Envía a cada clienta su Guía de Remisión Oficial en PDF por WhatsApp al marcar como "Entregado a Shalom".
    */
   public static async sendDeliveryVouchers(
@@ -418,5 +520,6 @@ export class ShalomApiService {
     }
   }
 }
+
 
 

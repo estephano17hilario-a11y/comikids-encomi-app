@@ -6,4 +6,7 @@ export async function shalomRoutes(fastify: FastifyInstance) {
   fastify.post('/api/shalom/auth/login', ShalomController.testAuth);
   fastify.post('/api/shalom/orders', ShalomController.createOrder);
   fastify.get('/api/shalom/orders/:oseId/label', ShalomController.getOrderLabel);
+  fastify.get('/api/shalom/orders/:oseId/voucher', ShalomController.getOrderVoucher);
+  fastify.get('/api/shalom/orders/:oseId/ticket', ShalomController.getOrderVoucher);
 }
+

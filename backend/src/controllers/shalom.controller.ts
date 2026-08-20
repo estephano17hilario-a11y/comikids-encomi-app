@@ -290,7 +290,6 @@ export class ShalomController {
     }
   }
 
-
   /**
    * Obtiene el PDF del rótulo oficial de Shalom con búsqueda profunda
    */
@@ -300,6 +299,30 @@ export class ShalomController {
       Headers: { [key: string]: string };
     }>,
     reply: FastifyReply
+  ) {
+    return ShalomController.fetchOrderPdf(request, reply, 'label');
+  }
+
+  /**
+   * Obtiene el PDF del Ticket Oficial / Voucher (Formato Físico POS con QR) de Shalom
+   */
+  public static async getOrderVoucher(
+    request: FastifyRequest<{
+      Params: { oseId: string };
+      Headers: { [key: string]: string };
+    }>,
+    reply: FastifyReply
+  ) {
+    return ShalomController.fetchOrderPdf(request, reply, 'voucher');
+  }
+
+  private static async fetchOrderPdf(
+    request: FastifyRequest<{
+      Params: { oseId: string };
+      Headers: { [key: string]: string };
+    }>,
+    reply: FastifyReply,
+    pdfType: 'label' | 'voucher' = 'label'
   ) {
     try {
       const { oseId } = request.params;
@@ -314,12 +337,15 @@ export class ShalomController {
         headers['X-Shalom-Password'] = credentials.password;
       }
 
-      console.log(`[SHALOM PROXY LABEL] Consultando PDF oficial para "${cleanSearch}" en cuenta "${credentials.email}"...`);
+      const typeLabel = pdfType === 'voucher' ? 'Ticket/Voucher Oficial' : 'Rótulo/Guía Oficial';
+      const filePrefix = pdfType === 'voucher' ? 'Ticket_Shalom' : 'Guia_Shalom';
+
+      console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] Consultando ${typeLabel} para "${cleanSearch}" en cuenta "${credentials.email}"...`);
 
       // 1. Intento Directo por ID / OSE
       try {
         const response = await axios.get(
-          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/label`,
+          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/${pdfType}`,
           {
             headers,
             responseType: 'arraybuffer',
@@ -328,13 +354,13 @@ export class ShalomController {
         );
 
         if (response.data && response.data.length > 100) {
-          console.log(`[SHALOM PROXY LABEL] ✓ PDF oficial descargado directamente para "${cleanSearch}"`);
+          console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] ✓ ${typeLabel} descargado directamente para "${cleanSearch}"`);
           reply.header('Content-Type', 'application/pdf');
-          reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${cleanSearch}.pdf"`);
+          reply.header('Content-Disposition', `inline; filename="${filePrefix}_${cleanSearch}.pdf"`);
           return reply.send(response.data);
         }
       } catch (directErr: any) {
-        console.log(`[SHALOM PROXY LABEL] Intento directo para ${cleanSearch} no encontrado (${directErr?.response?.status || directErr.message})`);
+        console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] Intento directo para ${cleanSearch} no encontrado (${directErr?.response?.status || directErr.message})`);
       }
 
       // 2. Intento de Búsqueda en Órdenes de la Cuenta de Shalom
@@ -394,15 +420,15 @@ export class ShalomController {
           if (guiaOnly && (guiaOnly === cleanSearch.toLowerCase() || (searchDigits && guiaOnly.includes(searchDigits)))) return true;
           if (fullGuia && (fullGuia.includes(cleanSearch.toLowerCase()) || fullGuia.replace(/[^a-z0-9]/g, '').includes(searchLower))) return true;
 
-          // 3. Coincidencia por Código de Rastreo (ej: CDPJ, KHKC, 3DTT)
+          // 3. Coincidencia por Código de Rastreo (ej: CDPJ, KHKC, 3DTT, DKK7)
           const trackingCode = String(o.codigo || '').toLowerCase();
           if (trackingCode && trackingCode === cleanSearch.toLowerCase()) return true;
 
-          // 4. Coincidencia por DNI / Documento del Destinatario (ej: 47311650, 72115454)
+          // 4. Coincidencia por DNI / Documento del Destinatario (ej: 47311650, 72115454, 006557701)
           const receiverDoc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/[^0-9]/g, '');
           if (searchDigits && receiverDoc && (receiverDoc === searchDigits || receiverDoc.includes(searchDigits) || searchDigits.includes(receiverDoc))) return true;
 
-          // 5. Coincidencia por Nombre del Destinatario (ej: Rosario, Carolina, Huatangari)
+          // 5. Coincidencia por Nombre del Destinatario (ej: Rosario, Carolina, Ravelo, Dubraska)
           const receiverName = String(o.receiver?.full_name || o.receiver?.name || '').toLowerCase();
           if (cleanSearch.length >= 3 && receiverName && receiverName.includes(cleanSearch.toLowerCase())) return true;
 
@@ -414,9 +440,9 @@ export class ShalomController {
         });
 
         if (foundOrder && foundOrder.id) {
-          console.log(`[SHALOM PROXY LABEL] ✓ Encontrada orden #${foundOrder.id} (Guía: ${foundOrder.serie}-${foundOrder.guia}, Dest: ${foundOrder.receiver?.full_name}) para "${cleanSearch}", descargando PDF...`);
-          const labelRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(foundOrder.id))}/label`,
+          console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] ✓ Encontrada orden #${foundOrder.id} (Guía: ${foundOrder.serie}-${foundOrder.guia}) para "${cleanSearch}", descargando ${typeLabel}...`);
+          const docRes = await axios.get(
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(foundOrder.id))}/${pdfType}`,
             {
               headers,
               responseType: 'arraybuffer',
@@ -424,29 +450,25 @@ export class ShalomController {
             }
           );
 
-          if (labelRes.data && labelRes.data.length > 100) {
-            console.log(`[SHALOM PROXY LABEL] ✓ PDF Oficial de Shalom (${labelRes.data.length} bytes) descargado para orden #${foundOrder.id}`);
+          if (docRes.data && docRes.data.length > 100) {
+            console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] ✓ ${typeLabel} (${docRes.data.length} bytes) descargado para orden #${foundOrder.id}`);
             reply.header('Content-Type', 'application/pdf');
-            reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${foundOrder.serie || 'V204'}_${foundOrder.guia || foundOrder.id}.pdf"`);
-            return reply.send(labelRes.data);
+            reply.header('Content-Disposition', `inline; filename="${filePrefix}_${foundOrder.serie || 'V204'}_${foundOrder.guia || foundOrder.id}.pdf"`);
+            return reply.send(docRes.data);
           }
         }
       } catch (searchErr: any) {
-        console.warn(`[SHALOM PROXY LABEL] Búsqueda en Shalom Pro para ${cleanSearch} falló:`, searchErr?.message);
+        console.warn(`[SHALOM PROXY ${pdfType.toUpperCase()}] Búsqueda en Shalom Pro para ${cleanSearch} falló:`, searchErr?.message);
       }
 
-
       return reply.code(404).send({
-        error: `No se encontró una orden o guía registrada en Shalom Pro para "${cleanSearch}".`,
+        error: `No se encontró ${typeLabel} en Shalom Pro para "${cleanSearch}".`,
       });
     } catch (error: any) {
-      console.error('[SHALOM PROXY LABEL ERROR]', error?.message);
+      console.error(`[SHALOM PROXY ${pdfType.toUpperCase()} ERROR]`, error?.message);
       return reply.code(404).send({
-        error: error?.message || 'No se encontró la guía en Shalom Pro',
+        error: error?.message || `No se encontró el documento en Shalom Pro`,
       });
     }
   }
 }
-
-
-

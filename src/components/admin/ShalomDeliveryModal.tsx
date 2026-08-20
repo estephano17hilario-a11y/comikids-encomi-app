@@ -132,15 +132,23 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
         for (const searchKey of searchIds) {
           try {
+            // Intentar primero el Ticket Shalom Oficial (formato físico de agencia con QR de la foto)
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(searchKey, auth);
+            if (pdfData && pdfData.length > 100) {
+              console.log(`[SHALOM AUDIT API SUCCESS] ✓ Ticket/Voucher oficial de Shalom descargado para #${item.trackingCode} con clave "${searchKey}"`);
+              break;
+            }
+            // Fallback al Rótulo Oficial
             pdfData = await ShalomApiService.fetchLabelPdfBase64(searchKey, auth);
             if (pdfData && pdfData.length > 100) {
-              console.log(`[SHALOM AUDIT API SUCCESS] ✓ Guía oficial de Shalom descargada para #${item.trackingCode} con clave "${searchKey}"`);
+              console.log(`[SHALOM AUDIT API SUCCESS] ✓ Rótulo oficial de Shalom descargado para #${item.trackingCode} con clave "${searchKey}"`);
               break;
             }
           } catch {
             // Intentar siguiente identificador
           }
         }
+
 
         if (pdfData && pdfData.length > 100) {
           item.pdfBase64 = pdfData;
@@ -179,19 +187,23 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     } : undefined;
 
     try {
-      const pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth);
+      let pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth);
+      if (!pdfData || pdfData.length < 100) {
+        pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth);
+      }
       if (pdfData && pdfData.length > 100) {
         item.pdfBase64 = pdfData;
         item.auditStatus = 'verified_pdf';
         setProgressList([...progressList]);
       } else {
-        alert(`No se encontró la guía oficial en Shalom Pro para "${keyToSearch}". Verifica el número de guía o DNI.`);
+        alert(`No se encontró el ticket/guía oficial en Shalom Pro para "${keyToSearch}". Verifica el número de orden, guía o DNI.`);
       }
     } catch (err: any) {
       alert(`Error consultando Shalom Pro: ${err.message}`);
     } finally {
       setSearchingId(null);
     }
+
   };
 
   // Descarga / visualización directa del PDF oficial extraído

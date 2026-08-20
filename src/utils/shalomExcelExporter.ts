@@ -83,7 +83,7 @@ export const extractShalomOrigen = (tallerConfigOrName?: TallerConfig | string):
  * utilizando el diccionario estático oficial de 544 agencias y resolución jerárquica de alta precisión.
  */
 export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string): string => {
-  // 1. Si se proporciona código de agencia exacto (ej. CBT, SRA, AVGAL)
+  // 1. Si se proporciona código de agencia explícito (ej. CBT, SRA, AVGAL)
   if (agencyCode) {
     const codeClean = agencyCode.toUpperCase().trim();
     if (SHALOM_CODE_TO_OFFICIAL_MAP[codeClean]) {
@@ -91,13 +91,23 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
     }
   }
 
-  if (!destinoDetalle) return OFFICIAL_DESTINATIONS[0] || 'LIMA TINGO MARÍA';
+  if (!destinoDetalle) return 'LIMA AV TINGO MARÍA';
 
-  // 2. Limpieza inicial de prefijos y metadatos
+  // 2. Extraer código de agencia si viene embebido en el texto (ej: "(CÓDIGO: CBT)" o "(CODIGO: SRA)")
+  const embeddedCodeMatch = destinoDetalle.match(/(?:CÓDIGO|CODIGO|COD)[\s:]*([A-Za-z0-9]+)/i);
+  if (embeddedCodeMatch && embeddedCodeMatch[1]) {
+    const extractedCode = embeddedCodeMatch[1].toUpperCase().trim();
+    if (SHALOM_CODE_TO_OFFICIAL_MAP[extractedCode]) {
+      return SHALOM_CODE_TO_OFFICIAL_MAP[extractedCode];
+    }
+  }
+
+  // 3. Limpieza inicial de prefijos y metadatos
   let clean = destinoDetalle
     .replace(/^Agencia Shalom:\s*/i, '')
     .replace(/\(DNI\/CE.*?\)/i, '')
     .replace(/\(.*?DNI.*?\)/i, '')
+    .replace(/\(.*?\)/g, '')
     .trim();
 
   // Si hay guión largo o corto separando ruta geográfica de la dirección física
@@ -105,7 +115,7 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
   const locationPath = parts[0].trim();
   const compactLocation = normalizeCompact(locationPath);
 
-  // 3. Comprobar directamente en el mapa canónico oficial
+  // 4. Comprobar directamente en el mapa canónico oficial
   if (SHALOM_NAME_TO_OFFICIAL_MAP[locationPath.toUpperCase()]) {
     return SHALOM_NAME_TO_OFFICIAL_MAP[locationPath.toUpperCase()];
   }
@@ -113,57 +123,86 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
     return SHALOM_NAME_TO_OFFICIAL_MAP[compactLocation];
   }
 
-  // 4. Extraer segmentos geográficos: [DEP, PROV, DIST, LOCAL]
+  // 5. Extraer segmentos geográficos: [DEP, PROV, DIST, LOCAL]
   const segments = locationPath
     .split('/')
     .map(s => s.trim().toUpperCase())
     .filter(Boolean);
 
-  // 5. Prioridad Máxima: Último segmento (Local / Nombre Específico de la Agencia)
-  // Ej: 'AV ENRIQUE MEIGGS', 'TRES DE OCTUBRE', 'AV  JOSE GALVEZ', 'SANTA'
-  if (segments.length > 0) {
-    const lastSeg = segments[segments.length - 1];
-    const lastClean = lastSeg.replace(/[()]/g, '').trim();
-    const compactLast = normalizeCompact(lastClean);
+  const depSeg = segments[0] || '';
+  const provSeg = segments.length >= 3 ? segments[1] : '';
+  const distSeg = segments.length >= 4 ? segments[2] : (segments.length === 3 ? segments[1] : '');
+  const lastSeg = segments.length > 0 ? segments[segments.length - 1] : '';
+  const compactLast = normalizeCompact(lastSeg);
 
-    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[lastClean]) {
-      return SHALOM_LOCAL_TO_OFFICIAL_MAP[lastClean];
-    }
-    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[compactLast]) {
-      return SHALOM_LOCAL_TO_OFFICIAL_MAP[compactLast];
-    }
-    if (destLookup.has(lastSeg)) return destLookup.get(lastSeg)!;
-    if (destLookup.has(lastClean)) return destLookup.get(lastClean)!;
-    if (destCompactLookup.has(compactLast)) return destCompactLookup.get(compactLast)!;
+  // Prioridad 1: Coincidencia por Local en el mapa canónico
+  if (lastSeg && SHALOM_LOCAL_TO_OFFICIAL_MAP[lastSeg]) {
+    return SHALOM_LOCAL_TO_OFFICIAL_MAP[lastSeg];
+  }
+  if (compactLast && SHALOM_LOCAL_TO_OFFICIAL_MAP[compactLast]) {
+    return SHALOM_LOCAL_TO_OFFICIAL_MAP[compactLast];
   }
 
-  // 6. Penúltimo segmento (distrito)
-  if (segments.length >= 2) {
-    const distSeg = segments[segments.length - 2];
-    const distClean = distSeg.replace(/[()]/g, '').trim();
-    const compactDist = normalizeCompact(distClean);
-
-    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[distClean]) {
-      return SHALOM_LOCAL_TO_OFFICIAL_MAP[distClean];
-    }
-    if (destLookup.has(distSeg)) return destLookup.get(distSeg)!;
-    if (destLookup.has(distClean)) return destLookup.get(distClean)!;
-    if (destCompactLookup.has(compactDist)) return destCompactLookup.get(compactDist)!;
+  // Prioridad 2: Coincidencia de Departamento + Local
+  const depLocalKey = normalizeCompact(`${depSeg} ${lastSeg}`);
+  if (SHALOM_NAME_TO_OFFICIAL_MAP[depLocalKey]) {
+    return SHALOM_NAME_TO_OFFICIAL_MAP[depLocalKey];
   }
 
-  // 7. Búsqueda de coincidencia en la lista oficial
-  const rawNorm = normalizeKey(clean);
-  if (destLookup.has(rawNorm)) return destLookup.get(rawNorm)!;
+  // Prioridad 3: Búsqueda ponderada filtrando por departamento para no cruzar regiones
+  const rawTokens = clean
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 1 && !['AV', 'JR', 'CALLE', 'PASAJE', 'AUTOPISTA', 'CARRETERA', 'MZ', 'LT', 'NRO', 'NUM', 'REF', 'AGENCIA', 'SHALOM'].includes(t));
 
-  for (const official of sortedDestinations) {
-    const offNorm = normalizeKey(official);
-    if (offNorm.length >= 4 && (rawNorm.includes(offNorm) || rawNorm.startsWith(offNorm))) {
-      return official;
+  const lastTokens = lastSeg
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 1 && !['AV', 'JR', 'CALLE', 'PASAJE', 'AUTOPISTA', 'CARRETERA', 'MZ', 'LT', 'NRO', 'NUM', 'REF', 'AGENCIA', 'SHALOM'].includes(t));
+
+  let bestMatch = null;
+  let bestScore = -1;
+
+  for (const official of OFFICIAL_DESTINATIONS) {
+    const offTokens = official
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length > 1 && !['AV', 'JR', 'CALLE', 'PASAJE', 'AUTOPISTA', 'CARRETERA', 'MZ', 'LT', 'NRO', 'NUM', 'REF', 'AGENCIA', 'SHALOM'].includes(t));
+
+    let score = 0;
+    for (const tok of offTokens) {
+      if (lastTokens.includes(tok)) {
+        score += 20; // Gran peso si coincide con el local exacto
+      } else if (rawTokens.includes(tok)) {
+        score += 4; // Peso si coincide con provincia o distrito
+      }
+    }
+
+    const extraTokens = offTokens.filter(t => !rawTokens.includes(t)).length;
+    score -= extraTokens * 2;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = official;
     }
   }
 
-  return OFFICIAL_DESTINATIONS[0] || 'LIMA TINGO MARÍA';
+  if (bestScore > 0 && bestMatch) {
+    return bestMatch;
+  }
+
+  return 'LIMA AV TINGO MARÍA';
 };
+
 
 /**
  * Extrae el DNI o Carnet de Extranjería del pedido de forma estricta

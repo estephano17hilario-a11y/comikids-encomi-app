@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getApiBaseUrl } from '../../config/api';
 import {
   Bot,
   QrCode,
@@ -29,7 +30,6 @@ interface InstanceData {
   profileName?: string;
 }
 
-const BACKEND_URL = 'http://89.117.73.97:3000';
 
 export const EvolutionWhatsAppManager: React.FC = () => {
   const [instances, setInstances] = useState<InstanceData[]>([
@@ -73,7 +73,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch(`${BACKEND_URL}/api/tenant/instances`);
+      const res = await fetch(`${getApiBaseUrl()}/tenant/instances`);
       if (res.ok) {
         const json = await res.json();
         if (json.data && json.data.length > 0) {
@@ -96,7 +96,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
     setSuccessMsg('');
 
     try {
-      const res = await fetch(`${BACKEND_URL}/api/tenant/create-sub-instance`, {
+      const res = await fetch(`${getApiBaseUrl()}/tenant/create-sub-instance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -135,7 +135,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
     setLoadingQr(true);
     setErrorMsg('');
     try {
-      const res = await fetch(`${BACKEND_URL}/api/tenant/${instanceName}/qr`);
+      const res = await fetch(`${getApiBaseUrl()}/tenant/${instanceName}/qr`);
       const json = await res.json();
       if (res.ok && json.success) {
         setActiveQrModal({
@@ -164,7 +164,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
     }
 
     try {
-      const res = await fetch(`${BACKEND_URL}/api/tenant/${instanceName}`, {
+      const res = await fetch(`${getApiBaseUrl()}/tenant/${instanceName}`, {
         method: 'DELETE',
       });
       const json = await res.json();
@@ -177,6 +177,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
     }
   };
 
+
   const handleTestCopilot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!copilotQuery.trim()) return;
@@ -185,10 +186,15 @@ export const EvolutionWhatsAppManager: React.FC = () => {
     setCopilotReply('');
 
     try {
+      const webhookEndpoint = typeof window !== 'undefined' && window.location.protocol === 'https:' && !window.location.hostname.includes('localhost')
+        ? '/webhook/evolution'
+        : 'http://89.117.73.97:3000/webhook/evolution';
+
       // Simular envío de consulta al Copiloto Master
-      const res = await fetch(`${BACKEND_URL}/webhook/evolution`, {
+      const res = await fetch(webhookEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify({
           event: 'messages.upsert',
           instance: 'main_bot',

@@ -1,13 +1,14 @@
 import { Pedido, TallerConfig } from '../types/database.types';
 import { extractShalomDni, extractShalomPhone, extractShalomDestino, extractShalomOrigen } from '../utils/shalomExcelExporter';
+import { getApiBaseUrl } from '../config/api';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 const SHALOM_API_KEY = import.meta.env.VITE_SHALOM_API_KEY || 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'http://89.117.73.97:3000').replace(/\/+$/, '');
 
 export interface ShalomAuthCredentials {
+
   email: string;
   password?: string;
   sessionToken?: string;
@@ -60,7 +61,7 @@ export class ShalomApiService {
     }
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/shalom/auth/test`, {
+      const response = await fetch(`${getApiBaseUrl()}/shalom/auth/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -159,7 +160,7 @@ export class ShalomApiService {
         },
       };
 
-      const response = await fetch(`${BACKEND_URL}/api/shalom/orders`, {
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -227,7 +228,7 @@ export class ShalomApiService {
     fileName: string = `Rotulo_Shalom_${oseId}.pdf`
   ): Promise<void> {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/shalom/orders/${oseId}/label`, {
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${oseId}/label`, {
         method: 'GET',
         headers: {
           'X-API-Key': SHALOM_API_KEY,
@@ -290,7 +291,7 @@ export class ShalomApiService {
     }>
   ): Promise<{ success: boolean; notifiedCount: number; errors: any[] }> {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/tenant/sync-dispatch-whatsapp`, {
+      const response = await fetch(`${getApiBaseUrl()}/tenant/sync-dispatch-whatsapp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -317,3 +318,4 @@ export class ShalomApiService {
     }
   }
 }
+

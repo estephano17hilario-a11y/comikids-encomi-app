@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/proxy/:match*",
+      "destination": "http://89.117.73.97:3000/api/:match*"
+    },
+    {
+      "source": "/webhook/:match*",
+      "destination": "http://89.117.73.97:3000/webhook/:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

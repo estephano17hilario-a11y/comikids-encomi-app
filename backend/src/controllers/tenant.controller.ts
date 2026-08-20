@@ -186,24 +186,33 @@ export class TenantController {
         });
       }
 
-      // 1. Determinar instancia activa para envíos (prioridad a sub-instancia del usuario)
-      let userSenderInstance = `tenant_${tenantId}`;
+      // 1. Determinar instancia activa para envíos (Prioridad a tenant_Comikids / +51927781412)
+      let userSenderInstance = 'tenant_Comikids';
       try {
         const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
           headers: { apikey: env.EVOLUTION_API_KEY },
           timeout: 5000,
         });
-        const openSub = (fetchRes.data || []).find((i: any) =>
+        const instances = fetchRes.data || [];
+        const comikidsSub = instances.find((i: any) => i.name === 'tenant_Comikids' && i.connectionStatus === 'open');
+        const matrixSub = instances.find((i: any) => i.name === 'tenant_matrix' && i.connectionStatus === 'open');
+        const anyOpenSub = instances.find((i: any) =>
           (i.name.startsWith('tenant_') || i.name.startsWith('tienda_')) && i.connectionStatus === 'open'
         );
-        if (openSub) {
-          userSenderInstance = openSub.name;
+
+        if (comikidsSub) {
+          userSenderInstance = comikidsSub.name;
+        } else if (matrixSub) {
+          userSenderInstance = matrixSub.name;
+        } else if (anyOpenSub) {
+          userSenderInstance = anyOpenSub.name;
         }
       } catch (err) {
         console.warn('[SYNC DISPATCH INSTANCE CHECK WARN]', err);
       }
 
-      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}" con protección Anti-Ban (3-6s)...`);
+      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}" (+51927781412) con protección Anti-Ban (3-6s)...`);
+
 
       const results = [];
       let successCount = 0;

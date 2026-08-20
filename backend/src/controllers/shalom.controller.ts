@@ -248,63 +248,104 @@ export class ShalomController {
         console.log(`[SHALOM PROXY LABEL] Intento directo para ${cleanSearch} no encontrado (${directErr?.response?.status || directErr.message})`);
       }
 
-      // 2. Intento de Búsqueda en Órdenes de la Cuenta de Shalom por DNI, Guía o Código
+      // 2. Intento de Búsqueda en Órdenes de la Cuenta de Shalom
       try {
+        const searchLower = cleanSearch.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const searchDigits = cleanSearch.replace(/[^0-9]/g, '');
+
+        // 2a. Búsqueda directa por parámetro search en Shalom Pro
         const searchRes = await axios.get(
           `${SHALOM_BASE_URL}/v1/orders`,
           {
             params: {
               search: cleanSearch,
-              limit: 20,
             },
             headers,
             timeout: 12000,
           }
         );
 
-        const ordersList: any[] = Array.isArray(searchRes.data?.data)
-          ? searchRes.data.data
-          : Array.isArray(searchRes.data?.orders)
+        let ordersList: any[] = Array.isArray(searchRes.data?.orders)
           ? searchRes.data.orders
+          : Array.isArray(searchRes.data?.data)
+          ? searchRes.data.data
           : Array.isArray(searchRes.data)
           ? searchRes.data
           : [];
 
-        const searchLower = cleanSearch.toLowerCase();
+        // 2b. Si la búsqueda directa no trajo resultados, consultar los 50 pedidos más recientes
+        if (ordersList.length === 0) {
+          const recentRes = await axios.get(
+            `${SHALOM_BASE_URL}/v1/orders`,
+            {
+              params: {
+                per_page: 50,
+              },
+              headers,
+              timeout: 12000,
+            }
+          );
+          ordersList = Array.isArray(recentRes.data?.orders)
+            ? recentRes.data.orders
+            : Array.isArray(recentRes.data?.data)
+            ? recentRes.data.data
+            : [];
+        }
+
+
         const foundOrder = ordersList.find((o: any) => {
           if (!o || typeof o !== 'object') return false;
-          const idMatch = o.id && String(o.id) === cleanSearch;
-          const oseMatch = o.ose_id && String(o.ose_id) === cleanSearch;
-          const guiaMatch = (o.numero_guia || o.guide_number || o.guia) && String(o.numero_guia || o.guide_number || o.guia).toLowerCase().includes(searchLower);
-          const trackingMatch = (o.tracking_code || o.codigo_rastreo || o.codigo_seguimiento) && String(o.tracking_code || o.codigo_rastreo || o.codigo_seguimiento).toLowerCase().includes(searchLower);
-          const dniMatch = (o.destinatario?.documento || o.destinatario?.dni || o.documento_destinatario || o.dni) && String(o.destinatario?.documento || o.destinatario?.dni || o.documento_destinatario || o.dni).includes(cleanSearch);
-          const nameMatch = (o.destinatario?.nombre || o.nombre_destinatario || o.destinatario_nombre) && String(o.destinatario?.nombre || o.nombre_destinatario || o.destinatario_nombre).toLowerCase().includes(searchLower);
 
-          return idMatch || oseMatch || guiaMatch || trackingMatch || dniMatch || nameMatch;
+          // 1. Coincidencia por ID u OSE
+          if (String(o.id) === cleanSearch || String(o.internal_id) === cleanSearch) return true;
+
+          // 2. Coincidencia por Guía o Serie-Guía (ej: 92644270 o V204-92644270)
+          const fullGuia = `${o.serie || ''}-${o.guia || ''}`.toLowerCase();
+          const guiaOnly = String(o.guia || '').toLowerCase();
+          if (guiaOnly && (guiaOnly === cleanSearch.toLowerCase() || (searchDigits && guiaOnly.includes(searchDigits)))) return true;
+          if (fullGuia && (fullGuia.includes(cleanSearch.toLowerCase()) || fullGuia.replace(/[^a-z0-9]/g, '').includes(searchLower))) return true;
+
+          // 3. Coincidencia por Código de Rastreo (ej: CDPJ, KHKC, 3DTT)
+          const trackingCode = String(o.codigo || '').toLowerCase();
+          if (trackingCode && trackingCode === cleanSearch.toLowerCase()) return true;
+
+          // 4. Coincidencia por DNI / Documento del Destinatario (ej: 47311650, 72115454)
+          const receiverDoc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/[^0-9]/g, '');
+          if (searchDigits && receiverDoc && (receiverDoc === searchDigits || receiverDoc.includes(searchDigits) || searchDigits.includes(receiverDoc))) return true;
+
+          // 5. Coincidencia por Nombre del Destinatario (ej: Rosario, Carolina, Huatangari)
+          const receiverName = String(o.receiver?.full_name || o.receiver?.name || '').toLowerCase();
+          if (cleanSearch.length >= 3 && receiverName && receiverName.includes(cleanSearch.toLowerCase())) return true;
+
+          // 6. Coincidencia por Teléfono
+          const receiverPhone = String(o.receiver?.phone || '').replace(/[^0-9]/g, '');
+          if (searchDigits && searchDigits.length >= 8 && receiverPhone && receiverPhone.includes(searchDigits.slice(-8))) return true;
+
+          return false;
         });
 
-        const realOseId = foundOrder?.id || foundOrder?.ose_id || foundOrder?.order_id;
-
-        if (realOseId) {
-          console.log(`[SHALOM PROXY LABEL] ✓ Encontrada orden en cuenta #${realOseId} asociada a "${cleanSearch}", descargando PDF...`);
+        if (foundOrder && foundOrder.id) {
+          console.log(`[SHALOM PROXY LABEL] ✓ Encontrada orden #${foundOrder.id} (Guía: ${foundOrder.serie}-${foundOrder.guia}, Dest: ${foundOrder.receiver?.full_name}) para "${cleanSearch}", descargando PDF...`);
           const labelRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(realOseId))}/label`,
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(foundOrder.id))}/label`,
             {
               headers,
               responseType: 'arraybuffer',
-              timeout: 12000,
+              timeout: 15000,
             }
           );
 
           if (labelRes.data && labelRes.data.length > 100) {
+            console.log(`[SHALOM PROXY LABEL] ✓ PDF Oficial de Shalom (${labelRes.data.length} bytes) descargado para orden #${foundOrder.id}`);
             reply.header('Content-Type', 'application/pdf');
-            reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${realOseId}.pdf"`);
+            reply.header('Content-Disposition', `inline; filename="Guia_Shalom_${foundOrder.serie || 'V204'}_${foundOrder.guia || foundOrder.id}.pdf"`);
             return reply.send(labelRes.data);
           }
         }
       } catch (searchErr: any) {
-        console.warn(`[SHALOM PROXY LABEL] Búsqueda complementaria para ${cleanSearch} falló:`, searchErr?.message);
+        console.warn(`[SHALOM PROXY LABEL] Búsqueda en Shalom Pro para ${cleanSearch} falló:`, searchErr?.message);
       }
+
 
       return reply.code(404).send({
         error: `No se encontró una orden o guía registrada en Shalom Pro para "${cleanSearch}".`,

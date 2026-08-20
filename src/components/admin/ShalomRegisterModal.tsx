@@ -29,7 +29,7 @@ interface Props {
   totalSelectedCount: number;
   tallerConfig: TallerConfig;
   onClose: () => void;
-  onRegistered: (registeredOrderIds: string[]) => Promise<void>;
+  onRegistered: (results: Array<{ pedidoId: string; oseId?: string; guideNumber?: string }>) => Promise<void>;
 }
 
 export const ShalomRegisterModal: React.FC<Props> = ({
@@ -211,7 +211,15 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
     if (successfulIds.length > 0) {
       try {
-        await onRegistered(successfulIds);
+        const successResults = successfulIds.map(id => {
+          const res = resultsMap[id];
+          return {
+            pedidoId: id,
+            oseId: res?.oseId ? String(res.oseId) : undefined,
+            guideNumber: res?.guideNumber,
+          };
+        });
+        await onRegistered(successResults);
       } catch (err) {
         console.warn('[ON REGISTERED WARN]', err);
       }
@@ -251,7 +259,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     setIsExportingExcel(true);
     try {
       await downloadShalomExcel(pedidos, tallerConfig);
-      await onRegistered(pedidos.map(p => p.id));
+      await onRegistered(pedidos.map(p => ({ pedidoId: p.id })));
       onClose();
     } catch (err) {
       console.error('[EXCEL FALLBACK ERROR]', err);

@@ -990,12 +990,14 @@ export const OrdersSmartManager: React.FC = () => {
           totalSelectedCount={selectedOrders.length}
           tallerConfig={tallerConfig}
           onClose={() => setShowShalomRegister(false)}
-          onRegistered={async (registeredIds) => {
-            for (const id of registeredIds) {
-              await updatePedido(id, {
+          onRegistered={async (results) => {
+            for (const r of results) {
+              await updatePedido(r.pedidoId, {
                 registrado_shalom: true,
                 rotulado: true,
                 estado_envio: 'en_camino',
+                shalom_ose_id: r.oseId || null,
+                shalom_numero_guia: r.guideNumber || null,
               });
             }
           }}

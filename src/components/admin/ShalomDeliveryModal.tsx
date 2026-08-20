@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pedido } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
-import { generateShalomDeliveryPdfBase64 } from '../../utils/shalomDeliveryPdfGenerator';
+
 import {
   FileText,
   Send,
@@ -32,6 +32,7 @@ interface DeliveryOrderProgress {
   guideNumber: string;
   agencyName: string;
   fileName: string;
+  hasOseId?: boolean;
   pdfBase64?: string;
   status: 'pending' | 'generating_pdf' | 'sending_wa' | 'completed' | 'error';
   errorMsg?: string;
@@ -55,7 +56,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         const cleanPhone = (o.usuario?.telefono_default || (o as any).telefono_contacto || (o.usuario as any)?.telefono || '').replace(/[^0-9]/g, '');
         const safeName = clientName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const fileName = `Guia_Shalom_${safeName}_${cleanPhone.slice(-9)}.pdf`;
-        const guideNumber = (o as any).numero_guia || (o as any).ose_id || o.codigo_seguimiento || `SH-${o.codigo_seguimiento}`;
+        const guideNumber = o.shalom_numero_guia || (o as any).numero_guia || o.codigo_seguimiento || `SH-${o.codigo_seguimiento}`;
+        const hasOseId = !!(o.shalom_ose_id || (o as any).ose_id);
 
         return {
           orderId: o.id,
@@ -63,6 +65,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           phone: cleanPhone,
           trackingCode: o.codigo_seguimiento || o.id.slice(0, 8),
           guideNumber,
+          hasOseId,
           agencyName: o.destino_detalle || 'Agencia Shalom',
           fileName,
           status: 'pending',
@@ -92,8 +95,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       fileName?: string;
     }> = [];
 
-    // FASE 1: Generación y Extracción de Guías de Remisión Oficiales en PDF
-    setCurrentStepText('Generando y validando Guías de Remisión Oficiales en PDF...');
+    // FASE 1: Descarga de Guías de Remisión OFICIALES desde la API de Shalom
+    setCurrentStepText('Descargando Guías de Remisión Oficiales desde la API de Shalom Pro...');
 
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
@@ -101,26 +104,20 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       setProgressList([...updatedList]);
 
       const originalOrder = orders.find((o) => o.id === item.orderId);
-      const oseId = (originalOrder as any)?.ose_id;
+      // Usar shalom_ose_id guardado en Supabase al momento de registrar en Shalom
+      const oseId = originalOrder?.shalom_ose_id || (originalOrder as any)?.ose_id;
 
       let pdfData: string | null = null;
 
-      // Intentar primero obtener el PDF directo de la API de Shalom si tiene oseId
       if (oseId) {
         try {
           pdfData = await ShalomApiService.fetchLabelPdfBase64(oseId);
-        } catch {
-          // Continuar al generador oficial
+          console.log(`[DELIVERY PDF] PDF oficial de Shalom obtenido para OSE ${oseId}`);
+        } catch (err) {
+          console.warn(`[DELIVERY PDF WARN] No se pudo obtener PDF oficial de Shalom (OSE: ${oseId}):`, err);
         }
-      }
-
-      // Si no viene de la API, generar el PDF oficial de Guía de Remisión Shalom con clave 0808
-      if (!pdfData && originalOrder) {
-        try {
-          pdfData = generateShalomDeliveryPdfBase64(originalOrder, undefined, item.guideNumber);
-        } catch (pdfErr) {
-          console.error('[PDF GENERATION ERROR]', pdfErr);
-        }
+      } else {
+        console.warn(`[DELIVERY PDF WARN] Pedido ${item.orderId} no tiene shalom_ose_id — fue registrado manualmente o fuera de Shalom API. Se enviará mensaje sin adjunto PDF.`);
       }
 
       item.pdfBase64 = pdfData || undefined;
@@ -134,10 +131,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         guideNumber: item.guideNumber,
         agencyName: item.agencyName,
         orderCode: item.trackingCode,
-        pdfBase64: pdfData || undefined,
-        fileName: item.fileName,
+        pdfBase64: pdfData || undefined,  // undefined si no hay PDF oficial disponible
+        fileName: pdfData ? item.fileName : undefined,
       });
     }
+
 
     // FASE 2: Despacho Automático a WhatsApp vía VPS con Protección Anti-Ban
     setCurrentStepText('Enviando Guías PDF oficiales por WhatsApp a Clientas (+51 927 781 412)...');
@@ -293,14 +291,22 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                 {/* Right Badge Status */}
                 <div className="flex items-center justify-end sm:justify-start shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-700/40">
                   {item.status === 'pending' && (
-                    <span className="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-medium bg-slate-700/60 text-slate-300">
-                      Pendiente
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-medium bg-slate-700/60 text-slate-300">
+                        Pendiente
+                      </span>
+                      {!item.hasOseId && (
+                        <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          Sin registro Shalom API
+                        </span>
+                      )}
+                    </div>
                   )}
                   {item.status === 'generating_pdf' && (
                     <span className="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-medium bg-indigo-500/20 text-indigo-300 flex items-center gap-1 animate-pulse">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      Creando Guía PDF...
+                      Descargando Guía Oficial...
                     </span>
                   )}
                   {item.status === 'sending_wa' && (

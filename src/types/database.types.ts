@@ -54,6 +54,8 @@ export interface Pedido {
   fecha_limite?: string;
   rotulado?: boolean;
   registrado_shalom?: boolean;
+  shalom_ose_id?: string | null;
+  shalom_numero_guia?: string | null;
   created_at: string;
   updated_at?: string;
 }

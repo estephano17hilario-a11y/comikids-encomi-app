@@ -182,8 +182,9 @@ export class ShalomApiService {
       if (response.ok && resJson.success && resJson.data) {
         const data = resJson.data;
         const oseId = data.ose_id || data.id;
-        const guideNumber = data.guide_number || data.numero_guia || `SH-${oseId}`;
-        const trackingCode = data.tracking_code || data.codigo_rastreo || String(oseId);
+        const guideNumber = data.guia ? `${data.serie ? data.serie + '-' : ''}${data.guia}` : (data.guide_number || data.numero_guia || `SH-${oseId}`);
+        const trackingCode = data.codigo || data.tracking_code || data.codigo_rastreo || String(oseId);
+
 
         return {
           pedidoId: payload.pedidoId,

@@ -137,8 +137,53 @@ export class ShalomController {
     }
   }
 
+  private static cachedAgencies: any[] = [];
+  private static lastAgenciesFetch: number = 0;
+
+
+  private static async getAgencies(headers: Record<string, string>): Promise<any[]> {
+    const now = Date.now();
+    if (ShalomController.cachedAgencies.length > 0 && now - ShalomController.lastAgenciesFetch < 3600000) {
+      return ShalomController.cachedAgencies;
+    }
+    try {
+      const res = await axios.get(`${SHALOM_BASE_URL}/v1/agencies?per_page=1000`, {
+        headers,
+        timeout: 10000,
+      });
+      if (res.data?.items && Array.isArray(res.data.items)) {
+        ShalomController.cachedAgencies = res.data.items;
+        ShalomController.lastAgenciesFetch = now;
+      }
+    } catch (err: any) {
+      console.warn('[SHALOM GET AGENCIES WARN]', err?.message);
+    }
+    return ShalomController.cachedAgencies;
+  }
+
+  private static resolveTerminalId(agencies: any[], query: string, defaultId: number = 4): number {
+    if (!query) return defaultId;
+    const cleanQuery = query.toUpperCase();
+    const words = cleanQuery.split(/[\s/,-]+/).filter(w => w.length > 2);
+    let bestMatch: number | null = null;
+    let bestScore = 0;
+
+    for (const ag of agencies) {
+      const fullText = `${ag.nombre || ''} ${ag.direccion || ''} ${ag.lugar_over || ''} ${ag.departamento || ''} ${ag.provincia || ''} ${ag.zona || ''}`.toUpperCase();
+      let score = 0;
+      for (const w of words) {
+        if (fullText.includes(w)) score++;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = ag.id;
+      }
+    }
+    return bestMatch || defaultId;
+  }
+
   /**
-   * Registra una orden en Shalom Pro vía API
+   * Crea una orden de despacho en Shalom Pro
    */
   public static async createOrder(
     request: FastifyRequest<{
@@ -168,8 +213,6 @@ export class ShalomController {
         });
       }
 
-      console.log(`[SHALOM PROXY CREATE ORDER] Despachando pedido #${order.codigoSeguimiento} con cuenta "${credentials.email}"...`);
-
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'X-API-Key': credentials.apiKey,
@@ -179,10 +222,50 @@ export class ShalomController {
         headers['X-Shalom-Password'] = credentials.password;
       }
 
+      const agencies = await ShalomController.getAgencies(headers);
+
+      // Resolver terminal de origen (por defecto 4: AV MEXICO CO)
+      let originTerminalId = order.origin_terminal_id;
+      if (!originTerminalId) {
+        const originQuery = order.sender?.origin_agency || order.remitente?.agenciaOrigen || 'AV MEXICO CO';
+        originTerminalId = ShalomController.resolveTerminalId(agencies, originQuery, 4);
+      }
+
+      // Resolver terminal de destino por búsqueda inteligente
+      let destinyTerminalId = order.destiny_terminal_id;
+      if (!destinyTerminalId) {
+        const destQuery = order.receiver?.destination_agency || order.destinatario?.agenciaDestino || order.destination_agency || order.destino_detalle || 'LIMA';
+        destinyTerminalId = ShalomController.resolveTerminalId(agencies, destQuery, 4);
+      }
+
+      // Parsear datos del destinatario
+      const rawReceiverName = (order.receiver?.name || order.destinatario?.nombre || order.customer_name || 'Cliente').trim();
+      const nameParts = rawReceiverName.split(/\s+/);
+      const firstName = nameParts[0] || 'Cliente';
+      const lastName = nameParts.slice(1).join(' ') || 'General';
+
+      const rawDoc = String(order.receiver?.document || order.receiver?.document_number || order.destinatario?.documento || order.destinatario?.document_number || '00000000').replace(/\D/g, '');
+      const docType = rawDoc.length === 11 ? 'RUC' : (rawDoc.length === 8 ? 'DNI' : 'CE');
+
+      const rawPhone = String(order.receiver?.phone || order.destinatario?.telefono || '999999999').replace(/\D/g, '');
+      const phoneInt = parseInt(rawPhone.slice(-9), 10) || 900000000;
+
       const orderToCreate = {
+        origin_terminal_id: originTerminalId,
+        destiny_terminal_id: destinyTerminalId,
+        product_id: order.product_id || 1090, // Caja Paquete XS
         pickup_code: '0808',
-        ...order,
+        declaracion_jurada: 'ropa',
+        receiver: {
+          document: rawDoc,
+          document_type: docType,
+          name: firstName,
+          last_name: lastName,
+          phone: phoneInt,
+        }
       };
+
+      console.log(`[SHALOM PROXY CREATE ORDER] Despachando a terminal ${destinyTerminalId} para ${firstName} ${lastName} (${rawDoc})...`);
 
       const response = await axios.post(
         `${SHALOM_BASE_URL}/v1/orders`,
@@ -192,7 +275,6 @@ export class ShalomController {
           timeout: 15000,
         }
       );
-
 
       return reply.code(200).send({
         success: true,
@@ -207,6 +289,7 @@ export class ShalomController {
       });
     }
   }
+
 
   /**
    * Obtiene el PDF del rótulo oficial de Shalom con búsqueda profunda

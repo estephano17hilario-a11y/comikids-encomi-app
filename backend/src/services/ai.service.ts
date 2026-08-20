@@ -61,8 +61,13 @@ export async function auditPaymentVoucher(imageBase64: string, mimeType: string 
   }
 }
 
-// B. Consulta Copiloto / Indagación sobre Historial
-export async function queryCopilotContext(systemContext: string, userPrompt: string) {
+export interface AICopilotResult {
+  content: string;
+  tokensUsed: number;
+}
+
+// B. Consulta Copiloto / Indagación sobre Historial con Medición de Tokens
+export async function queryCopilotWithUsage(systemContext: string, userPrompt: string): Promise<AICopilotResult> {
   const response = await aiClient.chat.completions.create({
     model: AI_MODEL,
     messages: [
@@ -72,8 +77,21 @@ export async function queryCopilotContext(systemContext: string, userPrompt: str
     temperature: 0.3,
   });
 
-  return response.choices[0].message.content || '';
+  const content = response.choices[0]?.message?.content || '';
+  const totalTokens = response.usage?.total_tokens ||
+    Math.ceil((systemContext.length + userPrompt.length + content.length) / 3.5);
+
+  return {
+    content,
+    tokensUsed: totalTokens,
+  };
 }
+
+export async function queryCopilotContext(systemContext: string, userPrompt: string): Promise<string> {
+  const res = await queryCopilotWithUsage(systemContext, userPrompt);
+  return res.content;
+}
+
 
 /**
  * Adaptador de Compatibilidad para el flujo de parsePaymentVoucher existente

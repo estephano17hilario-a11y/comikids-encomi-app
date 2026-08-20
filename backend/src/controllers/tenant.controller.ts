@@ -227,12 +227,13 @@ export class TenantController {
           continue;
         }
 
-        // Delay Anti-Ban: Pausa intercalada de 3 a 6 segundos entre mensajes para no ser bloqueados
+        // Delay Anti-Ban: Pausa intercalada de 3 a 5 segundos entre mensajes para no ser bloqueados por spam
         if (i > 0) {
-          const randomDelay = Math.floor(Math.random() * 3000) + 3000; // 3000ms a 6000ms
+          const randomDelay = Math.floor(Math.random() * 2000) + 3000; // 3000ms a 5000ms (3 a 5 segundos)
           console.log(`[ANTI-BAN WHATSAPP] Esperando ${randomDelay}ms antes de notificar al contacto ${phoneClean}...`);
           await new Promise(r => setTimeout(r, randomDelay));
         }
+
 
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const rawCode = String(order.orderCode || order.trackingCode || '').trim();
@@ -362,12 +363,13 @@ export class TenantController {
           continue;
         }
 
-        // Delay Anti-Ban (3 a 6 segundos)
+        // Delay Anti-Ban (3 a 5 segundos intercalados)
         if (i > 0) {
-          const randomDelay = Math.floor(Math.random() * 3000) + 3000;
+          const randomDelay = Math.floor(Math.random() * 2000) + 3000;
           console.log(`[ANTI-BAN VOUCHER] Esperando ${randomDelay}ms antes de enviar guía a ${phoneClean}...`);
           await new Promise(r => setTimeout(r, randomDelay));
         }
+
 
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const formattedFileName = order.fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;

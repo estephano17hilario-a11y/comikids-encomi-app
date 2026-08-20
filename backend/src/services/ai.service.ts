@@ -7,7 +7,6 @@ export const OPENROUTER_API_KEY =
   env.OPENROUTER_API_KEY ||
   '';
 
-
 export const AI_MODEL = process.env.AI_MODEL || env.AI_MODEL || 'qwen/qwen3.7-flash';
 
 export const aiClient = new OpenAI({
@@ -19,46 +18,64 @@ export const aiClient = new OpenAI({
   },
 });
 
+// Lista de modelos de respaldo en caso de 429 / sobrecarga / límites de tasa
+const FALLBACK_MODELS = [
+  'qwen/qwen3.7-flash',
+  'meta-llama/llama-3.3-70b-instruct',
+  'google/gemini-2.0-flash-exp:free',
+  'google/gemini-flash-1.5',
+  'deepseek/deepseek-chat',
+  'openai/gpt-4o-mini',
+];
+
 // A. OCR y Auditoría de Comprobantes (Yape, Plin, Transferencias)
 export async function auditPaymentVoucher(imageBase64: string, mimeType: string = 'image/jpeg') {
   const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '');
 
-  const response = await aiClient.chat.completions.create({
-    model: AI_MODEL,
-    messages: [
-      {
-        role: 'system',
-        content:
-          'Eres un auditor contable experto. Analiza el comprobante bancario adjunto y extrae los datos en formato JSON estricto: {"banco": string, "monto": number, "numero_operacion": string, "fecha": string, "es_comprobante_valido": boolean, "nivel_confianza": "ALTA" | "MEDIA" | "BAJA"}. Si no es un comprobante válido, marca es_comprobante_valido en false.',
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Audita este comprobante:' },
-          {
-            type: 'image_url',
-            image_url: { url: `data:${mimeType};base64,${cleanBase64}` },
-          },
-        ],
-      },
-    ],
-    response_format: { type: 'json_object' },
-  });
+  const modelsToTry = [AI_MODEL, 'meta-llama/llama-3.3-70b-instruct', 'openai/gpt-4o-mini'];
 
-  const rawContent = response.choices[0].message.content || '{}';
-  try {
-    return JSON.parse(rawContent);
-  } catch (e) {
-    console.error('[AI SERVICE] Error parseando JSON de comprobante:', rawContent, e);
-    return {
-      banco: 'Desconocido',
-      monto: 0,
-      numero_operacion: '',
-      fecha: new Date().toISOString(),
-      es_comprobante_valido: false,
-      nivel_confianza: 'BAJA',
-    };
+  for (const model of modelsToTry) {
+    try {
+      const response = await aiClient.chat.completions.create(
+        {
+          model,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Eres un auditor contable experto. Analiza el comprobante bancario adjunto y extrae los datos en formato JSON estricto: {"banco": string, "monto": number, "numero_operacion": string, "fecha": string, "es_comprobante_valido": boolean, "nivel_confianza": "ALTA" | "MEDIA" | "BAJA"}. Si no es un comprobante válido, marca es_comprobante_valido en false.',
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Audita este comprobante:' },
+                {
+                  type: 'image_url',
+                  image_url: { url: `data:${mimeType};base64,${cleanBase64}` },
+                },
+              ],
+            },
+          ],
+          response_format: { type: 'json_object' },
+        },
+        { timeout: 15000 }
+      );
+
+      const rawContent = response.choices[0]?.message?.content || '{}';
+      return JSON.parse(rawContent);
+    } catch (e: any) {
+      console.warn(`[AI SERVICE OCR] Modelo ${model} falló:`, e?.message);
+    }
   }
+
+  return {
+    banco: 'Desconocido',
+    monto: 0,
+    numero_operacion: '',
+    fecha: new Date().toISOString(),
+    es_comprobante_valido: false,
+    nivel_confianza: 'BAJA',
+  };
 }
 
 export interface AICopilotResult {
@@ -66,32 +83,51 @@ export interface AICopilotResult {
   tokensUsed: number;
 }
 
-// B. Consulta Copiloto / Indagación sobre Historial con Medición de Tokens
+// B. Consulta Copiloto / Indagación sobre Historial con Cadena de Respaldo Multi-Modelo
 export async function queryCopilotWithUsage(systemContext: string, userPrompt: string): Promise<AICopilotResult> {
-  const response = await aiClient.chat.completions.create({
-    model: AI_MODEL,
-    messages: [
-      { role: 'system', content: systemContext },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.3,
-  });
+  const modelsToTry = [AI_MODEL, ...FALLBACK_MODELS.filter(m => m !== AI_MODEL)];
+  let lastError: any = null;
 
-  const content = response.choices[0]?.message?.content || '';
-  const totalTokens = response.usage?.total_tokens ||
-    Math.ceil((systemContext.length + userPrompt.length + content.length) / 3.5);
+  for (const model of modelsToTry) {
+    try {
+      const response = await aiClient.chat.completions.create(
+        {
+          model,
+          messages: [
+            { role: 'system', content: systemContext },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+        },
+        { timeout: 15000 }
+      );
 
-  return {
-    content,
-    tokensUsed: totalTokens,
-  };
+      const content = response.choices[0]?.message?.content || '';
+      if (content && content.trim().length > 0) {
+        const totalTokens = response.usage?.total_tokens ||
+          Math.ceil((systemContext.length + userPrompt.length + content.length) / 3.5);
+
+        return {
+          content,
+          tokensUsed: totalTokens,
+        };
+      }
+    } catch (err: any) {
+      console.warn(`[AI SERVICE RESILIENCE] Modelo "${model}" no disponible (${err?.status || err?.message}), cambiando a modelo alternativo...`);
+      lastError = err;
+      if (err?.status === 429) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+  }
+
+  throw lastError || new Error('Todos los motores de IA están temporalmente saturados.');
 }
 
 export async function queryCopilotContext(systemContext: string, userPrompt: string): Promise<string> {
-  const res = await queryCopilotWithUsage(systemContext, userPrompt);
-  return res.content;
+  const result = await queryCopilotWithUsage(systemContext, userPrompt);
+  return result.content;
 }
-
 
 /**
  * Adaptador de Compatibilidad para el flujo de parsePaymentVoucher existente
@@ -166,16 +202,14 @@ export async function processAudioMessage(
     agencyInfo?: string;
   } = {}
 ): Promise<string> {
-  // Para notas de voz mediante OpenRouter Qwen 3.7 Flash
-  console.log(`[AI SERVICE] Procesando nota de voz (${audioBuffer.length} bytes, mime: ${mimeType})`);
-  return `Hola ${context.customerName || 'estimado cliente'}, recibimos tu nota de voz en ${context.storeName || 'Comikids'}. Tu pedido ${context.trackingCode ? `#${context.trackingCode}` : ''} está ${context.orderStatus || 'en proceso'}.`;
+  return 'He recibido tu nota de voz y la estoy procesando.';
 }
 
-
 export class AIService {
-  static auditPaymentVoucher = auditPaymentVoucher;
-  static queryCopilotContext = queryCopilotContext;
-  static parsePaymentVoucher = parsePaymentVoucher;
-  static generateAssistantResponse = generateAssistantResponse;
-  static processAudioMessage = processAudioMessage;
+  public static auditPaymentVoucher = auditPaymentVoucher;
+  public static queryCopilotWithUsage = queryCopilotWithUsage;
+  public static queryCopilotContext = queryCopilotContext;
+  public static parsePaymentVoucher = parsePaymentVoucher;
+  public static generateAssistantResponse = generateAssistantResponse;
+  public static processAudioMessage = processAudioMessage;
 }

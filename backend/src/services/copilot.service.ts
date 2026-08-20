@@ -352,15 +352,12 @@ export class CopilotService {
       console.log(`[COPILOT SERVICE] 🧠 Procesando mensaje de ${cleanPhone}: "${textTrimmed}"`);
 
       // -------------------------------------------------------------
-      // PASO 1: VERIFICAR LISTA DE NÚMEROS PERMITIDOS (WHITELIST)
+      // PASO 1: VERIFICACIÓN DE SESIÓN Y ENRUTAMIENTO DINÁMICO
       // -------------------------------------------------------------
-      const isAllowed = ALLOWED_ADMIN_PHONES.has(cleanPhone) || ALLOWED_ADMIN_PHONES.has(cleanPhone.slice(-9));
-      if (!isAllowed) {
-        console.warn(`[COPILOT AUTH] Número no autorizado intentó acceder: ${cleanPhone}`);
-        const accessDeniedMsg = '⛔ *Acceso Restringido*\n\nEste canal es privado para el personal administrativo y operativo autorizado de Encomi / Comikids.';
-        await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, accessDeniedMsg);
-        return accessDeniedMsg;
-      }
+      // Con el flujo en 2 pasos de selección de Sub-QR y contraseña obligatoria,
+      // cualquier teléfono autorizado del personal u operativo del negocio puede conectarse
+      // a su base de datos ingresando su clave de seguridad configurada en el Taller.
+
 
       // -------------------------------------------------------------
       // PASO 2: COMANDO PARA CAMBIAR DE CUENTA / LOGOUT

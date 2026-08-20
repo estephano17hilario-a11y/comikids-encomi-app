@@ -250,11 +250,13 @@ export class ShalomController {
       const rawPhone = String(order.receiver?.phone || order.destinatario?.telefono || '999999999').replace(/\D/g, '');
       const phoneInt = parseInt(rawPhone.slice(-9), 10) || 900000000;
 
+      const pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '0808').trim();
+
       const orderToCreate = {
         origin_terminal_id: originTerminalId,
         destiny_terminal_id: destinyTerminalId,
         product_id: order.product_id || 1090, // Caja Paquete XS
-        pickup_code: '0808',
+        pickup_code: pickupCode,
         declaracion_jurada: 'ropa',
         receiver: {
           document: rawDoc,
@@ -264,6 +266,7 @@ export class ShalomController {
           phone: phoneInt,
         }
       };
+
 
       console.log(`[SHALOM PROXY CREATE ORDER] Despachando a terminal ${destinyTerminalId} para ${firstName} ${lastName} (${rawDoc})...`);
 

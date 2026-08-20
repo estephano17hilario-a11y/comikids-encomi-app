@@ -58,7 +58,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const [overallSuccess, setOverallSuccess] = useState(false);
   const [currentStepText, setCurrentStepText] = useState('');
   const [searchingId, setSearchingId] = useState<string | null>(null);
+  const [pickupCode, setPickupCode] = useState('0808');
   const auditedRef = React.useRef(false);
+
 
   // 1. AUDITORÍA AUTOMÁTICA EN SHALOM PRO AL ABRIR EL MODAL (1 sola vez por apertura)
   useEffect(() => {
@@ -245,7 +247,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       orderCode?: string;
       pdfBase64?: string;
       fileName?: string;
+      pickupCode?: string;
     }> = [];
+
 
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
@@ -261,12 +265,14 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         orderCode: item.trackingCode,
         pdfBase64: item.pdfBase64 || undefined,
         fileName: item.pdfBase64 ? item.fileName : undefined,
+        pickupCode: pickupCode,
       });
     }
 
     setCurrentStepText('Despachando Guías Oficiales de Shalom por WhatsApp a clientas (+51 927 781 412)...');
 
-    const sendRes = await ShalomApiService.sendDeliveryVouchers(payloadForWhatsApp);
+    const sendRes = await ShalomApiService.sendDeliveryVouchers(payloadForWhatsApp, pickupCode);
+
 
     if (sendRes.success && sendRes.results) {
       sendRes.results.forEach((resItem: any) => {
@@ -324,7 +330,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Descarga el PDF 100% auténtico de Shalom Pro y lo adjunta por WhatsApp con la clave <strong className="text-amber-300">0808</strong>
+                Descarga el PDF 100% auténtico de Shalom Pro y lo adjunta por WhatsApp con la clave <strong className="text-amber-300 font-mono">{pickupCode}</strong>
               </p>
             </div>
           </div>
@@ -340,8 +346,41 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         {/* Content Body */}
         <div className="p-3 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 flex-1">
           
+          {/* Card para Clave de Recojo Temporal Editable */}
+          <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md shadow-amber-950/20">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <KeyRound className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-white">Clave de Recojo / PIN Shalom:</span>
+                  <span className="text-[10px] text-amber-300 font-mono bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 font-bold">
+                    PIN: {pickupCode}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Modifica esta clave si Shalom te pide una distinta hoy (se enviará a cada clienta en su mensaje de WhatsApp).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <label className="text-[11px] font-bold text-slate-300">Clave:</label>
+              <input
+                type="text"
+                maxLength={6}
+                value={pickupCode}
+                onChange={(e) => setPickupCode(e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
+                placeholder="0808"
+                className="w-24 px-2.5 py-1.5 rounded-xl bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all shadow-inner"
+              />
+            </div>
+          </div>
+
           {/* Banner de Estado */}
           <div className={`p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+
             isAuditing
               ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
               : verifiedCount === totalCount
@@ -431,9 +470,10 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                         </span>
                         <span>•</span>
                         <span className="text-amber-300 font-bold flex items-center gap-0.5">
-                          <KeyRound className="w-3 h-3" /> PIN: 0808
+                          <KeyRound className="w-3 h-3" /> PIN: {pickupCode}
                         </span>
                       </div>
+
                     </div>
                   </div>
 
@@ -532,8 +572,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                   ¡Guías Oficiales de Shalom Despachadas con Éxito!
                 </h4>
                 <p className="text-[11px] text-emerald-200/90 mt-0.5 leading-relaxed">
-                  Los pedidos fueron marcados como <strong>"Entregado"</strong> y las clientas recibieron su PDF oficial y clave <strong>0808</strong> por WhatsApp.
+                  Los pedidos fueron marcados como <strong>"Entregado"</strong> y las clientas recibieron su PDF oficial y clave <strong className="text-amber-300 font-mono font-bold">{pickupCode}</strong> por WhatsApp.
                 </p>
+
               </div>
             </div>
           )}

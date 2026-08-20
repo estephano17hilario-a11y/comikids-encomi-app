@@ -21,8 +21,10 @@ import {
   RefreshCw,
   Edit2,
   ExternalLink,
-  Truck
+  Truck,
+  KeyRound
 } from 'lucide-react';
+
 
 interface Props {
   pedidos: Pedido[];
@@ -53,8 +55,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const [whatsAppSyncDone, setWhatsAppSyncDone] = useState(false);
   const [whatsAppSyncCount, setWhatsAppSyncCount] = useState(0);
 
+  // Clave de recojo temporal para Shalom
+  const [pickupCode, setPickupCode] = useState('0808');
+
   // Modo tradicional Excel fallback
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -166,6 +172,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       const payload = {
         pedidoId: row.pedido.id,
         codigoSeguimiento: row.pedido.codigo_seguimiento,
+        pickup_code: pickupCode,
         remitente: {
           nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
           documento: tallerConfig.ruc_dni || '20000000001',
@@ -188,6 +195,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
       try {
         const res = await ShalomApiService.registerOrder(payload, auth);
+        res.pickupCode = pickupCode;
         
         // Descargar inmediatamente el PDF oficial de la Guía de Remisión de Shalom Pro
         if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
@@ -213,6 +221,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           customerPhone: row.data.phone,
           customerName: row.data.name,
           agencyName: row.destino,
+          pickupCode: pickupCode,
         };
       }
       setDispatchResults({ ...resultsMap });
@@ -252,10 +261,11 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       agencyName: res.agencyName || 'Agencia Shalom',
       orderCode: res.codigoSeguimiento,
       pdfBase64: res.pdfBase64,
+      pickupCode: res.pickupCode || pickupCode,
     }));
 
     try {
-      const syncRes = await ShalomApiService.syncDispatchedWhatsApp(ordersToSync);
+      const syncRes = await ShalomApiService.syncDispatchedWhatsApp(ordersToSync, pickupCode);
       setWhatsAppSyncDone(true);
       setWhatsAppSyncCount(syncRes.notifiedCount || ordersToSync.length);
     } catch (err) {
@@ -264,6 +274,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       setIsSyncingWhatsApp(false);
     }
   };
+
 
 
   // 3. DESCARGA TRADICIONAL EXCEL (FALLBACK)
@@ -330,6 +341,38 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         {/* ========================================================================= */}
         {activeTab === 'audit' && (
           <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+            {/* Clave de Recojo Temporal Editable */}
+            <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md shadow-amber-950/20">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">Clave de Recojo / PIN Shalom:</span>
+                    <span className="text-[10px] text-amber-300 font-mono bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 font-bold">
+                      PIN: {pickupCode}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Modifica esta clave solo si Shalom te pide una distinta hoy (se usará en el registro y en el mensaje de WhatsApp).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <label className="text-[11px] font-bold text-slate-300">Clave:</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={pickupCode}
+                  onChange={(e) => setPickupCode(e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
+                  placeholder="0808"
+                  className="w-24 px-2.5 py-1.5 rounded-xl bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all shadow-inner"
+                />
+              </div>
+            </div>
+
             <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs text-slate-300">
                 <ShieldCheck className="w-4 h-4 text-cyan-400" />
@@ -341,6 +384,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                 {allValid ? '✓ Todo Listo' : '⚠ Campos por Corregir'}
               </span>
             </div>
+
 
             {/* Advertencia de Pedidos con Fecha Programada Diferente a Hoy */}
             {differentDateOrders.length > 0 && !dismissDateWarning && (
@@ -580,8 +624,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                     <div>
                       <h4 className="text-xs font-bold text-white">Envío de Guía de Remisión Oficial en PDF</h4>
                       <p className="text-[11px] text-emerald-300">
-                        Envía a cada clienta su mensaje con su Guía PDF oficial adjunta y clave <strong>0808</strong>
+                        Envía a cada clienta su mensaje con su Guía PDF oficial adjunta y clave <strong className="text-amber-300 font-mono font-bold">{pickupCode}</strong>
                       </p>
+
                     </div>
                   </div>
                   {whatsAppSyncDone && (

@@ -236,8 +236,10 @@ export class TenantController {
 
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const formattedFileName = (order as any).fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;
+        const pickupCode = (order as any).pickupCode || (order as any).claveRecojo || (request.body as any)?.pickupCode || '0808';
+        const messageText = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\nTu pedido *#${order.orderCode || order.trackingCode}* ya fue registrado y despachado hacia *Agencia Shalom (${order.agencyName || 'Destino'})* 📦🚀\n\n📋 *Número de Guía:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* ${pickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
 
-        const messageText = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\nTu pedido *#${order.orderCode || order.trackingCode}* ya fue registrado y despachado hacia *Agencia Shalom (${order.agencyName || 'Destino'})* 📦🚀\n\n📋 *Número de Guía:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* 0808\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+
 
         let pdfToSend = (order as any).pdfBase64;
 
@@ -397,8 +399,10 @@ export class TenantController {
 
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const formattedFileName = order.fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;
+        const pickupCode = (order as any).pickupCode || (order as any).claveRecojo || (request.body as any)?.pickupCode || '0808';
 
-        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${order.orderCode || order.trackingCode}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía Oficial:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* 0808\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${order.orderCode || order.trackingCode}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía Oficial:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* ${pickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+
 
 
         try {

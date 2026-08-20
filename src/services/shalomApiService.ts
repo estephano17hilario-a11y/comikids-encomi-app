@@ -35,6 +35,7 @@ export interface ShalomOrderPayload {
     cantidadBultos: number;
     tipoEnvio: 'PAGADO' | 'PAGO EN DESTINO';
   };
+  pickup_code?: string;
 }
 
 export interface ShalomDispatchResult {
@@ -51,6 +52,7 @@ export interface ShalomDispatchResult {
 
   customerName?: string;
   agencyName?: string;
+  pickupCode?: string;
 }
 
 export class ShalomApiService {
@@ -101,7 +103,7 @@ export class ShalomApiService {
   /**
    * Prepara el payload estandarizado para un pedido individual.
    */
-  public static buildOrderPayload(pedido: Pedido, tallerConfig: TallerConfig): ShalomOrderPayload {
+  public static buildOrderPayload(pedido: Pedido, tallerConfig: TallerConfig, pickupCode: string = '0808'): ShalomOrderPayload {
     const dni = extractShalomDni(pedido) || '00000000';
     const phone = extractShalomPhone(pedido) || '999999999';
     const destino = extractShalomDestino(pedido.destino_detalle);
@@ -111,6 +113,7 @@ export class ShalomApiService {
     return {
       pedidoId: pedido.id,
       codigoSeguimiento: pedido.codigo_seguimiento,
+      pickup_code: pickupCode,
       remitente: {
         nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
         documento: tallerConfig.ruc_dni || '20000000001',
@@ -141,7 +144,7 @@ export class ShalomApiService {
   ): Promise<ShalomDispatchResult> {
     try {
       const orderBody = {
-        pickup_code: '0808',
+        pickup_code: payload.pickup_code || '0808',
         sender: {
           name: payload.remitente.nombre,
           document_number: payload.remitente.documento,
@@ -299,8 +302,9 @@ export class ShalomApiService {
       orderCode: string;
       pdfBase64?: string;
       fileName?: string;
-    }>
-
+      pickupCode?: string;
+    }>,
+    pickupCode: string = '0808'
   ): Promise<{ success: boolean; notifiedCount: number; errors: any[] }> {
     try {
       const response = await fetch(`${getApiBaseUrl()}/tenant/sync-dispatch-whatsapp`, {
@@ -311,8 +315,10 @@ export class ShalomApiService {
         body: JSON.stringify({
           orders: dispatchedOrders,
           labelName: 'Despachando en Shalom',
+          pickupCode,
         }),
       });
+
 
       const data = await response.json();
       return {
@@ -489,7 +495,9 @@ export class ShalomApiService {
       orderCode?: string;
       pdfBase64?: string;
       fileName?: string;
-    }>
+      pickupCode?: string;
+    }>,
+    pickupCode: string = '0808'
   ): Promise<{ success: boolean; deliveredCount: number; results?: any[]; error?: string }> {
     try {
       const response = await fetch(`${getApiBaseUrl()}/tenant/send-delivery-vouchers`, {
@@ -500,8 +508,10 @@ export class ShalomApiService {
         body: JSON.stringify({
           orders: deliveryOrders,
           tenantId: 'Comikids',
+          pickupCode,
         }),
       });
+
 
       const data = await response.json();
       return {

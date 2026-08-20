@@ -196,7 +196,8 @@ export class ShalomApiService {
         };
       }
 
-      const errorMsg = resJson?.error || resJson?.message || 'Error desconocido al registrar en Shalom Pro';
+      const rawError = resJson?.error || resJson?.message || 'Error al registrar en Shalom Pro';
+      const errorMsg = typeof rawError === 'string' ? rawError : (rawError?.message || JSON.stringify(rawError));
       return {
         pedidoId: payload.pedidoId,
         codigoSeguimiento: payload.codigoSeguimiento,
@@ -207,16 +208,19 @@ export class ShalomApiService {
         agencyName: payload.destinatario.agenciaDestino,
       };
     } catch (err: any) {
+      const catchError = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Fallo de conexión al registrar con la API de Shalom';
+      const safeCatchError = typeof catchError === 'string' ? catchError : JSON.stringify(catchError);
       return {
         pedidoId: payload.pedidoId,
         codigoSeguimiento: payload.codigoSeguimiento,
         success: false,
-        errorMessage: err?.message || 'Fallo de conexión al registrar con la API de Shalom',
+        errorMessage: safeCatchError,
         customerPhone: payload.destinatario.telefono,
         customerName: payload.destinatario.nombre,
         agencyName: payload.destinatario.agenciaDestino,
       };
     }
+
   }
 
   /**

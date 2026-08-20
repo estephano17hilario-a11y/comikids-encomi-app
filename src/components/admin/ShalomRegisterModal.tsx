@@ -63,19 +63,23 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     };
   }, []);
 
-  // Inicializar mapa de edición
+  // Inicializar mapa de edición una sola vez al abrir el modal
+  const initializedRef = React.useRef(false);
   useEffect(() => {
-    const initial: Record<string, { dni: string; phone: string; name: string }> = {};
-    for (const p of pedidos) {
-      initial[p.id] = {
-        dni: extractShalomDni(p) || '',
-        phone: extractShalomPhone(p) || '',
-        name: p.usuario?.nombre_completo || 'Cliente',
-      };
-
+    if (!initializedRef.current && pedidos.length > 0) {
+      initializedRef.current = true;
+      const initial: Record<string, { dni: string; phone: string; name: string }> = {};
+      for (const p of pedidos) {
+        initial[p.id] = {
+          dni: extractShalomDni(p) || '',
+          phone: extractShalomPhone(p) || '',
+          name: p.usuario?.nombre_completo || 'Cliente',
+        };
+      }
+      setEditedData(initial);
     }
-    setEditedData(initial);
   }, [pedidos]);
+
 
   const origen = extractShalomOrigen(tallerConfig) || 'AV MEXICO CO';
   const totalCount = pedidos.length;
@@ -206,9 +210,14 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     setActiveTab('finished');
 
     if (successfulIds.length > 0) {
-      await onRegistered(successfulIds);
+      try {
+        await onRegistered(successfulIds);
+      } catch (err) {
+        console.warn('[ON REGISTERED WARN]', err);
+      }
     }
   };
+
 
   // 2. SINCRONIZACIÓN DE WHATSAPP BUSINESS CRM TRAS EL DESPACHO
   const handleSyncWhatsApp = async () => {
@@ -505,13 +514,14 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                       </div>
                       {res.success ? (
                         <p className="text-[11px] text-cyan-300">
-                          Guía Oficial: <strong>{res.guideNumber}</strong> • OSE #{res.oseId}
+                          Guía Oficial: <strong>{String(res.guideNumber || 'Generada')}</strong> • OSE #{String(res.oseId || '')}
                         </p>
                       ) : (
                         <p className="text-[11px] text-rose-300">
-                          Motivo: {res.errorMessage}
+                          Motivo: {typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || 'Error en registro')}
                         </p>
                       )}
+
                     </div>
                   </div>
 

@@ -365,7 +365,8 @@ export class TenantController {
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const formattedFileName = order.fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;
 
-        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${order.orderCode || order.trackingCode}* ya fue *Entregado y Recibido en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía Oficial:* ${order.guideNumber || 'En trámite'}\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${order.orderCode || order.trackingCode}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía Oficial:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* 0808\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+
 
         try {
           // Asignar etiqueta 'Entregado en Shalom'

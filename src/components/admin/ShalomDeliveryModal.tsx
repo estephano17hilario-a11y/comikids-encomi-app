@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pedido } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
-
+import { generateShalomDeliveryPdfBase64 } from '../../utils/shalomDeliveryPdfGenerator';
 import {
   FileText,
   Send,
@@ -10,12 +10,11 @@ import {
   Loader2,
   X,
   ShieldCheck,
-  Download,
   Smartphone,
-  ExternalLink,
-  Clock,
-  Sparkles,
-  PackageCheck
+  PackageCheck,
+  KeyRound,
+  MapPin,
+  FileCheck
 } from 'lucide-react';
 
 interface ShalomDeliveryModalProps {
@@ -34,7 +33,7 @@ interface DeliveryOrderProgress {
   agencyName: string;
   fileName: string;
   pdfBase64?: string;
-  status: 'pending' | 'fetching_pdf' | 'sending_wa' | 'completed' | 'error';
+  status: 'pending' | 'generating_pdf' | 'sending_wa' | 'completed' | 'error';
   errorMsg?: string;
 }
 
@@ -56,14 +55,14 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         const cleanPhone = (o.usuario?.telefono_default || (o as any).telefono_contacto || (o.usuario as any)?.telefono || '').replace(/[^0-9]/g, '');
         const safeName = clientName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const fileName = `Guia_Shalom_${safeName}_${cleanPhone.slice(-9)}.pdf`;
-
+        const guideNumber = (o as any).numero_guia || (o as any).ose_id || o.codigo_seguimiento || `SH-${o.codigo_seguimiento}`;
 
         return {
           orderId: o.id,
           customerName: clientName,
           phone: cleanPhone,
           trackingCode: o.codigo_seguimiento || o.id.slice(0, 8),
-          guideNumber: (o as any).numero_guia || (o as any).ose_id || o.codigo_seguimiento || 'S/G',
+          guideNumber,
           agencyName: o.destino_detalle || 'Agencia Shalom',
           fileName,
           status: 'pending',
@@ -93,23 +92,34 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       fileName?: string;
     }> = [];
 
-    // FASE 1: Extraer Guías de Remisión en PDF de Shalom
-    setCurrentStepText('Extrayendo Guías de Remisión Oficiales desde Shalom API...');
+    // FASE 1: Generación y Extracción de Guías de Remisión Oficiales en PDF
+    setCurrentStepText('Generando y validando Guías de Remisión Oficiales en PDF...');
 
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
-      item.status = 'fetching_pdf';
+      item.status = 'generating_pdf';
       setProgressList([...updatedList]);
 
       const originalOrder = orders.find((o) => o.id === item.orderId);
-      const oseId = (originalOrder as any)?.ose_id || originalOrder?.codigo_seguimiento;
+      const oseId = (originalOrder as any)?.ose_id;
 
       let pdfData: string | null = null;
+
+      // Intentar primero obtener el PDF directo de la API de Shalom si tiene oseId
       if (oseId) {
         try {
           pdfData = await ShalomApiService.fetchLabelPdfBase64(oseId);
         } catch {
-          // Continuar con fallback
+          // Continuar al generador oficial
+        }
+      }
+
+      // Si no viene de la API, generar el PDF oficial de Guía de Remisión Shalom con clave 0808
+      if (!pdfData && originalOrder) {
+        try {
+          pdfData = generateShalomDeliveryPdfBase64(originalOrder, undefined, item.guideNumber);
+        } catch (pdfErr) {
+          console.error('[PDF GENERATION ERROR]', pdfErr);
         }
       }
 
@@ -129,8 +139,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       });
     }
 
-    // FASE 2: Enviar Guías de Remisión por WhatsApp con Anti-Ban
-    setCurrentStepText('Despachando PDFs de Guías de Remisión a Clientas por WhatsApp (+51 927 781 412)...');
+    // FASE 2: Despacho Automático a WhatsApp vía VPS con Protección Anti-Ban
+    setCurrentStepText('Enviando Guías PDF oficiales por WhatsApp a Clientas (+51 927 781 412)...');
 
     const sendRes = await ShalomApiService.sendDeliveryVouchers(payloadForWhatsApp);
 
@@ -156,7 +166,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     setProgressList([...updatedList]);
     setProcessing(false);
     setOverallSuccess(true);
-    setCurrentStepText('¡Todos los paquetes fueron marcados como Entregados y notificados con su Guía oficial!');
+    setCurrentStepText('¡Todas las clientas recibieron su Guía de Remisión Oficial en PDF!');
 
     // Notificar al contexto para actualizar base de datos a "entregado"
     const successIds = updatedList.map((p) => p.orderId);
@@ -170,128 +180,143 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl sm:rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] sm:max-h-[90vh]">
         {/* Header */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 px-6 py-5 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
-              <PackageCheck className="w-6 h-6" />
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 shrink-0">
+              <PackageCheck className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-xl font-bold text-white tracking-tight">
-                  Consola de Entrega & Guías Shalom
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                  Consola de Entrega Shalom & Guías PDF
                 </h3>
-                <span className="px-2.5 py-0.5 text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full">
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full">
                   Línea: +51 927 781 412
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Extracción de Guías de Remisión Oficiales y Despacho Automatizado de PDFs a Clientas
+              <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                Adjunta automáticamente la Guía de Remisión en PDF con clave 0808
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             disabled={processing}
-            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+        <div className="p-3 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 flex-1">
           {/* Status banner */}
-          <div className="bg-slate-800/60 border border-indigo-500/30 rounded-xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                <ShieldCheck className="w-5 h-5" />
+          <div className="bg-slate-800/60 border border-indigo-500/30 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div>
-                <h4 className="text-sm font-semibold text-white">
-                  {orders.length} {orders.length === 1 ? 'Paquete seleccionado' : 'Paquetes seleccionados'} para Entrega
+                <h4 className="text-xs sm:text-sm font-bold text-white">
+                  {orders.length} {orders.length === 1 ? 'Paquete para Entrega Oficial' : 'Paquetes para Entrega Oficial'}
                 </h4>
-                <p className="text-xs text-slate-400">
-                  Se generará el archivo con nomenclatura oficial <code className="text-indigo-300">Guia_Shalom_[Cliente]_[Celular].pdf</code> y se enviará por WhatsApp con protección Anti-Ban.
-                </p>
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+                  <span>Documento:</span>
+                  <code className="text-indigo-300 font-mono text-[10px] bg-slate-900/80 px-1 rounded">Guia_Shalom_[Cliente]_[Celular].pdf</code>
+                  <span>•</span>
+                  <span className="text-amber-300 font-bold flex items-center gap-0.5">
+                    <KeyRound className="w-3 h-3" /> Clave: 0808
+                  </span>
+                </div>
               </div>
             </div>
+
             {currentStepText && (
-              <div className="flex items-center gap-2 text-xs font-medium text-indigo-300 bg-indigo-950/60 px-3 py-1.5 rounded-lg border border-indigo-800/50 animate-pulse">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                {currentStepText}
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-indigo-300 bg-indigo-950/80 px-2.5 py-1 rounded-lg border border-indigo-800/50 animate-pulse self-start sm:self-auto">
+                <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                <span className="line-clamp-1">{currentStepText}</span>
               </div>
             )}
           </div>
 
-          {/* List of Orders */}
-          <div className="space-y-2.5">
+          {/* List of Orders (Responsive Cards) */}
+          <div className="space-y-2">
             {progressList.map((item, idx) => (
               <div
                 key={item.orderId}
-                className={`p-3.5 rounded-xl border transition-all ${
+                className={`p-3 rounded-xl sm:rounded-2xl border transition-all ${
                   item.status === 'completed'
                     ? 'bg-emerald-950/30 border-emerald-500/40'
                     : item.status === 'error'
                     ? 'bg-red-950/30 border-red-500/40'
-                    : item.status === 'fetching_pdf' || item.status === 'sending_wa'
+                    : item.status === 'generating_pdf' || item.status === 'sending_wa'
                     ? 'bg-indigo-950/40 border-indigo-500/50 shadow-md shadow-indigo-500/10'
-                    : 'bg-slate-800/40 border-slate-700/60'
-                } flex items-center justify-between`}
+                    : 'bg-slate-800/50 border-slate-700/60'
+                } flex flex-col sm:flex-row sm:items-center justify-between gap-2.5`}
               >
-                <div className="flex items-center gap-3.5">
-                  <span className="w-6 text-center text-xs font-bold text-slate-500">
+                {/* Left Info */}
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <span className="w-5 text-center text-xs font-bold text-slate-500 shrink-0 mt-0.5">
                     #{idx + 1}
                   </span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-white">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs sm:text-sm font-bold text-white truncate">
                         {item.customerName}
                       </span>
-                      <span className="text-xs text-slate-400 font-mono">
-                        +{item.phone}
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        (+{item.phone})
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                      <span>Destino: <strong className="text-slate-300">{item.agencyName}</strong></span>
+
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400 mt-1">
+                      <span className="flex items-center gap-0.5 text-slate-300">
+                        <MapPin className="w-3 h-3 text-cyan-400 shrink-0" />
+                        <strong className="truncate max-w-[140px] sm:max-w-[200px]">{item.agencyName}</strong>
+                      </span>
                       <span>•</span>
                       <span>Guía: <strong className="text-indigo-400 font-mono">{item.guideNumber}</strong></span>
+                      <span>•</span>
+                      <span className="text-amber-400 font-bold">PIN: 0808</span>
                     </div>
-                    <div className="text-[11px] text-slate-500 font-mono mt-1 flex items-center gap-1">
-                      <FileText className="w-3 h-3 text-slate-400" />
-                      {item.fileName}
+
+                    <div className="text-[10px] text-slate-400 font-mono mt-1 flex items-center gap-1 bg-slate-900/60 px-2 py-0.5 rounded w-fit max-w-full truncate">
+                      <FileCheck className="w-3 h-3 text-indigo-400 shrink-0" />
+                      <span className="truncate">{item.fileName}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                {/* Right Badge Status */}
+                <div className="flex items-center justify-end sm:justify-start shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-700/40">
                   {item.status === 'pending' && (
-                    <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-slate-700/60 text-slate-300">
+                    <span className="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-medium bg-slate-700/60 text-slate-300">
                       Pendiente
                     </span>
                   )}
-                  {item.status === 'fetching_pdf' && (
-                    <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-500/20 text-indigo-300 flex items-center gap-1.5 animate-pulse">
+                  {item.status === 'generating_pdf' && (
+                    <span className="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-medium bg-indigo-500/20 text-indigo-300 flex items-center gap-1 animate-pulse">
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      Extrayendo Guía PDF...
+                      Creando Guía PDF...
                     </span>
                   )}
                   {item.status === 'sending_wa' && (
-                    <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-purple-500/20 text-purple-300 flex items-center gap-1.5 animate-pulse">
+                    <span className="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-medium bg-purple-500/20 text-purple-300 flex items-center gap-1 animate-pulse">
                       <Smartphone className="w-3 h-3 animate-spin" />
-                      Enviando WhatsApp...
+                      Enviando PDF...
                     </span>
                   )}
                   {item.status === 'completed' && (
-                    <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/20 text-emerald-300 flex items-center gap-1.5">
+                    <span className="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-medium bg-emerald-500/20 text-emerald-300 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      Entregado & Guía Enviada
+                      Entregado & PDF Enviado
                     </span>
                   )}
                   {item.status === 'error' && (
-                    <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/20 text-red-300 flex items-center gap-1.5">
+                    <span className="px-2 py-1 rounded-lg text-[10px] sm:text-xs font-medium bg-red-500/20 text-red-300 flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5" />
                       {item.errorMsg || 'Error'}
                     </span>
@@ -302,35 +327,35 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           </div>
 
           {overallSuccess && (
-            <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-4 flex items-center gap-3 animate-fade-in">
+            <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl sm:rounded-2xl p-3.5 flex items-center gap-3 animate-fade-in">
               <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
               <div>
-                <h4 className="text-sm font-bold text-white">
-                  ¡Proceso de Entrega y Emisión de Guías Completado con Éxito!
+                <h4 className="text-xs sm:text-sm font-bold text-white">
+                  ¡Guías Oficiales en PDF Despachadas con Éxito!
                 </h4>
-                <p className="text-xs text-emerald-200/80 mt-0.5">
-                  Las etiquetas han cambiado a estado <strong>"Entregado"</strong> en el sistema y cada clienta ha recibido su documento PDF oficial por WhatsApp.
+                <p className="text-[11px] text-emerald-200/80 mt-0.5">
+                  Se marcaron como <strong>"Entregado"</strong> y cada clienta recibió su documento oficial en PDF con la clave <strong>0808</strong>.
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="bg-slate-900 px-6 py-4 border-t border-slate-800 flex items-center justify-between">
+        {/* Footer Actions (Responsive) */}
+        <div className="bg-slate-900 px-4 sm:px-6 py-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
           <button
             onClick={handleOnlyMarkDelivered}
             disabled={processing}
-            className="text-xs text-slate-400 hover:text-slate-200 underline disabled:opacity-50"
+            className="text-[11px] sm:text-xs text-slate-400 hover:text-slate-200 underline disabled:opacity-50 order-2 sm:order-1"
           >
             Solo marcar como entregado (sin WhatsApp)
           </button>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 w-full sm:w-auto order-1 sm:order-2">
             <button
               onClick={onClose}
               disabled={processing}
-              className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors disabled:opacity-50"
+              className="flex-1 sm:flex-none px-4 py-2 text-xs sm:text-sm font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors disabled:opacity-50 text-center"
             >
               {overallSuccess ? 'Cerrar' : 'Cancelar'}
             </button>
@@ -339,17 +364,17 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
               <button
                 onClick={handleStartDeliveryFlow}
                 disabled={processing}
-                className="px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl shadow-lg shadow-indigo-500/25 flex items-center gap-2 transition-all disabled:opacity-50"
+                className="flex-1 sm:flex-none px-4 sm:px-5 py-2 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 active:scale-98"
               >
                 {processing ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Procesando Guías...
+                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                    <span>Enviando Guías PDF...</span>
                   </>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" />
-                    Emitir Guías y Enviar PDFs por WhatsApp
+                    <Send className="w-4 h-4 shrink-0" />
+                    <span>Enviar Guías PDF por WhatsApp</span>
                   </>
                 )}
               </button>

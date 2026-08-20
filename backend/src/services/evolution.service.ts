@@ -261,33 +261,88 @@ export class EvolutionService {
       }
     }
 
+    const docFileName = options?.fileName || (detectedType === 'document' ? 'Guia_Shalom.pdf' : 'imagen.jpg');
+    let lastError: any = null;
+
+    // Intento 1: con Data URI Prefix
     try {
-      const payload: any = {
+      const payload1 = {
         number: phoneClean,
         mediatype: detectedType,
         mediaType: detectedType,
         media: formattedMedia,
         caption: options?.caption || '',
-        fileName: options?.fileName || (detectedType === 'document' ? 'Guia_Shalom.pdf' : 'imagen.jpg'),
+        fileName: docFileName,
         mimetype: defaultMime,
       };
 
-      console.log(`[EVOLUTION SEND MEDIA] Despachando ${detectedType} a ${phoneClean} via ${targetInstance} (fileName: ${payload.fileName})`);
-
-      const response = await axios.post(
+      console.log(`[EVOLUTION SEND MEDIA T1] Despachando ${detectedType} (${docFileName}) a ${phoneClean} via ${targetInstance}...`);
+      const response1 = await axios.post(
         `${env.EVOLUTION_API_URL}/message/sendMedia/${targetInstance}`,
-        payload,
+        payload1,
         {
           headers: this.getHeaders(),
           timeout: 30000,
         }
       );
-
-      return response.data;
-    } catch (error: any) {
-      console.error(`[EVOLUTION SEND MEDIA ERROR en ${targetInstance}]`, error?.response?.data || error?.message);
-      throw error;
+      return response1.data;
+    } catch (err1: any) {
+      console.warn(`[EVOLUTION SEND MEDIA T1 FALLÓ]`, err1?.response?.data || err1?.message);
+      lastError = err1;
     }
+
+    // Intento 2: con Pure Base64 (sin data: prefix)
+    try {
+      const payload2 = {
+        number: phoneClean,
+        mediatype: detectedType,
+        mediaType: detectedType,
+        media: cleanMedia,
+        caption: options?.caption || '',
+        fileName: docFileName,
+        mimetype: defaultMime,
+      };
+
+      console.log(`[EVOLUTION SEND MEDIA T2] Reintentando con pure base64 a ${phoneClean} via ${targetInstance}...`);
+      const response2 = await axios.post(
+        `${env.EVOLUTION_API_URL}/message/sendMedia/${targetInstance}`,
+        payload2,
+        {
+          headers: this.getHeaders(),
+          timeout: 30000,
+        }
+      );
+      return response2.data;
+    } catch (err2: any) {
+      console.warn(`[EVOLUTION SEND MEDIA T2 FALLÓ]`, err2?.response?.data || err2?.message);
+      lastError = err2;
+    }
+
+    // Intento 3: endpoint alternativo /message/sendWhatsAppMedia/:instance
+    try {
+      const payload3 = {
+        number: phoneClean,
+        mediatype: detectedType,
+        media: cleanMedia,
+        caption: options?.caption || '',
+        fileName: docFileName,
+        mimetype: defaultMime,
+      };
+
+      const response3 = await axios.post(
+        `${env.EVOLUTION_API_URL}/message/sendWhatsAppMedia/${targetInstance}`,
+        payload3,
+        {
+          headers: this.getHeaders(),
+          timeout: 30000,
+        }
+      );
+      return response3.data;
+    } catch (err3: any) {
+      console.error(`[EVOLUTION SEND MEDIA ERROR TOTAL en ${targetInstance}]`, lastError?.response?.data || lastError?.message);
+      throw lastError || err3;
+    }
+
 
   }
 

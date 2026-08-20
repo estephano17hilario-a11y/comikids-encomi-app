@@ -283,5 +283,147 @@ export class TenantController {
       });
     }
   }
+
+  /**
+   * Envío de Guías de Remisión Oficiales en PDF al marcar pedidos como "Entregado a Shalom"
+   */
+  public static async sendDeliveryVouchers(
+    request: FastifyRequest<{
+      Body: {
+        orders: Array<{
+          phone: string;
+          customerName: string;
+          trackingCode: string;
+          guideNumber: string;
+          agencyName: string;
+          orderCode?: string;
+          pdfBase64?: string;
+          fileName?: string;
+        }>;
+        tenantId?: string;
+      };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const { orders = [], tenantId = 'Comikids' } = request.body || {};
+
+      if (!Array.isArray(orders) || orders.length === 0) {
+        return reply.code(400).send({
+          success: false,
+          error: 'No se enviaron órdenes con guías para entregar.',
+        });
+      }
+
+      // 1. Determinar instancia activa para envíos (Prioridad a tenant_Comikids / +51927781412)
+      let userSenderInstance = 'tenant_Comikids';
+      try {
+        const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
+          headers: { apikey: env.EVOLUTION_API_KEY },
+          timeout: 5000,
+        });
+        const instances = fetchRes.data || [];
+        const comikidsSub = instances.find((i: any) => i.name === 'tenant_Comikids' && i.connectionStatus === 'open');
+        const matrixSub = instances.find((i: any) => i.name === 'tenant_matrix' && i.connectionStatus === 'open');
+        const anyOpenSub = instances.find((i: any) =>
+          (i.name.startsWith('tenant_') || i.name.startsWith('tienda_')) && i.connectionStatus === 'open'
+        );
+
+        if (comikidsSub) {
+          userSenderInstance = comikidsSub.name;
+        } else if (matrixSub) {
+          userSenderInstance = matrixSub.name;
+        } else if (anyOpenSub) {
+          userSenderInstance = anyOpenSub.name;
+        }
+      } catch (err) {
+        console.warn('[DELIVERY VOUCHER SENDER WARN]', err);
+      }
+
+      console.log(`[DELIVERY VOUCHERS] Despachando ${orders.length} guías de remisión oficiales vía "${userSenderInstance}" (+51927781412) con Anti-Ban (3-6s)...`);
+
+      const results = [];
+      let successCount = 0;
+
+      for (let i = 0; i < orders.length; i++) {
+        const order = orders[i];
+        let phoneClean = String(order.phone || '').replace(/[^0-9]/g, '');
+        if (phoneClean.length === 9) phoneClean = `51${phoneClean}`;
+
+        if (!phoneClean || phoneClean.length < 9) {
+          results.push({ phone: order.phone, status: 'error', error: 'Teléfono inválido' });
+          continue;
+        }
+
+        // Delay Anti-Ban (3 a 6 segundos)
+        if (i > 0) {
+          const randomDelay = Math.floor(Math.random() * 3000) + 3000;
+          console.log(`[ANTI-BAN VOUCHER] Esperando ${randomDelay}ms antes de enviar guía a ${phoneClean}...`);
+          await new Promise(r => setTimeout(r, randomDelay));
+        }
+
+        const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
+        const formattedFileName = order.fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;
+
+        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${order.orderCode || order.trackingCode}* ya fue *Entregado y Recibido en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía Oficial:* ${order.guideNumber || 'En trámite'}\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+
+        try {
+          // Asignar etiqueta 'Entregado en Shalom'
+          try {
+            await axios.post(
+              `${env.EVOLUTION_API_URL}/chat/setChatLabels/${userSenderInstance}`,
+              {
+                number: phoneClean,
+                label: 'Entregado en Shalom',
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  apikey: env.EVOLUTION_API_KEY,
+                },
+                timeout: 5000,
+              }
+            );
+          } catch (lblErr) {
+            // Ignorar si no aplica
+          }
+
+          // Si viene con PDF en Base64
+          if (order.pdfBase64) {
+            await EvolutionService.sendWhatsAppMedia(userSenderInstance, phoneClean, order.pdfBase64, {
+              caption: messageCaption,
+              fileName: formattedFileName,
+              mediaType: 'document',
+              mimeType: 'application/pdf',
+            });
+          } else {
+            // Fallback a texto
+            await EvolutionService.sendWhatsAppMessage(userSenderInstance, phoneClean, messageCaption);
+          }
+
+          results.push({ phone: phoneClean, fileName: formattedFileName, status: 'success' });
+          successCount++;
+        } catch (deliveryErr: any) {
+          console.error(`[DELIVERY VOUCHER SEND ERROR ${phoneClean}]`, deliveryErr?.response?.data || deliveryErr?.message);
+          results.push({ phone: phoneClean, status: 'error', error: deliveryErr?.message });
+        }
+      }
+
+      return reply.code(200).send({
+        success: true,
+        deliveredCount: successCount,
+        totalOrders: orders.length,
+        instanceUsed: userSenderInstance,
+        results,
+      });
+    } catch (error: any) {
+      request.log.error(error);
+      return reply.code(500).send({
+        success: false,
+        error: error?.message || 'Error enviando guías de remisión de entrega',
+      });
+    }
+  }
 }
+
 

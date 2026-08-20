@@ -115,20 +115,36 @@ export class CopilotService {
       const normalizedQuery = textTrimmed.toLowerCase();
       const sessionKey = `copilot:session:${cleanPhone}`;
 
-      if (
-        normalizedQuery === 'cambiar cuenta' ||
+      const isSwitchAccountIntent =
+        normalizedQuery.includes('cambiar cuenta') ||
+        normalizedQuery.includes('cambiar de cuenta') ||
+        normalizedQuery.includes('cambiar mi cuenta') ||
+        normalizedQuery.includes('cambiar sub qr') ||
+        normalizedQuery.includes('cambiar el sub qr') ||
+        normalizedQuery.includes('cambiar de sub qr') ||
+        normalizedQuery.includes('cambiar qr') ||
+        normalizedQuery.includes('me equivoque') ||
+        normalizedQuery.includes('me equivoqué') ||
+        normalizedQuery.includes('otra cuenta') ||
+        normalizedQuery.includes('usar otra cuenta') ||
+        normalizedQuery.includes('codigo unico') ||
+        normalizedQuery.includes('código único') ||
+        normalizedQuery.includes('pedir codigo') ||
+        normalizedQuery.includes('pedir código') ||
         normalizedQuery === '/cambiar' ||
         normalizedQuery === '/cambiar_cuenta' ||
         normalizedQuery === 'cambiar' ||
         normalizedQuery === '/logout' ||
         normalizedQuery === 'cerrar sesion' ||
-        normalizedQuery === 'salir'
-      ) {
+        normalizedQuery === 'salir';
+
+      if (isSwitchAccountIntent) {
         await redisClient.del(sessionKey);
-        const switchMenuMsg = `🔄 *Cambio de Cuenta de Sub-QR*\n\nIngresa el *Código de Cuenta* al que deseas conectarte:\n\n1️⃣ Escribe *COMIKIDS* (o *1*) ➔ +51 927 781 412 (Comikids Pijamas)\n2️⃣ Escribe *MATRIX* (o *2*) ➔ +51 963 097 546 (Estephano Matrix)\n\n💬 *Responde con el código para activar la cuenta:*`;
+        const switchMenuMsg = `🔄 *Cambio de Cuenta de Sub-QR*\n\nIngresa el *CÓDIGO ÚNICO* de la cuenta o Sub-QR al que deseas conectarte:\n\n1️⃣ Escribe *COMIKIDS* (o *1*) ➔ +51 927 781 412 (Comikids Pijamas)\n2️⃣ Escribe *MATRIX* (o *2*) ➔ +51 963 097 546 (Estephano Matrix)\n\n💬 *Responde con tu código único para activar la cuenta:*`;
         await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, switchMenuMsg);
         return switchMenuMsg;
       }
+
 
       // -------------------------------------------------------------
       // PASO 3: GESTIÓN DE SESIÓN Y VINCULACIÓN DE CÓDIGO DE CUENTA

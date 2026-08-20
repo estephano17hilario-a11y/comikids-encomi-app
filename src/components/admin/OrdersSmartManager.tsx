@@ -2,12 +2,17 @@ import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
 import { useOrders } from '../../context/OrderContext';
+import { EditOrderModal } from './EditOrderModal';
+
 import { BulkPrintModal } from './BulkPrintModal';
 import { ShalomLabelModal } from './ShalomLabelModal';
-import { EditOrderModal } from './EditOrderModal';
 import { ShalomRegisterModal } from './ShalomRegisterModal';
+import { ShalomDeliveryModal } from './ShalomDeliveryModal';
 import { OrderStatusNotifyModal } from './OrderStatusNotifyModal';
 import { downloadShalomExcel } from '../../utils/shalomExcelExporter';
+
+
+
 import {
   CheckSquare,
   Square,
@@ -58,11 +63,13 @@ export const OrdersSmartManager: React.FC = () => {
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [swipeTargetOrder, setSwipeTargetOrder] = useState<Pedido | null>(null);
+  const [deliveryTargetOrders, setDeliveryTargetOrders] = useState<Pedido[] | null>(null);
   const [notifyModalData, setNotifyModalData] = useState<{
     orders: Pedido[];
     statusName: string;
   } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
 
   // Helper para nombre legible del estado
   const getStatusLabel = (envio: EstadoEnvio, prod?: EstadoProduccion): string => {
@@ -205,6 +212,19 @@ export const OrdersSmartManager: React.FC = () => {
     setIsProcessing(true);
     const affectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
     const statusName = getStatusLabel(envio, prod);
+
+    // Si se pasa a entregado y hay pedidos Shalom, abrir consola de Guías de Remisión Shalom
+    if (envio === 'entregado') {
+      const shalomOrders = affectedOrders.filter(
+        p => p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom') || (p as any).registrado_shalom
+      );
+      if (shalomOrders.length > 0) {
+        setDeliveryTargetOrders(shalomOrders);
+        setIsProcessing(false);
+        return;
+      }
+    }
+
     try {
       await updateMultipleEstados(selectedIds, envio, prod);
       clearSelection();
@@ -276,6 +296,18 @@ export const OrdersSmartManager: React.FC = () => {
     setIsProcessing(true);
     const targetOrder = pedidos.find(p => p.id === orderId);
     const statusName = getStatusLabel(envio, prod);
+
+    // Si se pasa a entregado y es un pedido Shalom, abrir consola de Guías de Remisión
+    if (envio === 'entregado' && targetOrder) {
+      const isShalom = targetOrder.metodo_envio_codigo === 'shalom' || targetOrder.destino_detalle?.toLowerCase().includes('shalom') || (targetOrder as any).registrado_shalom;
+      if (isShalom) {
+        setDeliveryTargetOrders([targetOrder]);
+        setSwipeTargetOrder(null);
+        setIsProcessing(false);
+        return;
+      }
+    }
+
     try {
       if (prod) await updateEstadoProduccion(orderId, prod);
       await updateEstadoEnvio(orderId, envio);
@@ -290,6 +322,7 @@ export const OrdersSmartManager: React.FC = () => {
       setIsProcessing(false);
     }
   };
+
 
   const selectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
   
@@ -1042,6 +1075,23 @@ export const OrdersSmartManager: React.FC = () => {
         />
       )}
 
+      {/* Shalom Delivery & Official Remission Guide Modal */}
+      {deliveryTargetOrders && (
+        <ShalomDeliveryModal
+          isOpen={Boolean(deliveryTargetOrders)}
+          orders={deliveryTargetOrders}
+          onClose={() => setDeliveryTargetOrders(null)}
+          onOrdersDelivered={async (deliveredIds) => {
+            for (const id of deliveredIds) {
+              await updateEstadoEnvio(id, 'entregado');
+            }
+            clearSelection();
+            setDeliveryTargetOrders(null);
+          }}
+        />
+      )}
+
     </div>
   );
 };
+

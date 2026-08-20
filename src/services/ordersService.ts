@@ -67,14 +67,15 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
 ];
 
 export const DEFAULT_TALLER_CONFIG: TallerConfig = {
-  nombre_taller: 'Encomi Envíos',
+  nombre_taller: 'Comikids Envíos',
   ruc_dni: '42020312ENCOMI',
-  celular_taller: '+51 987 654 321',
-  whatsapp_pedidos: '51987654321',
+  celular_taller: '+51 927781412',
+  whatsapp_pedidos: '51927781412',
   direccion_taller: 'Av. Gamarra 1234, Oficina 402, La Victoria, Lima',
   ciudad_origen: 'LIMA',
   agencia_shalom_origen: 'AV MEXICO CO',
 };
+
 
 class OrdersService {
   // --- USERS & AUTH ---
@@ -988,23 +989,49 @@ class OrdersService {
     }
   }
 
-  saveTallerConfig(config: Partial<TallerConfig>): TallerConfig {
+  async fetchTallerConfig(): Promise<TallerConfig> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.from('taller_config').select('*').limit(1).maybeSingle();
+        if (data && !error) {
+          const merged: TallerConfig = {
+            ...DEFAULT_TALLER_CONFIG,
+            ...data,
+          };
+          localStorage.setItem(STORAGE_KEYS.TALLER_CONFIG, JSON.stringify(merged));
+          return merged;
+        }
+      } catch (err) {
+        console.warn('Error fetching taller_config from Supabase:', err);
+      }
+    }
+    return this.getTallerConfig();
+  }
+
+  async saveTallerConfig(config: Partial<TallerConfig>): Promise<TallerConfig> {
     const current = this.getTallerConfig();
-    const updated = { ...current, ...config, id: 'config-main' };
+    const updated: TallerConfig = { ...current, ...config };
     localStorage.setItem(STORAGE_KEYS.TALLER_CONFIG, JSON.stringify(updated));
 
     if (isSupabaseConfigured && supabase) {
       try {
-        supabase.from('taller_config').upsert(updated).then(({ error }) => {
-          if (error) console.warn('Error sincronizando taller_config en Supabase:', error);
-        });
+        const payloadToSupabase = {
+          ...updated,
+          id: 'config-main',
+        };
+        const { error } = await supabase.from('taller_config').upsert(payloadToSupabase);
+        if (error) {
+          console.error('[SUPABASE TALLER CONFIG UPSERT ERROR]', error);
+        }
       } catch (e) {
-        console.warn(e);
+        console.warn('Error en upsert taller_config:', e);
       }
     }
 
+
     return updated;
   }
+
 }
 
 export const ordersService = new OrdersService();

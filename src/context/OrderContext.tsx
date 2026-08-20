@@ -125,10 +125,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
 
       knownOrderIdsRef.current = new Set(fetched.map(p => p.id));
+
+      // Sincronizar configuración del taller en la nube para todos los dispositivos
+      const remoteTallerConfig = await ordersService.fetchTallerConfig();
+      if (remoteTallerConfig) {
+        setTallerConfig(remoteTallerConfig);
+      }
     } finally {
       setLoading(false);
     }
   }, [currentUser?.id, role]);
+
 
   useEffect(() => {
     NativeNotificationService.requestPermissions();
@@ -190,7 +197,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             }
           }
         )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'taller_config' },
+          async () => {
+            const remoteConfig = await ordersService.fetchTallerConfig();
+            if (remoteConfig) {
+              setTallerConfig(remoteConfig);
+            }
+          }
+        )
         .subscribe();
+
     }
 
     return () => {
@@ -325,10 +343,12 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setMotorizadoDistricts(ordersService.getMotorizadoDistricts());
   };
 
-  const handleUpdateTallerConfig = (config: Partial<TallerConfig>) => {
-    const updated = ordersService.saveTallerConfig(config);
+  const handleUpdateTallerConfig = async (config: Partial<TallerConfig>) => {
+    const updated = await ordersService.saveTallerConfig(config);
     setTallerConfig(updated);
+    await refreshData();
   };
+
 
   const handleDeleteUser = async (userId: string): Promise<boolean> => {
     const success = await ordersService.deleteUser(userId);

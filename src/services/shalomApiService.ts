@@ -317,5 +317,78 @@ export class ShalomApiService {
       };
     }
   }
+
+  /**
+   * Obtiene la Guía de Remisión Oficial en Base64 para adjuntarla directamente a WhatsApp.
+   */
+  public static async fetchLabelPdfBase64(oseId: number | string): Promise<string | null> {
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${oseId}/label`);
+      if (!response.ok) {
+        throw new Error(`Error ${response.status} al obtener PDF de guía`);
+      }
+      const blob = await response.blob();
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          // Remover prefijo data:application/pdf;base64, si existe
+          const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn(`[SHALOM PDF BASE64 WARN ${oseId}]`, err);
+      return null;
+    }
+  }
+
+  /**
+   * Envía a cada clienta su Guía de Remisión Oficial en PDF por WhatsApp al marcar como "Entregado a Shalom".
+   */
+  public static async sendDeliveryVouchers(
+    deliveryOrders: Array<{
+      phone: string;
+      customerName: string;
+      trackingCode: string;
+      guideNumber: string;
+      agencyName: string;
+      orderCode?: string;
+      pdfBase64?: string;
+      fileName?: string;
+    }>
+  ): Promise<{ success: boolean; deliveredCount: number; results?: any[]; error?: string }> {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/tenant/send-delivery-vouchers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orders: deliveryOrders,
+          tenantId: 'Comikids',
+        }),
+      });
+
+      const data = await response.json();
+      return {
+        success: response.ok && data.success,
+        deliveredCount: data.deliveredCount || 0,
+        results: data.results || [],
+        error: data.error,
+      };
+    } catch (err: any) {
+      console.error('[WHATSAPP DELIVERY VOUCHERS ERROR]', err);
+      return {
+        success: false,
+        deliveredCount: 0,
+        error: err?.message || 'Error de conexión enviando guías de remisión',
+      };
+    }
+  }
 }
+
 

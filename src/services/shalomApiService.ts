@@ -325,19 +325,34 @@ export class ShalomApiService {
   /**
    * Obtiene la Guía de Remisión Oficial en Base64 para adjuntarla directamente a WhatsApp.
    */
-  public static async fetchLabelPdfBase64(oseId: number | string): Promise<string | null> {
-
+  public static async fetchLabelPdfBase64(
+    oseId: number | string,
+    auth?: ShalomAuthCredentials
+  ): Promise<string | null> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${oseId}/label`);
+      const headers: Record<string, string> = {
+        'X-API-Key': SHALOM_API_KEY,
+      };
+      if (auth?.email) headers['X-Shalom-Email'] = auth.email.trim();
+      if (auth?.password) headers['X-Shalom-Password'] = auth.password;
+
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/label`, {
+        headers,
+      });
+
       if (!response.ok) {
         throw new Error(`Error ${response.status} al obtener PDF de guía`);
       }
+
       const blob = await response.blob();
+      if (!blob || blob.size < 100) {
+        throw new Error('El PDF recibido está vacío');
+      }
+
       return new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
           const result = reader.result as string;
-          // Remover prefijo data:application/pdf;base64, si existe
           const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
           resolve(base64Data);
         };
@@ -349,6 +364,7 @@ export class ShalomApiService {
       return null;
     }
   }
+
 
   /**
    * Envía a cada clienta su Guía de Remisión Oficial en PDF por WhatsApp al marcar como "Entregado a Shalom".

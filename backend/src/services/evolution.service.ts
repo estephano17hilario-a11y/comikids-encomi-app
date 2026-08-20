@@ -253,21 +253,26 @@ export class EvolutionService {
       }
     }
 
+    let formattedMedia = cleanMedia;
+    const defaultMime = options?.mimeType || (detectedType === 'document' ? 'application/pdf' : 'image/jpeg');
+    if (!formattedMedia.startsWith('http://') && !formattedMedia.startsWith('https://')) {
+      if (!formattedMedia.startsWith('data:')) {
+        formattedMedia = `data:${defaultMime};base64,${cleanMedia}`;
+      }
+    }
+
     try {
       const payload: any = {
         number: phoneClean,
         mediatype: detectedType,
-        media: cleanMedia,
+        mediaType: detectedType,
+        media: formattedMedia,
         caption: options?.caption || '',
+        fileName: options?.fileName || (detectedType === 'document' ? 'Guia_Shalom.pdf' : 'imagen.jpg'),
+        mimetype: defaultMime,
       };
-      if (options?.fileName || detectedType === 'document') {
-        payload.fileName = options?.fileName || (detectedType === 'document' ? 'documento.pdf' : 'imagen.jpg');
-      }
-      if (options?.mimeType) {
-        payload.mimetype = options.mimeType;
-      }
 
-      console.log(`[EVOLUTION SEND MEDIA] Despachando ${detectedType} a ${phoneClean} via ${targetInstance} (fileName: ${payload.fileName || 'none'})`);
+      console.log(`[EVOLUTION SEND MEDIA] Despachando ${detectedType} a ${phoneClean} via ${targetInstance} (fileName: ${payload.fileName})`);
 
       const response = await axios.post(
         `${env.EVOLUTION_API_URL}/message/sendMedia/${targetInstance}`,
@@ -283,6 +288,7 @@ export class EvolutionService {
       console.error(`[EVOLUTION SEND MEDIA ERROR en ${targetInstance}]`, error?.response?.data || error?.message);
       throw error;
     }
+
   }
 
   /**

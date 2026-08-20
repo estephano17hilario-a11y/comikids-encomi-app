@@ -206,6 +206,56 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
             )}
           </div>
 
+          {/* Vinculación de Sub-QR y Seguridad del Copiloto IA */}
+          <div className="p-3.5 rounded-2xl bg-purple-950/40 border border-purple-500/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                <Store className="w-3.5 h-3.5 text-purple-400" />
+                <span>Vinculación de Sub-QR & Seguridad Copiloto IA</span>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                Límite: 500k tokens/día
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] text-slate-300 mb-1">Instancia Sub-QR</label>
+                <input
+                  type="text"
+                  value={formData.copilot_sub_instance || 'tenant_Comikids'}
+                  onChange={e => setFormData({ ...formData, copilot_sub_instance: e.target.value })}
+                  placeholder="tenant_Comikids"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-300 mb-1">Teléfono Emisor Sub-QR</label>
+                <input
+                  type="text"
+                  value={formData.copilot_owner_phone || '51927781412'}
+                  onChange={e => setFormData({ ...formData, copilot_owner_phone: e.target.value })}
+                  placeholder="51927781412"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-300 mb-1">Contraseña de Seguridad Copiloto IA</label>
+              <input
+                type="text"
+                value={formData.copilot_password || '989834969MI'}
+                onChange={e => setFormData({ ...formData, copilot_password: e.target.value })}
+                placeholder="989834969MI"
+                className="w-full px-2.5 py-1.5 bg-slate-900 border border-purple-500/40 rounded-lg text-xs text-amber-300 font-mono font-bold focus:outline-none focus:border-purple-400"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                🔒 Contraseña requerida en WhatsApp para autorizar el acceso y edición de la base de datos de esta empresa.
+              </p>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">WhatsApp para Pedidos y Clientes</label>
             <input
@@ -218,6 +268,7 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
             />
             <p className="text-[10px] text-slate-400 mt-1">Con código de país (Ej: 51987654321)</p>
           </div>
+
 
           <button
             type="submit"

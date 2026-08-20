@@ -84,7 +84,11 @@ export interface TallerConfig {
   anuncio_publico_clientes?: string;
   shalom_email?: string;
   shalom_password?: string;
+  copilot_password?: string;
+  copilot_sub_instance?: string;
+  copilot_owner_phone?: string;
 }
+
 
 
 export interface ShalomAgency {

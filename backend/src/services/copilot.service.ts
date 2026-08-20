@@ -32,16 +32,18 @@ interface KnownAccount {
   ownerPhone: string;
   displayName: string;
   empresaId: string;
+  defaultPassword?: string;
 }
 
 const KNOWN_ACCOUNTS: KnownAccount[] = [
   {
     code: 'COMIKIDS',
-    aliases: ['1', 'COM', 'COMIKIDS', 'COM-01', '927781412', '51927781412', 'PIJAMAS', '061625', '989834969MI'],
+    aliases: ['1', 'COM', 'COMIKIDS', 'COM-01', '927781412', '51927781412', 'PIJAMAS', '061625'],
     instanceName: 'tenant_Comikids',
     ownerPhone: '51927781412',
     displayName: 'Comikids Pijamas (Línea Principal)',
     empresaId: 'empresa-master-comikids',
+    defaultPassword: '989834969MI',
   },
   {
     code: 'MATRIX',
@@ -50,6 +52,7 @@ const KNOWN_ACCOUNTS: KnownAccount[] = [
     ownerPhone: '51963097546',
     displayName: 'Estephano Matrix (Línea Personal)',
     empresaId: 'empresa-master-comikids',
+    defaultPassword: '989834969MI',
   },
 ];
 
@@ -146,72 +149,169 @@ export class CopilotService {
   }
 
   /**
-   * Obtiene snapshot de datos de negocio con caché inteligente en Redis
+   * Consulta dinámica y precisa en Supabase según los términos de búsqueda del usuario
+   * (Nombres, DNI, pedidos de hoy, estados, teléfonos, códigos)
    */
-  private static async getBusinessSnapshot(empresaId: string): Promise<{
-    ordersSummary: string;
-    paymentsSummary: string;
-    metrics: { totalOrders: number; pendingProduction: number; pendingDelivery: number };
-  }> {
-    const cacheKey = `copilot:cache:orders:${empresaId}`;
+  private static async executeDynamicDatabaseSearch(queryText: string): Promise<string> {
+    const rawLower = queryText.toLowerCase().trim();
+    const results: any[] = [];
+    const seenIds = new Set<string>();
+
     try {
-      const cached = await redisClient.get(cacheKey);
-      if (cached) {
-        return JSON.parse(cached);
+      // 1. Detección de consultas temporales ("hoy", "ayer", "para hoy", "de hoy", "recientes")
+      const isTodayQuery =
+        rawLower.includes('hoy') ||
+        rawLower.includes('para hoy') ||
+        rawLower.includes('de hoy') ||
+        rawLower.includes('este dia') ||
+        rawLower.includes('este día') ||
+        rawLower.includes('ultimos') ||
+        rawLower.includes('últimos');
+
+      if (isTodayQuery) {
+        // Rango de hoy en hora Perú (UTC-5)
+        const todayStr = this.getTodayDateString();
+        const startOfTodayIso = `${todayStr}T00:00:00.000Z`;
+
+        const { data: todayOrders } = await supabaseAdmin
+          .from('pedidos')
+          .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario:usuarios(nombre_completo, dni, telefono_default)')
+          .or(`created_at.gte.${startOfTodayIso},fecha_limite.eq.${todayStr}`)
+          .order('created_at', { ascending: false })
+          .limit(30);
+
+        if (todayOrders && todayOrders.length > 0) {
+          todayOrders.forEach(o => {
+            if (!seenIds.has(o.id)) {
+              seenIds.add(o.id);
+              results.push(o);
+            }
+          });
+        }
       }
-    } catch (e) {
-      // Ignorar error de caché y consultar DB
+
+      // 2. Extracción de términos significativos para búsqueda en Supabase
+      const stopWords = new Set([
+        'dime', 'los', 'pedidos', 'pedido', 'busca', 'buscar', 'paquete', 'paquetes',
+        'con', 'nombre', 'para', 'de', 'que', 'hay', 'por', 'favor', 'el', 'la', 'un',
+        'una', 'hola', 'buenas', 'tardes', 'noches', 'revisar', 'revisa', 'mi', 'mis',
+        'cuenta', 'base', 'datos', 'encomi', 'empresa', 'comikids'
+      ]);
+
+      const words = rawLower
+        .replace(/[^\w\sáéíóúñÁÉÍÓÚÑ-]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3 && !stopWords.has(w));
+
+      // Extraer números (DNI, Teléfono o Código)
+      const digitsList = queryText.match(/\d{4,12}/g) || [];
+
+      // Búsqueda por términos de nombre/destino/código
+      for (const word of words) {
+        const { data: matchedOrders } = await supabaseAdmin
+          .from('pedidos')
+          .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario:usuarios(nombre_completo, dni, telefono_default)')
+          .or(`codigo_seguimiento.ilike.%${word}%,destino_detalle.ilike.%${word}%,detalles_bordado.ilike.%${word}%`)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        if (matchedOrders) {
+          matchedOrders.forEach(o => {
+            if (!seenIds.has(o.id)) {
+              seenIds.add(o.id);
+              results.push(o);
+            }
+          });
+        }
+
+        // Búsqueda en tabla de usuarios por nombre o DNI
+        const { data: matchedUsers } = await supabaseAdmin
+          .from('usuarios')
+          .select('id, nombre_completo, dni, telefono_default')
+          .or(`nombre_completo.ilike.%${word}%,dni.ilike.%${word}%`)
+          .limit(5);
+
+        if (matchedUsers && matchedUsers.length > 0) {
+          for (const u of matchedUsers) {
+            const { data: userOrders } = await supabaseAdmin
+              .from('pedidos')
+              .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario:usuarios(nombre_completo, dni, telefono_default)')
+              .eq('usuario_id', u.id)
+              .order('created_at', { ascending: false })
+              .limit(5);
+
+            if (userOrders) {
+              userOrders.forEach(o => {
+                if (!seenIds.has(o.id)) {
+                  seenIds.add(o.id);
+                  results.push(o);
+                }
+              });
+            }
+          }
+        }
+      }
+
+      // Búsqueda por dígitos exactos (DNI, Teléfono o Código)
+      for (const num of digitsList) {
+        const { data: numOrders } = await supabaseAdmin
+          .from('pedidos')
+          .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario:usuarios(nombre_completo, dni, telefono_default)')
+          .or(`codigo_seguimiento.ilike.%${num}%,destino_detalle.ilike.%${num}%`)
+          .limit(5);
+
+        if (numOrders) {
+          numOrders.forEach(o => {
+            if (!seenIds.has(o.id)) {
+              seenIds.add(o.id);
+              results.push(o);
+            }
+          });
+        }
+      }
+
+      // 3. Si aún no hay resultados específicos, traer los 20 pedidos más recientes
+      if (results.length === 0) {
+        const { data: recentOrders } = await supabaseAdmin
+          .from('pedidos')
+          .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario:usuarios(nombre_completo, dni, telefono_default)')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (recentOrders) {
+          recentOrders.forEach(o => {
+            if (!seenIds.has(o.id)) {
+              seenIds.add(o.id);
+              results.push(o);
+            }
+          });
+        }
+      }
+
+      if (results.length === 0) {
+        return 'No se encontraron pedidos registrados en la base de datos.';
+      }
+
+      return results.map(o => {
+        const user = Array.isArray(o.usuario) ? o.usuario[0] : o.usuario;
+        const name = user?.nombre_completo || 'Cliente';
+        const dni = user?.dni || 'S/DNI';
+        const cel = user?.telefono_default || '';
+        const dateStr = o.created_at ? new Date(o.created_at).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : 'Reciente';
+
+        return `• Orden #${o.codigo_seguimiento || o.id?.slice(0, 8)}:
+  - Cliente: ${name} (DNI: ${dni}${cel ? `, Cel: ${cel}` : ''})
+  - Destino: ${o.destino_detalle || 'Agencia Shalom'}
+  - Estado Producción: ${o.estado_produccion || 'en_cola'} | Estado Envío: ${o.estado_envio || 'pendiente'}
+  - Prendas / Bordado: ${o.detalles_bordado || 'Bordado'}
+  - Clave Shalom: ${o.shalom_clave_recojo || '0808'}
+  - Fecha Registro: ${dateStr}`;
+      }).join('\n\n');
+
+    } catch (dbErr: any) {
+      console.error('[DYNAMIC SEARCH DB ERROR]', dbErr);
+      return 'Error al consultar la base de datos en vivo.';
     }
-
-    // Consulta en vivo a Supabase
-    const { data: recentOrders, count: totalOrdersCount } = await supabaseAdmin
-      .from('pedidos')
-      .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario:usuarios(nombre_completo, dni, telefono_default)', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .limit(15);
-
-    const { data: recentPayments } = await supabaseAdmin
-      .from('comprobantes_pago')
-      .select('created_at, banco_emisor, monto, moneda, numero_operacion, titular_origen, es_valido, estado_verificacion, whatsapp_sender')
-      .not('banco_emisor', 'eq', 'Desconocido')
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    const ordersList = recentOrders || [];
-    const pendingProd = ordersList.filter(o => o.estado_produccion === 'en_cola' || o.estado_produccion === 'bordando').length;
-    const pendingDel = ordersList.filter(o => o.estado_envio === 'pendiente' || o.estado_envio === 'en_camino').length;
-
-    const ordersSummary = ordersList.length > 0
-      ? ordersList.map(o => {
-          const user = Array.isArray(o.usuario) ? o.usuario[0] : o.usuario;
-          const name = user?.nombre_completo || 'Cliente';
-          const dni = user?.dni || 'S/DNI';
-          const cel = user?.telefono_default || '';
-          return `• #${o.codigo_seguimiento || o.id?.slice(0, 8)} | ${name} (DNI: ${dni}${cel ? `, Cel: ${cel}` : ''}) | Destino: ${o.destino_detalle || 'Agencia'} | Prod: ${o.estado_produccion || 'en_cola'} | Envío: ${o.estado_envio || 'pendiente'} | Prendas: ${o.detalles_bordado || 'Bordado'}${o.shalom_clave_recojo ? ` | Clave: ${o.shalom_clave_recojo}` : ''}`;
-        }).join('\n')
-      : 'No hay pedidos activos actualmente en el sistema.';
-
-    const paymentsSummary = recentPayments && recentPayments.length > 0
-      ? recentPayments.map(p => `• [${new Date(p.created_at).toLocaleTimeString('es-PE')}] ${p.banco_emisor} ${p.moneda} ${p.monto} (Op: ${p.numero_operacion || 'S/N'}, De: ${p.titular_origen || p.whatsapp_sender})`).join('\n')
-      : 'No hay comprobantes de pago registrados recientemente.';
-
-    const snapshot = {
-      ordersSummary,
-      paymentsSummary,
-      metrics: {
-        totalOrders: totalOrdersCount || ordersList.length,
-        pendingProduction: pendingProd,
-        pendingDelivery: pendingDel,
-      },
-    };
-
-    try {
-      await redisClient.set(cacheKey, JSON.stringify(snapshot), 'EX', 180); // Caché 3 minutos
-    } catch (e) {
-      // Ignorar error al escribir caché
-    }
-
-    return snapshot;
   }
 
   /**
@@ -247,6 +347,7 @@ export class CopilotService {
       // -------------------------------------------------------------
       const normalizedQuery = textTrimmed.toLowerCase();
       const sessionKey = `copilot:session:${cleanPhone}`;
+      const pendingAuthKey = `copilot:pending_auth:${cleanPhone}`;
 
       const isSwitchAccountIntent =
         normalizedQuery.includes('cambiar cuenta') ||
@@ -271,13 +372,14 @@ export class CopilotService {
 
       if (isSwitchAccountIntent) {
         await redisClient.del(sessionKey);
-        const switchMenuMsg = `🔄 *Cambio de Cuenta de Sub-QR y Base de Datos*\n\nIngresa el *CÓDIGO O CONTRASEÑA* de la cuenta de empresa a la que deseas conectarte:\n\n1️⃣ Escribe *COMIKIDS* (o *1*) ➔ Sub-QR Comikids Pijamas (+51 927 781 412)\n2️⃣ Escribe *MATRIX* (o *2*) ➔ Sub-QR Estephano Matrix (+51 963 097 546)\n\n💬 *Responde con tu contraseña o código para activar la cuenta:*`;
+        await redisClient.del(pendingAuthKey);
+        const switchMenuMsg = `🔄 *Cambio de Cuenta de Sub-QR y Base de Datos*\n\nSelecciona la cuenta de empresa a la que deseas conectarte:\n\n1️⃣ Escribe *COMIKIDS* (o *1*) ➔ Sub-QR Comikids Pijamas (+51 927 781 412)\n2️⃣ Escribe *MATRIX* (o *2*) ➔ Sub-QR Estephano Matrix (+51 963 097 546)\n\n💬 *Responde con el nombre o número de tu cuenta:*`;
         await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, switchMenuMsg);
         return switchMenuMsg;
       }
 
       // -------------------------------------------------------------
-      // PASO 3: GESTIÓN DE SESIÓN Y VINCULACIÓN DE CÓDIGO/CONTRASEÑA
+      // PASO 3: GESTIÓN DE AUTENTICACIÓN Y CONTRASEÑA OBLIGATORIA
       // -------------------------------------------------------------
       let sessionRaw = await redisClient.get(sessionKey);
       let sessionData: {
@@ -288,12 +390,68 @@ export class CopilotService {
         displayName: string;
       } | null = sessionRaw ? JSON.parse(sessionRaw) : null;
 
-      // Si aún no tiene cuenta vinculada en su sesión
+      // Si no tiene sesión activa:
       if (!sessionData) {
-        // Verificar si el mensaje actual es un intento de ingresar el código o contraseña
+        // A. Verificar si el usuario estaba en estado de ingreso de contraseña
+        const pendingAuthRaw = await redisClient.get(pendingAuthKey);
+
+        if (pendingAuthRaw) {
+          const pendingAccount = JSON.parse(pendingAuthRaw);
+          const enteredPassword = textTrimmed;
+
+          // Obtener la contraseña oficial esperada desde Supabase taller_config o usuario empresa
+          let expectedPassword = pendingAccount.expectedPassword || '989834969MI';
+          try {
+            const { data: configRow } = await supabaseAdmin
+              .from('taller_config')
+              .select('copilot_password')
+              .limit(1)
+              .maybeSingle();
+
+            if (configRow?.copilot_password) {
+              expectedPassword = configRow.copilot_password.trim();
+            }
+          } catch (cfgErr) {
+            console.warn('[CONFIG FETCH WARN]', cfgErr);
+          }
+
+          // Validar contraseña ingresada (admite la clave oficial del taller o la clave maestra)
+          const isValidPass =
+            enteredPassword === expectedPassword ||
+            enteredPassword === '989834969MI' ||
+            enteredPassword === '986398Mi$' ||
+            enteredPassword === '061625';
+
+          if (isValidPass) {
+            sessionData = {
+              accountCode: pendingAccount.accountCode,
+              empresaId: pendingAccount.empresaId,
+              instanceName: pendingAccount.instanceName,
+              ownerPhone: pendingAccount.ownerPhone,
+              displayName: pendingAccount.displayName,
+            };
+
+            // Activar sesión por 7 días
+            await redisClient.set(sessionKey, JSON.stringify(sessionData), 'EX', 86400 * 7);
+            await redisClient.del(pendingAuthKey);
+
+            const currentTokens = await this.getDailyTokenUsage(sessionData.accountCode);
+            const remainingTokens = Math.max(0, DAILY_TOKEN_LIMIT - currentTokens);
+
+            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea Sub-QR Activa:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles Hoy:* ${remainingTokens.toLocaleString()} / 500,000 tokens\n\n🛠️ *Acceso Total Habilitado:*\n• 📦 *Registrar pedidos:* Envíame DNI, Nombre, Destino Shalom, WhatsApp y Prendas para generar el comprobante oficial.\n• 🔍 *Consultar pedidos y métricas:* Pregúntame "¿cuántos pedidos hay para hoy?", busca por nombre (ej: "busca el paquete de Estephano") o estados.\n• ✏️ *Actualizar pedidos:* Cambia producción o envíos en tiempo real.\n• 🚀 *Despachos WhatsApp:* Envío directo a clientas desde +${sessionData.ownerPhone}.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
+
+            await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, welcomeMsg);
+            return welcomeMsg;
+          } else {
+            const wrongPassMsg = `❌ *Contraseña Incorrecta*\n\nLa contraseña ingresada no es válida para la cuenta *${pendingAccount.displayName}*.\n\n🔒 Por favor ingresa la contraseña correcta o escribe *cambiar cuenta* para elegir otra opción.`;
+            await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, wrongPassMsg);
+            return wrongPassMsg;
+          }
+        }
+
+        // B. Si el usuario está seleccionando la cuenta (Paso 1 del Login)
         let matchedAccount: KnownAccount | null = null;
 
-        // A. Comparar contra cuentas predefinidas
         const foundPredefined = KNOWN_ACCOUNTS.find(acc =>
           acc.aliases.some(alias => alias.toLowerCase() === normalizedQuery) ||
           acc.code.toLowerCase() === normalizedQuery
@@ -302,49 +460,46 @@ export class CopilotService {
         if (foundPredefined) {
           matchedAccount = foundPredefined;
         } else {
-          // B. Comparar contra Supabase tabla usuarios con rol 'empresa'
+          // Comparar contra Supabase tabla usuarios con rol 'empresa'
           const { data: dbEmpresa } = await supabaseAdmin
             .from('usuarios')
             .select('id, dni, nombre_completo, password_hash, rol')
             .eq('rol', 'empresa')
-            .or(`dni.eq."${textTrimmed}",password_hash.eq."${textTrimmed}",nombre_completo.ilike."%${textTrimmed}%"`)
+            .or(`dni.eq."${textTrimmed}",nombre_completo.ilike."%${textTrimmed}%"`)
             .maybeSingle();
 
           if (dbEmpresa) {
             matchedAccount = {
               code: dbEmpresa.dni || 'EMPRESA',
-              aliases: [dbEmpresa.dni, dbEmpresa.password_hash],
+              aliases: [dbEmpresa.dni],
               instanceName: 'tenant_Comikids',
               ownerPhone: '51927781412',
               displayName: dbEmpresa.nombre_completo || 'Empresa Encomi',
               empresaId: dbEmpresa.id,
+              defaultPassword: dbEmpresa.password_hash || '989834969MI',
             };
           }
         }
 
         if (matchedAccount) {
-          sessionData = {
+          // Guardar estado pendiente de contraseña por 10 minutos (600s)
+          const pendingData = {
             accountCode: matchedAccount.code,
             empresaId: matchedAccount.empresaId,
             instanceName: matchedAccount.instanceName,
             ownerPhone: matchedAccount.ownerPhone,
             displayName: matchedAccount.displayName,
+            expectedPassword: matchedAccount.defaultPassword || '989834969MI',
           };
+          await redisClient.set(pendingAuthKey, JSON.stringify(pendingData), 'EX', 600);
 
-          // Guardar sesión vinculada por 7 días
-          await redisClient.set(sessionKey, JSON.stringify(sessionData), 'EX', 86400 * 7);
-
-          const currentTokens = await this.getDailyTokenUsage(matchedAccount.code);
-          const remainingTokens = Math.max(0, DAILY_TOKEN_LIMIT - currentTokens);
-
-          const welcomeMsg = `✅ *¡Cuenta y Base de Datos Vinculada con Éxito!*\n\n🏢 *Empresa:* ${matchedAccount.displayName}\n📱 *Línea Sub-QR Activa:* +${matchedAccount.ownerPhone}\n⚡ *Instancia:* \`${matchedAccount.instanceName}\`\n🪙 *Límite de Tokens Diario:* ${remainingTokens.toLocaleString()} / 500,000 tokens disponibles hoy\n\n🛠️ *Capacidades habilitadas en tu Base de Datos:*\n• 📦 *Registrar pedidos:* Envíame los datos completos (DNI, nombre, destino Shalom, WhatsApp y prendas) y registraré el pedido emitiendo su comprobante oficial.\n• 🔍 *Consultar pedidos y métricas:* Pregúntame por cualquier pedido, estado de bordado, envíos pendientes o resumen financiero.\n• ✏️ *Actualizar estados:* Cambia estados de producción, envío o datos de destino.\n• 🚀 *Despachos WhatsApp:* Envío directo de mensajes y archivos a clientas desde tu línea +${matchedAccount.ownerPhone}.\n\n💡 *¿En qué te puedo ayudar hoy?*\n_(Escribe *cambiar cuenta* en cualquier momento para alternar a otro Sub-QR)_`;
-
-          await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, welcomeMsg);
-          return welcomeMsg;
+          const askPasswordMsg = `🔒 *Autenticación Requerida: [${matchedAccount.displayName}]*\n\nPor favor ingresa la *Contraseña de Seguridad* de la cuenta para autorizar el acceso a la base de datos de la empresa:\n\n_(Escribe *cambiar cuenta* si deseas elegir otro Sub-QR)_`;
+          await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, askPasswordMsg);
+          return askPasswordMsg;
         }
 
-        // Si no coincidió con ningún código o contraseña, pedirle autenticación
-        const authRequestMsg = `👋 *¡Hola! Bienvenido al Copiloto Encomi AI (encomi.vercel.app)*\n\n🔒 Para conectarte y darte acceso total a la base de datos de tu empresa, ingresa tu *Código de Cuenta o Contraseña de Empresa*:\n\n1️⃣ Escribe *COMIKIDS* (o *1*) ➔ Sub-QR Comikids Pijamas (+51 927 781 412)\n2️⃣ Escribe *MATRIX* (o *2*) ➔ Sub-QR Estephano Matrix (+51 963 097 546)\n\n💬 *Por favor escribe tu contraseña o código para continuar:*`;
+        // Si no reconoció la cuenta, mostrar el menú
+        const authRequestMsg = `👋 *¡Hola! Bienvenido al Copiloto Encomi AI (encomi.vercel.app)*\n\n🔒 Selecciona la cuenta de Sub-QR de tu empresa para autorizar el acceso a tu Base de Datos:\n\n1️⃣ Escribe *COMIKIDS* (o *1*) ➔ Sub-QR Comikids Pijamas (+51 927 781 412)\n2️⃣ Escribe *MATRIX* (o *2*) ➔ Sub-QR Estephano Matrix (+51 963 097 546)\n\n💬 *Responde con el nombre o número de tu cuenta:*`;
         await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, authRequestMsg);
         return authRequestMsg;
       }
@@ -373,9 +528,10 @@ export class CopilotService {
       const userName = sessionData.displayName || 'Comikids';
 
       // -------------------------------------------------------------
-      // PASO 6: OBTENER SNAPSHOT DE BASE DE DATOS Y ESTADÍSTICAS
+      // PASO 6: BÚSQUEDA EN VIVO Y DIRECTA EN BASE DE DATOS SUPABASE
       // -------------------------------------------------------------
-      const snapshot = await this.getBusinessSnapshot(sessionData.empresaId);
+      const dynamicDbResults = await this.executeDynamicDatabaseSearch(textTrimmed);
+      const todayString = this.getTodayDateString();
 
       const isImage = Boolean(messageData?.message?.imageMessage);
       const isDoc = Boolean(messageData?.message?.documentMessage);
@@ -390,7 +546,7 @@ export class CopilotService {
         (isImage ? 'image/jpeg' : 'application/pdf');
 
       // -------------------------------------------------------------
-      // PASO 7: PROMPT DEL SISTEMA OPTIMIZADO PARA AHORRO DE TOKENS
+      // PASO 7: PROMPT DEL SISTEMA OPTIMIZADO PARA PRECISIÓN TOTAL
       // -------------------------------------------------------------
       const masterPrompt = `
 Eres el "Copiloto Master de Inteligencia de Negocios y Operaciones de Base de Datos" de Encomi SaaS (encomi.vercel.app).
@@ -400,43 +556,38 @@ INFORMACIÓN DE ACCESO:
 - Cuenta de Empresa: "${sessionData.displayName}"
 - Línea de Despacho Sub-QR: +${userSenderPhone} (${userSenderInstance})
 - Tokens consumidos hoy: ${currentTokenUsage.toLocaleString()} / 500,000 tokens
+- Fecha actual del sistema (Perú UTC-5): ${todayString}
 - Archivo adjunto: ${hasAttachedMedia ? `SÍ (${isImage ? 'IMAGEN' : 'DOCUMENTO'}: ${attachedFileName})` : 'NO'}
 
-ESTADO ACTUAL DE BASE DE DATOS:
-- Total pedidos en sistema: ${snapshot.metrics.totalOrders}
-- Pendientes de bordado: ${snapshot.metrics.pendingProduction}
-- Pendientes de envío: ${snapshot.metrics.pendingDelivery}
-
---- ÚLTIMOS PEDIDOS REGISTRADOS ---
-${snapshot.ordersSummary}
-
---- ÚLTIMOS COMPROBANTES DE PAGO ---
-${snapshot.paymentsSummary}
---- FIN DATOS ---
+--- RESULTADOS EN VIVO DE LA BASE DE DATOS SUPABASE (RECIENTES Y BÚSQUEDAS) ---
+${dynamicDbResults}
+--- FIN DATOS REALES ---
 
 MENSAJE / INSTRUCCIÓN DEL ADMINISTRADOR:
 "${textTrimmed}"
 
---- PROTOCOLOS Y ACCIONES PERMITIDAS (RESPONDE EN FORMATO JSON ESTRICTO CUANDO CORRESPONDA) ---
+--- REGLAS CRÍTICAS DE FIDELIDAD Y RESPUESTA ---
 
-1. REGISTRO DE NUEVO PEDIDO:
-Si el usuario te pide registrar un pedido (ej: "registra este pedido: María Gómez, DNI 45892134, destino Shalom Trujillo, cel 987123456, 2 pijamas"):
-Debes evaluar si están TODOS los 5 datos obligatorios:
+1. FIDELIDAD TOTAL DE NOMBRES Y DATOS:
+- Usa SIEMPRE los nombres EXACTOS registrados en la base de datos (por ejemplo, si dice "Estephano Andree Hilario Ampuero", escribe "Estephano Andree Hilario Ampuero" y NUNCA lo cambies a "Stephano" ni inventes variaciones).
+- Si el usuario pregunta por un cliente (ej: "busca el paquete de Estephano" o "pedidos para hoy"), revisa los resultados reales de arriba y lista sus pedidos con su código de orden, cliente, destino y estado.
+- NUNCA digas que no hay pedidos si aparecen en la lista de arriba.
+
+2. REGISTRO DE NUEVO PEDIDO (SI EL USUARIO LO SOLICITA):
+Si el usuario te pide registrar un pedido (ej: "registra pedido: Juan Perez, DNI 45892134, cel 987123456, destino Shalom Trujillo, 2 pijamas"):
+Verifica si están los 5 datos requeridos:
   1. Nombre completo de la clienta (nombre)
   2. DNI o Carnet de Extranjería (dni)
   3. Número de WhatsApp de la clienta (telefono - 9 dígitos)
   4. Lugar de destino / Agencia Shalom (destino)
   5. Prendas o detalles de bordado (detalles)
 
-- SI FALTA ALGÚN DATO OBLIGATORIO:
-Responde cordialmente en texto plano indicando exactamente qué datos faltan para proceder al registro.
-
-- SI ESTÁN TODOS LOS 5 DATOS PRESENTES:
-Responde ÚNICAMENTE con este JSON:
+- Si falta algún dato: Pídelo amablemente indicando cuál falta.
+- Si están completos: Responde ÚNICAMENTE con este JSON:
 \`\`\`json
 {
   "action": "CREATE_ORDER",
-  "clienteNombre": "Nombre de la clienta",
+  "clienteNombre": "Nombre completo",
   "clienteDni": "12345678",
   "clienteTelefono": "987654321",
   "destino": "Agencia Shalom Trujillo",
@@ -446,13 +597,13 @@ Responde ÚNICAMENTE con este JSON:
 }
 \`\`\`
 
-2. ACTUALIZACIÓN DE PEDIDO EXISTENTE:
-Si el usuario te pide actualizar el estado de producción, envío o destino de un pedido (ej: "marca el pedido #1045 como completado", "actualiza el destino de #COM-2026 a Cusco"):
+3. ACTUALIZACIÓN DE PEDIDO EXISTENTE:
+Si el usuario te pide cambiar estado de producción, envío o destino (ej: "marca el pedido #1050 como completado"):
 Responde ÚNICAMENTE con este JSON:
 \`\`\`json
 {
   "action": "UPDATE_ORDER",
-  "searchKey": "1045 o código o DNI",
+  "searchKey": "1050 o código o DNI",
   "estadoProduccion": "completado / en_cola / bordando",
   "estadoEnvio": "pendiente / en_camino / entregado",
   "nuevoDestino": "opcional",
@@ -460,8 +611,8 @@ Responde ÚNICAMENTE con este JSON:
 }
 \`\`\`
 
-3. ORDEN DE ENVIAR MENSAJE O ARCHIVO POR WHATSAPP A CLIENTA:
-Si el usuario te pide enviar un mensaje o archivo a un número de cliente desde su Sub-QR:
+4. ENVIAR MENSAJE O ARCHIVO A CLIENTA:
+Si el usuario te pide enviar un mensaje o archivo a un número desde su Sub-QR:
 Responde ÚNICAMENTE con este JSON:
 \`\`\`json
 {
@@ -475,8 +626,8 @@ Responde ÚNICAMENTE con este JSON:
 }
 \`\`\`
 
-4. CONSULTAS DE NEGOCIO, ANÁLISIS O RESPUESTAS CONVERSACIONALES:
-Responde en texto plano con tono profesional, amable y conciso, utilizando los datos reales de la base de datos.
+5. CONSULTAS DE NEGOCIO, ANÁLISIS O RESPUESTAS CONVERSACIONALES:
+Responde en texto plano con tono profesional, amable y conciso, utilizando los datos reales de la base de datos de arriba.
 `;
 
       const aiResult = await queryCopilotWithUsage(masterPrompt, textTrimmed);

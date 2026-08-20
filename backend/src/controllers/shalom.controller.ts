@@ -414,33 +414,40 @@ export class ShalomController {
         const foundOrder = ordersList.find((o: any) => {
           if (!o || typeof o !== 'object') return false;
 
-          // 1. Coincidencia por ID u OSE
+          // 1. Coincidencia Exacta por ID u OSE ID
           if (String(o.id) === cleanSearch || String(o.internal_id) === cleanSearch) return true;
 
-          // 2. Coincidencia por Guía o Serie-Guía (ej: 92644270 o V204-92644270)
-          const fullGuia = `${o.serie || ''}-${o.guia || ''}`.toLowerCase();
-          const guiaOnly = String(o.guia || '').toLowerCase();
-          if (guiaOnly && (guiaOnly === cleanSearch.toLowerCase() || (searchDigits && guiaOnly.includes(searchDigits)))) return true;
-          if (fullGuia && (fullGuia.includes(cleanSearch.toLowerCase()) || fullGuia.replace(/[^a-z0-9]/g, '').includes(searchLower))) return true;
+          // 2. Coincidencia Exacta por Guía o Serie-Guía (ej: 92644270 o V204-92644270)
+          const fullGuia = `${o.serie || ''}-${o.guia || ''}`.toLowerCase().trim();
+          const guiaOnly = String(o.guia || '').toLowerCase().trim();
+          if (guiaOnly && (guiaOnly === cleanSearch.toLowerCase() || (searchDigits && guiaOnly === searchDigits))) return true;
+          if (fullGuia && (fullGuia === cleanSearch.toLowerCase() || fullGuia.replace(/[^a-z0-9]/g, '') === searchLower)) return true;
 
-          // 3. Coincidencia por Código de Rastreo (ej: CDPJ, KHKC, 3DTT, DKK7)
-          const trackingCode = String(o.codigo || '').toLowerCase();
+          // 3. Coincidencia Exacta por DNI / Documento del Destinatario (ej: 47311650, 72115454, 61361027)
+          const receiverDoc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/[^0-9]/g, '').trim();
+          if (searchDigits && searchDigits.length >= 8 && receiverDoc && (receiverDoc === searchDigits || receiverDoc === searchDigits.slice(-8))) {
+            return true;
+          }
+
+          // 4. Coincidencia Exacta por Teléfono del Destinatario (9 dígitos)
+          const receiverPhone = String(o.receiver?.phone || '').replace(/[^0-9]/g, '').trim();
+          if (searchDigits && searchDigits.length >= 9 && receiverPhone && receiverPhone.slice(-9) === searchDigits.slice(-9)) {
+            return true;
+          }
+
+          // 5. Coincidencia Exacta por Código de Rastreo (ej: CDPJ, KHKC, 3DTT, DKK7)
+          const trackingCode = String(o.codigo || '').toLowerCase().trim();
           if (trackingCode && trackingCode === cleanSearch.toLowerCase()) return true;
 
-          // 4. Coincidencia por DNI / Documento del Destinatario (ej: 47311650, 72115454, 006557701)
-          const receiverDoc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/[^0-9]/g, '');
-          if (searchDigits && receiverDoc && (receiverDoc === searchDigits || receiverDoc.includes(searchDigits) || searchDigits.includes(receiverDoc))) return true;
-
-          // 5. Coincidencia por Nombre del Destinatario (ej: Rosario, Carolina, Ravelo, Dubraska)
-          const receiverName = String(o.receiver?.full_name || o.receiver?.name || '').toLowerCase();
-          if (cleanSearch.length >= 3 && receiverName && receiverName.includes(cleanSearch.toLowerCase())) return true;
-
-          // 6. Coincidencia por Teléfono
-          const receiverPhone = String(o.receiver?.phone || '').replace(/[^0-9]/g, '');
-          if (searchDigits && searchDigits.length >= 8 && receiverPhone && receiverPhone.includes(searchDigits.slice(-8))) return true;
+          // 6. Coincidencia por Nombre Completo del Destinatario
+          const receiverName = String(o.receiver?.full_name || o.receiver?.name || '').toLowerCase().trim();
+          if (cleanSearch.length >= 5 && receiverName && (receiverName.includes(cleanSearch.toLowerCase()) || cleanSearch.toLowerCase().includes(receiverName))) {
+            return true;
+          }
 
           return false;
         });
+
 
         if (foundOrder && foundOrder.id) {
           console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] ✓ Encontrada orden #${foundOrder.id} (Guía: ${foundOrder.serie}-${foundOrder.guia}) para "${cleanSearch}", descargando ${typeLabel}...`);

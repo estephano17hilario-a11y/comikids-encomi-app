@@ -76,7 +76,11 @@ export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   agencia_shalom_origen: 'AV MEXICO CO',
   shalom_email: 'milagrosjanetamis@gmail.com',
   shalom_password: '986398Mi$',
+  copilot_password: '989834969MI',
+  copilot_sub_instance: 'tenant_Comikids',
+  copilot_owner_phone: '51927781412',
 };
+
 
 
 

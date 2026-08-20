@@ -120,16 +120,16 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         const item = updatedList[i];
         const originalOrder = orders.find((o) => o.id === item.orderId);
 
-        // Identificadores a probar en Shalom Pro
+        // Identificadores a probar en Shalom Pro en orden estricto de máxima precisión:
         const searchIds = [
           originalOrder?.shalom_ose_id,
           originalOrder?.shalom_numero_guia,
           item.guideNumber !== 'S/G' ? item.guideNumber : null,
           item.dni,
           item.phone,
-          item.customerName,
           item.trackingCode,
         ].filter(Boolean) as string[];
+
 
         let pdfData: string | null = null;
 

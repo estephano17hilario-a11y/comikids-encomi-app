@@ -1005,9 +1005,11 @@ export const OrdersSmartManager: React.FC = () => {
                 estado_envio: 'en_camino',
                 shalom_ose_id: r.oseId || null,
                 shalom_numero_guia: r.guideNumber || null,
+                shalom_clave_recojo: r.pickupCode || null,
               });
             }
           }}
+
 
         />
       )}

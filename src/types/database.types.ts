@@ -56,9 +56,11 @@ export interface Pedido {
   registrado_shalom?: boolean;
   shalom_ose_id?: string | null;
   shalom_numero_guia?: string | null;
+  shalom_clave_recojo?: string | null;
   created_at: string;
   updated_at?: string;
 }
+
 
 export interface LogroUsuario {
   id: string;

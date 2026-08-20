@@ -235,40 +235,11 @@ export class TenantController {
         }
 
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
-        const formattedFileName = (order as any).fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;
-        const pickupCode = (order as any).pickupCode || (order as any).claveRecojo || (request.body as any)?.pickupCode || '0808';
-        const messageText = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\nTu pedido *#${order.orderCode || order.trackingCode}* ya fue registrado y despachado hacia *Agencia Shalom (${order.agencyName || 'Destino'})* 📦🚀\n\n📋 *Número de Guía:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* ${pickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
-
-
-
-        let pdfToSend = (order as any).pdfBase64;
-
-        if (!pdfToSend) {
-          // Intentar obtener automáticamente el PDF del Ticket Shalom Oficial desde el proxy
-          const searchKey = order.guideNumber || order.trackingCode || order.orderCode || phoneClean.slice(-9);
-          if (searchKey) {
-            try {
-              let pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher`, {
-                responseType: 'arraybuffer',
-                timeout: 10000,
-              });
-              if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
-                pdfToSend = Buffer.from(pdfRes.data).toString('base64');
-              } else {
-                pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/label`, {
-                  responseType: 'arraybuffer',
-                  timeout: 10000,
-                });
-                if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
-                  pdfToSend = Buffer.from(pdfRes.data).toString('base64');
-                }
-              }
-            } catch (pdfErr: any) {
-              console.warn(`[SYNC DISPATCH PDF FETCH WARN ${searchKey}]`, pdfErr?.message);
-            }
-          }
-        }
-
+        const rawCode = String(order.orderCode || order.trackingCode || '').trim();
+        const numbersOnly = rawCode.replace(/^[^\d]*/, '').replace(/\D/g, '') || rawCode;
+        
+        // Mensaje de pedido en camino/tránsito hacia la agencia Shalom (Sin PDF aún, porque en agencia ajustan el peso/precio final)
+        const messageText = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\nTu pedido *#${numbersOnly}* ya fue registrado con éxito y se encuentra en camino hacia la *Agencia Shalom (${order.agencyName || 'Destino'})* 📦🚚💨\n\n🔍 *Código de Seguimiento:* ${order.trackingCode || numbersOnly}\n\nEn cuanto sea entregado y pesado en la agencia, te enviaremos tu comprobante oficial con su clave de recojo. 🔐\n\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
 
         try {
           // Intentar asignar etiqueta si la API lo permite
@@ -291,26 +262,16 @@ export class TenantController {
             // No crítico si no es cuenta WA Business con etiquetas
           }
 
-          // Enviar documento PDF por WhatsApp si está disponible, o mensaje de texto
-          if (pdfToSend && pdfToSend.length > 100) {
-            await EvolutionService.sendWhatsAppMedia(userSenderInstance, phoneClean, pdfToSend, {
-              caption: messageText,
-              fileName: formattedFileName,
-              mediaType: 'document',
-              mimeType: 'application/pdf',
-            });
-          } else {
-            await EvolutionService.sendWhatsAppMessage(userSenderInstance, phoneClean, messageText);
-          }
+          // Enviar mensaje de texto informativo (sin PDF en esta etapa de registro previo)
+          await EvolutionService.sendWhatsAppMessage(userSenderInstance, phoneClean, messageText);
 
-          results.push({ phone: phoneClean, status: 'success', withPdf: Boolean(pdfToSend) });
+          results.push({ phone: phoneClean, status: 'success', withPdf: false });
           successCount++;
         } catch (msgErr: any) {
           console.error(`[SYNC DISPATCH MSG ERROR ${phoneClean}]`, msgErr?.response?.data || msgErr?.message);
           results.push({ phone: phoneClean, status: 'error', error: msgErr?.message });
         }
       }
-
 
       return reply.code(200).send({
         success: true,
@@ -343,8 +304,10 @@ export class TenantController {
           orderCode?: string;
           pdfBase64?: string;
           fileName?: string;
+          pickupCode?: string;
         }>;
         tenantId?: string;
+        pickupCode?: string;
       };
     }>,
     reply: FastifyReply
@@ -408,11 +371,34 @@ export class TenantController {
 
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const formattedFileName = order.fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;
-        const pickupCode = (order as any).pickupCode || (order as any).claveRecojo || (request.body as any)?.pickupCode || '0808';
+        
+        // Clave individual registrada por paquete o general
+        const pickupCode = (order as any).pickupCode || (order as any).claveRecojo || (order as any).shalom_clave_recojo || (request.body as any)?.pickupCode || '0808';
 
-        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${order.orderCode || order.trackingCode}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía Oficial:* ${order.guideNumber || 'En trámite'}\n🔐 *Clave de recojo:* ${pickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || order.orderCode}\n📎 Te adjuntamos tu *Guía de Remisión Oficial* en PDF.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+        // Solo números en el código de orden
+        const rawCode = String(order.orderCode || order.trackingCode || '').trim();
+        const numbersOnly = rawCode.replace(/^[^\d]*/, '').replace(/\D/g, '') || rawCode;
 
+        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${numbersOnly}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía:* ${order.guideNumber || 'Oficial'}\n🔐 *Clave de recojo:* ${pickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || numbersOnly}\n📎 Te adjuntamos tu *Ticket Oficial de Shalom* con el detalle y costo final registrado en agencia.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
 
+        let pdfToSend = order.pdfBase64;
+        if (!pdfToSend) {
+          // Búsqueda en vivo de la versión más actualizada del ticket en Shalom Pro API
+          const searchKey = order.guideNumber || order.trackingCode || order.orderCode || phoneClean.slice(-9);
+          if (searchKey) {
+            try {
+              let pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher`, {
+                responseType: 'arraybuffer',
+                timeout: 10000,
+              });
+              if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
+                pdfToSend = Buffer.from(pdfRes.data).toString('base64');
+              }
+            } catch (pdfErr: any) {
+              console.warn(`[DELIVERY VOUCHER LIVE FETCH WARN ${searchKey}]`, pdfErr?.message);
+            }
+          }
+        }
 
         try {
           // Asignar etiqueta 'Entregado en Shalom'
@@ -436,8 +422,8 @@ export class TenantController {
           }
 
           // Si viene con PDF en Base64
-          if (order.pdfBase64) {
-            await EvolutionService.sendWhatsAppMedia(userSenderInstance, phoneClean, order.pdfBase64, {
+          if (pdfToSend && pdfToSend.length > 100) {
+            await EvolutionService.sendWhatsAppMedia(userSenderInstance, phoneClean, pdfToSend, {
               caption: messageCaption,
               fileName: formattedFileName,
               mediaType: 'document',
@@ -447,6 +433,7 @@ export class TenantController {
             // Fallback a texto
             await EvolutionService.sendWhatsAppMessage(userSenderInstance, phoneClean, messageCaption);
           }
+
 
           results.push({ phone: phoneClean, fileName: formattedFileName, status: 'success' });
           successCount++;

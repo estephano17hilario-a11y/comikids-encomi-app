@@ -31,8 +31,9 @@ interface Props {
   totalSelectedCount: number;
   tallerConfig: TallerConfig;
   onClose: () => void;
-  onRegistered: (results: Array<{ pedidoId: string; oseId?: string; guideNumber?: string }>) => Promise<void>;
+  onRegistered: (results: Array<{ pedidoId: string; oseId?: string; guideNumber?: string; pickupCode?: string }>) => Promise<void>;
 }
+
 
 export const ShalomRegisterModal: React.FC<Props> = ({
   pedidos,
@@ -202,10 +203,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
             pedidoId: row.pedido.id,
             oseId: res.oseId ? String(res.oseId) : undefined,
             guideNumber: res.guideNumber,
+            pickupCode: rowPickupCode,
           }]);
         } catch (onRegErr) {
           console.warn('[ON REGISTERED RETRY WARN]', onRegErr);
         }
+
       }
 
       setDispatchResults(prev => ({ ...prev, [pedidoId]: res }));
@@ -326,10 +329,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       try {
         const successResults = successfulIds.map(id => {
           const res = resultsMap[id];
+          const row = auditedRows.find(r => r.pedido.id === id);
           return {
             pedidoId: id,
             oseId: res?.oseId ? String(res.oseId) : undefined,
             guideNumber: res?.guideNumber,
+            pickupCode: res?.pickupCode || row?.data.pickupCode || pickupCode,
           };
         });
         await onRegistered(successResults);
@@ -339,22 +344,24 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     }
   };
 
-  // 2. SINCRONIZACIÓN DE WHATSAPP BUSINESS CRM TRAS EL DESPACHO CON PDF ADJUNTO
+  // 2. SINCRONIZACIÓN DE WHATSAPP: NOTIFICACIÓN DE PAQUETES EN CAMINO A AGENCIA SHALOM (SIN PDF AÚN)
   const handleSyncWhatsApp = async () => {
     if (isSyncingWhatsApp) return;
     setIsSyncingWhatsApp(true);
 
     const successfulDispatches = Object.values(dispatchResults).filter(r => r.success);
-    const ordersToSync = successfulDispatches.map(res => ({
-      phone: res.customerPhone || '',
-      customerName: res.customerName || 'Clienta',
-      trackingCode: res.trackingCode || res.codigoSeguimiento,
-      guideNumber: res.guideNumber || `SH-${res.oseId || ''}`,
-      agencyName: res.agencyName || 'Agencia Shalom',
-      orderCode: res.codigoSeguimiento,
-      pdfBase64: res.pdfBase64,
-      pickupCode: res.pickupCode || pickupCode,
-    }));
+    const ordersToSync = successfulDispatches.map(res => {
+      const row = auditedRows.find(r => r.pedido.id === res.pedidoId);
+      return {
+        phone: res.customerPhone || '',
+        customerName: res.customerName || 'Clienta',
+        trackingCode: res.trackingCode || res.codigoSeguimiento,
+        guideNumber: res.guideNumber || `SH-${res.oseId || ''}`,
+        agencyName: res.agencyName || 'Agencia Shalom',
+        orderCode: res.codigoSeguimiento,
+        pickupCode: res.pickupCode || row?.data.pickupCode || pickupCode,
+      };
+    });
 
     try {
       const syncRes = await ShalomApiService.syncDispatchedWhatsApp(ordersToSync, pickupCode);
@@ -366,6 +373,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       setIsSyncingWhatsApp(false);
     }
   };
+
 
 
 
@@ -774,21 +782,20 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
             {/* Sincronización con WhatsApp Business */}
             {successfulList.length > 0 && (
-              <div className="p-4 rounded-2xl bg-linear-to-r from-emerald-950/40 to-teal-950/40 border border-emerald-500/30 space-y-3">
+              <div className="p-4 rounded-2xl bg-linear-to-r from-cyan-950/40 to-teal-950/40 border border-cyan-500/30 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <MessageSquare className="w-5 h-5 text-emerald-400" />
+                    <MessageSquare className="w-5 h-5 text-cyan-400" />
                     <div>
-                      <h4 className="text-xs font-bold text-white">Envío de Guía de Remisión Oficial en PDF</h4>
-                      <p className="text-[11px] text-emerald-300">
-                        Envía a cada clienta su mensaje con su Guía PDF oficial adjunta y clave <strong className="text-amber-300 font-mono font-bold">{pickupCode}</strong>
+                      <h4 className="text-xs font-bold text-white">Notificación de Pedido en Camino a Shalom</h4>
+                      <p className="text-[11px] text-cyan-300">
+                        Avisa a cada clienta por WhatsApp que su paquete va en camino a la agencia Shalom (el comprobante final con precio se envía al entregarlo en agencia).
                       </p>
-
                     </div>
                   </div>
                   {whatsAppSyncDone && (
                     <span className="text-[11px] font-bold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      ✓ {whatsAppSyncCount} Notificados con PDF
+                      ✓ {whatsAppSyncCount} Clientas Notificadas
                     </span>
                   )}
                 </div>
@@ -797,23 +804,24 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                   <button
                     onClick={handleSyncWhatsApp}
                     disabled={isSyncingWhatsApp}
-                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer active:scale-95"
+                    className="w-full py-2.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer active:scale-95"
                   >
                     {isSyncingWhatsApp ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Enviando Guías en PDF por WhatsApp (+51 927 781 412)...</span>
+                        <span>Notificando pedidos en camino por WhatsApp (+51 927 781 412)...</span>
                       </>
                     ) : (
                       <>
                         <Send className="w-4 h-4" />
-                        <span>Enviar Mensaje con Guía PDF a {successfulList.length} Clientas por WhatsApp</span>
+                        <span>Avisar que los paquetes van en camino a Shalom ({successfulList.length} clientas)</span>
                       </>
                     )}
                   </button>
                 ) : (
-                  <div className="p-2.5 rounded-lg bg-emerald-500/20 text-emerald-200 text-xs text-center font-medium border border-emerald-500/30">
-                    🎉 ¡Guías Oficiales en PDF enviadas y mensajes de seguimiento entregados con éxito!
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>¡Todas las clientas fueron notificadas! Recuerda que al entregarlo en la agencia usarás la consola de entrega para enviar el Ticket final con precio oficial.</span>
                   </div>
                 )}
               </div>

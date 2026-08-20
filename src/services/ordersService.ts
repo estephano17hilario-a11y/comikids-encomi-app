@@ -398,10 +398,14 @@ class OrdersService {
     if (pedido.fecha_limite !== undefined) payload.fecha_limite = pedido.fecha_limite || null;
     if (pedido.rotulado !== undefined) payload.rotulado = Boolean(pedido.rotulado);
     if (pedido.registrado_shalom !== undefined) payload.registrado_shalom = Boolean(pedido.registrado_shalom);
+    if (pedido.shalom_ose_id !== undefined) payload.shalom_ose_id = pedido.shalom_ose_id || null;
+    if (pedido.shalom_numero_guia !== undefined) payload.shalom_numero_guia = pedido.shalom_numero_guia || null;
+    if (pedido.shalom_clave_recojo !== undefined) payload.shalom_clave_recojo = pedido.shalom_clave_recojo || null;
     if (pedido.created_at !== undefined) payload.created_at = pedido.created_at;
     if (pedido.updated_at !== undefined) payload.updated_at = pedido.updated_at;
     return payload;
   }
+
 
   async getPedidos(userId?: string): Promise<Pedido[]> {
     if (isSupabaseConfigured && supabase) {

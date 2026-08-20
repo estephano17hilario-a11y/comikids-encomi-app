@@ -40,6 +40,7 @@ interface DeliveryOrderProgress {
   agencyName: string;
   fileName: string;
   pdfBase64?: string;
+  pickupCode?: string;
   auditStatus: 'auditing' | 'verified_pdf' | 'not_found';
   sendStatus: 'idle' | 'sending' | 'completed' | 'error';
   errorMsg?: string;
@@ -60,7 +61,6 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const [searchingId, setSearchingId] = useState<string | null>(null);
   const [pickupCode, setPickupCode] = useState('0808');
   const auditedRef = React.useRef(false);
-
 
   // 1. AUDITORÍA AUTOMÁTICA EN SHALOM PRO AL ABRIR EL MODAL (1 sola vez por apertura)
   useEffect(() => {
@@ -83,8 +83,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const safeName = clientName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
       const fileName = `Guia_Shalom_${safeName}_${cleanPhone.slice(-9)}.pdf`;
       const guideNumber = o.shalom_numero_guia || (o as any).numero_guia || o.codigo_seguimiento || `SH-${o.codigo_seguimiento}`;
-
-
+      const orderPickupCode = o.shalom_clave_recojo || (o as any).clave_recojo || pickupCode;
 
       return {
         orderId: o.id,
@@ -96,10 +95,12 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         manualGuideInput: guideNumber !== 'S/G' && !guideNumber.startsWith('SH-') ? guideNumber : '',
         agencyName: o.destino_detalle || 'Agencia Shalom',
         fileName,
+        pickupCode: orderPickupCode,
         auditStatus: 'auditing',
         sendStatus: 'idle',
       };
     });
+
 
     setProgressList(initial);
     setIsAuditing(true);
@@ -256,22 +257,27 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       item.sendStatus = 'sending';
       setProgressList([...updatedList]);
 
+      const rawCode = String(item.trackingCode || '').trim();
+      const numbersOnly = rawCode.replace(/^[^\d]*/, '').replace(/\D/g, '') || rawCode;
+      const itemPickupCode = item.pickupCode || pickupCode;
+
       payloadForWhatsApp.push({
         phone: item.phone,
         customerName: item.customerName,
-        trackingCode: item.trackingCode,
+        trackingCode: numbersOnly,
         guideNumber: item.manualGuideInput || item.guideNumber,
         agencyName: item.agencyName,
-        orderCode: item.trackingCode,
+        orderCode: numbersOnly,
         pdfBase64: item.pdfBase64 || undefined,
         fileName: item.pdfBase64 ? item.fileName : undefined,
-        pickupCode: pickupCode,
+        pickupCode: itemPickupCode,
       });
     }
 
     setCurrentStepText('Despachando Guías Oficiales de Shalom por WhatsApp a clientas (+51 927 781 412)...');
 
     const sendRes = await ShalomApiService.sendDeliveryVouchers(payloadForWhatsApp, pickupCode);
+
 
 
     if (sendRes.success && sendRes.results) {
@@ -470,9 +476,10 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                         </span>
                         <span>•</span>
                         <span className="text-amber-300 font-bold flex items-center gap-0.5">
-                          <KeyRound className="w-3 h-3" /> PIN: {pickupCode}
+                          <KeyRound className="w-3 h-3" /> PIN: {item.pickupCode || pickupCode}
                         </span>
                       </div>
+
 
                     </div>
                   </div>

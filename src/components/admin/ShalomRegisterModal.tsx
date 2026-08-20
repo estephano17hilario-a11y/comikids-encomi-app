@@ -145,9 +145,10 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     setProgressIndex(0);
 
     const auth = {
-      email: tallerConfig.shalom_email || 'admin@comikids.pe',
-      password: tallerConfig.shalom_password || 'comikids2026',
+      email: tallerConfig.shalom_email || 'milagrosjanetamis@gmail.com',
+      password: tallerConfig.shalom_password || '986398Mi$',
     };
+
 
 
     const resultsMap: Record<string, ShalomDispatchResult> = {};

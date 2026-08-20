@@ -179,14 +179,20 @@ export class ShalomController {
         headers['X-Shalom-Password'] = credentials.password;
       }
 
+      const orderToCreate = {
+        pickup_code: '0808',
+        ...order,
+      };
+
       const response = await axios.post(
         `${SHALOM_BASE_URL}/v1/orders`,
-        order,
+        orderToCreate,
         {
           headers,
           timeout: 15000,
         }
       );
+
 
       return reply.code(200).send({
         success: true,

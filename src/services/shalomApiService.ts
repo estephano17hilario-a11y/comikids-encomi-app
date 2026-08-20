@@ -139,6 +139,7 @@ export class ShalomApiService {
   ): Promise<ShalomDispatchResult> {
     try {
       const orderBody = {
+        pickup_code: '0808',
         sender: {
           name: payload.remitente.nombre,
           document_number: payload.remitente.documento,
@@ -159,6 +160,7 @@ export class ShalomApiService {
           internal_code: payload.codigoSeguimiento,
         },
       };
+
 
       const response = await fetch(`${getApiBaseUrl()}/shalom/orders`, {
         method: 'POST',

@@ -204,16 +204,13 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
 };
 
 
-/**
- * Extrae el DNI o Carnet de Extranjería del pedido de forma estricta
- */
 export const extractShalomDni = (pedido: Pedido): string => {
   if (pedido.destino_detalle) {
-    const match = pedido.destino_detalle.match(/(?:DNI\/CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{8,12})/i);
+    const match = pedido.destino_detalle.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
     if (match && match[1] && match[1].toLowerCase() !== 'recojo') {
       const doc = match[1].trim();
       const phoneDigits = (pedido.usuario?.telefono_default || '').replace(/\D/g, '');
-      if (doc !== phoneDigits && doc.length <= 12) {
+      if (doc !== phoneDigits && !doc.startsWith('usr-') && doc.length <= 12) {
         return doc;
       }
     }
@@ -221,18 +218,20 @@ export const extractShalomDni = (pedido: Pedido): string => {
 
   if (pedido.usuario?.dni_default) {
     const doc = pedido.usuario.dni_default.trim();
-    if (doc.length >= 8 && doc.length <= 12 && !doc.startsWith('9')) {
+    if (doc.length >= 6 && doc.length <= 12 && !doc.startsWith('usr-') && !doc.startsWith('9')) {
       return doc;
     }
   }
 
   if (pedido.usuario?.dni) {
     const raw = pedido.usuario.dni.trim();
-    if (raw.length === 8 && !raw.startsWith('9')) {
-      return raw;
-    }
-    if (raw.length >= 8 && raw.length <= 12 && !raw.startsWith('9')) {
-      return raw;
+    if (!raw.startsWith('usr-') && raw !== '00000000') {
+      if (raw.length === 8 && !raw.startsWith('9')) {
+        return raw;
+      }
+      if (raw.length >= 6 && raw.length <= 12) {
+        return raw;
+      }
     }
   }
 
@@ -241,12 +240,18 @@ export const extractShalomDni = (pedido: Pedido): string => {
   if (digitMatches && digitMatches.length > 0) {
     const phone = extractShalomPhone(pedido);
     for (const d of digitMatches) {
-      if (d !== phone) return d;
+      if (d !== phone && !d.startsWith('usr-')) return d;
     }
   }
 
-  return pedido.usuario?.dni || '70503353';
+  const rawFallback = (pedido.usuario?.dni || pedido.usuario?.dni_default || '').trim();
+  if (rawFallback && !rawFallback.startsWith('usr-') && rawFallback !== '00000000' && rawFallback.length >= 6) {
+    return rawFallback;
+  }
+
+  return '';
 };
+
 
 /**
  * Extrae el número de celular del pedido (9 dígitos de Perú)

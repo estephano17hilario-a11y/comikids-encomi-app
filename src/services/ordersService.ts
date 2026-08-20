@@ -445,15 +445,29 @@ class OrdersService {
                 }
               }
 
+              // Extraer DNI real si matchedUser.dni es un ID autogenerado 'usr-...'
+              let realDni = matchedUser?.dni;
+              if (!realDni || realDni.startsWith('usr-') || realDni === '00000000') {
+                const matchDoc = String(p.destino_detalle || '').match(/DNI(?:\/CE)?(?:\s*Recojo)?:\s*([0-9A-Za-z]+)/i);
+                if (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) {
+                  realDni = matchDoc[1].trim();
+                } else if (matchedUser?.dni_default && !matchedUser.dni_default.startsWith('usr-')) {
+                  realDni = matchedUser.dni_default;
+                } else {
+                  realDni = '';
+                }
+              }
+
               if (matchedUser) {
                 matchedUser = {
                   ...matchedUser,
+                  dni: realDni || (matchedUser.dni && !matchedUser.dni.startsWith('usr-') ? matchedUser.dni : ''),
                   nombre_completo: clientName || matchedUser.nombre_completo || 'Cliente',
                 };
               } else if (clientName) {
                 matchedUser = {
                   id: p.usuario_id || 'usr-temp',
-                  dni: p.usuario_id || '00000000',
+                  dni: realDni || '',
                   nombre_completo: clientName,
                   rol: 'client',
                   created_at: p.created_at || new Date().toISOString()
@@ -464,6 +478,7 @@ class OrdersService {
                 ...p,
                 usuario: matchedUser || undefined
               };
+
             });
           
           if (!userId) {

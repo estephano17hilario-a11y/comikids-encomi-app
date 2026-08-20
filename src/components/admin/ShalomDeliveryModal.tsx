@@ -73,10 +73,16 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     const initial: DeliveryOrderProgress[] = orders.map((o) => {
       const clientName = o.usuario?.nombre_completo || (o as any).nombre_cliente || 'Clienta';
       const cleanPhone = (o.usuario?.telefono_default || (o as any).telefono_contacto || (o.usuario as any)?.telefono || '').replace(/[^0-9]/g, '');
-      const dni = o.usuario?.dni || o.usuario?.dni_default || (o as any).dni_contacto || '';
+      let dni = o.usuario?.dni || o.usuario?.dni_default || (o as any).dni_contacto || '';
+      if (!dni || dni.startsWith('usr-') || dni === '00000000') {
+        const matchDoc = String(o.destino_detalle || '').match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
+        dni = (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) ? matchDoc[1].trim() : '';
+      }
       const safeName = clientName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
       const fileName = `Guia_Shalom_${safeName}_${cleanPhone.slice(-9)}.pdf`;
       const guideNumber = o.shalom_numero_guia || (o as any).numero_guia || o.codigo_seguimiento || `SH-${o.codigo_seguimiento}`;
+
+
 
       return {
         orderId: o.id,

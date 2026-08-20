@@ -639,13 +639,19 @@ export const OrdersSmartManager: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredOrders.map(order => {
             const isSelected = selectedIds.includes(order.id);
-            const dni = order.usuario?.dni || order.usuario?.dni_default || '';
+            let dni = order.usuario?.dni || order.usuario?.dni_default || '';
+
+            if (dni.startsWith('usr-') || dni === '00000000') {
+              const matchDoc = String(order.destino_detalle || '').match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
+              dni = (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) ? matchDoc[1].trim() : '';
+            }
             const rawKey = (
-              order.usuario?.dni?.trim() ||
+              (dni && !dni.startsWith('usr-') ? dni.trim() : '') ||
               order.usuario?.telefono_default?.trim() ||
               order.usuario?.nombre_completo?.trim().toLowerCase() ||
               ''
             );
+
             const dupInfo = rawKey ? duplicateOrdersMap.get(rawKey) : null;
             const isDuplicateOrSimultaneous = Boolean(dupInfo && dupInfo.count >= 2);
 
@@ -721,11 +727,12 @@ export const OrdersSmartManager: React.FC = () => {
                     <h4 className="text-sm font-black text-white tracking-tight truncate">
                       {order.usuario?.nombre_completo || 'Cliente'}
                     </h4>
-                    {dni && (
+                    {dni && !dni.startsWith('usr-') && (
                       <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
                         {dni}
                       </span>
                     )}
+
                   </div>
 
                   <div className="flex items-start gap-1.5 text-xs text-slate-300">

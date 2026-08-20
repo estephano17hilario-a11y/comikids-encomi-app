@@ -42,13 +42,14 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   onRegistered
 }) => {
   // Estado de edición de datos por pedido
-  const [editedData, setEditedData] = useState<Record<string, { dni: string; phone: string; name: string }>>({});
+  const [editedData, setEditedData] = useState<Record<string, { dni: string; phone: string; name: string; pickupCode?: string }>>({});
   const [activeTab, setActiveTab] = useState<'audit' | 'dispatching' | 'finished'>('audit');
   
   // Estados de despacho
   const [dispatchResults, setDispatchResults] = useState<Record<string, ShalomDispatchResult>>({});
   const [isDispatching, setIsDispatching] = useState(false);
   const [progressIndex, setProgressIndex] = useState(0);
+  const [retryingIds, setRetryingIds] = useState<Record<string, boolean>>({});
   
   // Estados de WhatsApp sync
   const [isSyncingWhatsApp, setIsSyncingWhatsApp] = useState(false);
@@ -74,7 +75,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   useEffect(() => {
     if (!initializedRef.current && pedidos.length > 0) {
       initializedRef.current = true;
-      const initial: Record<string, { dni: string; phone: string; name: string }> = {};
+      const initial: Record<string, { dni: string; phone: string; name: string; pickupCode?: string }> = {};
       for (const p of pedidos) {
         initial[p.id] = {
           dni: extractShalomDni(p) || '',
@@ -133,7 +134,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
   const allValid = auditedRows.every(r => r.isComplete);
 
-  const handleDataChange = (id: string, field: 'dni' | 'phone' | 'name', value: string) => {
+  const handleDataChange = (id: string, field: 'dni' | 'phone' | 'name' | 'pickupCode', value: string) => {
     setEditedData(prev => ({
       ...prev,
       [id]: {
@@ -142,6 +143,91 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       },
     }));
   };
+
+  // Reintento individual para un paquete específico con clave personalizada
+  const handleRetrySingleOrder = async (pedidoId: string) => {
+    const row = auditedRows.find(r => r.pedido.id === pedidoId);
+    if (!row) return;
+
+    setRetryingIds(prev => ({ ...prev, [pedidoId]: true }));
+
+    const auth = {
+      email: tallerConfig.shalom_email || 'milagrosjanetamis@gmail.com',
+      password: tallerConfig.shalom_password || '986398Mi$',
+    };
+
+    const rowPickupCode = row.data.pickupCode || pickupCode;
+
+    const payload = {
+      pedidoId: row.pedido.id,
+      codigoSeguimiento: row.pedido.codigo_seguimiento,
+      pickup_code: rowPickupCode,
+      remitente: {
+        nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
+        documento: tallerConfig.ruc_dni || '20000000001',
+        telefono: tallerConfig.celular_taller || '999999999',
+        agenciaOrigen: origen,
+      },
+      destinatario: {
+        nombre: row.data.name,
+        documento: row.data.dni,
+        telefono: row.data.phone,
+        agenciaDestino: row.destino,
+        direccionFisica: row.pedido.destino_detalle,
+      },
+      paquete: {
+        descripcion: row.pedido.detalles_bordado || 'PRENDAS DE TEXTIL / ENCOMIENDA',
+        cantidadBultos: 1,
+        tipoEnvio: 'PAGADO' as const,
+      },
+    };
+
+    try {
+      const res = await ShalomApiService.registerOrder(payload, auth);
+      res.pickupCode = rowPickupCode;
+
+      if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
+        try {
+          const pdfKey = String(res.oseId || res.guideNumber || res.trackingCode || row.data.phone);
+          const pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth);
+          if (pdfBase64 && pdfBase64.length > 100) {
+            res.pdfBase64 = pdfBase64;
+          }
+        } catch (pdfErr) {
+          console.warn('[FETCH SHALOM VOUCHER PDF AFTER RETRY WARN]', pdfErr);
+        }
+
+        try {
+          await onRegistered([{
+            pedidoId: row.pedido.id,
+            oseId: res.oseId ? String(res.oseId) : undefined,
+            guideNumber: res.guideNumber,
+          }]);
+        } catch (onRegErr) {
+          console.warn('[ON REGISTERED RETRY WARN]', onRegErr);
+        }
+      }
+
+      setDispatchResults(prev => ({ ...prev, [pedidoId]: res }));
+    } catch (err: any) {
+      setDispatchResults(prev => ({
+        ...prev,
+        [pedidoId]: {
+          pedidoId: row.pedido.id,
+          codigoSeguimiento: row.pedido.codigo_seguimiento,
+          success: false,
+          errorMessage: err.message || 'Error de conexión',
+          customerPhone: row.data.phone,
+          customerName: row.data.name,
+          agencyName: row.destino,
+          pickupCode: rowPickupCode,
+        },
+      }));
+    } finally {
+      setRetryingIds(prev => ({ ...prev, [pedidoId]: false }));
+    }
+  };
+
 
   // 1. DESPACHO AUTOMÁTICO VÍA API CON RATE LIMITING (Máximo 50 req/min)
   const handleStartApiDispatch = async () => {
@@ -169,10 +255,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         await new Promise(r => setTimeout(r, 1200));
       }
 
+      const rowPickupCode = row.data.pickupCode || pickupCode;
+
       const payload = {
         pedidoId: row.pedido.id,
         codigoSeguimiento: row.pedido.codigo_seguimiento,
-        pickup_code: pickupCode,
+        pickup_code: rowPickupCode,
         remitente: {
           nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
           documento: tallerConfig.ruc_dni || '20000000001',
@@ -195,19 +283,22 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
       try {
         const res = await ShalomApiService.registerOrder(payload, auth);
-        res.pickupCode = pickupCode;
+        res.pickupCode = rowPickupCode;
         
-        // Descargar inmediatamente el PDF oficial de la Guía de Remisión de Shalom Pro
+        // Descargar inmediatamente el Ticket Shalom Oficial (formato físico POS con QR)
         if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
           successfulIds.push(row.pedido.id);
           try {
             const pdfKey = String(res.oseId || res.guideNumber || res.trackingCode || row.data.phone);
-            const pdfBase64 = await ShalomApiService.fetchLabelPdfBase64(pdfKey, auth);
+            let pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth);
+            if (!pdfBase64 || pdfBase64.length < 100) {
+              pdfBase64 = await ShalomApiService.fetchLabelPdfBase64(pdfKey, auth);
+            }
             if (pdfBase64 && pdfBase64.length > 100) {
               res.pdfBase64 = pdfBase64;
             }
           } catch (pdfErr) {
-            console.warn('[FETCH SHALOM PDF AFTER REGISTRATION WARN]', pdfErr);
+            console.warn('[FETCH SHALOM VOUCHER PDF AFTER REGISTRATION WARN]', pdfErr);
           }
         }
 
@@ -221,9 +312,10 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           customerPhone: row.data.phone,
           customerName: row.data.name,
           agencyName: row.destino,
-          pickupCode: pickupCode,
+          pickupCode: rowPickupCode,
         };
       }
+
       setDispatchResults({ ...resultsMap });
     }
 
@@ -443,7 +535,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                   </div>
 
                   {/* Inputs de Edición Rápida */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                     <div>
                       <label className="block text-[10px] text-slate-400 mb-0.5">Nombre Destinatario</label>
                       <input
@@ -483,6 +575,21 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                         className={`w-full px-2.5 py-1 bg-slate-900 border rounded-lg text-xs font-mono text-white focus:outline-none ${
                           row.isPhoneValid ? 'border-slate-700 focus:border-cyan-500' : 'border-rose-500/80 bg-rose-950/30'
                         }`}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-400 mb-0.5 flex items-center justify-between">
+                        <span>Clave PIN</span>
+                        <span className="text-amber-400 text-[9px] font-mono">Indiv.</span>
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={row.data.pickupCode || ''}
+                        onChange={e => handleDataChange(row.pedido.id, 'pickupCode', e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
+                        placeholder={pickupCode}
+                        className="w-full px-2.5 py-1 bg-slate-900 border border-amber-500/40 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:border-amber-400 text-center"
                       />
                     </div>
                   </div>
@@ -545,75 +652,125 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                   <p className="text-xs text-slate-300">
                     {failedList.length === 0
                       ? 'Todas las órdenes fueron registradas en la plataforma de Shalom Pro.'
-                      : `${failedList.length} pedidos requirieron revisión de datos.`}
+                      : `${failedList.length} pedidos tuvieron error. Puedes cambiar su clave individualmente abajo y reintentar.`}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Listado de Resultados y Descarga de Rótulos */}
-            <div className="space-y-2">
+            {/* Listado de Resultados y Descarga de Rótulos / Reintentos */}
+            <div className="space-y-2.5">
               {Object.values(dispatchResults).map(res => (
                 <div
                   key={res.pedidoId}
-                  className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                  className={`p-3.5 rounded-xl border flex flex-col gap-2.5 ${
                     res.success
                       ? 'bg-slate-950/70 border-emerald-500/30'
                       : 'bg-rose-950/20 border-rose-500/40'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    {res.success ? (
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <X className="w-4 h-4 text-rose-400 shrink-0" />
-                    )}
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-white">
-                          #{res.codigoSeguimiento}
-                        </span>
-                        <span className="text-xs text-slate-300">
-                          {res.customerName} (+{res.customerPhone})
-                        </span>
-                      </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5">
                       {res.success ? (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-[11px] text-cyan-300">
-                            Guía Oficial: <strong>{String(res.guideNumber || 'Generada')}</strong> • OSE #{String(res.oseId || '')}
-                          </p>
-                          {res.pdfBase64 && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              📎 Guía PDF Oficial Lista
-                            </span>
-                          )}
-                        </div>
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                       ) : (
-                        <p className="text-[11px] text-rose-300">
-                          Motivo: {typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || 'Error en registro')}
-                        </p>
+                        <X className="w-4 h-4 text-rose-400 shrink-0" />
                       )}
-
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-white">
+                            #{res.codigoSeguimiento}
+                          </span>
+                          <span className="text-xs text-slate-300">
+                            {res.customerName} (+{res.customerPhone})
+                          </span>
+                          <span className="text-[10px] text-amber-300 font-mono bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 font-bold">
+                            PIN: {res.pickupCode || editedData[res.pedidoId]?.pickupCode || pickupCode}
+                          </span>
+                        </div>
+                        {res.success ? (
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            <p className="text-[11px] text-cyan-300">
+                              Guía Oficial: <strong>{String(res.guideNumber || 'Generada')}</strong> • OSE #{String(res.oseId || '')}
+                            </p>
+                            {res.pdfBase64 && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                📎 Ticket Shalom con QR Listo
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-rose-300 mt-0.5">
+                            <strong>Motivo:</strong> {typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || 'Error en registro')}
+                          </p>
+                        )}
+                      </div>
                     </div>
+
+                    {res.success && (res.pdfBase64 || res.oseId) && (
+                      <button
+                        onClick={() => {
+                          if (res.pdfBase64) {
+                            const blob = new Blob([Uint8Array.from(atob(res.pdfBase64), c => c.charCodeAt(0))], { type: 'application/pdf' });
+                            const blobUrl = URL.createObjectURL(blob);
+                            window.open(blobUrl, '_blank');
+                          } else if (res.oseId) {
+                            ShalomApiService.downloadVoucherPdf(
+                              res.oseId!,
+                              { email: tallerConfig.shalom_email || '', password: tallerConfig.shalom_password || '' }
+                            );
+                          }
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 self-end sm:self-center"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Ticket Shalom (QR) PDF</span>
+                      </button>
+                    )}
                   </div>
 
-                  {res.success && res.oseId && (
-                    <button
-                      onClick={() =>
-                        ShalomApiService.downloadLabelPdf(
-                          res.oseId!,
-                          { email: tallerConfig.shalom_email || '', password: tallerConfig.shalom_password || '' }
-                        )
-                      }
-                      className="px-2.5 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Rótulo PDF</span>
-                    </button>
+                  {/* Recuadro de Corrección y Reintento Individual para órdenes fallidas */}
+                  {!res.success && (
+                    <div className="p-3 rounded-xl bg-slate-900/90 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="text-[11px] font-bold text-amber-200">
+                          Nueva Clave de Recojo para este paquete:
+                        </span>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={editedData[res.pedidoId]?.pickupCode || ''}
+                          onChange={(e) => handleDataChange(res.pedidoId, 'pickupCode', e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
+                          placeholder={pickupCode}
+                          className="w-20 px-2 py-1 rounded-lg bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-xs focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRetrySingleOrder(res.pedidoId)}
+                        disabled={retryingIds[res.pedidoId]}
+                        className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 shrink-0"
+                      >
+                        {retryingIds[res.pedidoId] ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Reintentando registro...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Reintentar este paquete</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
             </div>
+
 
             {/* Sincronización con WhatsApp Business */}
             {successfulList.length > 0 && (

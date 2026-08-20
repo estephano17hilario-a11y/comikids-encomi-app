@@ -244,22 +244,31 @@ export class TenantController {
         let pdfToSend = (order as any).pdfBase64;
 
         if (!pdfToSend) {
-          // Intentar obtener automáticamente el PDF desde el proxy de Shalom
+          // Intentar obtener automáticamente el PDF del Ticket Shalom Oficial desde el proxy
           const searchKey = order.guideNumber || order.trackingCode || order.orderCode || phoneClean.slice(-9);
           if (searchKey) {
             try {
-              const pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/label`, {
+              let pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher`, {
                 responseType: 'arraybuffer',
                 timeout: 10000,
               });
-              if (pdfRes.status === 200 && pdfRes.data) {
+              if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
                 pdfToSend = Buffer.from(pdfRes.data).toString('base64');
+              } else {
+                pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/label`, {
+                  responseType: 'arraybuffer',
+                  timeout: 10000,
+                });
+                if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
+                  pdfToSend = Buffer.from(pdfRes.data).toString('base64');
+                }
               }
             } catch (pdfErr: any) {
               console.warn(`[SYNC DISPATCH PDF FETCH WARN ${searchKey}]`, pdfErr?.message);
             }
           }
         }
+
 
         try {
           // Intentar asignar etiqueta si la API lo permite

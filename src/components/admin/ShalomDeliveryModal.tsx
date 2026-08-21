@@ -120,38 +120,41 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         const item = updatedList[i];
         const originalOrder = orders.find((o) => o.id === item.orderId);
 
-        // Identificadores a probar en Shalom Pro en orden estricto de máxima precisión:
-        const searchIds = [
-          originalOrder?.shalom_ose_id,
-          originalOrder?.shalom_numero_guia,
-          item.guideNumber !== 'S/G' ? item.guideNumber : null,
-          item.dni,
-          item.phone,
-          item.trackingCode,
-        ].filter(Boolean) as string[];
-
+        const clientCtx = {
+          dni: item.dni,
+          phone: item.phone,
+          name: item.customerName,
+          guia: item.manualGuideInput || item.guideNumber,
+        };
 
         let pdfData: string | null = null;
 
-        for (const searchKey of searchIds) {
+        // 1. Intentar buscar prioritariamente por DNI en Shalom Pro (el identificador más exacto y actualizado)
+        if (item.dni && item.dni.length >= 8) {
           try {
-            // Intentar primero el Ticket Shalom Oficial (formato físico de agencia con QR de la foto)
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(searchKey, auth);
-            if (pdfData && pdfData.length > 100) {
-              console.log(`[SHALOM AUDIT API SUCCESS] ✓ Ticket/Voucher oficial de Shalom descargado para #${item.trackingCode} con clave "${searchKey}"`);
-              break;
-            }
-            // Fallback al Rótulo Oficial
-            pdfData = await ShalomApiService.fetchLabelPdfBase64(searchKey, auth);
-            if (pdfData && pdfData.length > 100) {
-              console.log(`[SHALOM AUDIT API SUCCESS] ✓ Rótulo oficial de Shalom descargado para #${item.trackingCode} con clave "${searchKey}"`);
-              break;
-            }
-          } catch {
-            // Intentar siguiente identificador
-          }
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx);
+          } catch {}
         }
 
+        // 2. Si no encontró por DNI, intentar por Guía Real
+        if (!pdfData && item.manualGuideInput && !item.manualGuideInput.startsWith('SH-') && item.manualGuideInput !== 'S/G') {
+          try {
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.manualGuideInput, auth, clientCtx);
+          } catch {}
+        }
+
+        // 3. Intentar por OSE ID o Teléfono
+        if (!pdfData && originalOrder?.shalom_ose_id) {
+          try {
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(originalOrder.shalom_ose_id, auth, clientCtx);
+          } catch {}
+        }
+
+        if (!pdfData && item.phone) {
+          try {
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.phone, auth, clientCtx);
+          } catch {}
+        }
 
         if (pdfData && pdfData.length > 100) {
           item.pdfBase64 = pdfData;
@@ -175,7 +178,6 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     runAudit();
   }, [isOpen]);
 
-
   if (!isOpen) return null;
 
   // Búsqueda manual personalizada por Guía o DNI ingresado por el usuario
@@ -189,10 +191,17 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       password: tallerConfig.shalom_password || '',
     } : undefined;
 
+    const clientCtx = {
+      dni: item.dni,
+      phone: item.phone,
+      name: item.customerName,
+      guia: item.manualGuideInput || item.guideNumber,
+    };
+
     try {
-      let pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth);
+      let pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth, clientCtx);
       if (!pdfData || pdfData.length < 100) {
-        pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth);
+        pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth, clientCtx);
       }
       if (pdfData && pdfData.length > 100) {
         item.pdfBase64 = pdfData;
@@ -206,7 +215,6 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     } finally {
       setSearchingId(null);
     }
-
   };
 
   // Descarga / visualización directa del PDF oficial extraído
@@ -242,6 +250,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     const payloadForWhatsApp: Array<{
       phone: string;
       customerName: string;
+      dni: string;
       trackingCode: string;
       guideNumber: string;
       agencyName: string;
@@ -250,7 +259,6 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       fileName?: string;
       pickupCode?: string;
     }> = [];
-
 
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
@@ -264,6 +272,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       payloadForWhatsApp.push({
         phone: item.phone,
         customerName: item.customerName,
+        dni: item.dni,
         trackingCode: numbersOnly,
         guideNumber: item.manualGuideInput || item.guideNumber,
         agencyName: item.agencyName,
@@ -273,6 +282,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         pickupCode: itemPickupCode,
       });
     }
+
 
     setCurrentStepText('Despachando Guías Oficiales de Shalom por WhatsApp a clientas (+51 927 781 412)...');
 

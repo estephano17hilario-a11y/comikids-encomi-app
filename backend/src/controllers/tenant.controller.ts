@@ -371,8 +371,12 @@ export class TenantController {
         }
 
 
+        const clientDni = String((order as any).dni || (order as any).customerDni || '').replace(/\D/g, '').trim() ||
+          (order.agencyName?.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i)?.[1]) ||
+          '';
+
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
-        const formattedFileName = order.fileName || `Guia_Shalom_${safeClientName}_${phoneClean.slice(-9)}.pdf`;
+        const formattedFileName = order.fileName || `Ticket_Shalom_${safeClientName}_${clientDni || phoneClean.slice(-9)}.pdf`;
         
         // Clave individual registrada por paquete o general
         const pickupCode = (order as any).pickupCode || (order as any).claveRecojo || (order as any).shalom_clave_recojo || (request.body as any)?.pickupCode || '0808';
@@ -385,22 +389,31 @@ export class TenantController {
 
         let pdfToSend = order.pdfBase64;
         if (!pdfToSend) {
-          // Búsqueda en vivo de la versión más actualizada del ticket en Shalom Pro API
-          const searchKey = order.guideNumber || order.trackingCode || order.orderCode || phoneClean.slice(-9);
+          // Búsqueda en vivo de la versión más actualizada del ticket en Shalom Pro API emparejado por DNI estricto
+          const searchKey = clientDni || order.guideNumber || order.trackingCode || phoneClean.slice(-9);
           if (searchKey) {
             try {
-              let pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher`, {
+              const qParams = new URLSearchParams();
+              if (clientDni) qParams.set('dni', clientDni);
+              if (order.customerName) qParams.set('name', order.customerName);
+              if (phoneClean) qParams.set('phone', phoneClean);
+              if (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G') qParams.set('guia', order.guideNumber);
+
+              console.log(`[DELIVERY VOUCHER FETCH] Consultando ticket en Shalom Pro para clienta ${order.customerName} (DNI: ${clientDni})...`);
+              const pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher?${qParams.toString()}`, {
                 responseType: 'arraybuffer',
-                timeout: 10000,
+                timeout: 12000,
               });
               if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
                 pdfToSend = Buffer.from(pdfRes.data).toString('base64');
+                console.log(`[DELIVERY VOUCHER FETCH] ✓ Ticket oficial (${pdfRes.data.length} bytes) emparejado con DNI ${clientDni} listo para enviar.`);
               }
             } catch (pdfErr: any) {
               console.warn(`[DELIVERY VOUCHER LIVE FETCH WARN ${searchKey}]`, pdfErr?.message);
             }
           }
         }
+
 
         try {
           // Asignar etiqueta 'Entregado en Shalom'

@@ -341,7 +341,8 @@ export class ShalomApiService {
    */
   public static async fetchLabelPdfBase64(
     oseId: number | string,
-    auth?: ShalomAuthCredentials
+    auth?: ShalomAuthCredentials,
+    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string }
   ): Promise<string | null> {
     try {
       const headers: Record<string, string> = {
@@ -350,7 +351,14 @@ export class ShalomApiService {
       if (auth?.email) headers['X-Shalom-Email'] = auth.email.trim();
       if (auth?.password) headers['X-Shalom-Password'] = auth.password;
 
-      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/label`, {
+      const qParams = new URLSearchParams();
+      if (clientContext?.dni) qParams.set('dni', clientContext.dni);
+      if (clientContext?.phone) qParams.set('phone', clientContext.phone);
+      if (clientContext?.name) qParams.set('name', clientContext.name);
+      if (clientContext?.guia) qParams.set('guia', clientContext.guia);
+      const qStr = qParams.toString() ? `?${qParams.toString()}` : '';
+
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/label${qStr}`, {
         headers,
       });
 
@@ -385,7 +393,8 @@ export class ShalomApiService {
    */
   public static async fetchVoucherPdfBase64(
     oseId: number | string,
-    auth?: ShalomAuthCredentials
+    auth?: ShalomAuthCredentials,
+    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string }
   ): Promise<string | null> {
     try {
       const headers: Record<string, string> = {
@@ -394,7 +403,14 @@ export class ShalomApiService {
       if (auth?.email) headers['X-Shalom-Email'] = auth.email.trim();
       if (auth?.password) headers['X-Shalom-Password'] = auth.password;
 
-      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/voucher`, {
+      const qParams = new URLSearchParams();
+      if (clientContext?.dni) qParams.set('dni', clientContext.dni);
+      if (clientContext?.phone) qParams.set('phone', clientContext.phone);
+      if (clientContext?.name) qParams.set('name', clientContext.name);
+      if (clientContext?.guia) qParams.set('guia', clientContext.guia);
+      const qStr = qParams.toString() ? `?${qParams.toString()}` : '';
+
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/voucher${qStr}`, {
         headers,
       });
 
@@ -429,7 +445,8 @@ export class ShalomApiService {
   public static async downloadVoucherPdf(
     oseId: number | string,
     auth: ShalomAuthCredentials,
-    fileName: string = `Ticket_Shalom_${oseId}.pdf`
+    fileName: string = `Ticket_Shalom_${oseId}.pdf`,
+    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string }
   ): Promise<void> {
     try {
       const headers: Record<string, string> = {
@@ -438,7 +455,14 @@ export class ShalomApiService {
       if (auth?.email) headers['X-Shalom-Email'] = auth.email.trim();
       if (auth?.password) headers['X-Shalom-Password'] = auth.password;
 
-      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/voucher`, {
+      const qParams = new URLSearchParams();
+      if (clientContext?.dni) qParams.set('dni', clientContext.dni);
+      if (clientContext?.phone) qParams.set('phone', clientContext.phone);
+      if (clientContext?.name) qParams.set('name', clientContext.name);
+      if (clientContext?.guia) qParams.set('guia', clientContext.guia);
+      const qStr = qParams.toString() ? `?${qParams.toString()}` : '';
+
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/voucher${qStr}`, {
         headers,
       });
 
@@ -447,35 +471,18 @@ export class ShalomApiService {
       }
 
       const blob = await response.blob();
-
-      if (Capacitor.isNativePlatform()) {
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onloadend = async () => {
-          const base64Data = (reader.result as string).split(',')[1];
-          const savedFile = await Filesystem.writeFile({
-            path: fileName,
-            data: base64Data,
-            directory: Directory.Cache,
-          });
-
-          await Share.share({
-            title: 'Ticket Shalom Oficial',
-            text: `Ticket de Envío Shalom Orden #${oseId}`,
-            url: savedFile.uri,
-            dialogTitle: 'Compartir o Imprimir Ticket Shalom',
-          });
-        };
-      } else {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+      if (!blob || blob.size < 100) {
+        throw new Error('El PDF recibido está vacío');
       }
+
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error('[SHALOM DOWNLOAD VOUCHER ERROR]', err);
       throw err;
@@ -492,6 +499,7 @@ export class ShalomApiService {
       trackingCode: string;
       guideNumber: string;
       agencyName: string;
+      dni?: string;
       orderCode?: string;
       pdfBase64?: string;
       fileName?: string;

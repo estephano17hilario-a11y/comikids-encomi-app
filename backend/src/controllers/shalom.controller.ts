@@ -547,11 +547,43 @@ export class ShalomController {
       if (docRes.data && docRes.data.length > 100) {
         const clientCleanDni = matchedOrder.receiver?.document || targetDni || 'DNI';
         const filename = `${filePrefix}_${matchedOrder.serie || 'V204'}_${matchedOrder.guia || matchedOrder.id}_${clientCleanDni}.pdf`;
+        const realPickupCode = String(matchedOrder.pickup_code || matchedOrder.request?.pickup_code || '').trim();
+        const fullGuia = `${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}`;
+
+        // Sincronizar en segundo plano la clave real y guía oficial en Supabase
+        if (realPickupCode || fullGuia) {
+          try {
+            const updateFields: any = {};
+            if (realPickupCode) updateFields.shalom_clave_recojo = realPickupCode;
+            if (matchedOrder.guia) updateFields.shalom_numero_guia = fullGuia;
+            if (matchedOrder.id) updateFields.shalom_ose_id = String(matchedOrder.id);
+
+            const searchFilter = cleanSearch.length >= 4
+              ? `codigo_seguimiento.ilike.%${cleanSearch}%,destino_detalle.ilike.%${clientCleanDni}%,id.ilike.%${cleanSearch}%`
+              : `destino_detalle.ilike.%${clientCleanDni}%`;
+
+            supabaseAdmin
+              .from('pedidos')
+              .update(updateFields)
+              .or(searchFilter)
+              .then(() => {
+                console.log(`[SHALOM CONTROLLER] ✓ Sincronizada clave real "${realPickupCode}" y guía "${fullGuia}" en BD para clienta DNI ${clientCleanDni}`);
+              });
+          } catch (err: any) {
+            console.warn('[SHALOM CONTROLLER DB SYNC WARN]', err?.message);
+          }
+        }
 
         reply.header('Content-Type', 'application/pdf');
         reply.header('Content-Disposition', `inline; filename="${filename}"`);
+        reply.header('Access-Control-Expose-Headers', 'X-Shalom-Pickup-Code, X-Shalom-Guia');
+        if (realPickupCode) {
+          reply.header('X-Shalom-Pickup-Code', realPickupCode);
+        }
+        reply.header('X-Shalom-Guia', fullGuia);
         return reply.send(docRes.data);
       }
+
 
       return reply.code(404).send({
         error: `El archivo PDF de ${typeLabel} recibido de Shalom Pro está vacío.`,

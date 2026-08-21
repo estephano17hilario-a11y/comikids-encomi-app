@@ -129,30 +129,40 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
         let pdfData: string | null = null;
 
+        const handleMeta = (meta: { pickupCode?: string; guia?: string }) => {
+          if (meta.pickupCode) {
+            console.log(`[SHALOM AUDIT] ✓ Actualizado PIN de recojo real de Shalom Pro para #${item.trackingCode}: ${meta.pickupCode}`);
+            item.pickupCode = meta.pickupCode;
+          }
+          if (meta.guia && !item.manualGuideInput) {
+            item.guideNumber = meta.guia;
+          }
+        };
+
         // 1. Intentar buscar prioritariamente por DNI en Shalom Pro (el identificador más exacto y actualizado)
         if (item.dni && item.dni.length >= 8) {
           try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx);
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx, handleMeta);
           } catch {}
         }
 
         // 2. Si no encontró por DNI, intentar por Guía Real
         if (!pdfData && item.manualGuideInput && !item.manualGuideInput.startsWith('SH-') && item.manualGuideInput !== 'S/G') {
           try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.manualGuideInput, auth, clientCtx);
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.manualGuideInput, auth, clientCtx, handleMeta);
           } catch {}
         }
 
         // 3. Intentar por OSE ID o Teléfono
         if (!pdfData && originalOrder?.shalom_ose_id) {
           try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(originalOrder.shalom_ose_id, auth, clientCtx);
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(originalOrder.shalom_ose_id, auth, clientCtx, handleMeta);
           } catch {}
         }
 
         if (!pdfData && item.phone) {
           try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.phone, auth, clientCtx);
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.phone, auth, clientCtx, handleMeta);
           } catch {}
         }
 
@@ -199,7 +209,19 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     };
 
     try {
-      let pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth, clientCtx);
+      let pdfData = await ShalomApiService.fetchVoucherPdfBase64(
+        keyToSearch,
+        auth,
+        clientCtx,
+        (meta) => {
+          if (meta.pickupCode) {
+            item.pickupCode = meta.pickupCode;
+          }
+          if (meta.guia) {
+            item.guideNumber = meta.guia;
+          }
+        }
+      );
       if (!pdfData || pdfData.length < 100) {
         pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth, clientCtx);
       }
@@ -216,6 +238,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       setSearchingId(null);
     }
   };
+
 
   // Descarga / visualización directa del PDF oficial extraído
   const handleDownloadPdfPreview = (item: DeliveryOrderProgress) => {

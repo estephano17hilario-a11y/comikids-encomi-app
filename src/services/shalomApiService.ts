@@ -394,7 +394,8 @@ export class ShalomApiService {
   public static async fetchVoucherPdfBase64(
     oseId: number | string,
     auth?: ShalomAuthCredentials,
-    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string }
+    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string },
+    onMetadata?: (meta: { pickupCode?: string; guia?: string }) => void
   ): Promise<string | null> {
     try {
       const headers: Record<string, string> = {
@@ -418,6 +419,12 @@ export class ShalomApiService {
         throw new Error(`Error ${response.status} al obtener PDF del ticket`);
       }
 
+      const livePin = response.headers.get('x-shalom-pickup-code') || response.headers.get('X-Shalom-Pickup-Code');
+      const liveGuia = response.headers.get('x-shalom-guia') || response.headers.get('X-Shalom-Guia');
+      if (onMetadata && (livePin || liveGuia)) {
+        onMetadata({ pickupCode: livePin || undefined, guia: liveGuia || undefined });
+      }
+
       const blob = await response.blob();
       if (!blob || blob.size < 100) {
         throw new Error('El PDF del ticket recibido está vacío');
@@ -438,6 +445,7 @@ export class ShalomApiService {
       return null;
     }
   }
+
 
   /**
    * Descarga el PDF del Ticket Shalom Oficial (formato físico de agencia con QR).

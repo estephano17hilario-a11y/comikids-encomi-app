@@ -383,10 +383,42 @@ export class TenantController {
         const rawCode = String(order.orderCode || order.trackingCode || '').trim();
         const numbersOnly = rawCode.replace(/^[^\d]*/, '').replace(/\D/g, '') || rawCode;
 
-        // Clave individual registrada por paquete o guardada en Base de Datos
+        let pdfToSend = order.pdfBase64;
         let individualPickupCode = String((order as any).pickupCode || (order as any).claveRecojo || (order as any).shalom_clave_recojo || '').trim();
 
-        // Si no viene en el payload o es '0808' default, buscar directamente en la BD Supabase
+        // 1. Búsqueda en vivo de la versión más actualizada del ticket en Shalom Pro API emparejado por DNI estricto
+        const searchKey = clientDni || order.guideNumber || order.trackingCode || phoneClean.slice(-9);
+        if (searchKey) {
+          try {
+            const qParams = new URLSearchParams();
+            if (clientDni) qParams.set('dni', clientDni);
+            if (order.customerName) qParams.set('name', order.customerName);
+            if (phoneClean) qParams.set('phone', phoneClean);
+            if (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G') qParams.set('guia', order.guideNumber);
+
+            console.log(`[DELIVERY VOUCHER FETCH] Consultando ticket en Shalom Pro para clienta ${order.customerName} (DNI: ${clientDni})...`);
+            const pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher?${qParams.toString()}`, {
+              responseType: 'arraybuffer',
+              timeout: 12000,
+            });
+            if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
+              if (!pdfToSend) {
+                pdfToSend = Buffer.from(pdfRes.data).toString('base64');
+              }
+              
+              // Extraer la clave de recojo REAL con la que se registró en Shalom Pro
+              const shalomLivePin = (pdfRes.headers['x-shalom-pickup-code'] as string) || (pdfRes.headers['X-Shalom-Pickup-Code'] as string);
+              if (shalomLivePin && shalomLivePin.trim()) {
+                individualPickupCode = shalomLivePin.trim();
+                console.log(`[DELIVERY VOUCHER] ✓ Clave de recojo oficial extraída en vivo de Shalom Pro para #${numbersOnly}: "${individualPickupCode}"`);
+              }
+            }
+          } catch (pdfErr: any) {
+            console.warn(`[DELIVERY VOUCHER LIVE FETCH WARN ${searchKey}]`, pdfErr?.message);
+          }
+        }
+
+        // 2. Si aún no tenemos PIN o es '0808' default, buscar directamente en la BD Supabase
         if (!individualPickupCode || individualPickupCode === '0808') {
           try {
             const { data: dbOrder } = await supabaseAdmin
@@ -409,35 +441,9 @@ export class TenantController {
           individualPickupCode = (request.body as any)?.pickupCode || '0808';
         }
 
+        // 3. Armar el Mensaje Oficial para WhatsApp con la Clave Real
         const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${numbersOnly}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía:* ${order.guideNumber || 'Oficial'}\n🔐 *Clave de recojo:* ${individualPickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || numbersOnly}\n📎 Te adjuntamos tu *Ticket Oficial de Shalom* con el detalle y costo final registrado en agencia.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
 
-
-        let pdfToSend = order.pdfBase64;
-        if (!pdfToSend) {
-          // Búsqueda en vivo de la versión más actualizada del ticket en Shalom Pro API emparejado por DNI estricto
-          const searchKey = clientDni || order.guideNumber || order.trackingCode || phoneClean.slice(-9);
-          if (searchKey) {
-            try {
-              const qParams = new URLSearchParams();
-              if (clientDni) qParams.set('dni', clientDni);
-              if (order.customerName) qParams.set('name', order.customerName);
-              if (phoneClean) qParams.set('phone', phoneClean);
-              if (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G') qParams.set('guia', order.guideNumber);
-
-              console.log(`[DELIVERY VOUCHER FETCH] Consultando ticket en Shalom Pro para clienta ${order.customerName} (DNI: ${clientDni})...`);
-              const pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher?${qParams.toString()}`, {
-                responseType: 'arraybuffer',
-                timeout: 12000,
-              });
-              if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
-                pdfToSend = Buffer.from(pdfRes.data).toString('base64');
-                console.log(`[DELIVERY VOUCHER FETCH] ✓ Ticket oficial (${pdfRes.data.length} bytes) emparejado con DNI ${clientDni} listo para enviar.`);
-              }
-            } catch (pdfErr: any) {
-              console.warn(`[DELIVERY VOUCHER LIVE FETCH WARN ${searchKey}]`, pdfErr?.message);
-            }
-          }
-        }
 
 
         try {

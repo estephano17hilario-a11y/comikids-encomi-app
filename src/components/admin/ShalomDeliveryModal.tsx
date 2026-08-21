@@ -485,10 +485,24 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                           <strong className="truncate max-w-[160px] sm:max-w-[220px]">{item.agencyName}</strong>
                         </span>
                         <span>•</span>
-                        <span className="text-amber-300 font-bold flex items-center gap-0.5">
-                          <KeyRound className="w-3 h-3" /> PIN: {item.pickupCode || pickupCode}
+                        <span className="text-amber-300 font-bold flex items-center gap-1.5 bg-slate-900 px-2 py-0.5 rounded-lg border border-amber-500/30">
+                          <KeyRound className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="text-[10px] text-slate-400 font-medium">PIN:</span>
+                          <input
+                            type="text"
+                            maxLength={6}
+                            value={item.pickupCode || pickupCode}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9A-Za-z]/g, '');
+                              item.pickupCode = val;
+                              setProgressList([...progressList]);
+                            }}
+                            className="w-14 px-1 py-0.5 rounded bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-xs focus:outline-none focus:border-amber-400"
+                            title="Clave individual de recojo de este paquete"
+                          />
                         </span>
                       </div>
+
 
 
                     </div>

@@ -3,6 +3,7 @@ import { EvolutionService } from '../services/evolution.service.js';
 import { z } from 'zod';
 import axios from 'axios';
 import { env } from '../config/env.js';
+import { supabaseAdmin } from '../config/supabase.js';
 
 const CreateSubInstanceSchema = z.object({
   tenantId: z.string().min(1, 'tenantId is required'),
@@ -378,14 +379,38 @@ export class TenantController {
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const formattedFileName = order.fileName || `Ticket_Shalom_${safeClientName}_${clientDni || phoneClean.slice(-9)}.pdf`;
         
-        // Clave individual registrada por paquete o general
-        const pickupCode = (order as any).pickupCode || (order as any).claveRecojo || (order as any).shalom_clave_recojo || (request.body as any)?.pickupCode || '0808';
-
         // Solo números en el código de orden
         const rawCode = String(order.orderCode || order.trackingCode || '').trim();
         const numbersOnly = rawCode.replace(/^[^\d]*/, '').replace(/\D/g, '') || rawCode;
 
-        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${numbersOnly}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía:* ${order.guideNumber || 'Oficial'}\n🔐 *Clave de recojo:* ${pickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || numbersOnly}\n📎 Te adjuntamos tu *Ticket Oficial de Shalom* con el detalle y costo final registrado en agencia.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+        // Clave individual registrada por paquete o guardada en Base de Datos
+        let individualPickupCode = String((order as any).pickupCode || (order as any).claveRecojo || (order as any).shalom_clave_recojo || '').trim();
+
+        // Si no viene en el payload o es '0808' default, buscar directamente en la BD Supabase
+        if (!individualPickupCode || individualPickupCode === '0808') {
+          try {
+            const { data: dbOrder } = await supabaseAdmin
+              .from('pedidos')
+              .select('shalom_clave_recojo')
+              .or(`codigo_seguimiento.eq.${numbersOnly},codigo_seguimiento.eq.${rawCode},id.eq.${rawCode}`)
+              .limit(1)
+              .maybeSingle();
+
+            if (dbOrder && dbOrder.shalom_clave_recojo) {
+              individualPickupCode = dbOrder.shalom_clave_recojo;
+              console.log(`[DELIVERY VOUCHER] ✓ Clave de recojo específica recuperada de BD para pedido #${numbersOnly}: "${individualPickupCode}"`);
+            }
+          } catch (dbErr: any) {
+            console.warn(`[DELIVERY VOUCHER DB PIN FETCH WARN]`, dbErr?.message);
+          }
+        }
+
+        if (!individualPickupCode) {
+          individualPickupCode = (request.body as any)?.pickupCode || '0808';
+        }
+
+        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${numbersOnly}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía:* ${order.guideNumber || 'Oficial'}\n🔐 *Clave de recojo:* ${individualPickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || numbersOnly}\n📎 Te adjuntamos tu *Ticket Oficial de Shalom* con el detalle y costo final registrado en agencia.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+
 
         let pdfToSend = order.pdfBase64;
         if (!pdfToSend) {

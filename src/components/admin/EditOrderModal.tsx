@@ -21,6 +21,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   const [destinoDetalle, setDestinoDetalle] = useState(pedido.destino_detalle || '');
   const [detallesBordado, setDetallesBordado] = useState(pedido.detalles_bordado || '');
   const [observaciones, setObservaciones] = useState(pedido.observaciones_cliente || '');
+  const [claveRecojo, setClaveRecojo] = useState(pedido.shalom_clave_recojo || '0808');
   const [estadoEnvio, setEstadoEnvio] = useState<EstadoEnvio>(pedido.estado_envio);
   const [estadoProduccion, setEstadoProduccion] = useState<EstadoProduccion>(pedido.estado_produccion);
   const [saving, setSaving] = useState(false);
@@ -46,6 +47,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
         destino_detalle: destinoDetalle.trim(),
         detalles_bordado: updatedDetalles,
         observaciones_cliente: observaciones.trim(),
+        shalom_clave_recojo: claveRecojo.trim() || '0808',
         estado_envio: estadoEnvio,
         estado_produccion: estadoProduccion,
         usuario: {
@@ -178,19 +180,35 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
             />
           </div>
 
-          {/* Observaciones */}
-          <div>
-            <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-amber-400" />
-              Observaciones / Referencia
-            </label>
-            <input
-              type="text"
-              value={observaciones}
-              onChange={e => setObservaciones(e.target.value)}
-              placeholder="Referencia o notas adicionales..."
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
-            />
+          {/* Observaciones y Clave PIN */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-amber-400" />
+                Observaciones / Referencia
+              </label>
+              <input
+                type="text"
+                value={observaciones}
+                onChange={e => setObservaciones(e.target.value)}
+                placeholder="Referencia o notas adicionales..."
+                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-amber-300 mb-1.5 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-amber-400" />
+                Clave PIN Shalom
+              </label>
+              <input
+                type="text"
+                maxLength={6}
+                value={claveRecojo}
+                onChange={e => setClaveRecojo(e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
+                placeholder="0808"
+                className="w-full px-4 py-2.5 bg-slate-950 border border-amber-500/50 rounded-2xl text-xs sm:text-sm font-mono font-bold text-amber-300 text-center focus:outline-none focus:border-amber-400"
+              />
+            </div>
           </div>
 
           {/* Estados */}

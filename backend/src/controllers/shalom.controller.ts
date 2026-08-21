@@ -326,6 +326,78 @@ export class ShalomController {
     return ShalomController.fetchOrderPdf(request, reply, 'voucher');
   }
 
+  private static cachedAllOrders: any[] = [];
+  private static lastAllOrdersFetch: number = 0;
+
+  /**
+   * Sincroniza todas las páginas de órdenes de Shalom Pro en paralelo y las ordena de más recientes a más antiguas
+   */
+  private static async getAllShalomOrders(headers: Record<string, string>, forceRefresh: boolean = false): Promise<any[]> {
+    const now = Date.now();
+    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 15000)) {
+      return ShalomController.cachedAllOrders;
+    }
+
+    try {
+      // 1. Obtener primera página (100 órdenes) y total de páginas
+      const firstRes = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
+        params: { per_page: 100, page: 1 },
+        headers,
+        timeout: 12000,
+      });
+
+      let all: any[] = [];
+      const firstPageData = Array.isArray(firstRes.data?.data)
+        ? firstRes.data.data
+        : Array.isArray(firstRes.data?.orders)
+        ? firstRes.data.orders
+        : Array.isArray(firstRes.data)
+        ? firstRes.data
+        : [];
+
+      all.push(...firstPageData);
+
+      const lastPage = Number(firstRes.data?.meta?.last_page || 1);
+
+      // 2. Si hay más páginas, descargarlas en paralelo
+      if (lastPage > 1) {
+        const pagePromises = [];
+        for (let p = 2; p <= lastPage; p++) {
+          pagePromises.push(
+            axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
+              params: { per_page: 100, page: p },
+              headers,
+              timeout: 12000,
+            }).then((res) => {
+              return Array.isArray(res.data?.data)
+                ? res.data.data
+                : Array.isArray(res.data?.orders)
+                ? res.data.orders
+                : [];
+            }).catch((err) => {
+              console.warn(`[SHALOM PROXY PAGE ${p} WARN]`, err?.message);
+              return [];
+            })
+          );
+        }
+
+        const remainingPages = await Promise.all(pagePromises);
+        remainingPages.forEach((pg) => all.push(...pg));
+      }
+
+      // 3. Ordenar TODAS las órdenes por ID descendente (las más recientes de hoy al inicio)
+      all.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+
+      ShalomController.cachedAllOrders = all;
+      ShalomController.lastAllOrdersFetch = now;
+      console.log(`[SHALOM PROXY ORDERS SYNC] ✓ ${all.length} órdenes sincronizadas de Shalom Pro (${lastPage} páginas).`);
+      return all;
+    } catch (err: any) {
+      console.warn('[SHALOM PROXY GET ALL ORDERS WARN]', err?.message);
+      return ShalomController.cachedAllOrders;
+    }
+  }
+
   /**
    * Extracción de PDF (Ticket o Rótulo) emparejado estrictamente con el DNI/Documento de la clienta
    */
@@ -363,7 +435,7 @@ export class ShalomController {
 
       console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] Buscando documento para Clienta (DNI: "${targetDni}", Guía: "${targetGuia}", Tel: "${targetPhone}", Search: "${cleanSearch}")...`);
 
-      // 2. Si cleanSearch es un ID puramente numérico de orden en Shalom (ej: 83583712), intentar directo primero
+      // 2. Si cleanSearch es un ID puramente numérico de orden en Shalom (ej: 96231271), intentar directo primero
       if (/^\d{7,10}$/.test(cleanSearch) && !targetDni) {
         try {
           const directRes = await axios.get(
@@ -386,93 +458,73 @@ export class ShalomController {
         }
       }
 
-      // 3. Consultar la lista en vivo de órdenes en Shalom Pro (hasta 100 más recientes)
-      let ordersList: any[] = [];
-      try {
-        const listRes = await axios.get(
-          `${SHALOM_BASE_URL}/v1/orders`,
-          {
-            params: { per_page: 100 },
-            headers,
-            timeout: 12000,
+      // 3. Obtener TODAS las órdenes de Shalom Pro (multi-página sincronizada)
+      let ordersList = await ShalomController.getAllShalomOrders(headers);
+
+      // Función de coincidencia
+      const findMatchingOrder = (list: any[]) => {
+        // PRIORIDAD 1: Coincidencia Exacta por DNI del Destinatario (8 a 12 dígitos)
+        if (targetDni && targetDni.length >= 8) {
+          const dniMatches = list.filter((o: any) => {
+            const doc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/\D/g, '').trim();
+            return doc === targetDni || (targetDni.length === 8 && doc.endsWith(targetDni)) || (doc.length === 8 && targetDni.endsWith(doc));
+          });
+
+          if (dniMatches.length > 0) {
+            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+            return dniMatches[0];
           }
-        );
-        ordersList = Array.isArray(listRes.data?.orders)
-          ? listRes.data.orders
-          : Array.isArray(listRes.data?.data)
-          ? listRes.data.data
-          : Array.isArray(listRes.data)
-          ? listRes.data
-          : [];
-      } catch (err: any) {
-        console.warn(`[SHALOM PROXY LIST WARN]`, err?.message);
-      }
-
-      if (ordersList.length === 0) {
-        return reply.code(404).send({
-          error: `No se pudo obtener la lista de órdenes de Shalom Pro para buscar el documento.`,
-        });
-      }
-
-      // 4. BÚSQUEDA Y EMPAREJAMIENTO DE ALTA PRECISIÓN (POR DNI, GUÍA O TELÉFONO)
-      let matchedOrder: any = null;
-
-      // PRIORIDAD 1: Coincidencia Exacta por DNI del Destinatario (8 a 12 dígitos)
-      if (targetDni && targetDni.length >= 8) {
-        const dniMatches = ordersList.filter((o: any) => {
-          const doc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/\D/g, '').trim();
-          return doc === targetDni || (targetDni.length === 8 && doc.endsWith(targetDni)) || (doc.length === 8 && targetDni.endsWith(doc));
-        });
-
-        if (dniMatches.length > 0) {
-          // Si hay varias órdenes con el mismo DNI, ordenar por ID descendente para tomar la MÁS RECIENTE / ACTUALIZADA
-          dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-          matchedOrder = dniMatches[0];
-          console.log(`[SHALOM PROXY MATCH] ✓ Encontrado por DNI (${targetDni}): Orden #${matchedOrder.id} (Guía: ${matchedOrder.serie}-${matchedOrder.guia}) para ${matchedOrder.receiver?.name} ${matchedOrder.receiver?.last_name}`);
         }
-      }
 
-      // PRIORIDAD 2: Coincidencia Exacta por Número de Guía o Serie-Guía (ej: V204-80109820 o 80109820)
-      if (!matchedOrder && targetGuia) {
-        const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
-        matchedOrder = ordersList.find((o: any) => {
-          const fullG = `${o.serie || ''}-${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
-          const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          return (gOnly && gOnly === cleanG) || (fullG && fullG === cleanG) || String(o.id) === cleanG;
-        });
-        if (matchedOrder) {
-          console.log(`[SHALOM PROXY MATCH] ✓ Encontrado por Guía (${targetGuia}): Orden #${matchedOrder.id} para ${matchedOrder.receiver?.name} (DNI: ${matchedOrder.receiver?.document})`);
+        // PRIORIDAD 2: Coincidencia Exacta por Número de Guía o Serie-Guía (ej: V204-92758784 o 92758784)
+        if (targetGuia) {
+          const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
+          const gMatch = list.find((o: any) => {
+            const fullG = `${o.serie || ''}-${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return (gOnly && gOnly === cleanG) || (fullG && fullG === cleanG) || String(o.id) === cleanG;
+          });
+          if (gMatch) return gMatch;
         }
-      }
 
-      // PRIORIDAD 3: Coincidencia Exacta por Teléfono del Destinatario (9 dígitos)
-      if (!matchedOrder && targetPhone && targetPhone.length >= 9) {
-        const phone9 = targetPhone.slice(-9);
-        const phoneMatches = ordersList.filter((o: any) => {
-          const p = String(o.receiver?.phone || '').replace(/\D/g, '').trim();
-          return p && p.slice(-9) === phone9;
-        });
-        if (phoneMatches.length > 0) {
-          phoneMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-          matchedOrder = phoneMatches[0];
-          console.log(`[SHALOM PROXY MATCH] ✓ Encontrado por Teléfono (+51 ${phone9}): Orden #${matchedOrder.id} para ${matchedOrder.receiver?.name} (DNI: ${matchedOrder.receiver?.document})`);
+        // PRIORIDAD 3: Coincidencia Exacta por Teléfono del Destinatario (9 dígitos)
+        if (targetPhone && targetPhone.length >= 9) {
+          const phone9 = targetPhone.slice(-9);
+          const phoneMatches = list.filter((o: any) => {
+            const p = String(o.receiver?.phone || '').replace(/\D/g, '').trim();
+            return p && p.slice(-9) === phone9;
+          });
+          if (phoneMatches.length > 0) {
+            phoneMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+            return phoneMatches[0];
+          }
         }
-      }
 
-      // PRIORIDAD 4: Coincidencia Exacta por Nombre Completo del Destinatario
-      if (!matchedOrder && targetName && targetName.length >= 5) {
-        const nameMatches = ordersList.filter((o: any) => {
-          const rFullName = `${o.receiver?.name || ''} ${o.receiver?.last_name || ''}`.toLowerCase().trim();
-          return rFullName.includes(targetName) || targetName.includes(rFullName);
-        });
-        if (nameMatches.length > 0) {
-          nameMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-          matchedOrder = nameMatches[0];
-          console.log(`[SHALOM PROXY MATCH] ✓ Encontrado por Nombre ("${targetName}"): Orden #${matchedOrder.id} para ${matchedOrder.receiver?.name} (DNI: ${matchedOrder.receiver?.document})`);
+        // PRIORIDAD 4: Coincidencia Exacta por Nombre Completo del Destinatario
+        if (targetName && targetName.length >= 5) {
+          const nameMatches = list.filter((o: any) => {
+            const rFullName = `${o.receiver?.name || ''} ${o.receiver?.last_name || ''}`.toLowerCase().trim();
+            return rFullName.includes(targetName) || targetName.includes(rFullName);
+          });
+          if (nameMatches.length > 0) {
+            nameMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+            return nameMatches[0];
+          }
         }
+
+        return null;
+      };
+
+      let matchedOrder = findMatchingOrder(ordersList);
+
+      // Si no encontró, forzar refresco fresco desde Shalom Pro
+      if (!matchedOrder) {
+        console.log(`[SHALOM PROXY] No encontrado en cache, forzando refresco de órdenes de Shalom Pro...`);
+        ordersList = await ShalomController.getAllShalomOrders(headers, true);
+        matchedOrder = findMatchingOrder(ordersList);
       }
 
-      // Si no hubo coincidencia verificada para esta clienta, NO entregar un PDF aleatorio
+      // Si no hubo coincidencia verificada para esta clienta
       if (!matchedOrder) {
         console.warn(`[SHALOM PROXY NOT FOUND] No se encontró orden en Shalom Pro para la clienta DNI: "${targetDni}", Nombre: "${targetName}", Guía: "${targetGuia}"`);
         return reply.code(404).send({
@@ -480,8 +532,8 @@ export class ShalomController {
         });
       }
 
-      // 5. Descargar el PDF oficial (Ticket o Guía) del pedido verificado
-      console.log(`[SHALOM PROXY DOWNLOAD] Descargando ${typeLabel} de Shalom para Orden #${matchedOrder.id} (DNI: ${matchedOrder.receiver?.document}, Guía: ${matchedOrder.serie}-${matchedOrder.guia})...`);
+      // 4. Descargar el PDF oficial (Ticket o Guía) del pedido verificado
+      console.log(`[SHALOM PROXY DOWNLOAD] ✓ Encontrado para ${matchedOrder.receiver?.name}: Descargando ${typeLabel} de Shalom para Orden #${matchedOrder.id} (DNI: ${matchedOrder.receiver?.document}, Guía: ${matchedOrder.serie}-${matchedOrder.guia})...`);
 
       const docRes = await axios.get(
         `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${pdfType}`,
@@ -512,4 +564,5 @@ export class ShalomController {
       });
     }
   }
+
 }

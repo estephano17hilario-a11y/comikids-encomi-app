@@ -44,6 +44,37 @@ export class ShalomController {
   }
 
   /**
+   * Obtiene el estado de salud de la API upstream de Shalom
+   */
+  public static async getStatus(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const res = await axios.get(`${SHALOM_BASE_URL}/status`, { timeout: 8000 });
+      return reply.code(res.status).send(res.data);
+    } catch {
+      return reply.code(200).send({
+        overall: 'degraded',
+        status: 'degraded',
+        message: 'Shalom upstream status unavailable'
+      });
+    }
+  }
+
+  /**
+   * Obtiene el listado de 546 agencias oficiales de Shalom
+   */
+  public static async getAgenciesRoute(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const res = await axios.get(`${SHALOM_BASE_URL}/v1/agencies`, {
+        headers: { 'X-API-Key': DEFAULT_API_KEY },
+        timeout: 10000,
+      });
+      return reply.code(res.status).send(res.data);
+    } catch {
+      return reply.code(500).send({ error: 'Error al consultar agencias de Shalom' });
+    }
+  }
+
+  /**
    * Valida credenciales contra la API de Shalom Pro
    */
   public static async testAuth(

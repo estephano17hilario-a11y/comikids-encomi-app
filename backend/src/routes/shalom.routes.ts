@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify';
 import { ShalomController } from '../controllers/shalom.controller.js';
 
 export async function shalomRoutes(fastify: FastifyInstance) {
+  fastify.get('/api/shalom/status', ShalomController.getStatus);
+  fastify.get('/api/shalom/agencies', ShalomController.getAgenciesRoute);
   fastify.post('/api/shalom/auth/test', ShalomController.testAuth);
   fastify.post('/api/shalom/auth/login', ShalomController.testAuth);
   fastify.post('/api/shalom/orders', ShalomController.createOrder);

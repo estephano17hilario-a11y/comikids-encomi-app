@@ -90,72 +90,85 @@ export class ShalomController {
     try {
       const { email, password, apiKey = DEFAULT_API_KEY } = request.body || {};
 
-      if (!email) {
-        return reply.code(400).send({
+      // 1. Validar formato de Email
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        return reply.code(200).send({
           valid: false,
-          message: 'El email de Shalom es requerido',
+          message: 'El correo electrónico ingresado no tiene un formato válido',
         });
       }
 
-      console.log(`[SHALOM PROXY AUTH] Verificando credenciales para ${email}...`);
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey,
-        'X-Shalom-Email': email,
-      };
-      if (password) {
-        headers['X-Shalom-Password'] = password;
+      // 2. Validar formato de Contraseña
+      if (!password || password.trim().length < 6) {
+        return reply.code(200).send({
+          valid: false,
+          message: 'La contraseña de Shalom debe tener al menos 6 caracteres',
+        });
       }
 
+      // 3. Validar API Key
       try {
-        const response = await axios.post(
-          `${SHALOM_BASE_URL}/v1/auth/login`,
-          { email, password },
+        await axios.get(`${SHALOM_BASE_URL}/v1/agencies`, {
+          headers: { 'X-API-Key': apiKey },
+          timeout: 6000,
+        });
+      } catch (apiErr: any) {
+        return reply.code(200).send({
+          valid: false,
+          message: 'La API Key de Shalom API no es válida o fue rechazada',
+        });
+      }
+
+      console.log(`[SHALOM PROXY AUTH] Verificando credenciales reales para ${email}...`);
+
+      // 4. Autenticación estricta contra endpoint oficial de sesiones de Shalom
+      try {
+        const sessionRes = await axios.post(
+          `${SHALOM_BASE_URL}/v1/shalom/sessions`,
+          { email: email.trim(), password: password.trim() },
           {
-            headers,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': apiKey,
+            },
             timeout: 10000,
           }
         );
 
+        if (sessionRes.status === 200 || sessionRes.status === 201) {
+          return reply.code(200).send({
+            valid: true,
+            message: 'Credenciales autenticadas exitosamente con Shalom Pro',
+            data: sessionRes.data,
+          });
+        }
+
         return reply.code(200).send({
-          valid: true,
-          message: 'Credenciales validadas exitosamente con Shalom Pro',
-          data: response.data,
+          valid: false,
+          message: 'No se pudo confirmar la sesión con Shalom Pro',
         });
-      } catch (postErr: any) {
-        const status = postErr.response?.status;
-        const msg = postErr.response?.data?.message || postErr.message;
-        
-        if (status === 401 || status === 403) {
+      } catch (sessionErr: any) {
+        const status = sessionErr.response?.status;
+        const errCode = sessionErr.response?.data?.error?.code || '';
+        const errMsg = sessionErr.response?.data?.error?.message || sessionErr.response?.data?.message || sessionErr.message;
+
+        if (status === 401 || status === 403 || errCode === 'unauthorized' || errCode === 'invalid_credentials' || errMsg?.includes('incorrect') || errMsg?.includes('invalid')) {
           return reply.code(200).send({
             valid: false,
             message: 'Email o contraseña incorrectos en Shalom Pro',
           });
         }
 
-        if (status === 404 || status === 405) {
-          try {
-            const checkRes = await axios.get(`${SHALOM_BASE_URL}/v1/agencies`, {
-              headers,
-              timeout: 5000,
-            });
-            return reply.code(200).send({
-              valid: true,
-              message: 'Conexión con Shalom Pro establecida correctamente',
-              data: checkRes.data,
-            });
-          } catch (getErr: any) {
-            return reply.code(200).send({
-              valid: false,
-              message: getErr.response?.data?.message || 'Error validando con Shalom Pro',
-            });
-          }
+        if (errCode === 'shalom_login_unavailable' || status === 503 || status === 504) {
+          return reply.code(200).send({
+            valid: false,
+            message: 'No se pudo verificar la cuenta: El servicio de inicio de sesión de Shalom no responde o está en mantenimiento en este momento.',
+          });
         }
 
         return reply.code(200).send({
           valid: false,
-          message: msg || 'Error al conectar con Shalom Pro',
+          message: errMsg || 'Error al autenticar credenciales contra Shalom Pro',
         });
       }
     } catch (error: any) {

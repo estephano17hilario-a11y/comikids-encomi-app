@@ -51,7 +51,7 @@ export const OrdersSmartManager: React.FC = () => {
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'almacen' | 'alistando' | 'dejando_shalom' | 'entregado'>('all');
-  const [transportFilter, setTransportFilter] = useState<'all' | 'shalom' | 'motorizado'>('all');
+  const [transportFilter, setTransportFilter] = useState<'all' | 'shalom' | 'motorizado' | 'olva'>('all');
 
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -365,6 +365,7 @@ export const OrdersSmartManager: React.FC = () => {
       dejando_shalom: pedidos.filter(p => p.estado_envio === 'en_camino' || (p.estado_produccion === 'completado' && p.estado_envio === 'pendiente')).length,
       entregado: pedidos.filter(p => p.estado_envio === 'entregado').length,
       shalom: pedidos.filter(p => (p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom')) && p.estado_envio !== 'entregado').length,
+      olva: pedidos.filter(p => (p.metodo_envio_codigo === 'olva' || p.destino_detalle?.toLowerCase().includes('olva')) && p.estado_envio !== 'entregado').length,
       motorizado: pedidos.filter(p => (p.metodo_envio_codigo === 'motorizado' || p.destino_detalle?.toLowerCase().includes('motorizado')) && p.estado_envio !== 'entregado').length,
     };
   }, [pedidos]);
@@ -563,7 +564,7 @@ export const OrdersSmartManager: React.FC = () => {
           </div>
 
           {/* Transport Method Filter con conteos entre paréntesis */}
-          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 text-[11px] font-bold">
+          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 text-[11px] font-bold overflow-x-auto">
             <button
               onClick={() => setTransportFilter('all')}
               className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${transportFilter === 'all' ? 'bg-white/15 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
@@ -576,6 +577,13 @@ export const OrdersSmartManager: React.FC = () => {
             >
               <span>📦</span>
               <span>Shalom ({counts.shalom})</span>
+            </button>
+            <button
+              onClick={() => setTransportFilter('olva')}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'olva' ? 'bg-yellow-500/25 border border-yellow-500/40 text-yellow-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+            >
+              <span>🏢</span>
+              <span>Olva ({counts.olva})</span>
             </button>
             <button
               onClick={() => setTransportFilter('motorizado')}
@@ -692,13 +700,21 @@ export const OrdersSmartManager: React.FC = () => {
                     </span>
                   </div>
 
-                  <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                    order.metodo_envio_codigo === 'shalom'
-                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                  }`}>
-                    {order.metodo_envio_codigo === 'shalom' ? '📦 Shalom' : '🛵 Motorizado'}
-                  </span>
+                  {(() => {
+                    const isOlva = order.metodo_envio_codigo === 'olva' || order.destino_detalle?.toLowerCase().includes('olva');
+                    const isShalom = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');
+                    return (
+                      <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                        isOlva
+                          ? 'bg-yellow-400/20 text-yellow-300 border border-yellow-400/30'
+                          : isShalom
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                          : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                      }`}>
+                        {isOlva ? '🏢 Olva' : isShalom ? '📦 Shalom' : '🛵 Motorizado'}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* Insignia de Pedido Duplicado / Simultáneo */}
@@ -790,23 +806,35 @@ export const OrdersSmartManager: React.FC = () => {
                       className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
                       title="Clic o desliza para cambiar estado"
                     >
-                      {order.estado_envio === 'entregado' ? (
-                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          {order.metodo_envio_codigo === 'motorizado' ? '✓ Entregado' : '✓ Entregado a Shalom'}
-                        </span>
-                      ) : order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente') ? (
-                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                          {order.metodo_envio_codigo === 'motorizado' ? '🛵 En Ruta' : '🚚 Dejando en Shalom'}
-                        </span>
-                      ) : order.estado_produccion === 'bordando' ? (
-                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                          🪡 Alistándolo
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          🏬 En Almacén
-                        </span>
-                      )}
+                      {(() => {
+                        const isOlva = order.metodo_envio_codigo === 'olva' || order.destino_detalle?.toLowerCase().includes('olva');
+                        if (order.estado_envio === 'entregado') {
+                          return (
+                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              {isOlva ? '✓ Entregado a Olva' : order.metodo_envio_codigo === 'motorizado' ? '✓ Entregado' : '✓ Entregado a Shalom'}
+                            </span>
+                          );
+                        }
+                        if (order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente')) {
+                          return (
+                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                              {isOlva ? '🚚 Dejando en Olva' : order.metodo_envio_codigo === 'motorizado' ? '🛵 En Ruta' : '🚚 Dejando en Shalom'}
+                            </span>
+                          );
+                        }
+                        if (order.estado_produccion === 'bordando') {
+                          return (
+                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              🪡 Alistándolo
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            🏬 En Almacén
+                          </span>
+                        );
+                      })()}
                     </button>
 
                     {/* Botón Ver/Imprimir Rótulo Individual */}

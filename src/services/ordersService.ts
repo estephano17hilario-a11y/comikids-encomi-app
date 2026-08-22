@@ -64,11 +64,24 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     activo: true,
     orden: 2,
   },
+  {
+    id: 'met-olva',
+    codigo: 'olva',
+    nombre: 'Olva Courier Nacional',
+    descripcion: 'Envíos a domicilio y agencias Olva en todo el Perú',
+    icono: 'Truck',
+    tipo_formulario: 'olva',
+    activo: true,
+    orden: 3,
+  },
 ];
 
 export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   nombre_taller: 'Comikids Envíos',
   ruc_dni: '42020312ENCOMI',
+  remitente_dni: '42020312',
+  remitente_email: 'comikidsperu@gmail.com',
+  remitente_celular: '927781412',
   celular_taller: '+51 927781412',
   whatsapp_pedidos: '51927781412',
   direccion_taller: 'Av. Gamarra 1234, Oficina 402, La Victoria, Lima',
@@ -275,7 +288,24 @@ class OrdersService {
       return DEFAULT_METODOS_ENVIO;
     }
     try {
-      return JSON.parse(raw);
+      const parsed: MetodoEnvio[] = JSON.parse(raw);
+      // Asegurar que Olva Courier exista en la lista cargada
+      const hasOlva = parsed.some(m => m.codigo === 'olva' || m.tipo_formulario === 'olva');
+      if (!hasOlva) {
+        const olvaMethod = DEFAULT_METODOS_ENVIO.find(m => m.codigo === 'olva') || {
+          id: 'met-olva',
+          codigo: 'olva',
+          nombre: 'Olva Courier Nacional',
+          descripcion: 'Envíos a domicilio y agencias Olva en todo el Perú',
+          icono: 'Truck',
+          tipo_formulario: 'olva',
+          activo: true,
+          orden: parsed.length + 1,
+        };
+        parsed.push(olvaMethod);
+        this.saveShippingMethods(parsed);
+      }
+      return parsed;
     } catch {
       return DEFAULT_METODOS_ENVIO;
     }

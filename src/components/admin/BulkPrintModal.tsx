@@ -295,7 +295,8 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
             >
               <div className="grid grid-cols-2 grid-rows-3 gap-3 w-full h-full">
                 {pageOrders.map((pedido) => {
-                  const isShalom = pedido.metodo_envio_codigo === 'shalom';
+                  const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
+                  const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
                   const clientDni = getClientDni(pedido);
                   const shalomAgency = getShalomAgencyOnly(pedido.destino_detalle);
                   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
@@ -305,7 +306,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                       key={pedido.id}
                       className="a4-rotulo-card border-2 border-dashed border-black rounded-xl p-3 bg-white text-black flex flex-col justify-between break-inside-avoid relative overflow-hidden box-border h-[345px] max-h-[350px]"
                     >
-                      {/* Header: Logo Oficial ComiKids & Badge Shalom / Moto */}
+                      {/* Header: Logo Oficial ComiKids & Badge Shalom / Olva / Moto */}
                       <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
                         <div className="flex items-center gap-2">
                           <img 
@@ -324,8 +325,21 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                         </div>
 
                         <div className="text-right flex flex-col items-end">
-                          <div className="flex items-center gap-1 px-2 py-0.5 rounded border border-black bg-slate-100 leading-none">
-                            {isShalom ? (
+                          <div className={`flex items-center gap-1 px-2 py-0.5 rounded border border-black leading-none ${
+                            isOlva ? 'bg-yellow-300' : 'bg-slate-100'
+                          }`}>
+                            {isOlva ? (
+                              <>
+                                <img 
+                                  src="/Olva-Courier-Logo.svg" 
+                                  alt="Olva" 
+                                  className="h-3 w-auto object-contain shrink-0"
+                                />
+                                <span className="text-[9px] font-black uppercase tracking-wider text-black">
+                                  OLVA COURIER
+                                </span>
+                              </>
+                            ) : isShalom ? (
                               <>
                                 <img 
                                   src="/Shalom-Courier-Logo.webp" 

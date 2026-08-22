@@ -54,6 +54,13 @@ export const CompanyAccountSettings: React.FC = () => {
   const [codeSuccessMsg, setCodeSuccessMsg] = useState('');
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
+  // State for Remitente Settings (Olva Courier / Shalom / Despachos)
+  const [remitenteDni, setRemitenteDni] = useState(tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312');
+  const [remitenteEmail, setRemitenteEmail] = useState(tallerConfig.remitente_email || 'comikidsperu@gmail.com');
+  const [remitenteCelular, setRemitenteCelular] = useState(tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412');
+  const [remitenteNombre, setRemitenteNombre] = useState(tallerConfig.nombre_taller || 'Comikids Envíos');
+  const [remitenteSuccessMsg, setRemitenteSuccessMsg] = useState('');
+
   // State for Custom Client Notice
   const [anuncioTexto, setAnuncioTexto] = useState(tallerConfig.anuncio_publico_clientes || '');
   const [anuncioSuccessMsg, setAnuncioSuccessMsg] = useState('');
@@ -67,6 +74,20 @@ export const CompanyAccountSettings: React.FC = () => {
   const [colabRol, setColabRol] = useState<Colaborador['rol']>('embalaje');
   const [colabTelefono, setColabTelefono] = useState('');
   const [colabEmail, setColabEmail] = useState('');
+
+  const handleSaveRemitente = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateTallerConfig({
+      nombre_taller: remitenteNombre.trim(),
+      remitente_dni: remitenteDni.trim(),
+      ruc_dni: remitenteDni.trim(),
+      remitente_email: remitenteEmail.trim(),
+      remitente_celular: remitenteCelular.trim(),
+      celular_taller: remitenteCelular.trim(),
+    });
+    setRemitenteSuccessMsg('¡Datos de remitente actualizados exitosamente para Olva Courier y Shalom!');
+    setTimeout(() => setRemitenteSuccessMsg(''), 4000);
+  };
 
   const deliveredCount = pedidos.filter(p => p.estado_envio === 'entregado').length;
   const nextAchievement = companyAchievements.find(a => !a.unlocked);
@@ -227,6 +248,106 @@ export const CompanyAccountSettings: React.FC = () => {
           <span className="truncate">{publicOrderUrl}</span>
           <span className="text-[10px] text-slate-500 shrink-0 font-sans uppercase font-bold">Enlace Único Oficial</span>
         </div>
+      </div>
+
+      {/* --- SECCIÓN REMITENTE: DATOS OFICIALES DE QUIEN ENVÍA (OLVA / SHALOM) --- */}
+      <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-yellow-500/30 bg-yellow-950/15 backdrop-blur-2xl space-y-4 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-yellow-500/20 text-yellow-400 flex items-center justify-center text-xl">
+            🏢
+          </div>
+          <div>
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <span>Datos del Remitente Oficial (Olva Courier / Shalom)</span>
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-yellow-400/20 text-yellow-300 border border-yellow-400/30">
+                Quien Envía
+              </span>
+            </h3>
+            <p className="text-xs text-slate-300">
+              Configura los datos del remitente que se utilizarán en las guías y comprobantes de Olva Courier y Shalom.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveRemitente} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                Nombre Comercial / Remitente
+              </label>
+              <input
+                type="text"
+                required
+                value={remitenteNombre}
+                onChange={e => setRemitenteNombre(e.target.value)}
+                placeholder="Comikids Envíos"
+                className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white font-bold focus:outline-none focus:border-yellow-400 shadow-inner"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                🪪 DNI / RUC (Remitente)
+              </label>
+              <input
+                type="text"
+                required
+                value={remitenteDni}
+                onChange={e => setRemitenteDni(e.target.value)}
+                placeholder="42020312"
+                className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-yellow-300 font-mono font-bold focus:outline-none focus:border-yellow-400 shadow-inner"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                📧 Correo Electrónico (Remitente)
+              </label>
+              <input
+                type="email"
+                required
+                value={remitenteEmail}
+                onChange={e => setRemitenteEmail(e.target.value)}
+                placeholder="comikidsperu@gmail.com"
+                className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white font-semibold focus:outline-none focus:border-yellow-400 shadow-inner"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                📱 Celular / Teléfono (Remitente)
+              </label>
+              <input
+                type="text"
+                required
+                value={remitenteCelular}
+                onChange={e => setRemitenteCelular(e.target.value)}
+                placeholder="927781412"
+                className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-yellow-300 font-mono font-bold focus:outline-none focus:border-yellow-400 shadow-inner"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
+            <span className="text-[11px] text-slate-400">
+              ✓ Estos datos se sincronizan automáticamente en el engranaje de ComiKids.
+            </span>
+
+            <button
+              type="submit"
+              className="py-2.5 px-6 rounded-2xl bg-yellow-400 hover:bg-yellow-300 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-yellow-400/20 transition-all cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>Guardar Datos de Remitente</span>
+            </button>
+          </div>
+        </form>
+
+        {remitenteSuccessMsg && (
+          <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn">
+            ✓ {remitenteSuccessMsg}
+          </p>
+        )}
       </div>
 
       {/* --- SECCIÓN AVISO: MENSAJE PERSONALIZADO EN EL FORMULARIO --- */}

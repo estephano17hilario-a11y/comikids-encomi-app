@@ -40,12 +40,21 @@ export const OrderLiveTracker: React.FC = () => {
 
   const getStepsForOrder = (pedido: Pedido) => {
     const isMotorizado = pedido.metodo_envio_codigo === 'motorizado' || pedido.destino_detalle?.toLowerCase().includes('motorizado');
+    const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
     if (isMotorizado) {
       return [
         { num: 1, title: 'En Almacén', icon: Clock },
         { num: 2, title: 'Alistándolo', icon: Boxes },
         { num: 3, title: 'En Ruta', icon: Truck },
         { num: 4, title: 'Entregado', icon: PackageCheck },
+      ];
+    }
+    if (isOlva) {
+      return [
+        { num: 1, title: 'En Almacén', icon: Clock },
+        { num: 2, title: 'Alistándolo', icon: Boxes },
+        { num: 3, title: 'Dejando en Olva', icon: Truck },
+        { num: 4, title: 'Entregado a Olva', icon: PackageCheck },
       ];
     }
     return [

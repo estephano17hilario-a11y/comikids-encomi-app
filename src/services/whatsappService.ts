@@ -7,13 +7,19 @@ export interface DatosComprobante {
   destinatario: string;
   telefonoCliente: string;
   documentoRecojo: string;
+  correoCliente?: string;
   tipoEnvio: string;
+  modalidadOlva?: 'agencia' | 'domicilio';
   destinoDetalle: string;
   codigoSeguimiento?: string;
   fechaDeseadaEnvio?: string;
   referencia?: string;
   montoTotal?: string | number;
   coordenadasMapsUrl?: string;
+  remitenteNombre?: string;
+  remitenteDni?: string;
+  remitenteEmail?: string;
+  remitenteCelular?: string;
 }
 
 // Paso 2 y 3: Generador de texto dinámico y apertura del enlace oficial de WhatsApp
@@ -22,6 +28,7 @@ export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => 
   const nombre = datos.destinatario || "No especificado";
   const telefono = datos.telefonoCliente || "No especificado";
   const documento = datos.documentoRecojo || "No especificado";
+  const correo = datos.correoCliente ? `📧 *Correo:* ${datos.correoCliente}\n` : "";
   const metodo = datos.tipoEnvio || "No especificado";
   const destino = datos.destinoDetalle || "No especificado";
 
@@ -31,6 +38,16 @@ export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => 
   const lineaReferencia = datos.referencia ? `🏷️ *Referencia:* ${datos.referencia}\n` : "";
   const lineaMonto = datos.montoTotal ? `💰 *Monto Total:* S/ ${datos.montoTotal}\n` : "";
   const lineaMaps = datos.coordenadasMapsUrl ? `🗺️ *Ubicación en Google Maps:*\n${datos.coordenadasMapsUrl}\n` : "";
+  
+  // Datos del remitente si existen
+  let lineaRemitente = "";
+  if (datos.remitenteNombre || datos.remitenteDni) {
+    const rNombre = datos.remitenteNombre || "ComiKids Envíos";
+    const rDni = datos.remitenteDni ? ` | DNI: ${datos.remitenteDni}` : "";
+    const rCel = datos.remitenteCelular ? ` | Cel: ${datos.remitenteCelular}` : "";
+    const rMail = datos.remitenteEmail ? ` | Mail: ${datos.remitenteEmail}` : "";
+    lineaRemitente = `🏢 *Remitente:* ${rNombre}${rDni}${rCel}${rMail}\n`;
+  }
 
   // 2. Construcción del mensaje con Template Literals y Emojis
   const cuerpoMensaje = 
@@ -38,12 +55,12 @@ export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => 
 
 -----------------------------------
 ${lineaCodigo}👤 *Destinatario:* ${nombre}
-📱 *WhatsApp:* ${telefono}
-🪪 *DNI / CE Recojo:* ${documento}
-🚚 *Tipo de Envío:* ${metodo}
-${lineaFecha}${lineaMonto}📍 *Destino / Agencia:*
+📱 *WhatsApp / Celular:* ${telefono}
+🪪 *DNI / CE:* ${documento}
+${correo}🚚 *Tipo de Envío:* ${metodo}
+${lineaFecha}${lineaMonto}📍 *Destino / Dirección:*
 ${destino}
-${lineaReferencia}${lineaMaps}-----------------------------------
+${lineaReferencia}${lineaMaps}${lineaRemitente}-----------------------------------
 Gracias por la confianza 💖✨🙏`;
 
   // 3. Codificación con encodeURIComponent

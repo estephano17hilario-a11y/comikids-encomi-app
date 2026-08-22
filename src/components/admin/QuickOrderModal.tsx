@@ -48,6 +48,11 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
     }
   }, [shalomAgenciesList, selectedAgencyId]);
 
+  const [olvaModalidad, setOlvaModalidad] = useState<'domicilio' | 'agencia'>('domicilio');
+  const [olvaCorreo, setOlvaCorreo] = useState('');
+  const [olvaReferencia, setOlvaReferencia] = useState('');
+  const [celularCliente, setCelularCliente] = useState('');
+
   const selectedMethod = activeShippingMethods.find(m => m.id === selectedMethodId) || activeShippingMethods[0];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,11 +62,16 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
 
     setSubmitting(true);
     try {
-      const reg = await ordersService.registerUser(nombre.trim(), dni.trim(), undefined, '1234');
+      const reg = await ordersService.registerUser(nombre.trim(), dni.trim(), undefined, '1234', celularCliente.trim() || undefined);
       const user = reg.user || (await ordersService.loginUser(dni.trim(), '1234')).user;
-      // Save TikTok username if provided
-      if (user && tiktokClean) {
-        await ordersService.updateUserProfile(user.id, { tiktok_usuario: tiktokClean } as any);
+      // Save user updates if provided
+      if (user && (tiktokClean || olvaCorreo.trim() || celularCliente.trim())) {
+        await ordersService.updateUserProfile(user.id, {
+          ...(tiktokClean ? { tiktok_usuario: tiktokClean } : {}),
+          ...(olvaCorreo.trim() ? { email_default: olvaCorreo.trim() } : {}),
+          ...(celularCliente.trim() ? { telefono_default: celularCliente.trim() } : {}),
+          ...(selectedMethod?.tipo_formulario === 'olva' ? { olva_modalidad_default: olvaModalidad } : {}),
+        } as any);
       }
 
       let destinoDetalle = '';
@@ -70,12 +80,20 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
         const agencyName = agencyObj ? agencyObj.nombre : 'Agencia Central';
         const agencyDist = agencyObj ? agencyObj.distrito : selectedDepartment;
         destinoDetalle = `Agencia Shalom ${selectedDepartment} - ${agencyName} (${agencyDist})`;
+      } else if (selectedMethod?.tipo_formulario === 'olva') {
+        const mod = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
+        const ref = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';
+        destinoDetalle = `Olva Courier (${mod}): ${direccionSimple.trim()}${ref} • DNI: ${dni.trim()} • Tel: ${celularCliente.trim() || 'No especificado'} • Correo: ${olvaCorreo.trim() || 'No especificado'}`;
       } else {
         destinoDetalle = direccionSimple.trim() || 'Entrega acordada en taller';
       }
 
       if (user) {
-        const updatedUser = { ...user, ...(tiktokClean ? { tiktok_usuario: tiktokClean } : {}) };
+        const updatedUser = {
+          ...user,
+          ...(tiktokClean ? { tiktok_usuario: tiktokClean } : {}),
+          ...(olvaCorreo.trim() ? { email: olvaCorreo.trim() } : {}),
+        };
         await createPedido({
           usuario_id: user.id,
           usuario: updatedUser,
@@ -83,7 +101,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
           metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
           metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
           destino_detalle: destinoDetalle,
-          observaciones_cliente: observaciones.trim() || 'Venta directa en taller',
+          observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' && olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? olvaReferencia.trim() : (observaciones.trim() || 'Venta directa en taller'),
           fecha_limite: fechaLimite,
         });
       }
@@ -266,6 +284,94 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
                   </div>
                 );
               })()}
+            </div>
+          ) : selectedMethod?.tipo_formulario === 'olva' ? (
+            <div className="space-y-3 bg-slate-950 p-3.5 rounded-2xl border border-yellow-500/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-yellow-300 flex items-center gap-1.5">
+                  <span>🏢</span>
+                  <span>Datos Olva Courier (Quien Recibe)</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-yellow-400/20 text-yellow-300 border border-yellow-400/30">
+                  Nacional
+                </span>
+              </div>
+
+              {/* Selector de Modalidad */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOlvaModalidad('domicilio')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    olvaModalidad === 'domicilio'
+                      ? 'bg-yellow-400 text-slate-950 border-yellow-400 shadow-md'
+                      : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                  }`}
+                >
+                  🏠 Para Domicilio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOlvaModalidad('agencia')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    olvaModalidad === 'agencia'
+                      ? 'bg-yellow-400 text-slate-950 border-yellow-400 shadow-md'
+                      : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                  }`}
+                >
+                  🏢 Para Agencia
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-300 mb-1">📱 Celular Cliente</label>
+                  <input
+                    type="tel"
+                    value={celularCliente}
+                    onChange={e => setCelularCliente(e.target.value)}
+                    placeholder="987 654 321"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-yellow-400 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-300 mb-1">📧 Correo Cliente</label>
+                  <input
+                    type="email"
+                    value={olvaCorreo}
+                    onChange={e => setOlvaCorreo(e.target.value)}
+                    placeholder="cliente@gmail.com"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-yellow-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-300 mb-1">
+                  {olvaModalidad === 'agencia' ? '🏢 Dirección / Sede Agencia Olva *' : '🏠 Dirección Domicilio *'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={direccionSimple}
+                  onChange={e => setDireccionSimple(e.target.value)}
+                  placeholder={olvaModalidad === 'agencia' ? 'Ej. Agencia Olva San Isidro (Av. Aramburú 1184)' : 'Ej. Av. Los Fresnos 345, Dpto 302'}
+                  className="w-full px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white font-bold focus:outline-none focus:border-yellow-400"
+                />
+              </div>
+
+              {olvaModalidad === 'domicilio' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-300 mb-1">🏷️ Referencia (Solo para Domicilio)</label>
+                  <input
+                    type="text"
+                    value={olvaReferencia}
+                    onChange={e => setOlvaReferencia(e.target.value)}
+                    placeholder="Ej. Frente al parque, portón negro"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-yellow-400"
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <div>

@@ -9,6 +9,7 @@ interface Props {
 
 export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
   const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
+  const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
   return (
@@ -17,7 +18,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
       className="w-full max-w-110 mx-auto bg-white text-slate-900 p-5 rounded-3xl border-4 border-dashed border-cyan-500 shadow-2xl font-sans relative overflow-hidden"
       style={{ fontFamily: 'Arial, sans-serif' }}
     >
-      {/* Top Header ComiKids & Badge con Logo Shalom / Moto */}
+      {/* Top Header ComiKids & Badge con Logo Shalom / Olva / Moto */}
       <div className="flex items-center justify-between border-b-2 border-dashed border-pink-500 pb-3 mb-3">
         <div className="flex items-center gap-2">
           <img
@@ -33,8 +34,21 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
         </div>
 
         <div className="text-right flex flex-col items-end">
-          <div className="flex items-center gap-1 px-2.5 py-1 bg-yellow-300 rounded border border-black mb-1">
-            {isShalom ? (
+          <div className={`flex items-center gap-1 px-2.5 py-1 rounded border border-black mb-1 ${
+            isOlva ? 'bg-yellow-300' : isShalom ? 'bg-yellow-300' : 'bg-slate-100'
+          }`}>
+            {isOlva ? (
+              <>
+                <img
+                  src="/Olva-Courier-Logo.svg"
+                  alt="Olva"
+                  className="h-3.5 w-auto object-contain"
+                />
+                <span className="text-slate-950 font-black text-[9px] uppercase">
+                  OLVA COURIER
+                </span>
+              </>
+            ) : isShalom ? (
               <>
                 <img
                   src="/Shalom-Courier-Logo.webp"
@@ -80,7 +94,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
       <div className="bg-slate-950 text-white p-3 rounded-2xl mb-3 text-center border-2 border-cyan-400">
         <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 flex items-center justify-center gap-1">
           <span>🚀</span>
-          <span>{isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA MOTORIZADO:'}</span>
+          <span>{isOlva ? 'DESTINO OLVA COURIER:' : isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA MOTORIZADO:'}</span>
         </span>
         <h2 className="text-base sm:text-lg font-black uppercase tracking-tight text-white leading-tight mt-0.5">
           {pedido.destino_detalle}
@@ -105,25 +119,34 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
           </p>
           <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
             <p>
-              <span className="font-bold text-slate-700">{isShalom ? 'DNI / CE:' : 'DNI / Doc:'}</span>{' '}
+              <span className="font-bold text-slate-700">DNI / Doc:</span>{' '}
               <span className="font-mono font-black">{pedido.usuario?.dni || 'No especificado'}</span>
             </p>
             <p>
-              <span className="font-bold text-slate-700">WhatsApp:</span>{' '}
+              <span className="font-bold text-slate-700">Celular / WA:</span>{' '}
               <span className="font-mono font-bold text-cyan-700">{clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}</span>
             </p>
           </div>
+          {(pedido.usuario?.email || pedido.usuario?.email_default) && (
+            <p className="pt-1 border-t border-slate-200 text-[11px]">
+              <span className="font-bold text-slate-700">Correo:</span>{' '}
+              <span className="font-mono font-bold text-slate-900">{pedido.usuario.email || pedido.usuario.email_default}</span>
+            </p>
+          )}
         </div>
       </div>
 
-      {/* SECCIÓN REMITENTE (ENCOMI ENVÍOS) */}
-      <div className="border border-slate-300 rounded-2xl p-2.5 mb-3 bg-slate-50 text-[11px] text-slate-800">
+      {/* SECCIÓN REMITENTE (ENCOMI ENVÍOS / COMIKIDS) */}
+      <div className="border border-slate-300 rounded-2xl p-2.5 mb-3 bg-slate-50 text-[11px] text-slate-800 space-y-0.5">
         <div className="font-black uppercase text-slate-700 mb-1 flex items-center justify-between">
           <span>REMITENTE OFICIAL:</span>
-          <span className="text-cyan-600">{tallerConfig.nombre_taller || 'Encomi Envíos'}</span>
+          <span className="text-cyan-600 font-bold">{tallerConfig.nombre_taller || 'Comikids Envíos'}</span>
         </div>
-        <p><span className="font-bold">RUC / DNI:</span> {tallerConfig.ruc_dni || '42020312ENCOMI'}</p>
-        <p><span className="font-bold">WhatsApp Remitente:</span> {tallerConfig.celular_taller}</p>
+        <p><span className="font-bold">DNI / RUC:</span> {tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312'}</p>
+        <p><span className="font-bold">Celular Remitente:</span> {tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412'}</p>
+        {tallerConfig.remitente_email && (
+          <p><span className="font-bold">Correo Remitente:</span> {tallerConfig.remitente_email}</p>
+        )}
         <p><span className="font-bold">Origen:</span> {tallerConfig.direccion_taller}</p>
       </div>
 

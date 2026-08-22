@@ -1,12 +1,14 @@
 export type UserRole = 'client' | 'empresa';
 export type EstadoProduccion = 'en_cola' | 'bordando' | 'completado';
 export type EstadoEnvio = 'pendiente' | 'en_camino' | 'entregado';
-export type TipoFormularioEnvio = 'shalom' | 'mapa_direccion' | 'texto_simple';
+export type TipoFormularioEnvio = 'shalom' | 'mapa_direccion' | 'texto_simple' | 'olva';
 
 export interface Usuario {
   id: string;
   dni: string;
   nombre_completo: string;
+  email?: string;
+  email_default?: string;
   tiktok_usuario?: string;
   edad?: number;
   genero?: 'masculino' | 'femenino' | 'otro';
@@ -16,6 +18,7 @@ export interface Usuario {
   distrito_default?: string;
   direccion_default?: string;
   referencia_default?: string;
+  olva_modalidad_default?: 'agencia' | 'domicilio';
   datos_adicionales_completados?: boolean;
   password_hash: string;
   rol: UserRole;
@@ -80,6 +83,9 @@ export interface TallerConfig {
   whatsapp_pedidos: string;
   direccion_taller: string;
   ciudad_origen: string;
+  remitente_email?: string;
+  remitente_dni?: string;
+  remitente_celular?: string;
   agencia_shalom_origen?: string;
   anuncio_publico_clientes?: string;
   shalom_email?: string;

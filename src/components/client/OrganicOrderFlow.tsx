@@ -122,6 +122,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     return currentUser?.dni_default || localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
   });
 
+  const [correoCliente, setCorreoCliente] = useState<string>(() => {
+    return currentUser?.email_default || currentUser?.email || localStorage.getItem('incomi_saved_email') || '';
+  });
+
+  const [olvaModalidad, setOlvaModalidad] = useState<'agencia' | 'domicilio'>(() => {
+    return currentUser?.olva_modalidad_default || (localStorage.getItem('incomi_saved_olva_modalidad') as 'agencia' | 'domicilio') || 'domicilio';
+  });
+
+  const [olvaDireccion, setOlvaDireccion] = useState<string>(() => {
+    return currentUser?.direccion_default || localStorage.getItem('incomi_saved_olva_address') || '';
+  });
+
+  const [olvaReferencia, setOlvaReferencia] = useState<string>(() => {
+    return currentUser?.referencia_default || localStorage.getItem('incomi_saved_olva_reference') || '';
+  });
 
   const [distritoQuery, setDistritoQuery] = useState<string>(() => {
     return currentUser?.distrito_default || localStorage.getItem('incomi_saved_district') || '';
@@ -145,9 +160,17 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       if (currentUser.nombre_completo) setNombreCompleto(currentUser.nombre_completo);
       if (currentUser.telefono_default) setWhatsapp(currentUser.telefono_default);
       if (currentUser.dni_default) setDniShalom(currentUser.dni_default);
+      if (currentUser.email_default || currentUser.email) setCorreoCliente(currentUser.email_default || currentUser.email || '');
       if (currentUser.distrito_default) setDistritoQuery(currentUser.distrito_default);
-      if (currentUser.direccion_default) setDireccionExacta(currentUser.direccion_default);
-      if (currentUser.referencia_default) setReferencia(currentUser.referencia_default);
+      if (currentUser.direccion_default) {
+        setDireccionExacta(currentUser.direccion_default);
+        setOlvaDireccion(currentUser.direccion_default);
+      }
+      if (currentUser.referencia_default) {
+        setReferencia(currentUser.referencia_default);
+        setOlvaReferencia(currentUser.referencia_default);
+      }
+      if (currentUser.olva_modalidad_default) setOlvaModalidad(currentUser.olva_modalidad_default);
     }
   }, [currentUser]);
 
@@ -164,6 +187,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     if (dniShalom) localStorage.setItem('incomi_saved_doc', dniShalom);
   }, [dniShalom]);
 
+  useEffect(() => {
+    if (correoCliente) localStorage.setItem('incomi_saved_email', correoCliente);
+  }, [correoCliente]);
+
+  useEffect(() => {
+    if (olvaModalidad) localStorage.setItem('incomi_saved_olva_modalidad', olvaModalidad);
+  }, [olvaModalidad]);
+
+  useEffect(() => {
+    if (olvaDireccion) localStorage.setItem('incomi_saved_olva_address', olvaDireccion);
+  }, [olvaDireccion]);
+
+  useEffect(() => {
+    if (olvaReferencia) localStorage.setItem('incomi_saved_olva_reference', olvaReferencia);
+  }, [olvaReferencia]);
 
   useEffect(() => {
     if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery);
@@ -377,12 +415,39 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       }
     }
 
+    if (selectedMethod?.tipo_formulario === 'olva') {
+      if (!dniShalom.trim()) {
+        setErrorMsg('Por favor ingresa el DNI o Carnet de Extranjería (CE) de quien recibe.');
+        return;
+      }
+      if (!whatsapp.trim()) {
+        setErrorMsg('Por favor ingresa el celular de quien recibe.');
+        return;
+      }
+      if (!correoCliente.trim()) {
+        setErrorMsg('Por favor ingresa el correo electrónico para la notificación de Olva.');
+        return;
+      }
+      if (!olvaDireccion.trim()) {
+        setErrorMsg(
+          olvaModalidad === 'agencia'
+            ? 'Por favor ingresa la dirección o sede de la Agencia Olva de destino.'
+            : 'Por favor ingresa la dirección exacta de tu domicilio.'
+        );
+        return;
+      }
+    }
+
     // Persistir todos los datos
     localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
     localStorage.setItem('incomi_saved_doc', dniShalom.trim());
+    if (correoCliente) localStorage.setItem('incomi_saved_email', correoCliente.trim());
     if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery.trim());
     if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta.trim());
     if (referencia) localStorage.setItem('incomi_saved_reference', referencia.trim());
+    if (olvaDireccion) localStorage.setItem('incomi_saved_olva_address', olvaDireccion.trim());
+    if (olvaReferencia) localStorage.setItem('incomi_saved_olva_reference', olvaReferencia.trim());
+    localStorage.setItem('incomi_saved_olva_modalidad', olvaModalidad);
 
     setSubmitting(true);
     try {
@@ -395,6 +460,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         const userUpdates: any = {
           nombre_completo: nombreCompleto.trim(),
           telefono_default: whatsapp.trim() || activeUser.telefono_default,
+          email_default: correoCliente.trim() || activeUser.email_default,
+          olva_modalidad_default: olvaModalidad,
         };
         activeUser = { ...activeUser, ...userUpdates };
         await ordersService.updateUserProfile(activeUser.id, userUpdates);
@@ -408,6 +475,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           whatsapp.trim()
         );
         activeUser = regRes.user || null;
+        if (activeUser && correoCliente.trim()) {
+          await ordersService.updateUserProfile(activeUser.id, {
+            email_default: correoCliente.trim(),
+            olva_modalidad_default: olvaModalidad,
+          } as any);
+        }
         if (currentUser?.rol !== 'empresa' && activeUser) {
           await login(userIdentifier, 'incomi2026');
         }
@@ -422,6 +495,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dniShalom.trim()})`;
       } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
         finalDestinoDetalle = `${distritoQuery.trim()} • ${direccionExacta.trim()}${referencia.trim() ? ` (Ref: ${referencia.trim()})` : ''}`;
+      } else if (selectedMethod?.tipo_formulario === 'olva') {
+        const modLabel = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
+        const refText = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';
+        finalDestinoDetalle = `Olva Courier (${modLabel}): ${olvaDireccion.trim()}${refText} • DNI: ${dniShalom.trim()} • Tel: ${whatsapp.trim()} • Correo: ${correoCliente.trim()}`;
       } else {
         finalDestinoDetalle = customDestinoText.trim() || 'Indicaciones de entrega';
       }
@@ -431,6 +508,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         dni: userIdentifier,
         nombre_completo: nombreCompleto.trim(),
         telefono_default: whatsapp.trim(),
+        email: correoCliente.trim() || undefined,
         rol: 'client',
         created_at: new Date().toISOString()
       };
@@ -445,7 +523,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         destino_detalle: finalDestinoDetalle,
         latitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLat : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lat : undefined),
         longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
-        observaciones_cliente: referencia.trim() || undefined,
+        observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
         fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
       });
 
@@ -467,6 +545,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       destinoTexto = formatFullAgencyName(selectedAgencyObject);
     } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
       destinoTexto = `${distritoQuery.trim()} • ${direccionExacta.trim()}`;
+    } else if (selectedMethod?.tipo_formulario === 'olva') {
+      const modLabel = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
+      destinoTexto = `${modLabel}: ${olvaDireccion.trim()}`;
     }
 
     const orderLat = order?.latitud || lat;
@@ -479,15 +560,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       destinatario: nombreCompleto.trim(),
       telefonoCliente: whatsapp.trim(),
       documentoRecojo: dniShalom.trim(),
-      tipoEnvio: selectedMethod?.nombre || (selectedMethod?.tipo_formulario === 'shalom' ? 'Agencia Shalom Nacional' : 'Motorizado Local Lima'),
+      correoCliente: correoCliente.trim() || undefined,
+      modalidadOlva: selectedMethod?.tipo_formulario === 'olva' ? olvaModalidad : undefined,
+      tipoEnvio: selectedMethod?.nombre || (selectedMethod?.tipo_formulario === 'shalom' ? 'Agencia Shalom Nacional' : (selectedMethod?.tipo_formulario === 'olva' ? 'Olva Courier Nacional' : 'Motorizado Local Lima')),
       destinoDetalle: destinoTexto,
       codigoSeguimiento: order?.codigo_seguimiento,
       fechaDeseadaEnvio: fechaEnvioDeseada,
-      referencia: referencia.trim() || undefined,
+      referencia: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
       coordenadasMapsUrl: mapsUrl,
+      remitenteNombre: tallerConfig?.nombre_taller,
+      remitenteDni: tallerConfig?.remitente_dni || tallerConfig?.ruc_dni,
+      remitenteEmail: tallerConfig?.remitente_email,
+      remitenteCelular: tallerConfig?.remitente_celular || tallerConfig?.celular_taller,
     };
   };
-
 
   const datosComprobanteActuales = getDatosComprobanteActual(createdOrder);
   const whatsappUrl = buildWhatsAppComprobanteUrl(datosComprobanteActuales);
@@ -631,6 +717,54 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     </a>
                   </div>
                 )}
+              </div>
+            ) : selectedMethod?.tipo_formulario === 'olva' ? (
+              /* Comprobante Olva Courier */
+              <div className="space-y-2.5 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-400 block text-[11px] font-medium">👤 Destinatario:</span>
+                    <span className="text-white font-bold text-xs sm:text-sm truncate block">{nombreCompleto}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px] font-medium">📅 Fecha Deseada:</span>
+                    <span className="text-cyan-300 font-bold text-xs sm:text-sm font-mono truncate block">{fechaEnvioDeseada}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px] font-medium">📱 Celular:</span>
+                    <span className="text-white font-bold text-xs sm:text-sm font-mono">+51 {whatsapp}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[11px] font-medium">🪪 DNI / Doc:</span>
+                    <span className="text-white font-bold text-xs sm:text-sm font-mono">{dniShalom || 'No especificado'}</span>
+                  </div>
+                  {correoCliente && (
+                    <div className="col-span-2">
+                      <span className="text-slate-400 block text-[11px] font-medium">📧 Correo:</span>
+                      <span className="text-yellow-300 font-bold text-xs sm:text-sm font-mono truncate block">{correoCliente}</span>
+                    </div>
+                  )}
+                  <div className="col-span-2">
+                    <span className="text-slate-400 block text-[11px] font-medium">🚚 Modalidad:</span>
+                    <span className="text-white font-bold text-xs sm:text-sm">
+                      Olva Courier ({olvaModalidad === 'agencia' ? '🏢 Recojo en Agencia' : '🏠 Entrega a Domicilio'})
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/6 text-xs space-y-1">
+                  <span className="text-slate-400 text-[11px] font-medium block">
+                    {olvaModalidad === 'agencia' ? '🏢 Agencia Olva de Destino:' : '📍 Dirección de Domicilio:'}
+                  </span>
+                  <p className="text-white font-bold text-xs sm:text-sm leading-snug">
+                    {olvaDireccion}
+                  </p>
+                  {olvaModalidad === 'domicilio' && olvaReferencia.trim() && (
+                    <p className="text-[11px] text-yellow-300/90 bg-yellow-500/10 p-2 rounded-xl border border-yellow-500/20 mt-1">
+                      <strong>🏷️ Ref:</strong> {olvaReferencia}
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               /* Comprobante Shalom / Otros */
@@ -803,6 +937,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       <span className="text-red-500 font-black tracking-wide drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]">SHALOM</span>
                       <span>📦</span>
                     </span>
+                  ) : selectedMethod?.tipo_formulario === 'olva' ? (
+                    <span className="flex items-center gap-1.5">
+                      <span>Envío</span>
+                      <span className="text-yellow-400 font-black tracking-wide drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]">OLVA COURIER</span>
+                      <span>📦</span>
+                    </span>
                   ) : selectedMethod?.tipo_formulario === 'mapa_direccion' ? (
                     motorizadoSubStep === 'map' ? (
                       <span>Selecciona punto de entrega 🏍️</span>
@@ -876,7 +1016,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           )}
 
           {/* =====================================================================
-              PASO 2: SELECCIÓN DE MÉTODO (CON LOGO OFICIAL DE SHALOM)
+              PASO 2: SELECCIÓN DE MÉTODO (CON LOGOS OFICIALES DE SHALOM Y OLVA)
               ===================================================================== */}
           {organicStep === 2 && (
             <div className="space-y-3.5 animate-fadeIn">
@@ -886,7 +1026,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
               <div className="grid grid-cols-1 gap-3">
                 {activeShippingMethods.map((method) => {
-                  const isShalom = method.tipo_formulario === 'shalom';
+                  const isShalom = method.tipo_formulario === 'shalom' || method.codigo === 'shalom';
+                  const isOlva = method.tipo_formulario === 'olva' || method.codigo === 'olva';
                   return (
                     <button
                       key={method.id}
@@ -899,6 +1040,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           <div className="w-12 h-12 rounded-2xl bg-white/8 border border-white/15 flex items-center justify-center p-2 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-inner">
                             <img src="/Shalom-Courier-Logo.webp" alt="Shalom Courier" className="w-full h-full object-contain" />
                           </div>
+                        ) : isOlva ? (
+                          <div className="w-12 h-12 rounded-2xl bg-[#FFDE00] border border-yellow-400/60 flex items-center justify-center p-1 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-md">
+                            <img src="/Olva-Courier-Logo.svg" alt="Olva Courier" className="w-full h-full object-contain" />
+                          </div>
                         ) : (
                           <div className="w-12 h-12 rounded-2xl bg-white/6 border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
                             <Truck className="w-6 h-6" />
@@ -906,8 +1051,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         )}
 
                         <div>
-                          <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors">
-                            {method.nombre}
+                          <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors flex items-center gap-2">
+                            <span>{method.nombre}</span>
+                            {isOlva && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-yellow-400/20 text-yellow-300 border border-yellow-400/30">
+                                Olva
+                              </span>
+                            )}
                           </h4>
                           <p className="text-xs text-slate-400 mt-0.5">
                             {method.descripcion}
@@ -1297,7 +1447,153 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               )}
 
-              {/* RAMA C: OTRO MÉTODO PERSONALIZADO */}
+              {/* RAMA C: OLVA COURIER NACIONAL */}
+              {selectedMethod?.tipo_formulario === 'olva' && (
+                <div className="space-y-4">
+                  {/* Selector de Modalidad: Para Agencia vs Para Domicilio */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                      📦 ¿Cómo deseas recibir con Olva Courier? *
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setOlvaModalidad('domicilio')}
+                        className={`p-3.5 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${
+                          olvaModalidad === 'domicilio'
+                            ? 'bg-linear-to-r from-yellow-500/20 to-amber-500/20 border-yellow-400 text-white shadow-lg shadow-yellow-500/10'
+                            : 'bg-white/4 border-white/10 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 ${
+                          olvaModalidad === 'domicilio' ? 'bg-yellow-400 text-slate-950 font-bold' : 'bg-white/8 text-slate-400'
+                        }`}>
+                          🏠
+                        </div>
+                        <div>
+                          <strong className="text-xs sm:text-sm font-black block leading-tight">Para Domicilio</strong>
+                          <span className="text-[10px] text-slate-400 block">Directo a tu casa / trabajo</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setOlvaModalidad('agencia')}
+                        className={`p-3.5 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${
+                          olvaModalidad === 'agencia'
+                            ? 'bg-linear-to-r from-yellow-500/20 to-amber-500/20 border-yellow-400 text-white shadow-lg shadow-yellow-500/10'
+                            : 'bg-white/4 border-white/10 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 ${
+                          olvaModalidad === 'agencia' ? 'bg-yellow-400 text-slate-950 font-bold' : 'bg-white/8 text-slate-400'
+                        }`}>
+                          🏢
+                        </div>
+                        <div>
+                          <strong className="text-xs sm:text-sm font-black block leading-tight">Para Agencia</strong>
+                          <span className="text-[10px] text-slate-400 block">Recojo en sede Olva</span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Datos de quien recibe (Clienta) */}
+                  <div className="p-4 sm:p-5 rounded-3xl bg-white/4 border border-yellow-400/30 space-y-3.5 shadow-xl">
+                    <div className="flex items-center gap-2 pb-2 border-b border-white/8 text-xs font-black text-yellow-300 uppercase tracking-wider">
+                      <span>👤</span>
+                      <span>Datos Obligatorios de Quien Recibe (Clienta)</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* DNI (cliente) */}
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                          🪪 DNI o CE (Cliente) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={dniShalom}
+                          onChange={e => setDniShalom(e.target.value)}
+                          placeholder="Ej. 72345678"
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
+                        />
+                      </div>
+
+                      {/* CELULAR (cliente) */}
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                          📱 Celular / WhatsApp (Cliente) *
+                        </label>
+                        <input
+                          type="tel"
+                          required
+                          value={whatsapp}
+                          onChange={e => setWhatsapp(formatPhoneWithSpaces(e.target.value))}
+                          placeholder="987 654 321"
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Correo cliente (cliente) */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                        📧 Correo Electrónico (Cliente) *
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={correoCliente}
+                        onChange={e => setCorreoCliente(e.target.value)}
+                        placeholder="ejemplo@gmail.com"
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
+                      />
+                      <p className="text-[10px] text-slate-400">Olva Courier enviará notificaciones del estado del envío a este correo.</p>
+                    </div>
+
+                    {/* Dirección (cliente - si es agencia poner agencia, si es domicilio poner domicilio) */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                        {olvaModalidad === 'agencia'
+                          ? '🏢 Dirección / Nombre de la Agencia Olva de destino *'
+                          : '🏠 Dirección Exacta de tu Domicilio *'}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={olvaDireccion}
+                        onChange={e => setOlvaDireccion(e.target.value)}
+                        placeholder={
+                          olvaModalidad === 'agencia'
+                            ? 'Ej. Agencia Olva - San Isidro (Av. Aramburú 1184) / Trujillo Centro'
+                            : 'Ej. Av. Los Fresnos 345, Dpto 302, Urb. Sol de Oro, Los Olivos, Lima'
+                        }
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-bold text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
+                      />
+                    </div>
+
+                    {/* Referencia (cliente - SOLO que aparezca si se escoge domicilio) */}
+                    {olvaModalidad === 'domicilio' && (
+                      <div className="space-y-1.5 animate-fadeIn">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                          🏷️ Referencia de Entrega (Solo para Domicilio)
+                        </label>
+                        <input
+                          type="text"
+                          value={olvaReferencia}
+                          onChange={e => setOlvaReferencia(e.target.value)}
+                          placeholder="Ej. Frente al parque Los Jazmines, portón negro, timbre blanco"
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* RAMA D: OTRO MÉTODO PERSONALIZADO */}
               {selectedMethod?.tipo_formulario === 'texto_simple' && (
                 <div className="space-y-2">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">

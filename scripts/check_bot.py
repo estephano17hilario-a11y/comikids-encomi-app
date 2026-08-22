@@ -13,13 +13,11 @@ for attempt in range(5):
         time.sleep(1)
 
 def run(cmd):
-    print(f"\n{'='*20} {cmd} {'='*20}")
     stdin, stdout, stderr = ssh.exec_command(cmd, timeout=15)
     out = stdout.read().decode('utf-8', errors='ignore')
-    err = stderr.read().decode('utf-8', errors='ignore')
-    if out: print(out)
-    if err: print('ERR:', err)
     return out
 
-time.sleep(3)
-run('docker logs --tail 30 backend_api')
+print("=== SEARCHING WA_VERSION OR VERSION CONFIG IN EVOLUTION API ===")
+print(run('docker exec evolution_api grep -rn "CONFIG_SESSION_PHONE_VERSION" /evolution/dist/'))
+print("=== SEARCHING fetchLatestBaileysVersion IN EVOLUTION API ===")
+print(run('docker exec evolution_api grep -rn "fetchLatest" /evolution/dist/'))

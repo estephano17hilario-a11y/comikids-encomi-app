@@ -79,7 +79,7 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Nombre Comercial de la Empresa</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Nombre Comercial / Remitente</label>
             <input
               type="text"
               required
@@ -89,25 +89,47 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">RUC o DNI Remitente</label>
-              <input
-                type="text"
-                required
-                value={formData.ruc_dni}
-                onChange={e => setFormData({ ...formData, ruc_dni: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500"
-              />
+          <div className="p-3.5 rounded-2xl bg-yellow-950/20 border border-yellow-500/30 space-y-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-yellow-300">
+              <span>🏢</span>
+              <span>Datos Oficiales de Quien Envía (Remitente)</span>
             </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">DNI / RUC Remitente</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.remitente_dni || formData.ruc_dni || ''}
+                  onChange={e => setFormData({ ...formData, remitente_dni: e.target.value, ruc_dni: e.target.value })}
+                  placeholder="42020312"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono font-bold text-white focus:outline-none focus:border-yellow-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Celular Remitente</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.remitente_celular || formData.celular_taller || ''}
+                  onChange={e => setFormData({ ...formData, remitente_celular: e.target.value, celular_taller: e.target.value })}
+                  placeholder="927781412"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono font-bold text-white focus:outline-none focus:border-yellow-400"
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Teléfono Remitente</label>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">Correo Electrónico Remitente (Olva / Comprobantes)</label>
               <input
-                type="text"
+                type="email"
                 required
-                value={formData.celular_taller}
-                onChange={e => setFormData({ ...formData, celular_taller: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500"
+                value={formData.remitente_email || ''}
+                onChange={e => setFormData({ ...formData, remitente_email: e.target.value })}
+                placeholder="comikidsperu@gmail.com"
+                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-yellow-400"
               />
             </div>
           </div>

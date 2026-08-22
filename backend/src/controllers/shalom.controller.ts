@@ -557,8 +557,10 @@ export class ShalomController {
 
       // Si no hubo coincidencia verificada para esta clienta
       if (!matchedOrder) {
-        console.warn(`[SHALOM PROXY NOT FOUND] No se encontró orden en Shalom Pro para la clienta DNI: "${targetDni}", Nombre: "${targetName}", Guía: "${targetGuia}"`);
-        return reply.code(404).send({
+        console.log(`[SHALOM PROXY NOTICE] No hay ticket electrónico en Shalom Pro para DNI: "${targetDni}", Nombre: "${targetName}", Guía: "${targetGuia}"`);
+        return reply.code(200).header('Content-Type', 'application/json').send({
+          success: false,
+          found: false,
           error: `No se encontró ${typeLabel} en Shalom Pro para la clienta indicada (DNI: ${targetDni || 'S/DNI'}).`,
         });
       }

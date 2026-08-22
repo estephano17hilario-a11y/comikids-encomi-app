@@ -362,27 +362,31 @@ export class ShalomApiService {
         headers,
       });
 
-      if (!response.ok) {
-        throw new Error(`Error ${response.status} al obtener PDF de guía`);
+      if (!response.ok) return null;
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/pdf') && !contentType.includes('image/') && !contentType.includes('octet-stream')) {
+        return null;
       }
 
       const blob = await response.blob();
-      if (!blob || blob.size < 100) {
-        throw new Error('El PDF recibido está vacío');
-      }
+      if (!blob || blob.size < 200) return null;
 
-      return new Promise<string>((resolve, reject) => {
+      return new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => {
           const result = reader.result as string;
           const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
-          resolve(base64Data);
+          if (base64Data && (base64Data.startsWith('JVBERi') || base64Data.startsWith('/9j/') || base64Data.startsWith('iVBOR') || base64Data.startsWith('UklGR'))) {
+            resolve(base64Data);
+          } else {
+            resolve('');
+          }
         };
-        reader.onerror = reject;
+        reader.onerror = () => resolve('');
         reader.readAsDataURL(blob);
       });
-    } catch (err) {
-      console.warn(`[SHALOM PDF BASE64 WARN ${oseId}]`, err);
+    } catch {
       return null;
     }
   }
@@ -415,8 +419,11 @@ export class ShalomApiService {
         headers,
       });
 
-      if (!response.ok) {
-        throw new Error(`Error ${response.status} al obtener PDF del ticket`);
+      if (!response.ok) return null;
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/pdf') && !contentType.includes('image/') && !contentType.includes('octet-stream')) {
+        return null;
       }
 
       const livePin = response.headers.get('x-shalom-pickup-code') || response.headers.get('X-Shalom-Pickup-Code');
@@ -426,22 +433,23 @@ export class ShalomApiService {
       }
 
       const blob = await response.blob();
-      if (!blob || blob.size < 100) {
-        throw new Error('El PDF del ticket recibido está vacío');
-      }
+      if (!blob || blob.size < 200) return null;
 
-      return new Promise<string>((resolve, reject) => {
+      return new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => {
           const result = reader.result as string;
           const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
-          resolve(base64Data);
+          if (base64Data && (base64Data.startsWith('JVBERi') || base64Data.startsWith('/9j/') || base64Data.startsWith('iVBOR') || base64Data.startsWith('UklGR'))) {
+            resolve(base64Data);
+          } else {
+            resolve('');
+          }
         };
-        reader.onerror = reject;
+        reader.onerror = () => resolve('');
         reader.readAsDataURL(blob);
       });
-    } catch (err) {
-      console.warn(`[SHALOM VOUCHER PDF BASE64 WARN ${oseId}]`, err);
+    } catch {
       return null;
     }
   }

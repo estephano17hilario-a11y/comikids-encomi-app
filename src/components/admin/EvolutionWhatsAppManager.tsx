@@ -619,7 +619,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
               Abre WhatsApp en tu teléfono ➔ Dispositivos vinculados ➔ Vincular dispositivo.
             </p>
 
-            <div className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner mx-auto max-w-[240px]">
+            <div className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner mx-auto max-w-[240px] min-h-[220px]">
               {activeQrModal.qrBase64 ? (
                 <img
                   src={
@@ -631,11 +631,22 @@ export const EvolutionWhatsAppManager: React.FC = () => {
                   className="w-full h-auto aspect-square object-contain"
                 />
               ) : (
-                <div className="text-slate-500 text-xs py-8">
-                  Generando nuevo código QR...
+                <div className="flex flex-col items-center justify-center gap-2.5 text-slate-700 text-xs py-6">
+                  <div className="w-8 h-8 border-3 border-pink-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="font-semibold text-slate-600">Generando nuevo código QR...</span>
+                  <span className="text-[10px] text-slate-400">Espera unos segundos</span>
                 </div>
               )}
             </div>
+
+            {/* Aviso si la tienda ya está activa */}
+            {instances.some((i) => i.connectionStatus === 'open') && (
+              <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-300 text-left">
+                ✓ <strong>Bot Activo:</strong> Tu línea vinculada (
+                {instances.find((i) => i.connectionStatus === 'open')?.profileName || 'Comikids'}
+                ) ya está respondiendo 24/7.
+              </div>
+            )}
 
             {activeQrModal.pairingCode && (
               <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
@@ -646,12 +657,22 @@ export const EvolutionWhatsAppManager: React.FC = () => {
               </div>
             )}
 
-            <button
-              onClick={() => setActiveQrModal(null)}
-              className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
-            >
-              Cerrar
-            </button>
+            <div className="flex gap-2">
+              {!activeQrModal.qrBase64 && (
+                <button
+                  onClick={() => handleShowQr(activeQrModal.instanceName)}
+                  className="flex-1 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold cursor-pointer transition-all"
+                >
+                  Reintentar QR
+                </button>
+              )}
+              <button
+                onClick={() => setActiveQrModal(null)}
+                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

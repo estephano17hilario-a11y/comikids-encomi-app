@@ -148,7 +148,35 @@ export class EvolutionService {
       let code = data?.code || data?.qrcode?.code;
       let base64 = data?.base64 || data?.qrcode?.base64;
 
-      // 3. Si no devolvió base64 de inmediato, esperar 1.2s y revisar Redis
+      // 3. Si connect devolvió count: 0 sin QR, intentar forzar creación limpia de la instancia
+      if (!base64 && (data?.count === 0 || !data?.count)) {
+        try {
+          console.log(`[EVOLUTION QR FORCED] Re-creando instancia "${instanceName}" para forzar emisión de QR...`);
+          await axios.delete(`${env.EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
+            headers: this.getHeaders(),
+            timeout: 10000,
+          }).catch(() => {});
+
+          const createRes = await axios.post(
+            `${env.EVOLUTION_API_URL}/instance/create`,
+            {
+              instanceName,
+              qrcode: true,
+              integration: 'WHATSAPP-BAILEYS',
+            },
+            { headers: this.getHeaders(), timeout: 15000 }
+          );
+
+          const cData = createRes.data;
+          base64 = cData?.qrcode?.base64 || cData?.base64 || base64;
+          pairingCode = cData?.qrcode?.pairingCode || cData?.pairingCode || pairingCode;
+          code = cData?.qrcode?.code || cData?.code || code;
+        } catch (cErr) {
+          console.warn('[EVOLUTION QR FORCED RECREATE WARN]', cErr);
+        }
+      }
+
+      // 4. Si no devolvió base64 de inmediato, esperar 1.2s y revisar Redis
       if (!base64) {
         await new Promise((resolve) => setTimeout(resolve, 1200));
         try {

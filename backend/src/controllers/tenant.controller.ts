@@ -80,9 +80,14 @@ export class TenantController {
   ) {
     try {
       const { tenantId } = request.params;
-      const formattedTenantId = tenantId.startsWith('tenant_') || tenantId.startsWith('tienda_')
-        ? tenantId
-        : `tenant_${tenantId}`;
+      const formattedTenantId =
+        tenantId === 'comikids_whatsapp' ||
+        tenantId === 'main_bot' ||
+        tenantId === env.EVOLUTION_INSTANCE_NAME ||
+        tenantId.startsWith('tenant_') ||
+        tenantId.startsWith('tienda_')
+          ? tenantId
+          : `tenant_${tenantId}`;
 
       const result = await EvolutionService.getTenantQrCode(formattedTenantId);
 
@@ -105,9 +110,14 @@ export class TenantController {
   ) {
     try {
       const { tenantId } = request.params;
-      const formattedTenantId = tenantId.startsWith('tenant_') || tenantId.startsWith('tienda_')
-        ? tenantId
-        : `tenant_${tenantId}`;
+      const formattedTenantId =
+        tenantId === 'comikids_whatsapp' ||
+        tenantId === 'main_bot' ||
+        tenantId === env.EVOLUTION_INSTANCE_NAME ||
+        tenantId.startsWith('tenant_') ||
+        tenantId.startsWith('tienda_')
+          ? tenantId
+          : `tenant_${tenantId}`;
 
       const result = await EvolutionService.getTenantStatus(formattedTenantId);
 
@@ -130,12 +140,17 @@ export class TenantController {
   ) {
     try {
       const { tenantId } = request.params;
-      const formattedTenantId = tenantId.startsWith('tenant_') || tenantId.startsWith('tienda_')
-        ? tenantId
-        : `tenant_${tenantId}`;
+      const formattedTenantId =
+        tenantId === 'comikids_whatsapp' ||
+        tenantId === 'main_bot' ||
+        tenantId === env.EVOLUTION_INSTANCE_NAME ||
+        tenantId.startsWith('tenant_') ||
+        tenantId.startsWith('tienda_')
+          ? tenantId
+          : `tenant_${tenantId}`;
 
       // Protección estricta: No permitir borrar el Master Bot
-      if (formattedTenantId === 'main_bot' || formattedTenantId === env.EVOLUTION_INSTANCE_NAME) {
+      if (formattedTenantId === 'main_bot' || formattedTenantId === env.EVOLUTION_INSTANCE_NAME || formattedTenantId === 'comikids_whatsapp') {
         return reply.code(403).send({
           success: false,
           error: 'La instancia Master Bot (main_bot) es protegida e inmutable y no puede eliminarse.',

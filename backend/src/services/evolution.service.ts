@@ -98,9 +98,14 @@ export class EvolutionService {
    * Obtiene el código QR de conexión para una tienda específica.
    */
   public static async getTenantQrCode(tenantId: string): Promise<TenantInstanceInfo> {
-    const instanceName = tenantId.startsWith('tenant_') || tenantId.startsWith('tienda_')
-      ? tenantId
-      : `tenant_${tenantId}`;
+    const instanceName =
+      tenantId === 'comikids_whatsapp' ||
+      tenantId === 'main_bot' ||
+      tenantId === env.EVOLUTION_INSTANCE_NAME ||
+      tenantId.startsWith('tenant_') ||
+      tenantId.startsWith('tienda_')
+        ? tenantId
+        : `tenant_${tenantId}`;
 
     try {
       const response = await axios.get(
@@ -136,9 +141,14 @@ export class EvolutionService {
     tenantId: string;
     state: string;
   }> {
-    const instanceName = tenantId.startsWith('tenant_') || tenantId.startsWith('tienda_')
-      ? tenantId
-      : `tenant_${tenantId}`;
+    const instanceName =
+      tenantId === 'comikids_whatsapp' ||
+      tenantId === 'main_bot' ||
+      tenantId === env.EVOLUTION_INSTANCE_NAME ||
+      tenantId.startsWith('tenant_') ||
+      tenantId.startsWith('tienda_')
+        ? tenantId
+        : `tenant_${tenantId}`;
 
     try {
       const response = await axios.get(

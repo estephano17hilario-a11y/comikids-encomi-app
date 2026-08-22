@@ -133,28 +133,34 @@ export class EvolutionService {
       }
     } catch {}
 
+    let pairingCode: string | undefined;
+    let code: string | undefined;
+    let base64: string | undefined;
+    let status: 'connecting' | 'open' | 'close' | 'created' = 'connecting';
+
     try {
       // 2. Solicitar conexión a Evolution API
       const response = await axios.get(
         `${env.EVOLUTION_API_URL}/instance/connect/${instanceName}`,
         {
           headers: this.getHeaders(),
-          timeout: 15000,
+          timeout: 10000,
         }
       );
 
       const data = response.data;
-      let pairingCode = data?.pairingCode || data?.qrcode?.pairingCode;
-      let code = data?.code || data?.qrcode?.code;
-      let base64 = data?.base64 || data?.qrcode?.base64;
+      pairingCode = data?.pairingCode || data?.qrcode?.pairingCode;
+      code = data?.code || data?.qrcode?.code;
+      base64 = data?.base64 || data?.qrcode?.base64;
+      status = (data?.instance?.status as any) || 'connecting';
 
       // 3. Si connect devolvió count: 0 sin QR, intentar forzar creación limpia de la instancia
-      if (!base64 && (data?.count === 0 || !data?.count)) {
+      if (!base64 && !code && (data?.count === 0 || !data?.count)) {
         try {
           console.log(`[EVOLUTION QR FORCED] Re-creando instancia "${instanceName}" para forzar emisión de QR...`);
           await axios.delete(`${env.EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
             headers: this.getHeaders(),
-            timeout: 10000,
+            timeout: 8000,
           }).catch(() => {});
 
           const createRes = await axios.post(
@@ -164,7 +170,7 @@ export class EvolutionService {
               qrcode: true,
               integration: 'WHATSAPP-BAILEYS',
             },
-            { headers: this.getHeaders(), timeout: 15000 }
+            { headers: this.getHeaders(), timeout: 12000 }
           );
 
           const cData = createRes.data;
@@ -175,35 +181,52 @@ export class EvolutionService {
           console.warn('[EVOLUTION QR FORCED RECREATE WARN]', cErr);
         }
       }
+    } catch (err: any) {
+      console.warn(`[EVOLUTION CONNECT WARN] Instancia "${instanceName}" no disponible o 404, creando nueva...`);
+      try {
+        const createRes = await axios.post(
+          `${env.EVOLUTION_API_URL}/instance/create`,
+          {
+            instanceName,
+            qrcode: true,
+            integration: 'WHATSAPP-BAILEYS',
+          },
+          { headers: this.getHeaders(), timeout: 12000 }
+        );
 
-      // 4. Si no devolvió base64 de inmediato, esperar 1.2s y revisar Redis
-      if (!base64) {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        try {
-          const freshQrRaw = await redisClient.get(`copilot:qr:${instanceName}`);
-          if (freshQrRaw) {
-            const freshQr = JSON.parse(freshQrRaw);
-            base64 = freshQr?.base64 || base64;
-            pairingCode = freshQr?.pairingCode || pairingCode;
-            code = freshQr?.code || code;
-          }
-        } catch {}
+        const cData = createRes.data;
+        base64 = cData?.qrcode?.base64 || cData?.base64;
+        pairingCode = cData?.qrcode?.pairingCode || cData?.pairingCode;
+        code = cData?.qrcode?.code || cData?.code;
+      } catch (createErr) {
+        console.error('[EVOLUTION AUTO-CREATE ERROR]', createErr);
       }
-
-      return {
-        instanceName,
-        tenantId,
-        status: data?.instance?.status || 'connecting',
-        qrcode: {
-          pairingCode,
-          code,
-          base64,
-        },
-      };
-    } catch (error: any) {
-      console.error(`[EVOLUTION GET QR ERROR]`, error?.response?.data || error?.message);
-      throw error;
     }
+
+    // 4. Si aún no tenemos base64, esperar 1.2s y revisar Redis
+    if (!base64 && !code) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      try {
+        const freshQrRaw = await redisClient.get(`copilot:qr:${instanceName}`);
+        if (freshQrRaw) {
+          const freshQr = JSON.parse(freshQrRaw);
+          base64 = freshQr?.base64 || base64;
+          pairingCode = freshQr?.pairingCode || pairingCode;
+          code = freshQr?.code || code;
+        }
+      } catch {}
+    }
+
+    return {
+      instanceName,
+      tenantId,
+      status,
+      qrcode: {
+        pairingCode,
+        code,
+        base64,
+      },
+    };
   }
 
   /**

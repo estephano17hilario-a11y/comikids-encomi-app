@@ -55,6 +55,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
   const [activeQrModal, setActiveQrModal] = useState<{
     instanceName: string;
     qrBase64?: string;
+    qrCode?: string;
     pairingCode?: string;
   } | null>(null);
   const [loadingQr, setLoadingQr] = useState(false);
@@ -71,7 +72,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
 
   // Polling automático cuando el modal de QR está abierto y esperando imagen
   useEffect(() => {
-    if (!activeQrModal || activeQrModal.qrBase64) return;
+    if (!activeQrModal || activeQrModal.qrBase64 || activeQrModal.qrCode) return;
 
     let isSubscribed = true;
     const interval = setInterval(async () => {
@@ -80,13 +81,15 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         if (res.ok && isSubscribed) {
           const json = await res.json();
           const base64 = json.data?.qrcode?.base64;
+          const code = json.data?.qrcode?.code;
           const pairingCode = json.data?.qrcode?.pairingCode;
-          if (base64 || pairingCode) {
+          if (base64 || code || pairingCode) {
             setActiveQrModal((prev) =>
               prev
                 ? {
                     instanceName: prev.instanceName,
                     qrBase64: base64 || prev.qrBase64,
+                    qrCode: code || prev.qrCode,
                     pairingCode: pairingCode || prev.pairingCode,
                   }
                 : null
@@ -143,25 +146,26 @@ export const EvolutionWhatsAppManager: React.FC = () => {
 
       const json = await res.json();
       if (res.ok && json.success) {
-        setSuccessMsg(`¡Sub-instancia para "${newTenantId}" creada exitosamente!`);
+        setSuccessMsg(`Sub-instancia "${newTenantId}" creada con éxito.`);
         setShowCreateModal(false);
         setNewTenantId('');
         setNewStoreName('');
+        fetchInstances();
 
-        // Si retornó QR de inmediato, abrir modal de escaneo
-        if (json.data?.qrcode?.base64) {
+        // Mostrar QR inmediatamente
+        if (json.data?.qrcode?.base64 || json.data?.qrcode?.code || json.data?.qrcode?.pairingCode) {
           setActiveQrModal({
             instanceName: json.data.instanceName,
-            qrBase64: json.data.qrcode.base64,
-            pairingCode: json.data.qrcode.pairingCode,
+            qrBase64: json.data.qrcode?.base64,
+            qrCode: json.data.qrcode?.code,
+            pairingCode: json.data.qrcode?.pairingCode,
           });
         }
-        fetchInstances();
       } else {
-        setErrorMsg(json.error || 'No se pudo crear la sub-instancia');
+        setErrorMsg(json.error || 'No se pudo crear la sub-instancia.');
       }
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Error de conexión con el servidor');
+    } catch {
+      setErrorMsg('Error conectando con el servidor de Evolution API.');
     } finally {
       setCreatingInstance(false);
     }
@@ -170,6 +174,8 @@ export const EvolutionWhatsAppManager: React.FC = () => {
   const handleShowQr = async (instanceName: string) => {
     setLoadingQr(true);
     setErrorMsg('');
+    setActiveQrModal({ instanceName });
+
     try {
       const res = await fetch(`${getApiBaseUrl()}/tenant/${instanceName}/qr`);
       const json = await res.json();
@@ -177,13 +183,12 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         setActiveQrModal({
           instanceName,
           qrBase64: json.data?.qrcode?.base64,
+          qrCode: json.data?.qrcode?.code,
           pairingCode: json.data?.qrcode?.pairingCode,
         });
-      } else {
-        setErrorMsg('La instancia ya está conectada o no requiere QR actualmente.');
       }
     } catch {
-      setErrorMsg('No se pudo obtener el QR en este momento.');
+      console.warn('No se pudo obtener QR de inmediato, continuando con polling...');
     } finally {
       setLoadingQr(false);
     }
@@ -317,100 +322,143 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         </div>
       )}
 
-      {/* NIVEL 1: MASTER BOT (LÍNEA CENTRAL INTOCABLE) */}
-      <div className="p-6 rounded-3xl bg-slate-900/90 border border-indigo-500/30 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+      {/* NIVEL 1: MASTER BOT (LÍNEA CENTRAL) */}
+      {(() => {
+        const connectedOpenInst =
+          instances.find(
+            (i) => i.connectionStatus === 'open' && (i.instanceName === 'tenant_Comikids' || i.isMaster)
+          ) || instances.find((i) => i.connectionStatus === 'open');
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-indigo-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
-              <ShieldCheck className="w-7 h-7" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-indigo-400">
-                  NIVEL 1 • MASTER BOT INMUTABLE
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  CONECTADO
-                </span>
+        const masterInst =
+          instances.find((i) => i.instanceName === 'comikids_whatsapp' || i.isMaster) || {
+            instanceName: 'comikids_whatsapp',
+            isMaster: true,
+            connectionStatus: 'close',
+            ownerJid: null,
+            profileName: null,
+          };
+
+        const isLiveConnected = Boolean(connectedOpenInst);
+        const displayPhone = connectedOpenInst?.ownerJid
+          ? `+${connectedOpenInst.ownerJid.replace('@s.whatsapp.net', '')}`
+          : '+51 927 781 412';
+        const displayName = connectedOpenInst?.profileName || 'Comikids Pijamas';
+
+        return (
+          <div className="p-6 rounded-3xl bg-slate-900/90 border border-indigo-500/30 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-linear-to-tr from-indigo-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+                  <ShieldCheck className="w-7 h-7" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-indigo-400">
+                      NIVEL 1 • MASTER BOT CENTRAL
+                    </span>
+                    {isLiveConnected ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        CONECTADO ({displayName})
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                        ESPERANDO VINCULACIÓN
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-bold text-white mt-0.5">
+                    Línea Oficial Master Copilot ({connectedOpenInst?.instanceName || masterInst.instanceName})
+                  </h3>
+                </div>
               </div>
-              <h3 className="text-lg font-bold text-white mt-0.5">
-                Instancia Master Central (comikids_whatsapp)
-              </h3>
+
+              <div className="flex items-center gap-3">
+                <span className="px-3.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 text-xs font-mono font-bold flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${isLiveConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  📱 {displayPhone}
+                </span>
+
+                <button
+                  onClick={() => handleShowQr(connectedOpenInst?.instanceName || masterInst.instanceName)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all shadow-md ${
+                    isLiveConnected
+                      ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/30'
+                  }`}
+                >
+                  {isLiveConnected ? '✓ Ver Estado / Detalles' : '⚡ Conectar Master QR'}
+                </button>
+              </div>
+            </div>
+
+            {/* CARACTERÍSTICAS DEL MASTER BOT */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-5">
+              <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
+                <div className="flex items-center gap-2.5 text-indigo-400 text-xs font-bold mb-1">
+                  <Sparkles className="w-4 h-4" />
+                  Copiloto de Negocios
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Responde al dueño con análisis en tiempo real de pedidos, clientes y comandos por WhatsApp.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
+                <div className="flex items-center gap-2.5 text-pink-400 text-xs font-bold mb-1">
+                  <FileCheck2 className="w-4 h-4" />
+                  Auditoría de Comprobantes
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Reconcilia y audita pagos de Yape, Plin, BCP, BBVA y calcula saldos adeudados automáticamente.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
+                <div className="flex items-center gap-2.5 text-emerald-400 text-xs font-bold mb-1">
+                  <Volume2 className="w-4 h-4" />
+                  Transcripción de Voz
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Resume y busca dentro de las notas de voz recibidas en las líneas de atención.
+                </p>
+              </div>
+            </div>
+
+            {/* SIMULADOR COPILOTO INTERACTIVO */}
+            <div className="mt-5 p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/20">
+              <h4 className="text-xs font-bold text-indigo-300 flex items-center gap-2 mb-2">
+                <Zap className="w-4 h-4 text-amber-400" />
+                Consola del Copiloto Master (Prueba Rápida)
+              </h4>
+              <form onSubmit={handleTestCopilot} className="flex gap-2">
+                <input
+                  type="text"
+                  value={copilotQuery}
+                  onChange={(e) => setCopilotQuery(e.target.value)}
+                  placeholder="Ej: ¿Qué pedidos y pagos se cerraron hoy? o Resume las notas de voz..."
+                  className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="submit"
+                  disabled={testingCopilot || !copilotQuery.trim()}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {testingCopilot ? 'Consultando...' : 'Preguntar'}
+                </button>
+              </form>
+              {copilotReply && (
+                <p className="text-xs text-emerald-300 bg-emerald-950/40 p-3 rounded-xl border border-emerald-500/30 mt-2.5 font-mono">
+                  {copilotReply}
+                </p>
+              )}
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 text-xs font-mono">
-              📱 +51 901 985 319
-            </span>
-          </div>
-        </div>
-
-        {/* CARACTERÍSTICAS DEL MASTER BOT */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-5">
-          <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
-            <div className="flex items-center gap-2.5 text-indigo-400 text-xs font-bold mb-1">
-              <Sparkles className="w-4 h-4" />
-              Copiloto de Negocios
-            </div>
-            <p className="text-[11px] text-slate-400">
-              El único canal que responde al dueño con análisis en tiempo real de toda la base de datos.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
-            <div className="flex items-center gap-2.5 text-pink-400 text-xs font-bold mb-1">
-              <FileCheck2 className="w-4 h-4" />
-              Auditoría de Comprobantes
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Reconcilia y audita pagos de Yape, Plin, BCP, BBVA y calcula saldos adeudados.
-            </p>
-          </div>
-
-          <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
-            <div className="flex items-center gap-2.5 text-emerald-400 text-xs font-bold mb-1">
-              <Volume2 className="w-4 h-4" />
-              Transcripción de Voz
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Resume y busca dentro de las notas de voz recibidas en las sub-instancias.
-            </p>
-          </div>
-        </div>
-
-        {/* SIMULADOR COPILOTO INTERACTIVO */}
-        <div className="mt-5 p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/20">
-          <h4 className="text-xs font-bold text-indigo-300 flex items-center gap-2 mb-2">
-            <Zap className="w-4 h-4 text-amber-400" />
-            Consola del Copiloto Master (Prueba Rápida)
-          </h4>
-          <form onSubmit={handleTestCopilot} className="flex gap-2">
-            <input
-              type="text"
-              value={copilotQuery}
-              onChange={(e) => setCopilotQuery(e.target.value)}
-              placeholder="Ej: ¿Qué pedidos y pagos se cerraron hoy? o Resume las notas de voz..."
-              className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
-            />
-            <button
-              type="submit"
-              disabled={testingCopilot || !copilotQuery.trim()}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {testingCopilot ? 'Consultando...' : 'Preguntar'}
-            </button>
-          </form>
-          {copilotReply && (
-            <p className="text-xs text-emerald-300 bg-emerald-950/40 p-3 rounded-xl border border-emerald-500/30 mt-2.5 font-mono">
-              {copilotReply}
-            </p>
-          )}
-        </div>
-      </div>
+        );
+      })()}
 
       {/* NIVEL 2: SUB-INSTANCIAS / SUB-QRs (INGESTA SILENCIOSA 24/7) */}
       <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4">
@@ -418,18 +466,18 @@ export const EvolutionWhatsAppManager: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-pink-400">
-                NIVEL 2 • SUB-INSTANCIAS MULTI-TENANT
+                NIVEL 2 • LÍNEAS DE WHATSAPP Y SUB-INSTANCIAS
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30 flex items-center gap-1">
                 <EyeOff className="w-3 h-3" />
-                MODO SILENCIOSO ESTRICTO
+                INGESTA 24/7 + COPILOTO ACTIVO
               </span>
             </div>
             <h3 className="text-lg font-bold text-white mt-0.5">
-              Sub-QRs de Clientes y Tiendas Asociadas
+              Instancias y Canales de WhatsApp Conectados
             </h3>
             <p className="text-xs text-slate-400">
-              Capturan audios, comprobantes y mensajes 24/7 indexándolos en Supabase sin responder jamás a sus contactos.
+              Capturan audios, comprobantes y mensajes 24/7 indexándolos en Supabase y respondiendo a los administradores.
             </p>
           </div>
         </div>
@@ -440,7 +488,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
             <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
               <tr>
                 <th className="py-3 px-4">Instancia / Tenant</th>
-                <th className="py-3 px-4">Tipo</th>
+                <th className="py-3 px-4">Línea / Perfil</th>
                 <th className="py-3 px-4">Estado de Conexión</th>
                 <th className="py-3 px-4">Modo de Operación</th>
                 <th className="py-3 px-4 text-right">Acciones</th>
@@ -458,14 +506,19 @@ export const EvolutionWhatsAppManager: React.FC = () => {
                     {inst.instanceName}
                   </td>
                   <td className="py-3.5 px-4">
-                    {inst.isMaster ? (
-                      <span className="px-2 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 text-[10px] font-bold">
-                        MASTER INTOCABLE
-                      </span>
+                    {inst.ownerJid ? (
+                      <div>
+                        <div className="font-semibold text-white font-mono">
+                          +{inst.ownerJid.replace('@s.whatsapp.net', '')}
+                        </div>
+                        {inst.profileName && (
+                          <div className="text-[10px] text-slate-400">
+                            {inst.profileName}
+                          </div>
+                        )}
+                      </div>
                     ) : (
-                      <span className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 text-[10px] font-medium">
-                        Sub-QR Comercio
-                      </span>
+                      <span className="text-slate-500 italic text-[11px]">Sin número vinculado</span>
                     )}
                   </td>
                   <td className="py-3.5 px-4">
@@ -482,10 +535,10 @@ export const EvolutionWhatsAppManager: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3.5 px-4">
-                    {inst.isMaster ? (
+                    {inst.connectionStatus === 'open' ? (
                       <span className="text-emerald-400 font-semibold flex items-center gap-1">
                         <MessageSquare className="w-3.5 h-3.5" />
-                        Copiloto Activo
+                        Copiloto + Ingesta 24/7
                       </span>
                     ) : (
                       <span className="text-slate-400 flex items-center gap-1">
@@ -498,21 +551,23 @@ export const EvolutionWhatsAppManager: React.FC = () => {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleShowQr(inst.instanceName)}
-                        disabled={loadingQr}
-                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all"
-                        title="Escanear QR"
+                        className={`px-3 py-1.5 rounded-xl font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
+                          inst.connectionStatus === 'open'
+                            ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20'
+                            : 'bg-pink-600 hover:bg-pink-500 text-white shadow-md'
+                        }`}
                       >
                         <QrCode className="w-3.5 h-3.5" />
-                        Ver QR
+                        {inst.connectionStatus === 'open' ? 'Detalles' : 'Ver QR'}
                       </button>
 
-                      {!inst.isMaster && (
+                      {!inst.isMaster && inst.instanceName !== 'comikids_whatsapp' && (
                         <button
                           onClick={() => handleDeleteSubInstance(inst.instanceName)}
-                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 cursor-pointer transition-all"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 cursor-pointer transition-colors"
                           title="Eliminar Sub-Instancia"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>
@@ -529,10 +584,12 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Store className="w-5 h-5 text-pink-400" />
-                Vincular Sub-QR para Comercio
-              </h3>
+              <div className="flex items-center gap-2 text-pink-400">
+                <Store className="w-5 h-5" />
+                <h3 className="text-base font-bold text-white">
+                  Nueva Sub-Instancia WhatsApp
+                </h3>
+              </div>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="text-slate-400 hover:text-white p-1"
@@ -596,86 +653,106 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL MOSTRAR QR CODE */}
-      {activeQrModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold text-pink-400">
-                {activeQrModal.instanceName}
-              </span>
-              <button
-                onClick={() => setActiveQrModal(null)}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* MODAL MOSTRAR QR CODE / ESTADO */}
+      {activeQrModal && (() => {
+        const modalInst = instances.find((i) => i.instanceName === activeQrModal.instanceName);
+        const isOpen = modalInst?.connectionStatus === 'open';
 
-            <h3 className="text-base font-bold text-white">
-              Escanea con WhatsApp
-            </h3>
-            <p className="text-xs text-slate-400">
-              Abre WhatsApp en tu teléfono ➔ Dispositivos vinculados ➔ Vincular dispositivo.
-            </p>
+        // Determinar imagen QR: base64 nativo o fallback de código
+        const qrImageSrc = activeQrModal.qrBase64
+          ? (activeQrModal.qrBase64.startsWith('data:') ? activeQrModal.qrBase64 : `data:image/png;base64,${activeQrModal.qrBase64}`)
+          : (activeQrModal.qrCode ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(activeQrModal.qrCode)}` : null);
 
-            <div className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner mx-auto max-w-[240px] min-h-[220px]">
-              {activeQrModal.qrBase64 ? (
-                <img
-                  src={
-                    activeQrModal.qrBase64.startsWith('data:')
-                      ? activeQrModal.qrBase64
-                      : `data:image/png;base64,${activeQrModal.qrBase64}`
-                  }
-                  alt="WhatsApp QR"
-                  className="w-full h-auto aspect-square object-contain"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-2.5 text-slate-700 text-xs py-6">
-                  <div className="w-8 h-8 border-3 border-pink-500 border-t-transparent rounded-full animate-spin" />
-                  <span className="font-semibold text-slate-600">Generando nuevo código QR...</span>
-                  <span className="text-[10px] text-slate-400">Espera unos segundos</span>
-                </div>
-              )}
-            </div>
-
-            {/* Aviso si la tienda ya está activa */}
-            {instances.some((i) => i.connectionStatus === 'open') && (
-              <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-[11px] text-emerald-300 text-left">
-                ✓ <strong>Bot Activo:</strong> Tu línea vinculada (
-                {instances.find((i) => i.connectionStatus === 'open')?.profileName || 'Comikids'}
-                ) ya está respondiendo 24/7.
-              </div>
-            )}
-
-            {activeQrModal.pairingCode && (
-              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
-                Código de emparejamiento:{' '}
-                <strong className="text-pink-400 font-mono tracking-wider">
-                  {activeQrModal.pairingCode}
-                </strong>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              {!activeQrModal.qrBase64 && (
+        return (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold text-pink-400">
+                  {activeQrModal.instanceName}
+                </span>
                 <button
-                  onClick={() => handleShowQr(activeQrModal.instanceName)}
-                  className="flex-1 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold cursor-pointer transition-all"
+                  onClick={() => setActiveQrModal(null)}
+                  className="text-slate-400 hover:text-white p-1"
                 >
-                  Reintentar QR
+                  <X className="w-5 h-5" />
                 </button>
+              </div>
+
+              {isOpen ? (
+                /* ESTADO: YA CONECTADO */
+                <div className="space-y-3 py-2">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center border border-emerald-500/30">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-base font-bold text-white">
+                    ¡Instancia WhatsApp Conectada!
+                  </h3>
+                  <div className="p-3 bg-emerald-950/40 rounded-2xl border border-emerald-500/30 text-xs text-emerald-300 text-left space-y-1 font-mono">
+                    <div>📱 <strong>Número:</strong> +{modalInst?.ownerJid?.replace('@s.whatsapp.net', '') || 'Conectado'}</div>
+                    {modalInst?.profileName && <div>👤 <strong>Perfil:</strong> {modalInst.profileName}</div>}
+                    <div>⚡ <strong>Estado:</strong> Activo 24/7 (Copiloto + Ingesta)</div>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Esta línea ya está vinculada exitosamente. Tu bot responde automáticamente a los mensajes y comprobantes.
+                  </p>
+                </div>
+              ) : (
+                /* ESTADO: ESCANEAR QR */
+                <>
+                  <h3 className="text-base font-bold text-white">
+                    Escanea con WhatsApp
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Abre WhatsApp en tu teléfono ➔ Dispositivos vinculados ➔ Vincular dispositivo.
+                  </p>
+
+                  <div className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner mx-auto max-w-[240px] min-h-[220px]">
+                    {qrImageSrc ? (
+                      <img
+                        src={qrImageSrc}
+                        alt="WhatsApp QR"
+                        className="w-full h-auto aspect-square object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2.5 text-slate-700 text-xs py-6">
+                        <div className="w-8 h-8 border-3 border-pink-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="font-semibold text-slate-600">Generando nuevo código QR...</span>
+                        <span className="text-[10px] text-slate-400">Espera unos segundos</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {activeQrModal.pairingCode && (
+                    <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+                      Código de emparejamiento:{' '}
+                      <strong className="text-pink-400 font-mono tracking-wider">
+                        {activeQrModal.pairingCode}
+                      </strong>
+                    </div>
+                  )}
+                </>
               )}
-              <button
-                onClick={() => setActiveQrModal(null)}
-                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
-              >
-                Cerrar
-              </button>
+
+              <div className="flex gap-2">
+                {!isOpen && !qrImageSrc && (
+                  <button
+                    onClick={() => handleShowQr(activeQrModal.instanceName)}
+                    className="flex-1 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold cursor-pointer transition-all"
+                  >
+                    Reintentar QR
+                  </button>
+                )}
+                <button
+                  onClick={() => setActiveQrModal(null)}
+                  className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

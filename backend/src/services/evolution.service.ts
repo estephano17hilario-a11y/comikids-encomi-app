@@ -252,7 +252,7 @@ export class EvolutionService {
     to: string,
     text: string
   ): Promise<any> {
-    const targetInstance = instanceName || env.EVOLUTION_INSTANCE_NAME;
+    const targetInstance = instanceName || env.EVOLUTION_INSTANCE_NAME || 'tenant_Comikids';
     let phoneClean = to.replace(/[^0-9]/g, '');
     if (phoneClean.length === 9) {
       phoneClean = `51${phoneClean}`;
@@ -273,7 +273,22 @@ export class EvolutionService {
 
       return response.data;
     } catch (error: any) {
-      console.error(`[EVOLUTION SEND ERROR en ${targetInstance}]`, error?.response?.data || error?.message);
+      console.warn(`[EVOLUTION SEND WARN en ${targetInstance}] Intentando fallback a instancias abiertas...`);
+      const fallbackCandidates = ['tenant_Comikids', 'tenant_matrix', 'comikids_whatsapp'].filter(
+        (i) => i !== targetInstance
+      );
+      for (const altInstance of fallbackCandidates) {
+        try {
+          const altResponse = await axios.post(
+            `${env.EVOLUTION_API_URL}/message/sendText/${altInstance}`,
+            { number: phoneClean, text },
+            { headers: this.getHeaders(), timeout: 15000 }
+          );
+          console.log(`[EVOLUTION SEND SUCCESS via fallback "${altInstance}"]`);
+          return altResponse.data;
+        } catch {}
+      }
+      console.error(`[EVOLUTION SEND ERROR TOTAL en ${targetInstance}]`, error?.response?.data || error?.message);
       throw error;
     }
   }

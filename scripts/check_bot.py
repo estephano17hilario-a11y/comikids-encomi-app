@@ -1,10 +1,16 @@
-import paramiko, json, sys
+import paramiko, json, sys, time
 
 sys.stdout.reconfigure(encoding='utf-8')
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('89.117.73.97', username='root', password='estephano10FM20home')
+
+for attempt in range(5):
+    try:
+        ssh.connect('89.117.73.97', username='root', password='estephano10FM20home', timeout=10)
+        break
+    except Exception as e:
+        time.sleep(1)
 
 def run(cmd):
     print(f"\n{'='*20} {cmd} {'='*20}")
@@ -15,10 +21,5 @@ def run(cmd):
     if err: print('ERR:', err)
     return out
 
-API_KEY = 'comikids_evolution_master_key_2026'
-
-# Let's check getQrCode endpoint through backend for comikids_whatsapp and tenant_Comikids
-run('curl -s http://89.117.73.97:3000/tenant/comikids_whatsapp/status')
-run('curl -s http://89.117.73.97:3000/tenant/tenant_Comikids/status')
-run('curl -s http://89.117.73.97:3000/tenant/comikids_whatsapp/qr')
-run('curl -s http://89.117.73.97:3000/tenant/tenant_Comikids/qr')
+time.sleep(3)
+run('docker logs --tail 30 backend_api')

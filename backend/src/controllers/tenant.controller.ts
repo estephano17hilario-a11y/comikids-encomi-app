@@ -20,9 +20,14 @@ export class TenantController {
   ) {
     try {
       const { tenantId } = CreateSubInstanceSchema.parse(request.body);
-      const formattedTenantId = tenantId.startsWith('tenant_')
-        ? tenantId
-        : `tenant_${tenantId}`;
+      const formattedTenantId =
+        tenantId === 'comikids_whatsapp' ||
+        tenantId === 'main_bot' ||
+        tenantId === env.EVOLUTION_INSTANCE_NAME ||
+        tenantId.startsWith('tenant_') ||
+        tenantId.startsWith('tienda_')
+          ? tenantId
+          : `tenant_${tenantId}`;
 
       const result = await EvolutionService.createTenantInstance(formattedTenantId);
 

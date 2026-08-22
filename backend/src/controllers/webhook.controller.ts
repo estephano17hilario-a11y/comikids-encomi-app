@@ -23,28 +23,28 @@ export class WebhookController {
     console.log(`[WEBHOOK HIERARCHY] Evento: "${event}" en Instancia: "${instance}"`);
     console.log(`=======================================================\n`);
 
-    // Capturar y almacenar código QR emitido por Evolution API
-    if (event === 'qrcode.updated' || event === 'qrcode.generate' || String(event || '').includes('qrcode')) {
-      const anyData = data as any;
-      const qrData = anyData?.qrcode || anyData;
-      const b64 = qrData?.base64 || qrData?.pairingCode || qrData?.code;
-      if (b64 && instance) {
-        console.log(`[QRCODE WEBHOOK] ✓ Recibido código QR fresco para instancia "${instance}"`);
-        try {
-          await redisClient.set(
-            `copilot:qr:${instance}`,
-            JSON.stringify({
-              base64: qrData?.base64 || '',
-              pairingCode: qrData?.pairingCode || '',
-              code: qrData?.code || '',
-              updatedAt: Date.now(),
-            }),
-            'EX',
-            180
-          );
-        } catch (rErr) {
-          console.warn('[QR REDIS CACHE WARN]', rErr);
-        }
+    // Capturar y almacenar código QR emitido por Evolution API (en cualquier evento)
+    const anyData = data as any;
+    const qrB64 = anyData?.qrcode?.base64 || anyData?.base64 || anyData?.qr || (typeof anyData === 'string' && anyData.startsWith('data:image') ? anyData : null);
+    const pairingCode = anyData?.qrcode?.pairingCode || anyData?.pairingCode;
+    const qrCode = anyData?.qrcode?.code || anyData?.code;
+
+    if ((qrB64 || pairingCode || qrCode) && instance) {
+      console.log(`[QRCODE WEBHOOK] ✓ Recibido código QR fresco para instancia "${instance}"`);
+      try {
+        await redisClient.set(
+          `copilot:qr:${instance}`,
+          JSON.stringify({
+            base64: qrB64 || '',
+            pairingCode: pairingCode || '',
+            code: qrCode || '',
+            updatedAt: Date.now(),
+          }),
+          'EX',
+          180
+        );
+      } catch (rErr) {
+        console.warn('[QR REDIS CACHE WARN]', rErr);
       }
     }
 
@@ -71,27 +71,29 @@ export class WebhookController {
           continue;
         }
 
-        // CASO A: Mensaje dirigido al BOT MASTER (Interacción activa del dueño con su Copiloto)
+        const senderNumber = remoteJid.replace('@s.whatsapp.net', '');
+        const queryText =
+          msgItem.message?.conversation ||
+          msgItem.message?.extendedTextMessage?.text ||
+          msgItem.message?.imageMessage?.caption ||
+          msgItem.message?.documentMessage?.caption ||
+          msgItem.message?.documentMessage?.title ||
+          msgItem.message?.documentMessage?.fileName ||
+          (msgItem.message?.imageMessage ? 'Reenvía esta imagen adjunta' : '') ||
+          (msgItem.message?.documentMessage ? 'Reenvía este documento adjunto' : '') ||
+          '';
+
+        const isAdminSender = ['51963097546', '51927781412', '51901985319', '963097546', '927781412', '901985319'].includes(senderNumber);
+
+        // CASO A: Mensaje dirigido al BOT MASTER o enviado por Administrador
         if (
           instance === 'main_bot' ||
           instance === env.EVOLUTION_INSTANCE_NAME ||
-          instance === 'comikids_whatsapp'
+          instance === 'comikids_whatsapp' ||
+          isAdminSender
         ) {
           if (!msgItem.key.fromMe) {
-
-            const senderNumber = remoteJid.replace('@s.whatsapp.net', '');
-            const queryText =
-              msgItem.message?.conversation ||
-              msgItem.message?.extendedTextMessage?.text ||
-              msgItem.message?.imageMessage?.caption ||
-              msgItem.message?.documentMessage?.caption ||
-              msgItem.message?.documentMessage?.title ||
-              msgItem.message?.documentMessage?.fileName ||
-              (msgItem.message?.imageMessage ? 'Reenvía esta imagen adjunta' : '') ||
-              (msgItem.message?.documentMessage ? 'Reenvía este documento adjunto' : '') ||
-              '';
-
-            console.log(`[MASTER BOT ROUTE] Encolando consulta de ${senderNumber} al Copiloto: "${queryText}" (Tipo: ${msgItem.messageType || 'desconocido'})`);
+            console.log(`[COPILOT ROUTE] Encolando consulta de ${senderNumber} (Instancia: ${instance}) al Copiloto: "${queryText}"`);
 
             await enqueueCopilotQuery(
               {
@@ -106,10 +108,8 @@ export class WebhookController {
           }
         }
 
-
-
-        // CASO B: Mensaje en una SUB-INSTANCIA (Ingesta Pasiva Silenciosa 24/7)
-        else if (instance?.startsWith('tenant_') || instance?.startsWith('tienda_')) {
+        // CASO B: Ingesta Pasiva Silenciosa en sub-instancias
+        if (instance?.startsWith('tenant_') || instance?.startsWith('tienda_')) {
           const tenantId = instance.replace(/^(tenant_|tienda_)/, '');
 
           console.log(

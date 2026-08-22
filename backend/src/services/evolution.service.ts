@@ -42,15 +42,28 @@ export class EvolutionService {
         }
       );
 
-      // Configurar webhook para ingesta silenciosa
+      // Configurar webhook para ingesta silenciosa y respuestas del Copiloto
       try {
         await axios.post(
           `${env.EVOLUTION_API_URL}/webhook/set/${instanceName}`,
           {
-            enabled: true,
-            url: `http://backend_api:${env.PORT}/webhook/evolution`,
-            webhookByEvents: false,
-            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+            webhook: {
+              enabled: true,
+              url: `http://89.117.73.97:${env.PORT}/webhook/evolution`,
+              webhookByEvents: false,
+              webhookBase64: false,
+              events: [
+                'MESSAGES_UPSERT',
+                'MESSAGES_UPDATE',
+                'MESSAGES_SET',
+                'SEND_MESSAGE',
+                'CONNECTION_UPDATE',
+                'CHATS_UPSERT',
+                'CHATS_UPDATE',
+                'CONTACTS_UPSERT',
+                'CONTACTS_UPDATE'
+              ],
+            }
           },
           { headers: this.getHeaders(), timeout: 10000 }
         );
@@ -420,4 +433,54 @@ export class EvolutionService {
     }
   }
 
+  /**
+   * Garantiza que todas las instancias activas de Evolution API tengan su Webhook configurado hacia el backend
+   */
+  public static async ensureAllWebhooksConfigured(): Promise<void> {
+    try {
+      const response = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
+        headers: this.getHeaders(),
+        timeout: 10000,
+      });
+
+      const instances = Array.isArray(response.data) ? response.data : [];
+      console.log(`[EVOLUTION WEBHOOK SYNC] Sincronizando webhooks para ${instances.length} instancias...`);
+
+      for (const inst of instances) {
+        const name = inst?.name;
+        if (!name) continue;
+
+        try {
+          await axios.post(
+            `${env.EVOLUTION_API_URL}/webhook/set/${name}`,
+            {
+              webhook: {
+                enabled: true,
+                url: `http://89.117.73.97:${env.PORT}/webhook/evolution`,
+                webhookByEvents: false,
+                webhookBase64: false,
+                events: [
+                  'MESSAGES_UPSERT',
+                  'MESSAGES_UPDATE',
+                  'MESSAGES_SET',
+                  'SEND_MESSAGE',
+                  'CONNECTION_UPDATE',
+                  'CHATS_UPSERT',
+                  'CHATS_UPDATE',
+                  'CONTACTS_UPSERT',
+                  'CONTACTS_UPDATE',
+                ],
+              },
+            },
+            { headers: this.getHeaders(), timeout: 10000 }
+          );
+          console.log(`[EVOLUTION WEBHOOK SYNC] ✓ Webhook activo en instancia "${name}"`);
+        } catch (e: any) {
+          console.warn(`[EVOLUTION WEBHOOK SYNC WARN] No se pudo configurar webhook en "${name}":`, e?.message);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[EVOLUTION WEBHOOK SYNC ERROR] No se pudieron sincronizar webhooks globales:', err?.message);
+    }
+  }
 }

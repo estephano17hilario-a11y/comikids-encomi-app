@@ -7,9 +7,9 @@ import { healthRoutes } from './routes/health.routes.js';
 import { tenantRoutes } from './routes/tenant.routes.js';
 import { shalomRoutes } from './routes/shalom.routes.js';
 import { ingestionWorker } from './workers/ingestion.worker.js';
-
 import { copilotWorker } from './workers/copilot.worker.js';
 import { redisClient } from './config/redis.js';
+import { EvolutionService } from './services/evolution.service.js';
 
 const app = Fastify({
   bodyLimit: 50 * 1024 * 1024, // 50MB para soportar sincronización de mensajes e imágenes
@@ -51,6 +51,11 @@ async function start() {
     // 3. Iniciar Servidor HTTP
     await app.listen({ port: env.PORT, host: env.HOST });
     console.log(`🚀 [BACKEND MASTER & MULTI-TENANT] Fastify escuchando en http://${env.HOST}:${env.PORT}`);
+
+    // Asegurar que todas las instancias de Evolution API tengan su webhook vinculado
+    EvolutionService.ensureAllWebhooksConfigured().catch((e) => {
+      console.warn('[SERVER STARTUP] Error sincronizando webhooks de Evolution:', e);
+    });
 
     // 4. Manejo de Cierre Elegante (Graceful Shutdown)
     const gracefulShutdown = async (signal: string) => {

@@ -69,6 +69,42 @@ export const EvolutionWhatsAppManager: React.FC = () => {
     fetchInstances();
   }, []);
 
+  // Polling automático cuando el modal de QR está abierto y esperando imagen
+  useEffect(() => {
+    if (!activeQrModal || activeQrModal.qrBase64) return;
+
+    let isSubscribed = true;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/tenant/${activeQrModal.instanceName}/qr`);
+        if (res.ok && isSubscribed) {
+          const json = await res.json();
+          const base64 = json.data?.qrcode?.base64;
+          const pairingCode = json.data?.qrcode?.pairingCode;
+          if (base64 || pairingCode) {
+            setActiveQrModal((prev) =>
+              prev
+                ? {
+                    instanceName: prev.instanceName,
+                    qrBase64: base64 || prev.qrBase64,
+                    pairingCode: pairingCode || prev.pairingCode,
+                  }
+                : null
+            );
+            fetchInstances();
+          }
+        }
+      } catch (err) {
+        console.warn('Polling de QR:', err);
+      }
+    }, 2000);
+
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [activeQrModal]);
+
   const fetchInstances = async () => {
     setLoading(true);
     setErrorMsg('');

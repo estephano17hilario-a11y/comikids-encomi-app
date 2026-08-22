@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { env } from '../config/env.js';
+import { redisClient } from '../config/redis.js';
 import {
   EvolutionMessageData,
   TenantInstanceInfo,
@@ -20,9 +21,14 @@ export class EvolutionService {
   public static async createTenantInstance(
     tenantId: string
   ): Promise<TenantInstanceInfo> {
-    const instanceName = tenantId.startsWith('tenant_') || tenantId.startsWith('tienda_')
-      ? tenantId
-      : `tenant_${tenantId}`;
+    const instanceName =
+      tenantId === 'comikids_whatsapp' ||
+      tenantId === 'main_bot' ||
+      tenantId === env.EVOLUTION_INSTANCE_NAME ||
+      tenantId.startsWith('tenant_') ||
+      tenantId.startsWith('tienda_')
+        ? tenantId
+        : `tenant_${tenantId}`;
 
     const payload = {
       instanceName,
@@ -107,7 +113,28 @@ export class EvolutionService {
         ? tenantId
         : `tenant_${tenantId}`;
 
+    // 1. Revisar si hay un QR en Redis emitido recientemente por webhook
     try {
+      const cachedQrRaw = await redisClient.get(`copilot:qr:${instanceName}`);
+      if (cachedQrRaw) {
+        const cachedQr = JSON.parse(cachedQrRaw);
+        if (cachedQr?.base64 || cachedQr?.pairingCode) {
+          return {
+            instanceName,
+            tenantId,
+            status: 'connecting',
+            qrcode: {
+              pairingCode: cachedQr.pairingCode,
+              code: cachedQr.code,
+              base64: cachedQr.base64,
+            },
+          };
+        }
+      }
+    } catch {}
+
+    try {
+      // 2. Solicitar conexión a Evolution API
       const response = await axios.get(
         `${env.EVOLUTION_API_URL}/instance/connect/${instanceName}`,
         {
@@ -117,14 +144,32 @@ export class EvolutionService {
       );
 
       const data = response.data;
+      let pairingCode = data?.pairingCode || data?.qrcode?.pairingCode;
+      let code = data?.code || data?.qrcode?.code;
+      let base64 = data?.base64 || data?.qrcode?.base64;
+
+      // 3. Si no devolvió base64 de inmediato, esperar 1.2s y revisar Redis
+      if (!base64) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        try {
+          const freshQrRaw = await redisClient.get(`copilot:qr:${instanceName}`);
+          if (freshQrRaw) {
+            const freshQr = JSON.parse(freshQrRaw);
+            base64 = freshQr?.base64 || base64;
+            pairingCode = freshQr?.pairingCode || pairingCode;
+            code = freshQr?.code || code;
+          }
+        } catch {}
+      }
+
       return {
         instanceName,
         tenantId,
         status: data?.instance?.status || 'connecting',
         qrcode: {
-          pairingCode: data?.pairingCode || data?.qrcode?.pairingCode,
-          code: data?.code || data?.qrcode?.code,
-          base64: data?.base64 || data?.qrcode?.base64,
+          pairingCode,
+          code,
+          base64,
         },
       };
     } catch (error: any) {

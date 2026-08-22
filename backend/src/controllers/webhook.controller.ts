@@ -3,6 +3,7 @@ import { EvolutionWebhookPayload } from '../types/evolution.types.js';
 import { enqueueCopilotQuery } from '../queues/copilot.queue.js';
 import { enqueueIngestionEvent } from '../queues/ingestion.queue.js';
 import { env } from '../config/env.js';
+import { redisClient } from '../config/redis.js';
 
 export class WebhookController {
   /**
@@ -21,6 +22,42 @@ export class WebhookController {
     console.log(`\n=======================================================`);
     console.log(`[WEBHOOK HIERARCHY] Evento: "${event}" en Instancia: "${instance}"`);
     console.log(`=======================================================\n`);
+
+    // Capturar y almacenar código QR emitido por Evolution API
+    if (event === 'qrcode.updated' || event === 'qrcode.generate' || String(event || '').includes('qrcode')) {
+      const anyData = data as any;
+      const qrData = anyData?.qrcode || anyData;
+      const b64 = qrData?.base64 || qrData?.pairingCode || qrData?.code;
+      if (b64 && instance) {
+        console.log(`[QRCODE WEBHOOK] ✓ Recibido código QR fresco para instancia "${instance}"`);
+        try {
+          await redisClient.set(
+            `copilot:qr:${instance}`,
+            JSON.stringify({
+              base64: qrData?.base64 || '',
+              pairingCode: qrData?.pairingCode || '',
+              code: qrData?.code || '',
+              updatedAt: Date.now(),
+            }),
+            'EX',
+            180
+          );
+        } catch (rErr) {
+          console.warn('[QR REDIS CACHE WARN]', rErr);
+        }
+      }
+    }
+
+    // Si la conexión se abre exitosamente, limpiar QR en caché
+    if (event === 'connection.update') {
+      const state = (data as any)?.state;
+      if (state === 'open' && instance) {
+        console.log(`[CONNECTION WEBHOOK] ✓ Instancia "${instance}" CONECTADA en modo OPEN`);
+        try {
+          await redisClient.del(`copilot:qr:${instance}`);
+        } catch {}
+      }
+    }
 
     if (event === 'messages.upsert' && data) {
       const messagesList = Array.isArray(data) ? data : [data];

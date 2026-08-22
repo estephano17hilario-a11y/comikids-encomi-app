@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { getApiBaseUrl } from '../../config/api';
 import {
   Bot,
@@ -30,17 +31,8 @@ interface InstanceData {
   profileName?: string;
 }
 
-
 export const EvolutionWhatsAppManager: React.FC = () => {
-  const [instances, setInstances] = useState<InstanceData[]>([
-    {
-      instanceName: 'comikids_whatsapp',
-      isMaster: true,
-      connectionStatus: 'open',
-      ownerJid: '51901985319@s.whatsapp.net',
-      profileName: 'Comikids Bordados (Master Bot)',
-    },
-  ]);
+  const [instances, setInstances] = useState<InstanceData[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -80,9 +72,16 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         const res = await fetch(`${getApiBaseUrl()}/tenant/${activeQrModal.instanceName}/qr`);
         if (res.ok && isSubscribed) {
           const json = await res.json();
-          const base64 = json.data?.qrcode?.base64;
+          let base64 = json.data?.qrcode?.base64;
           const code = json.data?.qrcode?.code;
           const pairingCode = json.data?.qrcode?.pairingCode;
+
+          if (!base64 && code) {
+            try {
+              base64 = await QRCode.toDataURL(code, { width: 320, margin: 2 });
+            } catch {}
+          }
+
           if (base64 || code || pairingCode) {
             setActiveQrModal((prev) =>
               prev
@@ -152,13 +151,23 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         setNewStoreName('');
         fetchInstances();
 
+        let base64 = json.data?.qrcode?.base64;
+        const code = json.data?.qrcode?.code;
+        const pairingCode = json.data?.qrcode?.pairingCode;
+
+        if (!base64 && code) {
+          try {
+            base64 = await QRCode.toDataURL(code, { width: 320, margin: 2 });
+          } catch {}
+        }
+
         // Mostrar QR inmediatamente
-        if (json.data?.qrcode?.base64 || json.data?.qrcode?.code || json.data?.qrcode?.pairingCode) {
+        if (base64 || code || pairingCode) {
           setActiveQrModal({
             instanceName: json.data.instanceName,
-            qrBase64: json.data.qrcode?.base64,
-            qrCode: json.data.qrcode?.code,
-            pairingCode: json.data.qrcode?.pairingCode,
+            qrBase64: base64,
+            qrCode: code,
+            pairingCode: pairingCode,
           });
         }
       } else {
@@ -171,20 +180,31 @@ export const EvolutionWhatsAppManager: React.FC = () => {
     }
   };
 
-  const handleShowQr = async (instanceName: string) => {
+  const handleShowQr = async (instanceName: string, force: boolean = false) => {
     setLoadingQr(true);
     setErrorMsg('');
     setActiveQrModal({ instanceName });
 
     try {
-      const res = await fetch(`${getApiBaseUrl()}/tenant/${instanceName}/qr`);
+      const url = `${getApiBaseUrl()}/tenant/${instanceName}/qr${force ? '?force=true' : ''}`;
+      const res = await fetch(url);
       const json = await res.json();
       if (res.ok && json.success) {
+        let b64 = json.data?.qrcode?.base64;
+        const code = json.data?.qrcode?.code;
+        const pairingCode = json.data?.qrcode?.pairingCode;
+
+        if (!b64 && code) {
+          try {
+            b64 = await QRCode.toDataURL(code, { width: 320, margin: 2 });
+          } catch {}
+        }
+
         setActiveQrModal({
           instanceName,
-          qrBase64: json.data?.qrcode?.base64,
-          qrCode: json.data?.qrcode?.code,
-          pairingCode: json.data?.qrcode?.pairingCode,
+          qrBase64: b64,
+          qrCode: code,
+          pairingCode: pairingCode,
         });
       }
     } catch {
@@ -734,20 +754,37 @@ export const EvolutionWhatsAppManager: React.FC = () => {
               )}
 
               <div className="flex gap-2">
-                {!isOpen && !qrImageSrc && (
-                  <button
-                    onClick={() => handleShowQr(activeQrModal.instanceName)}
-                    className="flex-1 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold cursor-pointer transition-all"
-                  >
-                    Reintentar QR
-                  </button>
+                {isOpen ? (
+                  <>
+                    <button
+                      onClick={() => handleShowQr(activeQrModal.instanceName, true)}
+                      className="flex-1 py-2.5 rounded-xl bg-rose-600/20 text-rose-300 border border-rose-500/30 hover:bg-rose-600/30 text-xs font-bold cursor-pointer transition-all"
+                    >
+                      🔄 Cambiar Línea / Nuevo QR
+                    </button>
+                    <button
+                      onClick={() => setActiveQrModal(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
+                    >
+                      Cerrar
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleShowQr(activeQrModal.instanceName, true)}
+                      className="flex-1 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold cursor-pointer transition-all"
+                    >
+                      🔄 Forzar Nuevo QR
+                    </button>
+                    <button
+                      onClick={() => setActiveQrModal(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
+                    >
+                      Cerrar
+                    </button>
+                  </>
                 )}
-                <button
-                  onClick={() => setActiveQrModal(null)}
-                  className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
-                >
-                  Cerrar
-                </button>
               </div>
             </div>
           </div>

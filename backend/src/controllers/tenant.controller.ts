@@ -84,11 +84,12 @@ export class TenantController {
   }
 
   public static async getQrCode(
-    request: FastifyRequest<{ Params: { tenantId: string } }>,
+    request: FastifyRequest<{ Params: { tenantId: string }; Querystring: { force?: string } }>,
     reply: FastifyReply
   ) {
     try {
       const { tenantId } = request.params;
+      const forceRecreate = request.query?.force === 'true';
       const formattedTenantId =
         tenantId === 'comikids_whatsapp' ||
         tenantId === 'main_bot' ||
@@ -98,7 +99,7 @@ export class TenantController {
           ? tenantId
           : `tenant_${tenantId}`;
 
-      const result = await EvolutionService.getTenantQrCode(formattedTenantId);
+      const result = await EvolutionService.getTenantQrCode(formattedTenantId, forceRecreate);
 
       return reply.code(200).send({
         success: true,

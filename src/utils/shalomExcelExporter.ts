@@ -7,6 +7,7 @@ import {
   SHALOM_NAME_TO_OFFICIAL_MAP,
   SHALOM_LOCAL_TO_OFFICIAL_MAP
 } from '../data/shalomAgencyCanonicalMap';
+import { SHALOM_AGENCIES } from '../data/shalomAgencies';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -26,7 +27,8 @@ const normalizeKey = (str: string): string => {
 };
 
 const normalizeCompact = (str: string): string => {
-  return (str || '')
+  if (!str) return '';
+  return str
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
@@ -80,42 +82,88 @@ export const extractShalomOrigen = (tallerConfigOrName?: TallerConfig | string):
 
 /**
  * Normaliza y extrae ÚNICAMENTE el nombre canónico EXACTO de la agencia de destino (DESTINO - Columna G)
- * utilizando el diccionario estático oficial de 544 agencias y resolución jerárquica de alta precisión.
+ * utilizando el diccionario canónico oficial de Shalom y resolución jerárquica de alta precisión.
+ * 
+ * Jerarquía estricta:
+ * 1. Código explícito o código embebido `(CÓDIGO: XXX)`
+ * 2. Ruta jerárquica canónica (DEP / PROV / DIST / LOCAL)
+ * 3. Nombre local / terminal exacto de la agencia
+ * 4. Ponderación de tokens sobre la jerarquía (NUNCA sobre la dirección física)
  */
 export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string): string => {
-  // 1. Si se proporciona código de agencia explícito (ej. CBT, SRA, AVGAL)
+  // 1. Si se proporciona código de agencia explícito (ej. OVM, AVPAS, AVCLO, CCA.SMP, CBT, SRA)
   if (agencyCode) {
     const codeClean = agencyCode.toUpperCase().trim();
     if (SHALOM_CODE_TO_OFFICIAL_MAP[codeClean]) {
       return SHALOM_CODE_TO_OFFICIAL_MAP[codeClean];
     }
+    const ag = SHALOM_AGENCIES.find(a => a.code && a.code.toUpperCase().trim() === codeClean);
+    if (ag) {
+      const off = (ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) || ag.distrito || ag.nombre;
+      if (off) return off;
+    }
   }
 
   if (!destinoDetalle) return 'LIMA AV TINGO MARÍA';
 
-  // 2. Extraer código de agencia si viene embebido en el texto (ej: "(CÓDIGO: CBT)" o "(CODIGO: SRA)")
-  const embeddedCodeMatch = destinoDetalle.match(/(?:CÓDIGO|CODIGO|COD)[\s:]*([A-Za-z0-9]+)/i);
+  // 2. Extraer código de agencia si viene embebido en el texto (ej: "(CÓDIGO: OVM)", "(CODIGO: SRA)", "(COD: AVCLO)")
+  const embeddedCodeMatch = destinoDetalle.match(/(?:CÓDIGO|CODIGO|COD)[\s:]*([A-Za-z0-9._-]+)/i);
   if (embeddedCodeMatch && embeddedCodeMatch[1]) {
     const extractedCode = embeddedCodeMatch[1].toUpperCase().trim();
     if (SHALOM_CODE_TO_OFFICIAL_MAP[extractedCode]) {
       return SHALOM_CODE_TO_OFFICIAL_MAP[extractedCode];
     }
+    const ag = SHALOM_AGENCIES.find(a => a.code && a.code.toUpperCase().trim() === extractedCode);
+    if (ag && ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) {
+      return SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()];
+    }
   }
 
-  // 3. Limpieza inicial de prefijos y metadatos
-  let clean = destinoDetalle
+  // 3. Limpieza de metadatos de cliente (DNI, Tel, Correo, Ref, Distancia) SIN borrar nombres de agencia
+  const clean = destinoDetalle
     .replace(/^Agencia Shalom:\s*/i, '')
-    .replace(/\(DNI\/CE.*?\)/i, '')
-    .replace(/\(.*?DNI.*?\)/i, '')
-    .replace(/\(.*?\)/g, '')
+    .replace(/\(DNI[\s\/]*CE[^)]*\)/gi, '')
+    .replace(/\(DNI[^)]*\)/gi, '')
+    .replace(/\(CE[^)]*\)/gi, '')
+    .replace(/\(Doc[^)]*\)/gi, '')
+    .replace(/\(Tel[^)]*\)/gi, '')
+    .replace(/\(Correo[^)]*\)/gi, '')
+    .replace(/\(Email[^)]*\)/gi, '')
+    .replace(/\(Ref[^)]*\)/gi, '')
+    .replace(/\(\d+(?:\.\d+)?\s*(?:km|m)\)/gi, '')
+    .replace(/\(CÓDIGO:[^)]+\)/gi, '')
+    .replace(/\(CODIGO:[^)]+\)/gi, '')
     .trim();
 
-  // Si hay guión largo o corto separando ruta geográfica de la dirección física
-  const parts = clean.split(/[-–—]/);
-  const locationPath = parts[0].trim();
+  // 4. Separación estricta entre Jerarquía Geográfica / Nombre de Agencia y Dirección Física
+  let locationPath = clean;
+  
+  if (clean.includes(' – ')) {
+    const p = clean.split(' – ');
+    locationPath = p[0].trim();
+  } else if (clean.includes(' — ')) {
+    const p = clean.split(' — ');
+    locationPath = p[0].trim();
+  } else if (clean.includes(' • ')) {
+    const p = clean.split(' • ');
+    locationPath = p[0].trim();
+  } else if (clean.includes(' - ')) {
+    const p = clean.split(' - ');
+    if (p[0].includes('/')) {
+      locationPath = p[0].trim();
+    }
+  }
+
+  // Si locationPath contenía nombre local entre paréntesis (ej: VILLA EL SALVADOR (ÓVALO MARIÁTEGUI))
+  let extractedParenName = '';
+  const parenMatch = locationPath.match(/\(([^)]+)\)/);
+  if (parenMatch && parenMatch[1]) {
+    extractedParenName = parenMatch[1].trim().toUpperCase();
+  }
+
   const compactLocation = normalizeCompact(locationPath);
 
-  // 4. Comprobar directamente en el mapa canónico oficial
+  // 5. Coincidencia directa en mapa canónico de nombres
   if (SHALOM_NAME_TO_OFFICIAL_MAP[locationPath.toUpperCase()]) {
     return SHALOM_NAME_TO_OFFICIAL_MAP[locationPath.toUpperCase()];
   }
@@ -123,19 +171,34 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
     return SHALOM_NAME_TO_OFFICIAL_MAP[compactLocation];
   }
 
-  // 5. Extraer segmentos geográficos: [DEP, PROV, DIST, LOCAL]
-  const segments = locationPath
+  // 6. Coincidencia de nombre local extraído de paréntesis si existía
+  if (extractedParenName) {
+    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[extractedParenName]) {
+      return SHALOM_LOCAL_TO_OFFICIAL_MAP[extractedParenName];
+    }
+    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[normalizeCompact(extractedParenName)]) {
+      return SHALOM_LOCAL_TO_OFFICIAL_MAP[normalizeCompact(extractedParenName)];
+    }
+    if (SHALOM_NAME_TO_OFFICIAL_MAP[extractedParenName]) {
+      return SHALOM_NAME_TO_OFFICIAL_MAP[extractedParenName];
+    }
+    if (SHALOM_NAME_TO_OFFICIAL_MAP[normalizeCompact(extractedParenName)]) {
+      return SHALOM_NAME_TO_OFFICIAL_MAP[normalizeCompact(extractedParenName)];
+    }
+  }
+
+  // 7. Segmentación jerárquica [DEP, PROV, DIST, LOCAL]
+  const cleanPathNoParen = locationPath.replace(/\([^)]+\)/g, '').trim();
+  const segments = cleanPathNoParen
     .split('/')
     .map(s => s.trim().toUpperCase())
     .filter(Boolean);
 
   const depSeg = segments[0] || '';
-  const provSeg = segments.length >= 3 ? segments[1] : '';
-  const distSeg = segments.length >= 4 ? segments[2] : (segments.length === 3 ? segments[1] : '');
   const lastSeg = segments.length > 0 ? segments[segments.length - 1] : '';
   const compactLast = normalizeCompact(lastSeg);
 
-  // Prioridad 1: Coincidencia por Local en el mapa canónico
+  // Prioridad 1: Coincidencia del segmento terminal (nombre local de la agencia)
   if (lastSeg && SHALOM_LOCAL_TO_OFFICIAL_MAP[lastSeg]) {
     return SHALOM_LOCAL_TO_OFFICIAL_MAP[lastSeg];
   }
@@ -144,27 +207,39 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
   }
 
   // Prioridad 2: Coincidencia de Departamento + Local
-  const depLocalKey = normalizeCompact(`${depSeg} ${lastSeg}`);
-  if (SHALOM_NAME_TO_OFFICIAL_MAP[depLocalKey]) {
-    return SHALOM_NAME_TO_OFFICIAL_MAP[depLocalKey];
+  if (depSeg && lastSeg) {
+    const depLocalKey = normalizeCompact(depSeg + ' ' + lastSeg);
+    if (SHALOM_NAME_TO_OFFICIAL_MAP[depLocalKey]) {
+      return SHALOM_NAME_TO_OFFICIAL_MAP[depLocalKey];
+    }
+    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[depLocalKey]) {
+      return SHALOM_LOCAL_TO_OFFICIAL_MAP[depLocalKey];
+    }
   }
 
-  // Prioridad 3: Búsqueda ponderada filtrando por departamento para no cruzar regiones
-  const rawTokens = clean
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, ' ')
-    .split(/\s+/)
-    .filter(t => t.length > 1 && !['AV', 'JR', 'CALLE', 'PASAJE', 'AUTOPISTA', 'CARRETERA', 'MZ', 'LT', 'NRO', 'NUM', 'REF', 'AGENCIA', 'SHALOM'].includes(t));
+  // Prioridad 3: Búsqueda en SHALOM_AGENCIES por coincidencias exactas de nombre/distrito
+  const matchedAg = SHALOM_AGENCIES.find(a => {
+    const aNameNorm = normalizeCompact(a.name || a.nombre || '');
+    const aDistNorm = normalizeCompact(a.distrito || a.district || '');
+    return (
+      (compactLast && (aDistNorm === compactLast || aNameNorm.endsWith(compactLast))) ||
+      (compactLocation && (aNameNorm === compactLocation || compactLocation.endsWith(aDistNorm)))
+    );
+  });
 
-  const lastTokens = lastSeg
+  if (matchedAg) {
+    const off = (matchedAg.code && SHALOM_CODE_TO_OFFICIAL_MAP[matchedAg.code.toUpperCase().trim()]) || matchedAg.distrito || matchedAg.nombre;
+    if (off) return off;
+  }
+
+  // Prioridad 4: Ponderación de tokens EXCLUSIVAMENTE sobre la jerarquía y nombre de la agencia (NUNCA sobre la dirección física)
+  const hierarchyTokens = (locationPath + ' ' + (extractedParenName || ''))
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, ' ')
     .split(/\s+/)
-    .filter(t => t.length > 1 && !['AV', 'JR', 'CALLE', 'PASAJE', 'AUTOPISTA', 'CARRETERA', 'MZ', 'LT', 'NRO', 'NUM', 'REF', 'AGENCIA', 'SHALOM'].includes(t));
+    .filter(t => t.length > 1 && !['AV', 'JR', 'CALLE', 'PASAJE', 'AUTOPISTA', 'CARRETERA', 'MZ', 'LT', 'NRO', 'NUM', 'REF', 'AGENCIA', 'SHALOM', 'PERU', 'LIMA'].includes(t));
 
   let bestMatch = null;
   let bestScore = -1;
@@ -180,15 +255,13 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
 
     let score = 0;
     for (const tok of offTokens) {
-      if (lastTokens.includes(tok)) {
-        score += 20; // Gran peso si coincide con el local exacto
-      } else if (rawTokens.includes(tok)) {
-        score += 4; // Peso si coincide con provincia o distrito
+      if (hierarchyTokens.includes(tok)) {
+        score += 15;
       }
     }
 
-    const extraTokens = offTokens.filter(t => !rawTokens.includes(t)).length;
-    score -= extraTokens * 2;
+    const extraTokens = offTokens.filter(t => !hierarchyTokens.includes(t)).length;
+    score -= extraTokens * 3;
 
     if (score > bestScore) {
       bestScore = score;

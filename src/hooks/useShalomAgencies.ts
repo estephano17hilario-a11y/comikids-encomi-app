@@ -45,25 +45,26 @@ export function cleanAddressText(address: string | null | undefined, prov?: stri
 }
 
 /**
- * Formatea el nombre limpio de la agencia SIN redundancia ni código:
- * [DEPARTAMENTO] / [PROVINCIA] / [DISTRITO] – [DIRECCIÓN_LIMPIA] ([DISTANCIA] km)
+ * Formatea el nombre completo y canónico de la agencia con su jerarquía exacta y código oficial:
+ * [DEPARTAMENTO] / [PROVINCIA] / [DISTRITO] / [LOCAL] (CÓDIGO: XXX) – [DIRECCIÓN_LIMPIA] ([DISTANCIA] km)
  */
 export function formatFullAgencyName(agency: ShalomAgency): string {
   const dep = (agency.departamento || agency.department || 'PERÚ').toUpperCase().trim();
   const prov = (agency.provincia || agency.province || dep).toUpperCase().trim();
   const dist = (agency.distrito || agency.district || 'CENTRO').toUpperCase().trim();
   
-  // Extraer nombre local si aporta valor
+  // Extraer nombre local si aporta valor y no repite el distrito
   let localName = '';
   if (agency.nombre && agency.nombre.includes('/')) {
     const segments = agency.nombre.split('/').map(s => s.trim().toUpperCase()).filter(Boolean);
     const lastSeg = segments[segments.length - 1];
     if (lastSeg && lastSeg !== dist && lastSeg !== prov && lastSeg !== dep) {
-      localName = ` (${lastSeg})`;
+      localName = ` / ${lastSeg}`;
     }
   }
 
-  const locationPath = `${dep} / ${prov} / ${dist}${localName}`;
+  const codeTag = agency.code ? ` (CÓDIGO: ${agency.code.toUpperCase().trim()})` : '';
+  const locationPath = `${dep} / ${prov} / ${dist}${localName}${codeTag}`;
   const cleanAddr = cleanAddressText(agency.direccion || agency.address, prov, dep);
   
   const distanceTag = agency.distance_meters !== undefined 

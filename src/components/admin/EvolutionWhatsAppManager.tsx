@@ -321,7 +321,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
             onClick={() => setShowCreateModal(true)}
             className="px-4 py-2 rounded-xl bg-linear-to-r from-pink-500 to-indigo-600 hover:from-pink-600 hover:to-indigo-700 text-white text-xs font-bold shadow-lg shadow-pink-500/20 flex items-center gap-2 transition-all cursor-pointer"
           >
-            <Plus className="w-4 h-4 stroke-[3]" />
+            <Plus className="w-4 h-4 stroke-3" />
             Vincular Sub-QR (Nueva Tienda)
           </button>
         </div>
@@ -726,7 +726,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
                     Abre WhatsApp en tu teléfono ➔ Dispositivos vinculados ➔ Vincular dispositivo.
                   </p>
 
-                  <div className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner mx-auto max-w-[240px] min-h-[220px]">
+                  <div className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner mx-auto max-w-60 min-h-55">
                     {qrImageSrc ? (
                       <img
                         src={qrImageSrc}

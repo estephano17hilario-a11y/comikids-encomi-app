@@ -77,9 +77,8 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
       let destinoDetalle = '';
       if (selectedMethod?.tipo_formulario === 'shalom') {
         const agencyObj = shalomAgenciesList.find(a => String(a.id) === String(selectedAgencyId)) || shalomAgenciesList[0];
-        const agencyName = agencyObj ? agencyObj.nombre : 'Agencia Central';
-        const agencyDist = agencyObj ? agencyObj.distrito : selectedDepartment;
-        destinoDetalle = `Agencia Shalom ${selectedDepartment} - ${agencyName} (${agencyDist})`;
+        const fullAgencyStr = agencyObj ? formatFullAgencyName(agencyObj) : `AGENCIA SHALOM ${selectedDepartment}`;
+        destinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dni.trim()})`;
       } else if (selectedMethod?.tipo_formulario === 'olva') {
         const mod = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
         const ref = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';

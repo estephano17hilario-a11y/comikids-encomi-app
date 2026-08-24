@@ -55,13 +55,13 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
-      <div className="relative w-full max-w-md rounded-3xl glass-panel p-6 border border-slate-700 shadow-2xl">
+    <div className="fixed inset-0 z-9999 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+      <div className="relative w-full max-w-lg max-h-[90vh] flex flex-col rounded-3xl glass-panel border border-slate-700/80 shadow-2xl shadow-purple-950/40 overflow-hidden">
         
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-slate-800 text-pink-400">
+        {/* Header Fijo */}
+        <div className="flex items-center justify-between border-b border-slate-800/80 p-4 sm:p-5 shrink-0 bg-slate-900/95 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border border-pink-500/30 text-pink-400">
               <Settings className="w-5 h-5" />
             </div>
             <div>
@@ -71,13 +71,13 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700"
+            className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800/80 hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3.5">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Nombre Comercial / Remitente</label>
             <input

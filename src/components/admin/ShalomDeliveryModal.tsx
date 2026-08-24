@@ -17,6 +17,7 @@ import {
   Eye,
   Search,
   Check,
+  CheckCheck,
   AlertCircle,
   RefreshCw
 } from 'lucide-react';
@@ -635,20 +636,22 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="bg-slate-900 px-4 sm:px-6 py-3.5 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
+        <div className="bg-slate-900/95 px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
           <button
             onClick={handleOnlyMarkDelivered}
             disabled={processing || isAuditing}
-            className="text-[11px] sm:text-xs text-slate-400 hover:text-slate-200 underline disabled:opacity-50 order-2 sm:order-1 cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm order-2 sm:order-1 active:scale-98"
+            title="Marca los pedidos como entregados en el sistema sin disparar mensajes de WhatsApp"
           >
-            Solo marcar como entregado (sin WhatsApp)
+            <CheckCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Solo marcar como Entregado (sin WhatsApp)</span>
           </button>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto order-1 sm:order-2">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto order-1 sm:order-2">
             <button
               onClick={onClose}
               disabled={processing}
-              className="flex-1 sm:flex-none px-4 py-2 text-xs sm:text-sm font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors disabled:opacity-50 text-center cursor-pointer"
+              className="flex-1 sm:flex-none px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700/60 rounded-xl transition-colors disabled:opacity-50 text-center cursor-pointer active:scale-98"
             >
               {overallSuccess ? 'Cerrar' : 'Cancelar'}
             </button>
@@ -657,7 +660,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
               <button
                 onClick={handleStartDeliveryFlow}
                 disabled={processing || isAuditing}
-                className="flex-1 sm:flex-none px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer active:scale-98"
+                className="flex-1 sm:flex-none px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer active:scale-98"
               >
                 {processing ? (
                   <>

@@ -22,46 +22,72 @@ export interface DatosComprobante {
   remitenteCelular?: string;
 }
 
+// URL oficial del Funnel Interactivo Encomi
+export const ENCOMI_FUNNEL_URL = "https://comikids-encomi-app.vercel.app/?funnel=encomi";
+export const NUMERO_CONTACTO_ENCOMI = "+51 963097546";
+
+// Helper para obtener el día de la semana y fecha formateada en español
+export const formatFechaConDia = (dateStr?: string): string => {
+  if (!dateStr) return 'Programación estándar';
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const date = new Date(year, month, day);
+      const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+      const diaSemana = dias[date.getDay()];
+      const mesNombre = meses[date.getMonth()];
+      return `${diaSemana}, ${day} ${mesNombre} ${year}`;
+    }
+  } catch {
+    // fallback
+  }
+  return dateStr;
+};
+
 // Paso 2 y 3: Generador de texto dinámico y apertura del enlace oficial de WhatsApp
 export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => {
-  // 1. Extracción dinámica de variables con valores por defecto
-  const nombre = datos.destinatario || "No especificado";
-  const telefono = datos.telefonoCliente || "No especificado";
-  const documento = datos.documentoRecojo || "No especificado";
-  const correo = datos.correoCliente ? `📧 *Correo:* ${datos.correoCliente}\n` : "";
-  const metodo = datos.tipoEnvio || "No especificado";
-  const destino = datos.destinoDetalle || "No especificado";
+  // 1. Extracción dinámica de variables con valores limpios
+  const nombre = (datos.destinatario || "Cliente").trim();
+  const telefono = (datos.telefonoCliente || "").replace(/\D/g, '') || "No especificado";
+  const documento = (datos.documentoRecojo || "").trim() || "No especificado";
+  const metodo = (datos.tipoEnvio || "Envío").trim();
+  const destino = (datos.destinoDetalle || "Agencia Shalom").trim();
+  const codigo = datos.codigoSeguimiento || "Vigente";
+  const fechaFormateada = formatFechaConDia(datos.fechaDeseadaEnvio);
 
-  // Campos condicionales
-  const lineaCodigo = datos.codigoSeguimiento ? `📦 *Código / Orden:* #${datos.codigoSeguimiento}\n` : "";
-  const lineaFecha = datos.fechaDeseadaEnvio ? `📅 *Fecha Deseada de Envío:* ${datos.fechaDeseadaEnvio}\n` : "";
-  const lineaReferencia = datos.referencia ? `🏷️ *Referencia:* ${datos.referencia}\n` : "";
-  const lineaMonto = datos.montoTotal ? `💰 *Monto Total:* S/ ${datos.montoTotal}\n` : "";
-  const lineaMaps = datos.coordenadasMapsUrl ? `🗺️ *Ubicación en Google Maps:*\n${datos.coordenadasMapsUrl}\n` : "";
-  
-  // Datos del remitente si existen
-  let lineaRemitente = "";
-  if (datos.remitenteNombre || datos.remitenteDni) {
-    const rNombre = datos.remitenteNombre || "ComiKids Envíos";
-    const rDni = datos.remitenteDni ? ` | DNI: ${datos.remitenteDni}` : "";
-    const rCel = datos.remitenteCelular ? ` | Cel: ${datos.remitenteCelular}` : "";
-    const rMail = datos.remitenteEmail ? ` | Mail: ${datos.remitenteEmail}` : "";
-    lineaRemitente = `🏢 *Remitente:* ${rNombre}${rDni}${rCel}${rMail}\n`;
-  }
+  // Enlace dinámico del Funnel
+  const currentOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://comikids-encomi-app.vercel.app';
+  const funnelUrl = `${currentOrigin}/?funnel=encomi`;
 
-  // 2. Construcción del mensaje con Template Literals y Emojis
+  const lineaRef = datos.referencia ? `🏷️ *Ref:* ${datos.referencia.trim()}\n` : "";
+  const lineaMaps = datos.coordenadasMapsUrl ? `🗺️ *Ubicación GPS:*\n${datos.coordenadasMapsUrl}\n` : "";
+  const lineaCorreo = datos.correoCliente ? `📧 *Correo:* ${datos.correoCliente.trim()}\n` : "";
+
+  // 2. Construcción del mensaje estructurado, ultra compacto y ordenado
   const cuerpoMensaje = 
-`Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨
+`✨ *COMPROBANTE OFICIAL DE ENVÍO - COMIKIDS* 📦
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏷️ *Orden:* #${codigo}
+👤 *Cliente:* ${nombre}
+🪪 *DNI / Doc:* ${documento}
+📱 *WhatsApp:* +51 ${telefono}
+${lineaCorreo}🚚 *Modalidad:* ${metodo}
+📅 *Fecha de Envío:* ${fechaFormateada}
 
------------------------------------
-${lineaCodigo}👤 *Destinatario:* ${nombre}
-📱 *WhatsApp / Celular:* ${telefono}
-🪪 *DNI / CE:* ${documento}
-${correo}🚚 *Tipo de Envío:* ${metodo}
-${lineaFecha}${lineaMonto}📍 *Destino / Dirección:*
+📍 *Agencia / Destino Oficial:*
 ${destino}
-${lineaReferencia}${lineaMaps}${lineaRemitente}-----------------------------------
-Gracias por la confianza 💖✨🙏`;
+${lineaRef}${lineaMaps}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 *¿Quieres despachar tus envíos 10 veces más rápido?*
+Conoce el sistema operativo *Encomi Envíos*:
+👉 ${funnelUrl}
+
+📲 *Contacto Directo Encomi:* ${NUMERO_CONTACTO_ENCOMI}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+¡Muchas gracias por tu preferencia! 💖✨🙏`;
 
   // 3. Codificación con encodeURIComponent
   const textoCodificado = encodeURIComponent(cuerpoMensaje);

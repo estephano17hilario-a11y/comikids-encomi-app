@@ -15,6 +15,7 @@ import {
   getWhatsAppBusinessChatUrl,
   getJoinEncomiWhatsAppUrl
 } from '../../services/whatsappService';
+import { OrderSuccessAnimation } from './OrderSuccessAnimation';
 import {
   Package,
   Truck,
@@ -252,6 +253,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showEncomiAiModal, setShowEncomiAiModal] = useState(false);
+  const [showDispatchAnimation, setShowDispatchAnimation] = useState(false);
   const [createdOrder, setCreatedOrderState] = useState<Pedido | null>(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -529,6 +531,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
       triggerConfetti();
       setCreatedOrder(newOrder);
+      setShowDispatchAnimation(true);
 
     } catch (err) {
       console.error(err);
@@ -585,6 +588,15 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
   return (
     <div className="w-full max-w-2xl mx-auto py-1 font-sans tracking-tight space-y-3.5">
+      
+      {/* Overlay Animado 60 FPS de Despacho con Auto-Redirección a WhatsApp */}
+      {showDispatchAnimation && createdOrder && (
+        <OrderSuccessAnimation
+          order={createdOrder}
+          comprobanteData={datosComprobanteActuales}
+          onFinished={() => setShowDispatchAnimation(false)}
+        />
+      )}
       
 
 

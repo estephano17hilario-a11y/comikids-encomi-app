@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { supabaseAdmin } from '../config/supabase.js';
-import { queryCopilotWithUsage } from './ai.service.js';
+import { queryCopilotWithUsage, extractClientFromMedia } from './ai.service.js';
 import { EvolutionService } from './evolution.service.js';
 import { env } from '../config/env.js';
 import { redisClient } from '../config/redis.js';
@@ -731,6 +731,24 @@ export class CopilotService {
         messageData?.message?.imageMessage?.mimetype ||
         (isImage ? 'image/jpeg' : 'application/pdf');
 
+      // Extracción Visual Inteligente de Destinatario si hay archivo adjunto (Vision OCR)
+      let extractedClientInfo: any = null;
+      let mediaBuffer: Buffer | null = null;
+      let actualMime = attachedMimeType;
+
+      if (hasAttachedMedia && messageData) {
+        try {
+          const media = await EvolutionService.getMediaBuffer(messageData, masterInstance);
+          mediaBuffer = media.buffer;
+          actualMime = media.mimeType || attachedMimeType;
+          const rawBase64 = mediaBuffer.toString('base64');
+          extractedClientInfo = await extractClientFromMedia(rawBase64, actualMime);
+          console.log(`[COPILOT MEDIA OCR] ✓ Datos extraídos de archivo:`, extractedClientInfo);
+        } catch (mErr) {
+          console.warn('[COPILOT MEDIA BUFFER WARN]', mErr);
+        }
+      }
+
       // -------------------------------------------------------------
       // PASO 7: PROMPT DEL SISTEMA CON 4 CAMPOS Y COMPROBANTE ESTÁNDAR
       // -------------------------------------------------------------
@@ -744,6 +762,14 @@ INFORMACIÓN DE ACCESO:
 - Tokens consumidos hoy: ${currentTokenUsage.toLocaleString()} / 500,000 tokens
 - Fecha actual del sistema (Perú UTC-5): ${todayString}
 - Archivo adjunto: ${hasAttachedMedia ? `SÍ (${isImage ? 'IMAGEN' : 'DOCUMENTO'}: ${attachedFileName})` : 'NO'}
+
+${hasAttachedMedia ? `--- DATOS DEL ARCHIVO/FOTO ADJUNTO LEÍDOS POR VISIÓN IA ---
+- Nombre detectado en archivo: ${extractedClientInfo?.nombre || 'No detectado'}
+- Teléfono detectado en archivo: ${extractedClientInfo?.telefono || 'No detectado'}
+- DNI detectado en archivo: ${extractedClientInfo?.dni || 'No detectado'}
+- Guía / Tracking detectado: ${extractedClientInfo?.guia || 'No detectado'}
+- Detalle / Descripción: ${extractedClientInfo?.descripcion || 'No detectado'}
+--- FIN DATOS ADJUNTOS ---` : ''}
 
 ${statsSummary}
 
@@ -801,12 +827,16 @@ Si el usuario te pide cambiar estado de producción, envío o destino (ej: "marc
 }
 \`\`\`
 
-4. ENVIAR MENSAJE O ARCHIVO A CLIENTA:
+4. ENVIAR MENSAJE O ARCHIVO A CLIENTA (LOTE O INDIVIDUAL):
+Si el usuario te envía una foto, comprobante, guía o documento y te pide que se lo envíes a su dueña/clienta:
+- Cruza los datos leídos del archivo (Nombre, DNI, Guía) con la BASE DE DATOS DE PEDIDOS de arriba para obtener su teléfono oficial (+51 9XXXXXXXX).
+- Responde con este formato JSON:
 \`\`\`json
 {
   "action": "SEND_WHATSAPP_MESSAGE",
   "targetPhone": "987654321",
-  "text": "Texto a enviar",
+  "customerName": "Nombre de la clienta",
+  "text": "Hola {Nombre} 👋, te compartimos tu comprobante/foto de tu pedido en ComiKids. ✨",
   "mediaUrl": null,
   "sendAttachedDoc": ${hasAttachedMedia},
   "mediaType": "${isImage ? 'image' : (isDoc ? 'document' : 'image')}",
@@ -861,11 +891,13 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
             let clienteTelefono = String(
               actionData.clienteTelefono ||
               actionData.telefono ||
-              actionData.celular ||
-              actionData.cel ||
               actionData.phone ||
+              actionData.celular ||
               ''
             ).replace(/[^0-9]/g, '').trim();
+            if (clienteTelefono.length > 9 && clienteTelefono.startsWith('51')) {
+              clienteTelefono = clienteTelefono.slice(2);
+            }
 
             let destino = String(
               actionData.destino ||
@@ -1110,18 +1142,25 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
             let target = String(actionData.targetPhone).replace(/[^0-9]/g, '');
             if (target.length === 9) target = `51${target}`;
 
-            const messageText = actionData.text || '';
+            const clientDisplayName = actionData.customerName || extractedClientInfo?.nombre || 'Cliente';
+            const messageText = actionData.text || `Hola ${clientDisplayName} 👋, te compartimos tu comprobante/foto de tu pedido en ComiKids. ✨`;
             const mediaUrl = actionData.mediaUrl;
             const targetMediaType = actionData.mediaType || (isImage ? 'image' : 'document');
             const fileName = actionData.fileName || attachedFileName || (targetMediaType === 'image' ? 'imagen.jpg' : 'documento.pdf');
 
             console.log(`[COPILOT ACTION] 🚀 Despachando ${hasAttachedMedia ? targetMediaType : 'texto'} desde instancia "${userSenderInstance}" (+${userSenderPhone}) a +${target}: "${messageText}"`);
 
-            if (hasAttachedMedia && messageData) {
+            if (hasAttachedMedia && (mediaBuffer || messageData)) {
               try {
-                const media = await EvolutionService.getMediaBuffer(messageData, masterInstance);
-                const rawBase64 = media.buffer.toString('base64');
-                const actualMime = media.mimeType || attachedMimeType;
+                let buf: Buffer | null = mediaBuffer;
+                if (!buf && messageData) {
+                  const fetched = await EvolutionService.getMediaBuffer(messageData, masterInstance);
+                  buf = fetched.buffer;
+                }
+                if (!buf) {
+                  throw new Error('No se pudo recuperar el buffer del archivo adjunto');
+                }
+                const rawBase64 = buf.toString('base64');
                 const finalMediaType = actualMime.startsWith('image/') ? 'image' : (actualMime.startsWith('audio/') ? 'audio' : 'document');
 
                 await EvolutionService.sendWhatsAppMedia(userSenderInstance, target, rawBase64, {
@@ -1144,9 +1183,34 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               await EvolutionService.sendWhatsAppMessage(userSenderInstance, target, messageText);
             }
 
-            const confirmMsg = `✅ *Mensaje despachado exitosamente desde tu cuenta (+${userSenderPhone})*\n\n📱 *Destinatario:* +${target}\n💬 *Mensaje:* "${messageText}"${hasAttachedMedia || mediaUrl ? `\n📎 *Archivo enviado:* ${fileName}` : ''}\n⚡ *Línea Emisora:* +${userSenderPhone} (${userSenderInstance})`;
-            await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, confirmMsg);
-            return confirmMsg;
+            // Registrar en historial de lote en Redis
+            const batchKey = `copilot:batch_history:${cleanPhone}`;
+            const deliveryItem = {
+              targetPhone: target,
+              clientName: clientDisplayName,
+              fileName: fileName,
+              timestamp: Date.now(),
+              status: 'success'
+            };
+            await redisClient.rpush(batchKey, JSON.stringify(deliveryItem));
+            await redisClient.expire(batchKey, 3600); // 1 hora de memoria de lote
+
+            const totalBatchItemsRaw = await redisClient.lrange(batchKey, 0, -1);
+            const totalBatchCount = totalBatchItemsRaw.length;
+
+            let reportSummary = `✅ *Archivo entregado con éxito a clienta*\n\n👤 *Cliente:* ${clientDisplayName}\n📱 *Destinatario:* +${target}\n📎 *Archivo:* ${fileName}\n💬 *Mensaje:* "${messageText}"\n⚡ *Línea Emisora:* +${userSenderPhone} (${userSenderInstance})`;
+
+            if (totalBatchCount > 1) {
+              const listLines = totalBatchItemsRaw.map((raw, idx) => {
+                const it = JSON.parse(raw);
+                return `${idx + 1}. *${it.clientName}* (+${it.targetPhone}) ➔ ${it.fileName}`;
+              }).join('\n');
+
+              reportSummary += `\n\n📋 *Reporte de Lote Acumulado (${totalBatchCount} envíos hoy):*\n${listLines}`;
+            }
+
+            await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, reportSummary);
+            return reportSummary;
           }
         } catch (parseErr) {
           console.warn('[COPILOT ACTION PARSE WARN]', parseErr);

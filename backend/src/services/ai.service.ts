@@ -78,6 +78,68 @@ export async function auditPaymentVoucher(imageBase64: string, mimeType: string 
   };
 }
 
+export interface ExtractedClientMediaInfo {
+  nombre?: string;
+  telefono?: string;
+  dni?: string;
+  guia?: string;
+  descripcion?: string;
+  confidence: 'ALTA' | 'MEDIA' | 'BAJA';
+}
+
+// B. Extracción Inteligente de Destinatario en Fotos / Documentos (OCR Visual)
+export async function extractClientFromMedia(
+  imageBase64: string,
+  mimeType: string = 'image/jpeg'
+): Promise<ExtractedClientMediaInfo> {
+  const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '');
+
+  const modelsToTry = [AI_MODEL, 'meta-llama/llama-3.3-70b-instruct', 'openai/gpt-4o-mini'];
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await aiClient.chat.completions.create(
+        {
+          model,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Eres un asistente de logística y envíos de Comikids. Analiza la imagen o documento adjunto (puede ser una guía de envío, rótulo de paquete, comprobante, captura o etiqueta) y extrae los datos del cliente/destinatario en formato JSON estricto: {"nombre": string, "telefono": string, "dni": string, "guia": string, "descripcion": string, "confidence": "ALTA" | "MEDIA" | "BAJA"}. Si algún dato no aparece, déjalo como null o string vacío.',
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Extrae el nombre, teléfono de WhatsApp, DNI y número de guía del destinatario:' },
+                {
+                  type: 'image_url',
+                  image_url: { url: `data:${mimeType};base64,${cleanBase64}` },
+                },
+              ],
+            },
+          ],
+          response_format: { type: 'json_object' },
+        },
+        { timeout: 15000 }
+      );
+
+      const rawContent = response.choices[0]?.message?.content || '{}';
+      return JSON.parse(rawContent);
+    } catch (e: any) {
+      console.warn(`[AI SERVICE MEDIA CLIENT OCR] Modelo ${model} falló:`, e?.message);
+    }
+  }
+
+  return {
+    nombre: '',
+    telefono: '',
+    dni: '',
+    guia: '',
+    descripcion: '',
+    confidence: 'BAJA',
+  };
+}
+
 export interface AICopilotResult {
   content: string;
   tokensUsed: number;

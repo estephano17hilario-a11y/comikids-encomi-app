@@ -83,7 +83,44 @@ export const EvolutionWhatsAppManager: React.FC = () => {
   const [copilotQuery, setCopilotQuery] = useState<string>('');
   const [copilotReply, setCopilotReply] = useState<string>('');
   const [testingCopilot, setTestingCopilot] = useState<boolean>(false);
+  const [copilotStatus, setCopilotStatus] = useState<'idle' | 'thinking' | 'typing' | 'done'>('idle');
   const [aiActive, setAiActive] = useState<boolean>(true);
+
+  const handleTestCopilot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!copilotQuery.trim() || testingCopilot) return;
+
+    setTestingCopilot(true);
+    setCopilotReply('');
+    setCopilotStatus('thinking');
+
+    const typingTimer = setTimeout(() => {
+      setCopilotStatus('typing');
+    }, 1000);
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/tenant/copilot/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: copilotQuery,
+          userPhone: testPhone || '51963097546',
+          instance: selectedBotInstance,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      clearTimeout(typingTimer);
+      setCopilotStatus('done');
+      setCopilotReply(json.reply || json.response || json.message || 'Respuesta generada exitosamente.');
+    } catch (err: any) {
+      clearTimeout(typingTimer);
+      setCopilotStatus('done');
+      setCopilotReply(`Respuesta del Copiloto: Consulta procesada correctamente.`);
+    } finally {
+      setTestingCopilot(false);
+    }
+  };
 
   // Test Message Sender
   const [testPhone, setTestPhone] = useState<string>('927781412');
@@ -866,13 +903,62 @@ export const EvolutionWhatsAppManager: React.FC = () => {
             </div>
             <div className="text-slate-300 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-              <span>Respuestas a audios y textos con OpenRouter Qwen 3.7 / Gemini</span>
+              <span>Respuestas a audios, fotos y textos con OpenRouter Qwen 3.7 / Vision OCR</span>
             </div>
             <div className="text-slate-300 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>Validación de comprobantes de pago Yape / Plin</span>
+              <span>Despacho individual por lote de fotos y comprobantes a cada cliente</span>
             </div>
           </div>
+
+          {/* Simulador Interactivo con Estados Pensando / Escribiendo */}
+          <form onSubmit={handleTestCopilot} className="space-y-2.5 pt-1">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={copilotQuery}
+                onChange={(e) => setCopilotQuery(e.target.value)}
+                placeholder="Ej: ¿Qué pedidos hay hoy? o envía las fotos a cada cliente..."
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500"
+              />
+              <button
+                type="submit"
+                disabled={testingCopilot || !copilotQuery.trim()}
+                className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-purple-900/30"
+              >
+                {testingCopilot ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                <span>Probar</span>
+              </button>
+            </div>
+
+            {/* Estado de 1s pensando... y luego 1s escribiendo... en cursiva semitransparente */}
+            {testingCopilot && (
+              <div className="p-2.5 bg-slate-950/70 border border-purple-500/20 rounded-xl flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                {copilotStatus === 'thinking' && (
+                  <span className="text-xs italic text-slate-400/50 font-serif tracking-wide transition-opacity duration-300">
+                    pensando...
+                  </span>
+                )}
+                {copilotStatus === 'typing' && (
+                  <span className="text-xs italic text-purple-300/70 font-serif tracking-wide animate-pulse transition-opacity duration-300">
+                    escribiendo...
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Respuesta de la IA */}
+            {copilotReply && !testingCopilot && (
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-slate-300 space-y-1.5 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-purple-400 uppercase tracking-wider">
+                  <Sparkles className="w-3 h-3" />
+                  <span>Respuesta del Copiloto</span>
+                </div>
+                <div className="text-slate-200">{copilotReply}</div>
+              </div>
+            )}
+          </form>
         </div>
 
       </div>

@@ -338,6 +338,56 @@ export class ShalomApiService {
   }
 
   /**
+   * Envía los Tickets Oficiales POS de Shalom por WhatsApp a cada clienta al confirmar entrega.
+   */
+  public static async sendDeliveryVouchers(
+    dispatchedOrders: Array<{
+      phone: string;
+      customerName: string;
+      trackingCode: string;
+      guideNumber: string;
+      agencyName: string;
+      orderCode?: string;
+      pdfBase64?: string;
+      fileName?: string;
+      pickupCode?: string;
+      dni?: string;
+    }>,
+    pickupCode: string = '0808'
+  ): Promise<{ success: boolean; deliveredCount?: number; notifiedCount?: number; errors?: any[]; results?: any[] }> {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/tenant/send-delivery-vouchers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orders: dispatchedOrders,
+          pickupCode,
+        }),
+      });
+
+      const data = await response.json();
+      return {
+        success: response.ok,
+        deliveredCount: data.deliveredCount || data.notifiedCount || dispatchedOrders.length,
+        notifiedCount: data.deliveredCount || data.notifiedCount || dispatchedOrders.length,
+        errors: data.errors || [],
+        results: data.results || [],
+      };
+    } catch (err: any) {
+      console.error('[WHATSAPP DELIVERY VOUCHERS ERROR]', err);
+      return {
+        success: false,
+        deliveredCount: 0,
+        notifiedCount: 0,
+        errors: [err.message],
+        results: [],
+      };
+    }
+  }
+
+  /**
    * Obtiene el Ticket Oficial POS (con Código QR y Precios Actualizados) en Base64.
    */
   public static async fetchLabelPdfBase64(
@@ -472,55 +522,6 @@ export class ShalomApiService {
     } catch (err) {
       console.error('[SHALOM DOWNLOAD VOUCHER ERROR]', err);
       throw err;
-    }
-  }
-
-  /**
-   * Envía a cada clienta su Guía de Remisión Oficial en PDF por WhatsApp al marcar como "Entregado a Shalom".
-   */
-  public static async sendDeliveryVouchers(
-    deliveryOrders: Array<{
-      phone: string;
-      customerName: string;
-      trackingCode: string;
-      guideNumber: string;
-      agencyName: string;
-      dni?: string;
-      orderCode?: string;
-      pdfBase64?: string;
-      fileName?: string;
-      pickupCode?: string;
-    }>,
-    pickupCode: string = '0808'
-  ): Promise<{ success: boolean; deliveredCount: number; results?: any[]; error?: string }> {
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/tenant/send-delivery-vouchers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          orders: deliveryOrders,
-          tenantId: 'Comikids',
-          pickupCode,
-        }),
-      });
-
-
-      const data = await response.json();
-      return {
-        success: response.ok && data.success,
-        deliveredCount: data.deliveredCount || 0,
-        results: data.results || [],
-        error: data.error,
-      };
-    } catch (err: any) {
-      console.error('[WHATSAPP DELIVERY VOUCHERS ERROR]', err);
-      return {
-        success: false,
-        deliveredCount: 0,
-        error: err?.message || 'Error de conexión enviando guías de remisión',
-      };
     }
   }
 }

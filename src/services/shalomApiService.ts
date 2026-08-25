@@ -338,12 +338,13 @@ export class ShalomApiService {
   }
 
   /**
-   * Obtiene la Guía de Remisión Oficial en Base64 para adjuntarla directamente a WhatsApp.
+   * Obtiene la Guía de Remisión Oficial (con Código QR y de Barras) en Base64.
    */
   public static async fetchLabelPdfBase64(
     oseId: number | string,
     auth?: ShalomAuthCredentials,
-    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string }
+    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string },
+    onMetadata?: (meta: { pickupCode?: string; guia?: string }) => void
   ): Promise<string | null> {
     try {
       const headers: Record<string, string> = {
@@ -368,6 +369,12 @@ export class ShalomApiService {
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/pdf') && !contentType.includes('image/') && !contentType.includes('octet-stream')) {
         return null;
+      }
+
+      const livePin = response.headers.get('x-shalom-pickup-code') || response.headers.get('X-Shalom-Pickup-Code');
+      const liveGuia = response.headers.get('x-shalom-guia') || response.headers.get('X-Shalom-Guia');
+      if (onMetadata && (livePin || liveGuia)) {
+        onMetadata({ pickupCode: livePin || undefined, guia: liveGuia || undefined });
       }
 
       const blob = await response.blob();

@@ -147,42 +147,30 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           }
           if (meta.guia && !item.manualGuideInput) {
             item.guideNumber = meta.guia;
+            item.manualGuideInput = meta.guia;
           }
         };
 
-        // 1. Prioridad: Buscar por DNI del destinatario en Shalom Pro (el identificador más exacto)
-        if (item.dni && item.dni.length >= 6 && item.dni !== '42020312' && item.dni !== '00000000') {
-          try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx, handleMeta);
-          } catch {}
-        }
+        const guideKey = item.manualGuideInput || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '');
+        const dniKey = item.dni && item.dni.length >= 6 && item.dni !== '42020312' && item.dni !== '00000000' ? item.dni : '';
+        const oseKey = originalOrder?.shalom_ose_id || '';
+        const phoneKey = item.phone && item.phone.length >= 9 && item.phone !== '927781412' ? item.phone : '';
+        const nameKey = item.customerName && item.customerName.length >= 5 ? item.customerName : '';
 
-        // 2. Si no encontró por DNI pero tiene Guía registrada (ej: V204-123456 o manual)
-        if (!pdfData && item.manualGuideInput && !item.manualGuideInput.startsWith('SH-') && item.manualGuideInput !== 'S/G') {
-          try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.manualGuideInput, auth, clientCtx, handleMeta);
-          } catch {}
-        }
+        const searchCandidates = [guideKey, dniKey, oseKey, phoneKey, nameKey].filter(Boolean);
 
-        // 3. Intentar por OSE ID oficial previo
-        if (!pdfData && originalOrder?.shalom_ose_id) {
+        for (const candidate of searchCandidates) {
+          if (pdfData && pdfData.length > 100) break;
           try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(originalOrder.shalom_ose_id, auth, clientCtx, handleMeta);
+            // PRIORIDAD 1: Guía de Remisión Oficial con QR (/label)
+            pdfData = await ShalomApiService.fetchLabelPdfBase64(candidate, auth, clientCtx, handleMeta);
           } catch {}
-        }
-
-        // 4. Intentar por Teléfono
-        if (!pdfData && item.phone && item.phone.length >= 9 && item.phone !== '927781412') {
-          try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.phone, auth, clientCtx, handleMeta);
-          } catch {}
-        }
-
-        // 5. Si la clienta no tiene DNI, buscar por su Nombre Completo
-        if (!pdfData && item.customerName && item.customerName.length >= 5) {
-          try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.customerName, auth, clientCtx, handleMeta);
-          } catch {}
+          if (!pdfData || pdfData.length < 100) {
+            try {
+              // PRIORIDAD 2: Ticket POS Oficial (/voucher)
+              pdfData = await ShalomApiService.fetchVoucherPdfBase64(candidate, auth, clientCtx, handleMeta);
+            } catch {}
+          }
         }
 
         if (pdfData && pdfData.length > 100) {
@@ -200,7 +188,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const verified = updatedList.filter((p) => p.auditStatus === 'verified_pdf').length;
       setCurrentStepText(
         verified === updatedList.length
-          ? '✓ Todos los pedidos fueron confirmados en Shalom Pro API (PDFs oficiales listos).'
+          ? '✓ Todos los pedidos fueron confirmados en Shalom Pro API (Guías oficiales con QR listas).'
           : `${verified} de ${updatedList.length} pedidos confirmados en Shalom Pro API.`
       );
     };
@@ -229,29 +217,29 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       guia: !isNumDni ? keyToSearch : (item.manualGuideInput || item.guideNumber),
     };
 
+    const handleMeta = (meta: { pickupCode?: string; guia?: string }) => {
+      if (meta.pickupCode) {
+        item.pickupCode = meta.pickupCode;
+      }
+      if (meta.guia) {
+        item.guideNumber = meta.guia;
+        item.manualGuideInput = meta.guia;
+      }
+    };
+
     try {
-      let pdfData = await ShalomApiService.fetchVoucherPdfBase64(
-        keyToSearch,
-        auth,
-        clientCtx,
-        (meta) => {
-          if (meta.pickupCode) {
-            item.pickupCode = meta.pickupCode;
-          }
-          if (meta.guia) {
-            item.guideNumber = meta.guia;
-          }
-        }
-      );
+      // Prioridad 1: Guía de Remisión Oficial con QR (/label)
+      let pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
       if (!pdfData || pdfData.length < 100) {
-        pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth, clientCtx);
+        // Prioridad 2: Ticket POS Oficial (/voucher)
+        pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
       }
       if (pdfData && pdfData.length > 100) {
         item.pdfBase64 = pdfData;
         item.auditStatus = 'verified_pdf';
         setProgressList([...progressList]);
       } else {
-        alert(`No se encontró el ticket/guía oficial en Shalom Pro para "${keyToSearch}". Verifica el número de orden, guía o DNI.`);
+        alert(`No se encontró la guía oficial en Shalom Pro para "${keyToSearch}". Verifica el número de orden, guía o DNI.`);
       }
     } catch (err: any) {
       alert(`Error consultando Shalom Pro: ${err.message}`);

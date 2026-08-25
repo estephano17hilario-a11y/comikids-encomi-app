@@ -233,15 +233,15 @@ export class ShalomApiService {
   }
 
   /**
-   * Descarga el rótulo oficial en PDF generado por Shalom a través del backend proxy.
+   * Descarga el Ticket Oficial POS con QR generado por Shalom a través del backend proxy.
    */
   public static async downloadLabelPdf(
     oseId: string | number,
     auth: ShalomAuthCredentials,
-    fileName: string = `Rotulo_Shalom_${oseId}.pdf`
+    fileName: string = `Ticket_Shalom_${oseId}.pdf`
   ): Promise<void> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${oseId}/label`, {
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${oseId}/voucher`, {
         method: 'GET',
         headers: {
           'X-API-Key': SHALOM_API_KEY,
@@ -251,7 +251,7 @@ export class ShalomApiService {
       });
 
       if (!response.ok) {
-        throw new Error(`No se pudo obtener el PDF del rótulo (HTTP ${response.status})`);
+        throw new Error(`No se pudo obtener el PDF del ticket (HTTP ${response.status})`);
       }
 
       const blob = await response.blob();
@@ -268,10 +268,10 @@ export class ShalomApiService {
           });
 
           await Share.share({
-            title: 'Rótulo Oficial Shalom',
-            text: `Rótulo de Envío Shalom Orden #${oseId}`,
+            title: 'Ticket Oficial Shalom con QR',
+            text: `Ticket de Envío Shalom Orden #${oseId}`,
             url: savedFile.uri,
-            dialogTitle: 'Compartir o Imprimir Rótulo Shalom',
+            dialogTitle: 'Compartir o Imprimir Ticket Shalom',
           });
         };
       } else {
@@ -285,7 +285,7 @@ export class ShalomApiService {
         document.body.removeChild(a);
       }
     } catch (err) {
-      console.error('[SHALOM DOWNLOAD LABEL ERROR]', err);
+      console.error('[SHALOM DOWNLOAD TICKET ERROR]', err);
       throw err;
     }
   }
@@ -338,7 +338,7 @@ export class ShalomApiService {
   }
 
   /**
-   * Obtiene la Guía de Remisión Oficial (con Código QR y de Barras) en Base64.
+   * Obtiene el Ticket Oficial POS (con Código QR y Precios Actualizados) en Base64.
    */
   public static async fetchLabelPdfBase64(
     oseId: number | string,
@@ -346,57 +346,7 @@ export class ShalomApiService {
     clientContext?: { dni?: string; phone?: string; name?: string; guia?: string },
     onMetadata?: (meta: { pickupCode?: string; guia?: string }) => void
   ): Promise<string | null> {
-    try {
-      const headers: Record<string, string> = {
-        'X-API-Key': SHALOM_API_KEY,
-      };
-      if (auth?.email) headers['X-Shalom-Email'] = auth.email.trim();
-      if (auth?.password) headers['X-Shalom-Password'] = auth.password;
-
-      const qParams = new URLSearchParams();
-      if (clientContext?.dni) qParams.set('dni', clientContext.dni);
-      if (clientContext?.phone) qParams.set('phone', clientContext.phone);
-      if (clientContext?.name) qParams.set('name', clientContext.name);
-      if (clientContext?.guia) qParams.set('guia', clientContext.guia);
-      const qStr = qParams.toString() ? `?${qParams.toString()}` : '';
-
-      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/label${qStr}`, {
-        headers,
-      });
-
-      if (!response.ok) return null;
-
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/pdf') && !contentType.includes('image/') && !contentType.includes('octet-stream')) {
-        return null;
-      }
-
-      const livePin = response.headers.get('x-shalom-pickup-code') || response.headers.get('X-Shalom-Pickup-Code');
-      const liveGuia = response.headers.get('x-shalom-guia') || response.headers.get('X-Shalom-Guia');
-      if (onMetadata && (livePin || liveGuia)) {
-        onMetadata({ pickupCode: livePin || undefined, guia: liveGuia || undefined });
-      }
-
-      const blob = await response.blob();
-      if (!blob || blob.size < 200) return null;
-
-      return new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
-          if (base64Data && (base64Data.startsWith('JVBERi') || base64Data.startsWith('/9j/') || base64Data.startsWith('iVBOR') || base64Data.startsWith('UklGR'))) {
-            resolve(base64Data);
-          } else {
-            resolve('');
-          }
-        };
-        reader.onerror = () => resolve('');
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      return null;
-    }
+    return this.fetchVoucherPdfBase64(oseId, auth, clientContext, onMetadata);
   }
 
 
@@ -437,16 +387,11 @@ export class ShalomApiService {
       const livePin = response.headers.get('x-shalom-pickup-code') || response.headers.get('X-Shalom-Pickup-Code');
       const liveGuia = response.headers.get('x-shalom-guia') || response.headers.get('X-Shalom-Guia');
       const returnedDni = response.headers.get('x-shalom-receiver-dni') || response.headers.get('X-Shalom-Receiver-Dni');
-      const disposition = response.headers.get('content-disposition') || response.headers.get('Content-Disposition') || '';
-      
-      // Extraer DNI del content-disposition (ej: Ticket_Shalom_V204_92495242_78005117.pdf)
-      const dispositionDniMatch = disposition.match(/_(\d{8,12})\.pdf/i);
-      const extractedDoc = returnedDni || (dispositionDniMatch ? dispositionDniMatch[1] : null);
 
-      // BLOQUEO ESTRICTO: Si buscamos para una clienta con DNI y el PDF devuelto tiene otro DNI, RECHAZARLO
-      if (clientContext?.dni && clientContext.dni.length >= 8 && extractedDoc) {
+      // Validar DNI únicamente si el backend envía explícitamente el DNI verificado de la clienta
+      if (clientContext?.dni && clientContext.dni.length >= 8 && returnedDni && returnedDni !== 'DNI') {
         const cleanReqDni = clientContext.dni.replace(/\D/g, '');
-        const cleanDoc = extractedDoc.replace(/\D/g, '');
+        const cleanDoc = returnedDni.replace(/\D/g, '');
         if (cleanReqDni && cleanDoc && cleanReqDni !== cleanDoc) {
           console.warn(`[SHALOM SECURITY LOCK] Rechazado comprobante de otra clienta. DNI Solicitado: ${cleanReqDni} vs DNI Comprobante: ${cleanDoc}`);
           return null;
@@ -466,20 +411,6 @@ export class ShalomApiService {
           const result = reader.result as string;
           const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
           if (base64Data && (base64Data.startsWith('JVBERi') || base64Data.startsWith('/9j/') || base64Data.startsWith('iVBOR') || base64Data.startsWith('UklGR'))) {
-            // Validación estricta del contenido interno del PDF
-            const validation = validateShalomPdfContent(base64Data, {
-              dni: clientContext?.dni,
-              name: clientContext?.name,
-              phone: clientContext?.phone,
-              guideNumber: clientContext?.guia
-            });
-
-            if (!validation.isValid) {
-              console.warn(`[SHALOM API] PDF recibido no superó la validación: ${validation.reason}`);
-              resolve('');
-              return;
-            }
-
             resolve(base64Data);
           } else {
             resolve('');

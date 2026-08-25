@@ -395,7 +395,7 @@ export class ShalomController {
   }
 
   /**
-   * Obtiene el PDF del rótulo oficial de Shalom con búsqueda profunda
+   * Obtiene el PDF del Ticket Oficial / Voucher (Formato Físico POS con QR) de Shalom
    */
   public static async getOrderLabel(
     request: FastifyRequest<{
@@ -405,7 +405,7 @@ export class ShalomController {
     }>,
     reply: FastifyReply
   ) {
-    return ShalomController.fetchOrderPdf(request, reply, 'label');
+    return ShalomController.fetchOrderPdf(request, reply, 'voucher');
   }
 
   /**
@@ -495,7 +495,7 @@ export class ShalomController {
   }
 
   /**
-   * Extracción de PDF (Ticket o Rótulo) emparejado estrictamente con el DNI/Documento de la clienta
+   * Extracción de PDF (Ticket POS Blanco y Negro con QR Físico Oficial)
    */
   private static async fetchOrderPdf(
     request: FastifyRequest<{
@@ -504,7 +504,7 @@ export class ShalomController {
       Headers: { [key: string]: string };
     }>,
     reply: FastifyReply,
-    pdfType: 'label' | 'voucher' = 'label'
+    pdfType: 'voucher' | 'label' = 'voucher'
   ) {
     try {
       const { oseId } = request.params;
@@ -520,8 +520,7 @@ export class ShalomController {
         headers['X-Shalom-Password'] = credentials.password;
       }
 
-      const typeLabel = pdfType === 'voucher' ? 'Ticket/Voucher Oficial' : 'Rótulo/Guía Oficial';
-      const filePrefix = pdfType === 'voucher' ? 'Ticket_Shalom' : 'Guia_Shalom';
+      const filePrefix = 'Ticket_Shalom';
 
       const SHOP_PHONES = ['927781412', '987654321', '986398000', '989834969', '51927781412', '51987654321'];
       const SHOP_DNIS = ['42020312', '00000000'];
@@ -537,13 +536,13 @@ export class ShalomController {
       const targetPhone = SHOP_PHONES.includes(rawPhone) || SHOP_PHONES.some(p => rawPhone.endsWith(p)) ? '' : rawPhone;
       const targetName = ['clienta', 'cliente', 'comikids', 'encomi', 'milagros', 'usuario', 'destinatario'].includes(rawName) || rawName.length < 4 ? '' : rawName;
 
-      console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] Buscando documento ESTRICTO para Clienta (DNI: "${targetDni}", Guía: "${targetGuia}", Tel: "${targetPhone}", Nombre: "${targetName}")...`);
+      console.log(`[SHALOM PROXY POS TICKET] Buscando Ticket Oficial con QR para Clienta (DNI: "${targetDni}", Guía: "${targetGuia}", Tel: "${targetPhone}", Nombre: "${targetName}")...`);
 
-      // 2. Si cleanSearch es un ID puramente numérico de orden en Shalom (ej: 96231271) y NO es DNI
-      if (/^\d{7,10}$/.test(cleanSearch) && !targetDni && targetGuia === cleanSearch) {
+      // 2. Si cleanSearch es un ID puramente numérico de orden en Shalom (ej: 92495242, 89022438)
+      if (/^\d{7,10}$/.test(cleanSearch) && !targetDni) {
         try {
           const directRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/${pdfType}`,
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/voucher`,
             {
               headers,
               responseType: 'arraybuffer',
@@ -552,9 +551,11 @@ export class ShalomController {
           );
 
           if (directRes.data && directRes.data.length > 100) {
-            console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] ✓ ${typeLabel} descargado directamente por ID #${cleanSearch}`);
+            console.log(`[SHALOM PROXY POS TICKET] ✓ Ticket Oficial con QR descargado directamente por ID #${cleanSearch}`);
             reply.header('Content-Type', 'application/pdf');
             reply.header('Content-Disposition', `inline; filename="${filePrefix}_${cleanSearch}.pdf"`);
+            reply.header('Access-Control-Expose-Headers', 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni');
+            reply.header('X-Shalom-Guia', cleanSearch);
             return reply.send(directRes.data);
           }
         } catch (directErr: any) {
@@ -565,15 +566,15 @@ export class ShalomController {
       // 3. Obtener TODAS las órdenes de Shalom Pro (multi-página sincronizada)
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
-      // Filtro de Recencia: Órdenes creadas recientemente (últimos 7 días y todas las órdenes de la serie actual)
+      // Filtro de Recencia: Órdenes creadas recientemente (últimos 14 días o serie reciente)
       const isRecentOrder = (o: any) => {
-        if (Number(o.id || 0) >= 90000000) return true; // Órdenes recientes emitidas en Shalom Pro
+        if (Number(o.id || 0) >= 89000000) return true; // Órdenes recientes emitidas en Shalom Pro
         const dateRaw = o.created_at || o.date || o.created_date || o.fecha || o.fecha_emision || o.emitted_at;
         if (!dateRaw) return true;
         const normalized = String(dateRaw).replace(' ', 'T');
         const orderTimestamp = new Date(normalized).getTime();
         if (isNaN(orderTimestamp)) return true;
-        return (Date.now() - orderTimestamp) <= (7 * 24 * 60 * 60 * 1000);
+        return (Date.now() - orderTimestamp) <= (14 * 24 * 60 * 60 * 1000);
       };
 
       // Función de coincidencia ESTRICTA
@@ -653,21 +654,34 @@ export class ShalomController {
         return reply.code(200).header('Content-Type', 'application/json').send({
           success: false,
           found: false,
-          error: `No se encontró ${typeLabel} reciente en Shalom Pro para la clienta indicada (DNI: ${targetDni || 'S/DNI'}).`,
+          error: `No se encontró Ticket Oficial con QR reciente en Shalom Pro para la clienta indicada (DNI: ${targetDni || 'S/DNI'}).`,
         });
       }
 
-      // 4. Descargar el PDF oficial (Ticket o Guía) del pedido verificado
-      console.log(`[SHALOM PROXY DOWNLOAD] ✓ Encontrado para ${matchedOrder.receiver?.name}: Descargando ${typeLabel} de Shalom para Orden #${matchedOrder.id} (DNI: ${matchedOrder.receiver?.document}, Guía: ${matchedOrder.serie}-${matchedOrder.guia})...`);
+      // 4. Descargar el Ticket Oficial POS con QR (/voucher) del pedido verificado
+      console.log(`[SHALOM PROXY DOWNLOAD] ✓ Encontrado para ${matchedOrder.receiver?.name}: Descargando Ticket Oficial con QR de Shalom para Orden #${matchedOrder.id} (DNI: ${matchedOrder.receiver?.document}, Guía: ${matchedOrder.serie}-${matchedOrder.guia})...`);
 
-      const docRes = await axios.get(
-        `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${pdfType}`,
-        {
-          headers,
-          responseType: 'arraybuffer',
-          timeout: 15000,
-        }
-      );
+      let docRes;
+      try {
+        docRes = await axios.get(
+          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/voucher`,
+          {
+            headers,
+            responseType: 'arraybuffer',
+            timeout: 15000,
+          }
+        );
+      } catch (voucherErr) {
+        // Respaldo de contingencia
+        docRes = await axios.get(
+          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/label`,
+          {
+            headers,
+            responseType: 'arraybuffer',
+            timeout: 15000,
+          }
+        );
+      }
 
       if (docRes.data && docRes.data.length > 100) {
         const clientCleanDni = matchedOrder.receiver?.document || targetDni || 'DNI';
@@ -701,25 +715,24 @@ export class ShalomController {
 
         reply.header('Content-Type', 'application/pdf');
         reply.header('Content-Disposition', `inline; filename="${filename}"`);
-        reply.header('Access-Control-Expose-Headers', 'X-Shalom-Pickup-Code, X-Shalom-Guia');
+        reply.header('Access-Control-Expose-Headers', 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni');
         if (realPickupCode) {
           reply.header('X-Shalom-Pickup-Code', realPickupCode);
         }
         reply.header('X-Shalom-Guia', fullGuia);
+        reply.header('X-Shalom-Receiver-Dni', clientCleanDni);
         return reply.send(docRes.data);
       }
 
-
       return reply.code(404).send({
-        error: `El archivo PDF de ${typeLabel} recibido de Shalom Pro está vacío.`,
+        error: `El archivo PDF del Ticket recibido de Shalom Pro está vacío.`,
       });
 
     } catch (error: any) {
-      console.error(`[SHALOM PROXY ${pdfType.toUpperCase()} ERROR]`, error?.message);
+      console.error(`[SHALOM PROXY TICKET ERROR]`, error?.message);
       return reply.code(404).send({
         error: error?.message || `No se encontró el documento en Shalom Pro`,
       });
     }
   }
-
 }

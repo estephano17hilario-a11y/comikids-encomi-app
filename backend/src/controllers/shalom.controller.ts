@@ -378,7 +378,7 @@ export class ShalomController {
    */
   private static async getAllShalomOrders(headers: Record<string, string>, forceRefresh: boolean = false): Promise<any[]> {
     const now = Date.now();
-    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 15000)) {
+    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 5000)) {
       return ShalomController.cachedAllOrders;
     }
 
@@ -513,14 +513,15 @@ export class ShalomController {
       // 3. Obtener TODAS las órdenes de Shalom Pro (multi-página sincronizada)
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
-      // Filtro de Recencia: Órdenes creadas Hoy y Ayer (últimas 72 horas con margen de zona horaria)
-      const MAX_RECENCY_MS = 3 * 24 * 60 * 60 * 1000;
+      // Filtro de Recencia: Órdenes creadas recientemente (últimos 7 días y todas las órdenes de la serie actual)
       const isRecentOrder = (o: any) => {
+        if (Number(o.id || 0) >= 90000000) return true; // Órdenes recientes emitidas en Shalom Pro
         const dateRaw = o.created_at || o.date || o.created_date || o.fecha || o.fecha_emision || o.emitted_at;
         if (!dateRaw) return true;
-        const orderTimestamp = new Date(dateRaw).getTime();
+        const normalized = String(dateRaw).replace(' ', 'T');
+        const orderTimestamp = new Date(normalized).getTime();
         if (isNaN(orderTimestamp)) return true;
-        return (Date.now() - orderTimestamp) <= MAX_RECENCY_MS;
+        return (Date.now() - orderTimestamp) <= (7 * 24 * 60 * 60 * 1000);
       };
 
       // Función de coincidencia ESTRICTA
@@ -536,11 +537,18 @@ export class ShalomController {
           if (gMatch) return gMatch;
         }
 
-        // PRIORIDAD 2: Coincidencia Exacta por DNI del Destinatario (8 a 12 dígitos) en ÓRDENES RECIENTES
-        if (targetDni && targetDni.length >= 8) {
+        // PRIORIDAD 2: Coincidencia Exacta por DNI del Destinatario (6 a 12 dígitos) en ÓRDENES RECIENTES
+        if (targetDni && targetDni.length >= 6) {
           const dniMatches = list.filter((o: any) => {
-            const doc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/\D/g, '').trim();
-            const docMatches = doc === targetDni || (targetDni.length === 8 && doc.endsWith(targetDni)) || (doc.length === 8 && targetDni.endsWith(doc));
+            const doc = String(
+              o.receiver?.document || 
+              o.receiver?.document_number || 
+              o.destinatario?.documento || 
+              o.receiver?.doc || 
+              o.receiver_document || 
+              ''
+            ).replace(/\D/g, '').trim();
+            const docMatches = doc === targetDni || (targetDni.length >= 8 && doc.endsWith(targetDni)) || (doc.length >= 8 && targetDni.endsWith(doc));
             return docMatches && isRecentOrder(o);
           });
 
@@ -548,17 +556,13 @@ export class ShalomController {
             dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
             return dniMatches[0];
           }
-
-          // Si el cliente tiene DNI pero NO coincide con ninguna orden reciente en Shalom Pro, NO caer en fallback de teléfono/nombre
-          console.warn(`[SHALOM PROXY] DNI ${targetDni} no tiene registro en Shalom Pro en los últimos 4 días.`);
-          return null;
         }
 
-        // PRIORIDAD 3: Coincidencia por Teléfono del Destinatario (solo si no es teléfono de tienda y es orden reciente)
+        // PRIORIDAD 3: Coincidencia por Teléfono del Destinatario (solo si no es teléfono de tienda)
         if (targetPhone && targetPhone.length >= 9) {
           const phone9 = targetPhone.slice(-9);
           const phoneMatches = list.filter((o: any) => {
-            const p = String(o.receiver?.phone || '').replace(/\D/g, '').trim();
+            const p = String(o.receiver?.phone || o.destinatario?.telefono || o.receiver?.phone_number || '').replace(/\D/g, '').trim();
             return p && p.slice(-9) === phone9 && isRecentOrder(o);
           });
           if (phoneMatches.length > 0) {
@@ -567,10 +571,10 @@ export class ShalomController {
           }
         }
 
-        // PRIORIDAD 4: Coincidencia por Nombre Completo (solo si nombre es largo y es orden reciente)
-        if (targetName && targetName.length >= 6) {
+        // PRIORIDAD 4: Coincidencia por Nombre Completo
+        if (targetName && targetName.length >= 5) {
           const nameMatches = list.filter((o: any) => {
-            const rFullName = `${o.receiver?.name || ''} ${o.receiver?.last_name || ''}`.toLowerCase().trim();
+            const rFullName = `${o.receiver?.name || o.destinatario?.nombre || ''} ${o.receiver?.last_name || ''}`.toLowerCase().trim();
             return (rFullName.includes(targetName) || targetName.includes(rFullName)) && isRecentOrder(o);
           });
           if (nameMatches.length > 0) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
+import { extractShalomDni, extractShalomPhone } from '../../utils/shalomExcelExporter';
 import {
   FileText,
   Send,
@@ -56,6 +57,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 }) => {
   const [processing, setProcessing] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [progressList, setProgressList] = useState<DeliveryOrderProgress[]>([]);
   const [overallSuccess, setOverallSuccess] = useState(false);
   const [currentStepText, setCurrentStepText] = useState('');
@@ -75,8 +77,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
     const initial: DeliveryOrderProgress[] = orders.map((o) => {
       const clientName = o.usuario?.nombre_completo || (o as any).nombre_cliente || 'Clienta';
-      const cleanPhone = (o.usuario?.telefono_default || (o as any).telefono_contacto || (o.usuario as any)?.telefono || '').replace(/[^0-9]/g, '');
-      let dni = o.usuario?.dni || o.usuario?.dni_default || (o as any).dni_contacto || '';
+      const cleanPhone = extractShalomPhone(o) || (o.usuario?.telefono_default || (o as any).telefono_contacto || (o.usuario as any)?.telefono || '').replace(/[^0-9]/g, '');
+      let dni = extractShalomDni(o) || o.usuario?.dni || o.usuario?.dni_default || (o as any).dni_contacto || '';
       if (!dni || dni.startsWith('usr-') || dni === '00000000') {
         const matchDoc = String(o.destino_detalle || '').match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
         dni = (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) ? matchDoc[1].trim() : '';
@@ -149,7 +151,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         };
 
         // 1. Prioridad: Buscar por DNI del destinatario en Shalom Pro (el identificador más exacto)
-        if (item.dni && item.dni.length >= 8 && item.dni !== '42020312' && item.dni !== '00000000') {
+        if (item.dni && item.dni.length >= 6 && item.dni !== '42020312' && item.dni !== '00000000') {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx, handleMeta);
           } catch {}
@@ -169,8 +171,15 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           } catch {}
         }
 
-        // 4. Si la clienta no tiene DNI, buscar por su Nombre Completo
-        if (!pdfData && !item.dni && item.customerName && item.customerName.length >= 6) {
+        // 4. Intentar por Teléfono
+        if (!pdfData && item.phone && item.phone.length >= 9 && item.phone !== '927781412') {
+          try {
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.phone, auth, clientCtx, handleMeta);
+          } catch {}
+        }
+
+        // 5. Si la clienta no tiene DNI, buscar por su Nombre Completo
+        if (!pdfData && item.customerName && item.customerName.length >= 5) {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.customerName, auth, clientCtx, handleMeta);
           } catch {}
@@ -212,11 +221,12 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       password: tallerConfig.shalom_password || '',
     } : undefined;
 
+    const isNumDni = /^\d{8,12}$/.test(keyToSearch);
     const clientCtx = {
-      dni: item.dni,
+      dni: isNumDni ? keyToSearch : (item.dni || keyToSearch),
       phone: item.phone,
       name: item.customerName,
-      guia: item.manualGuideInput || item.guideNumber,
+      guia: !isNumDni ? keyToSearch : (item.manualGuideInput || item.guideNumber),
     };
 
     try {

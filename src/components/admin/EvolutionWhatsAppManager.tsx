@@ -141,14 +141,16 @@ export const EvolutionWhatsAppManager: React.FC = () => {
   /**
    * Solicita un nuevo código QR limpio y fresco desde Evolution API
    */
-  const handleRequestQr = async (force: boolean = false) => {
-    setQrLoading(true);
-    setErrorMsg('');
-    setSuccessMsg('');
+  const handleRequestQr = async (force: boolean = false, retryCount: number = 0) => {
+    if (retryCount === 0) {
+      setQrLoading(true);
+      setErrorMsg('');
+      setSuccessMsg('');
+    }
 
     try {
       const inst = status.instanceName || 'comikids_whatsapp';
-      const url = `${getApiBaseUrl()}/tenant/${inst}/qr${force ? '?force=true' : ''}`;
+      const url = `${getApiBaseUrl()}/tenant/${inst}/qr${force || retryCount > 0 ? '?force=true' : ''}`;
       const res = await fetch(url);
       const json = await res.json();
 
@@ -169,26 +171,38 @@ export const EvolutionWhatsAppManager: React.FC = () => {
             code: code,
             pairingCode: pairing,
           });
-          setSuccessMsg('Código QR generado. Escanéalo en tu WhatsApp.');
+          setSuccessMsg('Código QR generado en vivo. Escanéalo con tu WhatsApp.');
+          setQrLoading(false);
+          return;
         } else if (json.data?.status === 'open') {
           // Ya estaba conectado
           setStatus(prev => ({ ...prev, connectionStatus: 'open' }));
           setQrCodeData(null);
-        } else {
-          // Reintentar forzando recreate
-          if (!force) {
-            setTimeout(() => handleRequestQr(true), 1000);
-            return;
-          }
-          setErrorMsg('No se pudo generar el código QR. Intenta presionar "Reintentar".');
+          setQrLoading(false);
+          return;
+        } else if (retryCount < 3) {
+          // Socket de Baileys iniciando, reintentar en 1.5s
+          setTimeout(() => handleRequestQr(true, retryCount + 1), 1500);
+          return;
         }
-      } else {
-        setErrorMsg(json.error || 'Error al solicitar el código QR.');
       }
+
+      if (retryCount < 3) {
+        setTimeout(() => handleRequestQr(true, retryCount + 1), 1500);
+        return;
+      }
+
+      setErrorMsg('El servidor está inicializando el socket de WhatsApp. Vuelve a presionar "Generar Nuevo QR" en unos segundos.');
     } catch (err: any) {
+      if (retryCount < 2) {
+        setTimeout(() => handleRequestQr(true, retryCount + 1), 1500);
+        return;
+      }
       setErrorMsg(`Error de conexión con la VPS: ${err?.message || 'Servidor no disponible'}`);
     } finally {
-      setQrLoading(false);
+      if (retryCount >= 3) {
+        setQrLoading(false);
+      }
     }
   };
 

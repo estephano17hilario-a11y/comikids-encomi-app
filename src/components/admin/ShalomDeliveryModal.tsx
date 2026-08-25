@@ -83,8 +83,16 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       }
       const safeName = clientName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
       const fileName = `Guia_Shalom_${safeName}_${cleanPhone.slice(-9)}.pdf`;
-      const guideNumber = o.shalom_numero_guia || (o as any).numero_guia || o.codigo_seguimiento || `SH-${o.codigo_seguimiento}`;
+      const isRealShalomGuide = Boolean(o.shalom_numero_guia && o.shalom_numero_guia !== 'S/G' && !o.shalom_numero_guia.startsWith('SH-'));
+      const guideNumber = isRealShalomGuide ? o.shalom_numero_guia! : (o.codigo_seguimiento || 'S/G');
+      const manualGuideInput = isRealShalomGuide ? o.shalom_numero_guia! : '';
       const orderPickupCode = o.shalom_clave_recojo || (o as any).clave_recojo || pickupCode;
+      
+      const hasPriorRegistration = Boolean(
+        isRealShalomGuide ||
+        o.shalom_ose_id ||
+        (o as any).shalom_registrado_api === true
+      );
 
       return {
         orderId: o.id,
@@ -93,32 +101,42 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         dni,
         trackingCode: o.codigo_seguimiento || o.id.slice(0, 8),
         guideNumber,
-        manualGuideInput: guideNumber !== 'S/G' && !guideNumber.startsWith('SH-') ? guideNumber : '',
+        manualGuideInput,
         agencyName: o.destino_detalle || 'Agencia Shalom',
         fileName,
         pickupCode: orderPickupCode,
-        auditStatus: 'auditing',
+        auditStatus: hasPriorRegistration ? 'auditing' : 'not_found',
         sendStatus: 'idle',
       };
     });
 
 
     setProgressList(initial);
+    const ordersToAudit = initial.filter(p => p.auditStatus === 'auditing');
+
+    if (ordersToAudit.length === 0) {
+      setIsAuditing(false);
+      setOverallSuccess(false);
+      return;
+    }
+
     setIsAuditing(true);
     setOverallSuccess(false);
-    setCurrentStepText('Consultando Guía Oficial en Shalom Pro API (milagrosjanetamis@gmail.com)...');
+    setCurrentStepText('Consultando Guías Oficiales Registradas en Shalom Pro API...');
 
     const auth = {
       email: tallerConfig?.shalom_email || 'milagrosjanetamis@gmail.com',
       password: tallerConfig?.shalom_password || '986398Mi$',
     };
 
-    // Ejecutar búsqueda profunda en Shalom Pro API
+    // Ejecutar búsqueda profunda en Shalom Pro API SOLO para pedidos con registro previo
     const runAudit = async () => {
       const updatedList = [...initial];
 
       for (let i = 0; i < updatedList.length; i++) {
         const item = updatedList[i];
+        if (item.auditStatus !== 'auditing') continue;
+
         const originalOrder = orders.find((o) => o.id === item.orderId);
 
         const clientCtx = {
@@ -140,32 +158,24 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           }
         };
 
-        // 1. Intentar buscar prioritariamente por DNI en Shalom Pro (el identificador más exacto y actualizado)
-        if (item.dni && item.dni.length >= 8 && item.dni !== '42020312' && item.dni !== '00000000') {
-          try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx, handleMeta);
-          } catch {}
-        }
-
-        // 2. Si no encontró por DNI pero tiene Guía Real registrada (ej: V204-123456 o manual)
-        if (!pdfData && item.manualGuideInput && !item.manualGuideInput.startsWith('SH-') && item.manualGuideInput !== 'S/G') {
+        // 1. Si tiene Guía Real registrada (ej: V204-123456 o manual)
+        if (item.manualGuideInput && !item.manualGuideInput.startsWith('SH-') && item.manualGuideInput !== 'S/G') {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.manualGuideInput, auth, clientCtx, handleMeta);
           } catch {}
         }
 
-        // 3. Intentar por OSE ID oficial previo
+        // 2. Intentar por OSE ID oficial previo
         if (!pdfData && originalOrder?.shalom_ose_id) {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(originalOrder.shalom_ose_id, auth, clientCtx, handleMeta);
           } catch {}
         }
 
-        // 4. Solo buscar por teléfono si NO tiene DNI registrado y el teléfono NO es el de la tienda
-        const SHOP_NUMBERS = ['927781412', '987654321', '986398000', '989834969'];
-        if (!pdfData && !item.dni && item.phone && item.phone.length >= 9 && !SHOP_NUMBERS.some(sn => item.phone.endsWith(sn))) {
+        // 3. Intentar buscar por DNI en Shalom Pro (el identificador más exacto)
+        if (!pdfData && item.dni && item.dni.length >= 8 && item.dni !== '42020312' && item.dni !== '00000000') {
           try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.phone, auth, clientCtx, handleMeta);
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx, handleMeta);
           } catch {}
         }
 

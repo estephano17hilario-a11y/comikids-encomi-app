@@ -1,6 +1,7 @@
 import { Pedido, TallerConfig } from '../types/database.types';
 import { extractShalomDni, extractShalomPhone, extractShalomDestino, extractShalomOrigen } from '../utils/shalomExcelExporter';
 import { getApiBaseUrl } from '../config/api';
+import { validateShalomPdfContent } from '../utils/shalomPdfValidator';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -458,6 +459,20 @@ export class ShalomApiService {
           const result = reader.result as string;
           const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
           if (base64Data && (base64Data.startsWith('JVBERi') || base64Data.startsWith('/9j/') || base64Data.startsWith('iVBOR') || base64Data.startsWith('UklGR'))) {
+            // Validación estricta del contenido interno del PDF
+            const validation = validateShalomPdfContent(base64Data, {
+              dni: clientContext?.dni,
+              name: clientContext?.name,
+              phone: clientContext?.phone,
+              guideNumber: clientContext?.guia
+            });
+
+            if (!validation.isValid) {
+              console.warn(`[SHALOM API] PDF recibido no superó la validación: ${validation.reason}`);
+              resolve('');
+              return;
+            }
+
             resolve(base64Data);
           } else {
             resolve('');

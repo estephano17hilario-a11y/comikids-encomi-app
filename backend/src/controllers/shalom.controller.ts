@@ -471,16 +471,24 @@ export class ShalomController {
       const typeLabel = pdfType === 'voucher' ? 'Ticket/Voucher Oficial' : 'Rótulo/Guía Oficial';
       const filePrefix = pdfType === 'voucher' ? 'Ticket_Shalom' : 'Guia_Shalom';
 
-      // 1. Extraer identificadores del cliente
-      const targetDni = (qDni || (cleanSearch.match(/^\d{8,12}$/) ? cleanSearch : '')).replace(/\D/g, '').trim();
-      const targetPhone = (qPhone || '').replace(/\D/g, '').trim();
-      const targetName = (qName || '').toLowerCase().trim();
+      const SHOP_PHONES = ['927781412', '987654321', '986398000', '989834969', '51927781412', '51987654321'];
+      const SHOP_DNIS = ['42020312', '00000000'];
+
+      // 1. Extraer identificadores limpios del cliente
+      let rawDni = (qDni || (cleanSearch.match(/^\d{8,12}$/) ? cleanSearch : '')).replace(/\D/g, '').trim();
+      let rawPhone = (qPhone || '').replace(/\D/g, '').trim();
+      let rawName = (qName || '').toLowerCase().trim();
       const targetGuia = (qGuia || (cleanSearch.match(/^(?:V\d{3}-)?\d{6,12}$/i) ? cleanSearch : '')).toUpperCase().trim();
 
-      console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] Buscando documento para Clienta (DNI: "${targetDni}", Guía: "${targetGuia}", Tel: "${targetPhone}", Search: "${cleanSearch}")...`);
+      // Limpiar datos de tienda/remitente para evitar falsos positivos
+      const targetDni = SHOP_DNIS.includes(rawDni) ? '' : rawDni;
+      const targetPhone = SHOP_PHONES.includes(rawPhone) || SHOP_PHONES.some(p => rawPhone.endsWith(p)) ? '' : rawPhone;
+      const targetName = ['clienta', 'cliente', 'comikids', 'encomi', 'milagros', 'usuario', 'destinatario'].includes(rawName) || rawName.length < 4 ? '' : rawName;
 
-      // 2. Si cleanSearch es un ID puramente numérico de orden en Shalom (ej: 96231271), intentar directo primero
-      if (/^\d{7,10}$/.test(cleanSearch) && !targetDni) {
+      console.log(`[SHALOM PROXY ${pdfType.toUpperCase()}] Buscando documento ESTRICTO para Clienta (DNI: "${targetDni}", Guía: "${targetGuia}", Tel: "${targetPhone}", Nombre: "${targetName}")...`);
+
+      // 2. Si cleanSearch es un ID puramente numérico de orden en Shalom (ej: 96231271) y NO es DNI
+      if (/^\d{7,10}$/.test(cleanSearch) && !targetDni && targetGuia === cleanSearch) {
         try {
           const directRes = await axios.get(
             `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/${pdfType}`,
@@ -505,22 +513,19 @@ export class ShalomController {
       // 3. Obtener TODAS las órdenes de Shalom Pro (multi-página sincronizada)
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
-      // Función de coincidencia
+      // Filtro de Recencia: Órdenes creadas en los últimos 4 días (96 horas)
+      const MAX_RECENCY_MS = 4 * 24 * 60 * 60 * 1000;
+      const isRecentOrder = (o: any) => {
+        const dateRaw = o.created_at || o.date || o.created_date || o.fecha;
+        if (!dateRaw) return true;
+        const orderTimestamp = new Date(dateRaw).getTime();
+        if (isNaN(orderTimestamp)) return true;
+        return (Date.now() - orderTimestamp) <= MAX_RECENCY_MS;
+      };
+
+      // Función de coincidencia ESTRICTA
       const findMatchingOrder = (list: any[]) => {
-        // PRIORIDAD 1: Coincidencia Exacta por DNI del Destinatario (8 a 12 dígitos)
-        if (targetDni && targetDni.length >= 8) {
-          const dniMatches = list.filter((o: any) => {
-            const doc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/\D/g, '').trim();
-            return doc === targetDni || (targetDni.length === 8 && doc.endsWith(targetDni)) || (doc.length === 8 && targetDni.endsWith(doc));
-          });
-
-          if (dniMatches.length > 0) {
-            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-            return dniMatches[0];
-          }
-        }
-
-        // PRIORIDAD 2: Coincidencia Exacta por Número de Guía o Serie-Guía (ej: V204-92758784 o 92758784)
+        // PRIORIDAD 1: Coincidencia Exacta por Número de Guía (si se especificó guía real)
         if (targetGuia) {
           const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
           const gMatch = list.find((o: any) => {
@@ -531,12 +536,30 @@ export class ShalomController {
           if (gMatch) return gMatch;
         }
 
-        // PRIORIDAD 3: Coincidencia Exacta por Teléfono del Destinatario (9 dígitos)
+        // PRIORIDAD 2: Coincidencia Exacta por DNI del Destinatario (8 a 12 dígitos) en ÓRDENES RECIENTES
+        if (targetDni && targetDni.length >= 8) {
+          const dniMatches = list.filter((o: any) => {
+            const doc = String(o.receiver?.document || o.destinatario?.documento || '').replace(/\D/g, '').trim();
+            const docMatches = doc === targetDni || (targetDni.length === 8 && doc.endsWith(targetDni)) || (doc.length === 8 && targetDni.endsWith(doc));
+            return docMatches && isRecentOrder(o);
+          });
+
+          if (dniMatches.length > 0) {
+            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+            return dniMatches[0];
+          }
+
+          // Si el cliente tiene DNI pero NO coincide con ninguna orden reciente en Shalom Pro, NO caer en fallback de teléfono/nombre
+          console.warn(`[SHALOM PROXY] DNI ${targetDni} no tiene registro en Shalom Pro en los últimos 4 días.`);
+          return null;
+        }
+
+        // PRIORIDAD 3: Coincidencia por Teléfono del Destinatario (solo si no es teléfono de tienda y es orden reciente)
         if (targetPhone && targetPhone.length >= 9) {
           const phone9 = targetPhone.slice(-9);
           const phoneMatches = list.filter((o: any) => {
             const p = String(o.receiver?.phone || '').replace(/\D/g, '').trim();
-            return p && p.slice(-9) === phone9;
+            return p && p.slice(-9) === phone9 && isRecentOrder(o);
           });
           if (phoneMatches.length > 0) {
             phoneMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
@@ -544,11 +567,11 @@ export class ShalomController {
           }
         }
 
-        // PRIORIDAD 4: Coincidencia Exacta por Nombre Completo del Destinatario
-        if (targetName && targetName.length >= 5) {
+        // PRIORIDAD 4: Coincidencia por Nombre Completo (solo si nombre es largo y es orden reciente)
+        if (targetName && targetName.length >= 6) {
           const nameMatches = list.filter((o: any) => {
             const rFullName = `${o.receiver?.name || ''} ${o.receiver?.last_name || ''}`.toLowerCase().trim();
-            return rFullName.includes(targetName) || targetName.includes(rFullName);
+            return (rFullName.includes(targetName) || targetName.includes(rFullName)) && isRecentOrder(o);
           });
           if (nameMatches.length > 0) {
             nameMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
@@ -570,9 +593,13 @@ export class ShalomController {
 
       // Si no hubo coincidencia verificada para esta clienta
       if (!matchedOrder) {
-        console.log(`[SHALOM PROXY NOTICE] No hay ticket electrónico en Shalom Pro para DNI: "${targetDni}", Nombre: "${targetName}", Guía: "${targetGuia}"`);
+        console.log(`[SHALOM PROXY NOTICE] No hay registro reciente en Shalom Pro para DNI: "${targetDni || 'S/DNI'}", Nombre: "${targetName}", Guía: "${targetGuia}"`);
         return reply.code(200).header('Content-Type', 'application/json').send({
           success: false,
+          found: false,
+          error: `No se encontró ${typeLabel} reciente en Shalom Pro para la clienta indicada (DNI: ${targetDni || 'S/DNI'}).`,
+        });
+      }
           found: false,
           error: `No se encontró ${typeLabel} en Shalom Pro para la clienta indicada (DNI: ${targetDni || 'S/DNI'}).`,
         });

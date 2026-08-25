@@ -141,27 +141,29 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         };
 
         // 1. Intentar buscar prioritariamente por DNI en Shalom Pro (el identificador más exacto y actualizado)
-        if (item.dni && item.dni.length >= 8) {
+        if (item.dni && item.dni.length >= 8 && item.dni !== '42020312' && item.dni !== '00000000') {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx, handleMeta);
           } catch {}
         }
 
-        // 2. Si no encontró por DNI, intentar por Guía Real
+        // 2. Si no encontró por DNI pero tiene Guía Real registrada (ej: V204-123456 o manual)
         if (!pdfData && item.manualGuideInput && !item.manualGuideInput.startsWith('SH-') && item.manualGuideInput !== 'S/G') {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.manualGuideInput, auth, clientCtx, handleMeta);
           } catch {}
         }
 
-        // 3. Intentar por OSE ID o Teléfono
+        // 3. Intentar por OSE ID oficial previo
         if (!pdfData && originalOrder?.shalom_ose_id) {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(originalOrder.shalom_ose_id, auth, clientCtx, handleMeta);
           } catch {}
         }
 
-        if (!pdfData && item.phone) {
+        // 4. Solo buscar por teléfono si NO tiene DNI registrado y el teléfono NO es el de la tienda
+        const SHOP_NUMBERS = ['927781412', '987654321', '986398000', '989834969'];
+        if (!pdfData && !item.dni && item.phone && item.phone.length >= 9 && !SHOP_NUMBERS.some(sn => item.phone.endsWith(sn))) {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.phone, auth, clientCtx, handleMeta);
           } catch {}
@@ -171,6 +173,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           item.pdfBase64 = pdfData;
           item.auditStatus = 'verified_pdf';
         } else {
+          item.pdfBase64 = undefined;
           item.auditStatus = 'not_found';
         }
 
@@ -352,7 +355,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl sm:rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] sm:max-h-[90vh]">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl sm:rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col h-[92dvh] max-h-[92dvh] sm:h-auto sm:max-h-[88vh]">
         
         {/* Header */}
         <div className="bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
@@ -384,7 +387,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-3 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 flex-1">
+        <div className="p-3 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 flex-1 min-h-0 custom-scrollbar overscroll-contain">
           
           {/* Card para Clave de Recojo Temporal Editable */}
           <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md shadow-amber-950/20">

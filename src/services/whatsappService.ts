@@ -59,9 +59,9 @@ export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => 
   const codigo = datos.codigoSeguimiento || "Vigente";
   const fechaFormateada = formatFechaConDia(datos.fechaDeseadaEnvio);
 
-  // Enlace dinámico del Funnel
+  // Enlace dinámico y súper corto del Funnel
   const currentOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://comikids-encomi-app.vercel.app';
-  const funnelUrl = `${currentOrigin}/?funnel=encomi`;
+  const funnelShortUrl = `${currentOrigin}/encomi`;
 
   const lineaRef = datos.referencia ? `🏷️ *Ref:* ${datos.referencia.trim()}\n` : "";
   const lineaMaps = datos.coordenadasMapsUrl ? `🗺️ *Ubicación GPS:*\n${datos.coordenadasMapsUrl}\n` : "";
@@ -81,11 +81,8 @@ ${lineaCorreo}🚚 *Modalidad:* ${metodo}
 📍 *Agencia / Destino Oficial:*
 ${destino}
 ${lineaRef}${lineaMaps}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚀 *¿Quieres despachar tus envíos 10 veces más rápido?*
-Conoce el sistema operativo *Encomi Envíos*:
-👉 ${funnelUrl}
-
-📲 *Contacto Directo Encomi:* ${NUMERO_CONTACTO_ENCOMI}
+¿Buscas que tu negocio sea 10x más rápido al entregar pedidos? Entonces buscas a Encomi 🚀
+👉 ${funnelShortUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ¡Muchas gracias por tu preferencia! 💖✨🙏`;
 

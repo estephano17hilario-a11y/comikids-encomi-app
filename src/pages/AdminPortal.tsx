@@ -48,50 +48,13 @@ export const AdminPortal: React.FC = () => {
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
-  // Estado Inteligente del Modal de Resumen / Briefing
+  // Estado Inteligente del Modal de Resumen / Briefing (Apertura manual vía botón de informe)
   const [briefingConfig, setBriefingConfig] = useState<{
     show: boolean;
     mode: 'new_orders' | 'daily_closing' | 'manual';
     newOrders?: Pedido[];
     referenceDate?: string;
   }>({ show: false, mode: 'manual' });
-
-  // Verificación inteligente de nuevos pedidos y resumen diario
-  useEffect(() => {
-    if (pedidos.length === 0) return;
-
-    const now = new Date();
-    const todayKey = now.toISOString().split('T')[0];
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayKey = yesterday.toISOString().split('T')[0];
-
-    const lastSeenTime = Number(localStorage.getItem('incomi_last_seen_orders_time') || 0);
-
-    // 1. Verificar si hay pedidos NUEVOS desde la última salida/visita
-    if (lastSeenTime > 0) {
-      const newlyCreated = pedidos.filter(p => {
-        try {
-          return new Date(p.created_at).getTime() > lastSeenTime;
-        } catch {
-          return false;
-        }
-      });
-
-      if (newlyCreated.length > 0) {
-        setBriefingConfig({
-          show: true,
-          mode: 'new_orders',
-          newOrders: newlyCreated
-        });
-        localStorage.setItem('incomi_last_seen_orders_time', Date.now().toString());
-        return;
-      }
-    }
-
-    // Guardar timestamp actual para la próxima sesión
-    localStorage.setItem('incomi_last_seen_orders_time', Date.now().toString());
-  }, [pedidos]);
 
 
   const pendingOrdersCount = pedidos.filter(p => p.estado_envio !== 'entregado').length;

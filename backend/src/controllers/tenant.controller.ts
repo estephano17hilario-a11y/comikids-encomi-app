@@ -216,32 +216,30 @@ export class TenantController {
         });
       }
 
-      // 1. Determinar instancia activa para envíos (Prioridad a tenant_Comikids / +51927781412)
-      let userSenderInstance = 'tenant_Comikids';
+      // 1. Determinar instancia activa para envíos (Prioridad a la instancia principal activa)
+      let userSenderInstance = env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
       try {
         const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
           headers: { apikey: env.EVOLUTION_API_KEY },
           timeout: 5000,
         });
-        const instances = fetchRes.data || [];
-        const comikidsSub = instances.find((i: any) => i.name === 'tenant_Comikids' && i.connectionStatus === 'open');
-        const matrixSub = instances.find((i: any) => i.name === 'tenant_matrix' && i.connectionStatus === 'open');
-        const anyOpenSub = instances.find((i: any) =>
-          (i.name.startsWith('tenant_') || i.name.startsWith('tienda_')) && i.connectionStatus === 'open'
+        const instances = Array.isArray(fetchRes.data) ? fetchRes.data : [];
+        const mainOpen = instances.find((i: any) => 
+          (i.name === 'comikids_whatsapp' || i.name === 'main_bot' || i.name === env.EVOLUTION_INSTANCE_NAME) && 
+          i.connectionStatus === 'open'
         );
+        const anyOpen = instances.find((i: any) => i.connectionStatus === 'open');
 
-        if (comikidsSub) {
-          userSenderInstance = comikidsSub.name;
-        } else if (matrixSub) {
-          userSenderInstance = matrixSub.name;
-        } else if (anyOpenSub) {
-          userSenderInstance = anyOpenSub.name;
+        if (mainOpen) {
+          userSenderInstance = mainOpen.name;
+        } else if (anyOpen) {
+          userSenderInstance = anyOpen.name;
         }
       } catch (err) {
         console.warn('[SYNC DISPATCH INSTANCE CHECK WARN]', err);
       }
 
-      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}" (+51927781412) con protección Anti-Ban (3-6s)...`);
+      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}" con protección Anti-Ban...`);
 
 
       const results = [];
@@ -353,26 +351,24 @@ export class TenantController {
         });
       }
 
-      // 1. Determinar instancia activa para envíos (Prioridad a tenant_Comikids / +51927781412)
-      let userSenderInstance = 'tenant_Comikids';
+      // 1. Determinar instancia activa para envíos (Prioridad a la instancia principal activa)
+      let userSenderInstance = env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
       try {
         const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
           headers: { apikey: env.EVOLUTION_API_KEY },
           timeout: 5000,
         });
-        const instances = fetchRes.data || [];
-        const comikidsSub = instances.find((i: any) => i.name === 'tenant_Comikids' && i.connectionStatus === 'open');
-        const matrixSub = instances.find((i: any) => i.name === 'tenant_matrix' && i.connectionStatus === 'open');
-        const anyOpenSub = instances.find((i: any) =>
-          (i.name.startsWith('tenant_') || i.name.startsWith('tienda_')) && i.connectionStatus === 'open'
+        const instances = Array.isArray(fetchRes.data) ? fetchRes.data : [];
+        const mainOpen = instances.find((i: any) => 
+          (i.name === 'comikids_whatsapp' || i.name === 'main_bot' || i.name === env.EVOLUTION_INSTANCE_NAME) && 
+          i.connectionStatus === 'open'
         );
+        const anyOpen = instances.find((i: any) => i.connectionStatus === 'open');
 
-        if (comikidsSub) {
-          userSenderInstance = comikidsSub.name;
-        } else if (matrixSub) {
-          userSenderInstance = matrixSub.name;
-        } else if (anyOpenSub) {
-          userSenderInstance = anyOpenSub.name;
+        if (mainOpen) {
+          userSenderInstance = mainOpen.name;
+        } else if (anyOpen) {
+          userSenderInstance = anyOpen.name;
         }
       } catch (err) {
         console.warn('[DELIVERY VOUCHER SENDER WARN]', err);

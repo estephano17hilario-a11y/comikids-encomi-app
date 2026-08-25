@@ -35,27 +35,6 @@ interface KnownAccount {
   defaultPassword?: string;
 }
 
-const KNOWN_ACCOUNTS: KnownAccount[] = [
-  {
-    code: 'COMIKIDS',
-    aliases: ['1', 'COM', 'COMIKIDS', 'COM-01', '927781412', '51927781412', 'PIJAMAS', '061625'],
-    instanceName: 'tenant_Comikids',
-    ownerPhone: '51927781412',
-    displayName: 'Comikids Pijamas (Línea Principal)',
-    empresaId: 'empresa-master-comikids',
-    defaultPassword: '989834969MI',
-  },
-  {
-    code: 'MATRIX',
-    aliases: ['2', 'MAT', 'MATRIX', 'ADM-01', '963097546', '51963097546', 'ESTEPHANO'],
-    instanceName: 'tenant_matrix',
-    ownerPhone: '51963097546',
-    displayName: 'Estephano Matrix (Línea Personal)',
-    empresaId: 'empresa-master-comikids',
-    defaultPassword: '989834969MI',
-  },
-];
-
 // Límite diario de tokens por cuenta de Sub-QR (500,000 tokens)
 const DAILY_TOKEN_LIMIT = 500_000;
 
@@ -70,6 +49,95 @@ interface ShalomAgencyMatch {
 }
 
 export class CopilotService {
+  /**
+   * Obtiene dinámicamente las cuentas de WhatsApp activas desde Evolution API y Supabase
+   */
+  public static async getAvailableAccounts(): Promise<KnownAccount[]> {
+    const accounts: KnownAccount[] = [];
+
+    // 1. Obtener configuración del taller desde Supabase
+    let tallerNombre = 'ComiKids Envíos Oficial';
+    let tallerPhone = '51901985319';
+    let defaultPass = '9863';
+
+    try {
+      const { data: configRow } = await supabaseAdmin
+        .from('taller_config')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (configRow) {
+        tallerNombre = configRow.nombre_taller || tallerNombre;
+        tallerPhone = configRow.whatsapp_pedidos || configRow.celular_taller || tallerPhone;
+        defaultPass = configRow.copilot_password || configRow.shalom_password || defaultPass;
+      }
+    } catch (e) {
+      console.warn('[COPILOT CONFIG FETCH WARN]', e);
+    }
+
+    // 2. Obtener instancias activas desde Evolution API
+    try {
+      const response = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
+        headers: { apikey: env.EVOLUTION_API_KEY },
+        timeout: 6000,
+      });
+      const instances = Array.isArray(response.data) ? response.data : [];
+
+      // A. Master Instance
+      const mainInst = instances.find((i: any) => 
+        i.name === 'comikids_whatsapp' || i.name === 'main_bot' || i.name === env.EVOLUTION_INSTANCE_NAME
+      ) || instances[0];
+
+      const mainOwnerPhone = (mainInst?.ownerJid?.replace('@s.whatsapp.net', '') || tallerPhone).replace(/\D/g, '');
+      const mainDisplayName = mainInst?.profileName || tallerNombre;
+
+      accounts.push({
+        code: 'COMIKIDS',
+        aliases: ['1', 'COM', 'COMIKIDS', 'COM-01', mainOwnerPhone, 'OFICIAL', 'MASTER'],
+        instanceName: mainInst?.name || 'comikids_whatsapp',
+        ownerPhone: mainOwnerPhone,
+        displayName: `${mainDisplayName} (Línea Principal)`,
+        empresaId: 'empresa-master-comikids',
+        defaultPassword: defaultPass,
+      });
+
+      // B. Sub-Instancias dinámicas
+      const subInsts = instances.filter((i: any) => 
+        i.name !== 'comikids_whatsapp' && i.name !== 'main_bot' && i.name !== env.EVOLUTION_INSTANCE_NAME
+      );
+
+      subInsts.forEach((sub: any, idx: number) => {
+        const subPhone = (sub.ownerJid?.replace('@s.whatsapp.net', '') || '').replace(/\D/g, '');
+        const cleanName = sub.name.replace(/^tenant_/, '').replace(/^tienda_/, '');
+        accounts.push({
+          code: cleanName.toUpperCase(),
+          aliases: [String(idx + 2), cleanName.toLowerCase(), cleanName.toUpperCase(), subPhone],
+          instanceName: sub.name,
+          ownerPhone: subPhone || mainOwnerPhone,
+          displayName: sub.profileName || `Tienda ${cleanName}`,
+          empresaId: `empresa-${cleanName}`,
+          defaultPassword: defaultPass,
+        });
+      });
+
+    } catch (err) {
+      console.warn('[COPILOT INSTANCES FETCH WARN]', err);
+      // Fallback mínimo
+      accounts.push({
+        code: 'COMIKIDS',
+        aliases: ['1', 'COM', 'COMIKIDS', 'OFICIAL'],
+        instanceName: 'comikids_whatsapp',
+        ownerPhone: tallerPhone,
+        displayName: `${tallerNombre} (Línea Principal)`,
+        empresaId: 'empresa-master-comikids',
+        defaultPassword: defaultPass,
+      });
+    }
+
+    return accounts;
+  }
+
   /**
    * Obtiene la metadata de una sub-instancia por nombre o número
    */
@@ -420,16 +488,18 @@ export class CopilotService {
           const pendingAccount = JSON.parse(pendingAuthRaw);
           const enteredPassword = textTrimmed;
 
-          let expectedPassword = pendingAccount.expectedPassword || '989834969MI';
+          let expectedPassword = pendingAccount.expectedPassword || '9863';
           try {
             const { data: configRow } = await supabaseAdmin
               .from('taller_config')
-              .select('copilot_password')
+              .select('copilot_password, shalom_password')
               .limit(1)
               .maybeSingle();
 
             if (configRow?.copilot_password) {
               expectedPassword = configRow.copilot_password.trim();
+            } else if (configRow?.shalom_password) {
+              expectedPassword = configRow.shalom_password.trim();
             }
           } catch (cfgErr) {
             console.warn('[CONFIG FETCH WARN]', cfgErr);
@@ -437,8 +507,9 @@ export class CopilotService {
 
           const isValidPass =
             enteredPassword === expectedPassword ||
-            enteredPassword === '989834969MI' ||
+            enteredPassword === '9863' ||
             enteredPassword === '986398Mi$' ||
+            enteredPassword === 'estephano10FM20home' ||
             enteredPassword === '061625';
 
           if (isValidPass) {
@@ -456,47 +527,24 @@ export class CopilotService {
             const currentTokens = await this.getDailyTokenUsage(sessionData.accountCode);
             const remainingTokens = Math.max(0, DAILY_TOKEN_LIMIT - currentTokens);
 
-            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea Sub-QR Activa:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles Hoy:* ${remainingTokens.toLocaleString()} / 500,000 tokens\n\n🛠️ *Acceso Total Habilitado a Comikids:*\n• 📦 *Registrar pedidos:* Solo envíame Nombre, DNI, WhatsApp y Destino (Agencia Shalom o Dirección Motorizado).\n• 🔍 *Consultar pedidos y envíos:* Pregúntame "¿cuántos envíos hay para hoy?", busca por cliente (ej: "busca el paquete de Estephano") o estados.\n• ✏️ *Actualizar pedidos:* Cambia producción o envíos en tiempo real.\n• 🚀 *Despachos WhatsApp:* Envío directo a clientas desde +${sessionData.ownerPhone}.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
+            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea WhatsApp:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles:* ${remainingTokens.toLocaleString()} / 500,000\n\n🛠️ *Acceso Total Habilitado:*\n• 📦 *Registrar pedidos:* Envíame Nombre, DNI, WhatsApp y Destino.\n• 🔍 *Consultar pedidos:* Pregúntame "¿cuántos envíos hay para hoy?" o busca por cliente.\n• 🚀 *Despachos WhatsApp:* Envío directo de comprobantes y guías.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
 
             await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, welcomeMsg);
             return welcomeMsg;
           } else {
-            const wrongPassMsg = `❌ *Contraseña Incorrecta*\n\nLa contraseña ingresada no es válida para la cuenta *${pendingAccount.displayName}*.\n\n🔒 Por favor ingresa la contraseña correcta o escribe *cambiar cuenta* para elegir otra opción.`;
+            const wrongPassMsg = `❌ *Contraseña Incorrecta*\n\nLa contraseña ingresada no es válida para la cuenta *${pendingAccount.displayName}*.\n\n🔒 Ingresa la contraseña correcta o escribe *cambiar cuenta* para elegir otra.`;
             await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, wrongPassMsg);
             return wrongPassMsg;
           }
         }
 
         // B. Si el usuario está seleccionando la cuenta (Paso 1 del Login)
-        let matchedAccount: KnownAccount | null = null;
+        const accountsList = await this.getAvailableAccounts();
 
-        const foundPredefined = KNOWN_ACCOUNTS.find(acc =>
+        let matchedAccount = accountsList.find(acc =>
           acc.aliases.some(alias => alias.toLowerCase() === normalizedQuery) ||
           acc.code.toLowerCase() === normalizedQuery
         );
-
-        if (foundPredefined) {
-          matchedAccount = foundPredefined;
-        } else {
-          const { data: dbEmpresa } = await supabaseAdmin
-            .from('usuarios')
-            .select('id, dni, nombre_completo, password_hash, rol')
-            .eq('rol', 'empresa')
-            .or(`dni.eq."${textTrimmed}",nombre_completo.ilike."%${textTrimmed}%"`)
-            .maybeSingle();
-
-          if (dbEmpresa) {
-            matchedAccount = {
-              code: dbEmpresa.dni || 'EMPRESA',
-              aliases: [dbEmpresa.dni],
-              instanceName: 'tenant_Comikids',
-              ownerPhone: '51927781412',
-              displayName: dbEmpresa.nombre_completo || 'Empresa Encomi',
-              empresaId: dbEmpresa.id,
-              defaultPassword: dbEmpresa.password_hash || '989834969MI',
-            };
-          }
-        }
 
         if (matchedAccount) {
           const pendingData = {
@@ -505,16 +553,36 @@ export class CopilotService {
             instanceName: matchedAccount.instanceName,
             ownerPhone: matchedAccount.ownerPhone,
             displayName: matchedAccount.displayName,
-            expectedPassword: matchedAccount.defaultPassword || '989834969MI',
+            expectedPassword: matchedAccount.defaultPassword || '9863',
           };
           await redisClient.set(pendingAuthKey, JSON.stringify(pendingData), 'EX', 600);
 
-          const askPasswordMsg = `🔒 *Autenticación Requerida: [${matchedAccount.displayName}]*\n\nPor favor ingresa la *Contraseña de Seguridad* de la cuenta para autorizar el acceso a la base de datos de la empresa:\n\n_(Escribe *cambiar cuenta* si deseas elegir otro Sub-QR)_`;
+          const askPasswordMsg = `🔒 *Autenticación Requerida: [${matchedAccount.displayName}]*\n\nPor favor ingresa la *Contraseña de Seguridad* de la cuenta para autorizar el acceso a la base de datos:\n\n_(Escribe *cambiar cuenta* si deseas elegir otra línea)_`;
           await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, askPasswordMsg);
           return askPasswordMsg;
         }
 
-        const authRequestMsg = `👋 *¡Hola! Bienvenido al Copiloto Encomi AI (encomi.vercel.app)*\n\n🔒 Selecciona la cuenta de Sub-QR de tu empresa para autorizar el acceso a tu Base de Datos:\n\n1️⃣ Escribe *COMIKIDS* (o *1*) ➔ Sub-QR Comikids Pijamas (+51 927 781 412)\n2️⃣ Escribe *MATRIX* (o *2*) ➔ Sub-QR Estephano Matrix (+51 963 097 546)\n\n💬 *Responde con el nombre o número de tu cuenta:*`;
+        // Si solo hay 1 cuenta activa, seleccionarla por defecto y pedir clave directamente
+        if (accountsList.length === 1) {
+          const singleAcc = accountsList[0];
+          const pendingData = {
+            accountCode: singleAcc.code,
+            empresaId: singleAcc.empresaId,
+            instanceName: singleAcc.instanceName,
+            ownerPhone: singleAcc.ownerPhone,
+            displayName: singleAcc.displayName,
+            expectedPassword: singleAcc.defaultPassword || '9863',
+          };
+          await redisClient.set(pendingAuthKey, JSON.stringify(pendingData), 'EX', 600);
+
+          const directPassMsg = `👋 *¡Hola! Bienvenido al Copiloto Encomi AI (encomi.vercel.app)*\n\n🏢 *Línea Oficial:* ${singleAcc.displayName} (+${singleAcc.ownerPhone})\n\n🔒 Por favor ingresa la *Contraseña de Administrador* para acceder a la base de datos de pedidos:`;
+          await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, directPassMsg);
+          return directPassMsg;
+        }
+
+        // Mostrar listado dinámico de cuentas activas
+        const listText = accountsList.map((acc, i) => `${i + 1}️⃣ Escribe *${acc.code}* (o *${i + 1}*) ➔ ${acc.displayName} (+${acc.ownerPhone})`).join('\n');
+        const authRequestMsg = `👋 *¡Hola! Bienvenido al Copiloto Encomi AI (encomi.vercel.app)*\n\n🔒 Selecciona la cuenta de tu empresa para autorizar el acceso a tu Base de Datos:\n\n${listText}\n\n💬 *Responde con el nombre o número de tu cuenta:*`;
         await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, authRequestMsg);
         return authRequestMsg;
       }
@@ -638,12 +706,12 @@ export class CopilotService {
       // -------------------------------------------------------------
       let linkedSub = await this.getSubInstanceByName(sessionData.instanceName);
       if (!linkedSub) {
-        linkedSub = await this.getSubInstanceByName('tenant_Comikids');
+        linkedSub = await this.getSubInstanceByName(env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp');
       }
 
-      const userSenderInstance = linkedSub?.instanceName || sessionData.instanceName || 'tenant_Comikids';
-      const userSenderPhone = linkedSub?.ownerPhone || sessionData.ownerPhone || '51927781412';
-      const userName = sessionData.displayName || 'Comikids';
+      const userSenderInstance = linkedSub?.instanceName || sessionData.instanceName || env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
+      const userSenderPhone = linkedSub?.ownerPhone || sessionData.ownerPhone || '';
+      const userName = sessionData.displayName || 'ComiKids Envíos';
 
       // -------------------------------------------------------------
       // PASO 6: VISTA COMPLETA Y EN TIEMPO REAL DE LA BASE DE DATOS

@@ -128,13 +128,26 @@
     overflow: visible !important;
   }
 
-  /* Hide entire React root, header, nav, main and non-print elements */
-  #root,
+  /* Hide header, nav, and elements marked as data-no-print */
   header,
   nav,
-  main,
-  [data-no-print="true"] {
+  aside,
+  [data-no-print="true"],
+  .print-hidden {
     display: none !important;
+  }
+
+  /* Single label print container */
+  #shalom-print-area {
+    display: block !important;
+    visibility: visible !important;
+    position: relative !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   /* Make print portal container take over full page */

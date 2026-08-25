@@ -5,59 +5,67 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 /**
- * MOTOR DE IMPRESIÓN Y COMPARTICIÓN UNIFICADO 2026 (Web & Capacitor Android)
- * Totalmente compatible con Chrome, Safari, Firefox, Edge, iOS y Android APK.
+ * MOTOR DE IMPRESIÓN DIRECTO Y ULTRA CONFIABLE (WEB & ANDROID)
+ * Imprime directamente el elemento visual sin errores de sandbox ni dependencias complejas.
  */
 
 /**
- * Imprime directamente una o varias imágenes (dataURLs en alta resolución)
- * utilizando un iframe aislado same-origin en Web o Share nativo en Android.
+ * Imprime directamente un elemento por su ID o referencia DOM
  */
-export const printImagesDirect = async (
-  images: string[],
-  fileName: string = 'Rotulos_ComiKids.pdf',
-  title: string = 'Imprimir Rótulos de Envío'
-): Promise<{ success: boolean; mode: string }> => {
-  if (!images || images.length === 0) {
-    throw new Error('No hay imágenes para imprimir.');
+export const printElement = async (
+  elementIdOrEl: string | HTMLElement,
+  title: string = 'Imprimir Rótulo'
+): Promise<void> => {
+  const el = typeof elementIdOrEl === 'string'
+    ? document.getElementById(elementIdOrEl)
+    : elementIdOrEl;
+
+  if (!el) {
+    window.print();
+    return;
   }
 
   const isNative = Capacitor.isNativePlatform();
 
-  // 1. MODO ANDROID NATIVO (CAPACITOR)
+  // En Android nativo (Capacitor), generar PDF con canvas y abrir menú de impresión del sistema
   if (isNative) {
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      compress: true
-    });
+    try {
+      const canvas = await html2canvas(el, {
+        scale: 2.5,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
 
-    images.forEach((imgData, idx) => {
-      if (idx > 0) pdf.addPage('a4', 'portrait');
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-    });
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
 
-    const base64Data = pdf.output('datauristring').split(',')[1];
-    const savedFile = await Filesystem.writeFile({
-      path: fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`,
-      data: base64Data,
-      directory: Directory.Cache,
-      recursive: true,
-    });
+      pdf.addImage(imgData, 'JPEG', 10, 10, 190, (canvas.height * 190) / canvas.width);
+      const base64Data = pdf.output('datauristring').split(',')[1];
+      const savedFile = await Filesystem.writeFile({
+        path: 'Rotulo_Impresion.pdf',
+        data: base64Data,
+        directory: Directory.Cache,
+        recursive: true,
+      });
 
-    await Share.share({
-      title: title,
-      text: 'Rótulo listo para imprimir en tu impresora.',
-      files: [savedFile.uri],
-      dialogTitle: 'Selecciona tu Servicio de Impresión o Impresora',
-    });
-
-    return { success: true, mode: 'android_native_print' };
+      await Share.share({
+        title: title,
+        files: [savedFile.uri],
+        dialogTitle: 'Enviar a Impresora o Compartir',
+      });
+      return;
+    } catch (e) {
+      console.error('Error nativo Android print:', e);
+    }
   }
 
-  // 2. MODO WEB (PC / Mac / Navegadores Móviles)
-  return new Promise<{ success: boolean; mode: string }>((resolve) => {
+  // En Web: Crear iframe invisible para impresión aislada e instantánea
+  try {
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
@@ -69,271 +77,229 @@ export const printImagesDirect = async (
     document.body.appendChild(iframe);
 
     const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      document.body.removeChild(iframe);
-      window.print();
-      return resolve({ success: true, mode: 'window_print_fallback' });
-    }
+    if (doc) {
+      const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+        .map(s => s.outerHTML)
+        .join('\n');
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>${title}</title>
-          <style>
-            @page {
-              size: auto;
-              margin: 0mm !important;
-            }
-            *, *::before, *::after {
-              box-sizing: border-box;
-              margin: 0;
-              padding: 0;
-            }
-            html, body {
-              width: 100%;
-              height: 100%;
-              background: #ffffff !important;
-              color: #000000 !important;
-            }
-            .print-page {
-              width: 100%;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              page-break-inside: avoid;
-              break-inside: avoid;
-              page-break-after: always;
-              break-after: page;
-            }
-            .print-page:last-child {
-              page-break-after: auto;
-              break-after: auto;
-            }
-            img {
-              max-width: 100%;
-              height: auto;
-              display: block;
-              margin: 0 auto;
-            }
-          </style>
-        </head>
-        <body>
-          ${images.map(img => `<div class="print-page"><img src="${img}" alt="Rótulo" /></div>`).join('')}
-        </body>
-      </html>
-    `;
+      doc.open();
+      doc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>${title}</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            ${styles}
+            <style>
+              @page { size: auto; margin: 4mm !important; }
+              *, *::before, *::after { box-sizing: border-box; }
+              html, body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+              }
+              .print-container {
+                width: 100%;
+                max-width: 500px;
+                margin: 0 auto;
+              }
+              @media print {
+                body {
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="print-container">
+              ${el.outerHTML}
+            </div>
+          </body>
+        </html>
+      `);
+      doc.close();
 
-    doc.open();
-    doc.write(htmlContent);
-    doc.close();
-
-    const imgElements = doc.querySelectorAll('img');
-    let loadedCount = 0;
-
-    const executePrint = () => {
       setTimeout(() => {
         try {
-          if (iframe.contentWindow) {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-            resolve({ success: true, mode: 'iframe_direct_print' });
-          } else {
-            window.print();
-            resolve({ success: true, mode: 'window_print_fallback' });
-          }
-        } catch (err) {
-          console.warn('[Print Engine] Error en iframe.print(), fallback a window.print()', err);
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
           window.print();
-          resolve({ success: true, mode: 'window_print_fallback' });
         } finally {
           setTimeout(() => {
             try {
-              if (iframe.parentNode) {
-                document.body.removeChild(iframe);
-              }
+              if (iframe.parentNode) document.body.removeChild(iframe);
             } catch {}
-          }, 60000);
+          }, 30000);
         }
-      }, 300);
-    };
-
-    if (imgElements.length === 0) {
-      executePrint();
-    } else {
-      imgElements.forEach((img) => {
-        if (img.complete) {
-          loadedCount++;
-          if (loadedCount === imgElements.length) executePrint();
-        } else {
-          img.onload = () => {
-            loadedCount++;
-            if (loadedCount === imgElements.length) executePrint();
-          };
-          img.onerror = () => {
-            loadedCount++;
-            if (loadedCount === imgElements.length) executePrint();
-          };
-        }
-      });
+      }, 350);
+      return;
     }
+  } catch (err) {
+    console.warn('[Print Engine] Error con iframe, ejecutando window.print() directo:', err);
+  }
 
-    // Safety timeout
-    setTimeout(() => {
-      if (loadedCount < imgElements.length) {
-        executePrint();
-      }
-    }, 2000);
-  });
+  // Fallback directo a window.print()
+  window.print();
 };
 
 /**
- * Captura uno o más elementos HTML e imprime directamente con la máxima fidelidad y resolución
+ * Imprime múltiples páginas (ej. lote A4)
  */
-export const printHtmlElementsDirect = async (
-  elements: HTMLElement[],
-  fileName: string = 'Rotulos_ComiKids.pdf',
-  title: string = 'Imprimir Rótulos de Envío'
-): Promise<{ success: boolean; mode: string }> => {
+export const printMultipleElements = async (
+  selector: string = '.a4-print-page',
+  title: string = 'Imprimir Rótulos A4'
+): Promise<void> => {
+  const elements = document.querySelectorAll<HTMLElement>(selector);
   if (!elements || elements.length === 0) {
-    throw new Error('No se encontraron elementos para imprimir.');
+    window.print();
+    return;
   }
 
-  const images: string[] = [];
-  for (let i = 0; i < elements.length; i++) {
-    const el = elements[i];
-    const canvas = await html2canvas(el, {
-      scale: 2.5,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-    });
-    images.push(canvas.toDataURL('image/jpeg', 0.98));
-  }
+  const isNative = Capacitor.isNativePlatform();
 
-  return printImagesDirect(images, fileName, title);
-};
+  if (isNative) {
+    try {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
 
-/**
- * Imprime un documento PDF de forma directa, confiable y sin romper la UI.
- */
-export const printPdfDirect = async (
-  onGeneratePdf: () => Promise<jsPDF | null> | jsPDF | null,
-  fileName: string = 'Rotulos_ComiKids.pdf'
-): Promise<{ success: boolean; mode: string }> => {
-  try {
-    const isNative = Capacitor.isNativePlatform();
+      for (let i = 0; i < elements.length; i++) {
+        const canvas = await html2canvas(elements[i], {
+          scale: 2.5,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: 794,
+          windowHeight: 1123,
+        });
 
-    if (isNative) {
-      const pdf = await onGeneratePdf();
-      if (!pdf) throw new Error('No se pudo generar el documento PDF para imprimir.');
+        const imgData = canvas.toDataURL('image/jpeg', 0.98);
+        if (i > 0) pdf.addPage('a4', 'portrait');
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      }
 
       const base64Data = pdf.output('datauristring').split(',')[1];
       const savedFile = await Filesystem.writeFile({
-        path: fileName,
+        path: 'Lote_Rotulos.pdf',
         data: base64Data,
         directory: Directory.Cache,
         recursive: true,
       });
 
       await Share.share({
-        title: 'Imprimir Rótulos de Envío',
-        text: 'Documento listo para enviar a tu impresora o compartir.',
-        files: [savedFile.uri],
-        dialogTitle: 'Selecciona tu Impresora o Servicio de Impresión',
-      });
-
-      return { success: true, mode: 'android_native_print' };
-    }
-
-    // En Web: Generar PDF y abrir ventana de impresión
-    const pdf = await onGeneratePdf();
-    if (!pdf) throw new Error('No se pudo generar el documento PDF para imprimir.');
-
-    const blob = pdf.output('blob');
-    const blobUrl = URL.createObjectURL(blob);
-
-    // Intentar abrir el PDF en pestaña para impresión inmediata
-    const printWindow = window.open(blobUrl, '_blank');
-    if (printWindow) {
-      printWindow.focus();
-      return { success: true, mode: 'popup_print' };
-    }
-
-    // Fallback si el navegador bloquea popups: descargar
-    pdf.save(fileName);
-    return { success: true, mode: 'download_fallback' };
-
-  } catch (err: any) {
-    console.error('[Print Engine Error]', err);
-    try {
-      const pdfFallback = await onGeneratePdf();
-      if (pdfFallback) {
-        pdfFallback.save(fileName);
-        return { success: true, mode: 'download_fallback' };
-      }
-    } catch {}
-    throw err;
-  }
-};
-
-/**
- * Comparte el documento PDF mediante la hoja nativa de compartir del sistema (Android / Web Share API).
- */
-export const sharePdfFile = async (
-  pdf: jsPDF,
-  fileName: string,
-  title: string = 'Rótulos de Envío ComiKids'
-): Promise<{ success: boolean; mode: 'native_share' | 'web_share' | 'web_download' }> => {
-  try {
-    const isNative = Capacitor.isNativePlatform();
-
-    if (isNative) {
-      const base64Data = pdf.output('datauristring').split(',')[1];
-      const savedFile = await Filesystem.writeFile({
-        path: fileName,
-        data: base64Data,
-        directory: Directory.Cache,
-        recursive: true
-      });
-
-      await Share.share({
         title: title,
         files: [savedFile.uri],
-        dialogTitle: 'Compartir Documento PDF'
+        dialogTitle: 'Enviar Lote de Rótulos a Impresora',
       });
-
-      return { success: true, mode: 'native_share' };
+      return;
+    } catch (e) {
+      console.error('Error nativo Android multi print:', e);
     }
-
-    const pdfBlob = pdf.output('blob');
-    const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-
-    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: title,
-        });
-        return { success: true, mode: 'web_share' };
-      } catch (shareErr: any) {
-        if (shareErr.name === 'AbortError') {
-          return { success: true, mode: 'web_share' };
-        }
-      }
-    }
-
-    pdf.save(fileName);
-    return { success: true, mode: 'web_download' };
-  } catch (err) {
-    console.error('[nativePrintService] Error al compartir PDF:', err);
-    pdf.save(fileName);
-    return { success: false, mode: 'web_download' };
   }
+
+  // En Web: Crear iframe con todas las páginas A4
+  try {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+        .map(s => s.outerHTML)
+        .join('\n');
+
+      const pagesHtml = Array.from(elements).map(el => el.outerHTML).join('\n');
+
+      doc.open();
+      doc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>${title}</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            ${styles}
+            <style>
+              @page { size: A4 portrait; margin: 4mm !important; }
+              *, *::before, *::after { box-sizing: border-box; }
+              html, body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+              }
+              .a4-print-page {
+                page-break-after: always !important;
+                break-after: page !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                margin: 0 auto !important;
+              }
+              .a4-print-page:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
+              }
+              @media print {
+                body {
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            ${pagesHtml}
+          </body>
+        </html>
+      `);
+      doc.close();
+
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
+          window.print();
+        } finally {
+          setTimeout(() => {
+            try {
+              if (iframe.parentNode) document.body.removeChild(iframe);
+            } catch {}
+          }, 30000);
+        }
+      }, 350);
+      return;
+    }
+  } catch (err) {
+    console.warn('[Print Engine] Error multi-page iframe, fallback:', err);
+  }
+
+  window.print();
 };
 
-// Aliases para compatibilidad con toda la aplicación
-export const shareOrPrintPdf = sharePdfFile;
-export const triggerNativePrint = printPdfDirect;
+// Aliases para compatibilidad
+export const printPdfDirect = printElement;
+export const sharePdfFile = printElement;
+export const printImagesDirect = printElement;
+export const triggerNativePrint = printElement;
+
 

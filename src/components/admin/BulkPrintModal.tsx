@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
-import { X, Printer, Download, CheckCircle, Loader2, Share2, Layers } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
-import { sharePdfFile, printPdfDirect, printImagesDirect } from '../../utils/nativePrintService';
+import { X, Printer, Layers } from 'lucide-react';
+import { printMultipleElements } from '../../utils/nativePrintService';
 
 interface Props {
   pedidos: Pedido[];
@@ -14,9 +12,7 @@ interface Props {
 }
 
 export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _tallerConfig, onClose, onPrintComplete }) => {
-  const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState('');
-  const [successMsg, setSuccessMsg] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -30,108 +26,13 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     new Map(pedidos.map(p => [p.id || p.codigo_seguimiento, p])).values()
   );
 
-  // Generador de PDF A4 centrado y calibrado exactamente para 6 rótulos por página (2x3)
-  const generatePdfInstance = async (): Promise<jsPDF | null> => {
-    const pageElements = document.querySelectorAll<HTMLElement>('.a4-print-page');
-    if (!pageElements || pageElements.length === 0) {
-      alert('No se encontraron rótulos para procesar.');
-      return null;
-    }
-
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      compress: true,
-    });
-
-    for (let i = 0; i < pageElements.length; i++) {
-      setDownloadProgress(`Procesando hoja ${i + 1} de ${pageElements.length}...`);
-      const el = pageElements[i];
-
-      const canvas = await html2canvas(el, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        windowWidth: 794,
-        windowHeight: 1123,
-      });
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
-
-      if (i > 0) {
-        pdf.addPage('a4', 'portrait');
-      }
-
-      // Exactamente 210mm x 297mm (A4 estándar sin bordes cortados)
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-    }
-
-    return pdf;
-  };
-
-  // Compartir archivo PDF de los rótulos (WhatsApp, Telegram, Drive, Correo, etc.)
-  const handleSharePdf = async () => {
-    setDownloading(true);
-    setDownloadProgress('Preparando PDF...');
-
-    try {
-      const pdf = await generatePdfInstance();
-      if (!pdf) return;
-
-      const fileName = `Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`;
-      await sharePdfFile(
-        pdf,
-        fileName,
-        `Rótulos ComiKids A4 (${uniquePedidos.length} pedidos)`
-      );
-
-      if (onPrintComplete) {
-        onPrintComplete(uniquePedidos.map(p => p.id));
-      }
-
-      setSuccessMsg(true);
-      setTimeout(() => setSuccessMsg(false), 4000);
-    } catch (err) {
-      console.error('Error al compartir PDF:', err);
-      alert('No se pudo compartir el archivo.');
-    } finally {
-      setDownloading(false);
-      setDownloadProgress('');
-    }
-  };
-
-  // Imprimir Rótulos (Web: Impresión nativa del navegador / Android: Diálogo de impresión del sistema)
+  // Imprimir Rótulos
   const handlePrintDirect = async () => {
-    setDownloading(true);
-    setDownloadProgress('Preparando impresión...');
-
+    setPrinting(true);
     try {
-      const pageElements = document.querySelectorAll<HTMLElement>('.a4-print-page');
-      if (!pageElements || pageElements.length === 0) {
-        throw new Error('No se encontraron rótulos para imprimir.');
-      }
-
-      const images: string[] = [];
-      for (let i = 0; i < pageElements.length; i++) {
-        setDownloadProgress(`Renderizando página ${i + 1} de ${pageElements.length}...`);
-        const el = pageElements[i];
-        const canvas = await html2canvas(el, {
-          scale: 2.5,
-          useCORS: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          windowWidth: 794,
-          windowHeight: 1123,
-        });
-        images.push(canvas.toDataURL('image/jpeg', 0.98));
-      }
-
-      await printImagesDirect(
-        images,
-        `Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`,
-        `Rótulos ComiKids A4 (${uniquePedidos.length} pedidos)`
+      await printMultipleElements(
+        '.a4-print-page',
+        `Rotulos_ComiKids_${uniquePedidos.length}pedidos`
       );
 
       if (onPrintComplete) {
@@ -139,47 +40,11 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
       }
     } catch (err) {
       console.error('Error al imprimir rótulos:', err);
-      alert('No se pudo abrir el diálogo de impresión. Intentando descargar como PDF...');
-      try {
-        const pdf = await generatePdfInstance();
-        if (pdf) pdf.save(`Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`);
-      } catch {}
+      window.print();
     } finally {
-      setDownloading(false);
-      setDownloadProgress('');
+      setPrinting(false);
     }
   };
-
-  // Descargar PDF A4 completo
-  const handleDownloadPdf = async () => {
-    setDownloading(true);
-    setDownloadProgress('Generando PDF A4...');
-
-    try {
-      const pdf = await generatePdfInstance();
-      if (!pdf) return;
-
-      setDownloadProgress('Guardando archivo...');
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const fileName = `Rotulos_Encomi_ComiKids_${dateStr}_(${uniquePedidos.length}pedidos).pdf`;
-      
-      pdf.save(fileName);
-
-      if (onPrintComplete) {
-        onPrintComplete(uniquePedidos.map(p => p.id));
-      }
-
-      setSuccessMsg(true);
-      setTimeout(() => setSuccessMsg(false), 4000);
-    } catch (err) {
-      console.error('Error generando PDF de rótulos:', err);
-      alert('Hubo un problema al generar el PDF.');
-    } finally {
-      setDownloading(false);
-      setDownloadProgress('');
-    }
-  };
-
 
   // Divide en grupos de exactamente 6 pedidos por cada hoja A4 (2 columnas x 3 filas)
   const chunkArray = <T,>(arr: T[], size: number): T[][] => {
@@ -241,53 +106,16 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Opción 1: Imprimir Rótulos Directo (Impresora / PC / App) */}
+            {/* Único botón: Imprimir Rótulos */}
             <button
               type="button"
               onClick={handlePrintDirect}
-              disabled={downloading}
-              className="py-2.5 px-3.5 rounded-xl bg-white hover:bg-slate-200 active:scale-95 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg transition-all cursor-pointer disabled:opacity-50"
+              disabled={printing}
+              className="py-3 px-5 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-400 hover:from-cyan-400 hover:to-blue-500 active:scale-[0.98] text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-xl shadow-cyan-500/30 transition-all cursor-pointer disabled:opacity-50"
               title="Imprimir rótulos en tu impresora"
             >
-              <Printer className="w-4 h-4 text-slate-950" />
-              <span>Imprimir Rótulos</span>
-            </button>
-
-            {/* Opción 2: Compartir Documento PDF */}
-            <button
-              type="button"
-              onClick={handleSharePdf}
-              disabled={downloading}
-              className="py-2.5 px-3.5 rounded-xl bg-linear-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50"
-              title="Compartir PDF por WhatsApp, Drive, Correo o cualquier app"
-            >
-              <Share2 className="w-4 h-4" />
-              <span>Compartir PDF</span>
-            </button>
-
-            {/* Opción 3: Descargar PDF A4 */}
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={downloading}
-              className="py-2.5 px-3.5 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 hover:brightness-110 active:scale-95 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/30 transition-all cursor-pointer disabled:opacity-50"
-            >
-              {downloading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{downloadProgress || 'Procesando...'}</span>
-                </>
-              ) : successMsg ? (
-                <>
-                  <CheckCircle className="w-4 h-4 text-emerald-300" />
-                  <span>¡PDF Listo!</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  <span>Descargar PDF</span>
-                </>
-              )}
+              <Printer className="w-4 h-4 text-white" />
+              <span>{printing ? 'Enviando a impresora...' : 'IMPRIMIR RÓTULOS'}</span>
             </button>
 
             {/* Botón Cerrar */}
@@ -300,7 +128,6 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
             </button>
           </div>
         </div>
-
 
         {/* Área de Visualización y Rótulos Imprimibles */}
         <div className="flex-1 p-2 sm:p-4 overflow-y-auto bg-slate-950 print:bg-white print:p-0 print:m-0 print:overflow-visible flex flex-col items-center">

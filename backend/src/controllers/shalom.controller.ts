@@ -600,10 +600,6 @@ export class ShalomController {
           error: `No se encontró ${typeLabel} reciente en Shalom Pro para la clienta indicada (DNI: ${targetDni || 'S/DNI'}).`,
         });
       }
-          found: false,
-          error: `No se encontró ${typeLabel} en Shalom Pro para la clienta indicada (DNI: ${targetDni || 'S/DNI'}).`,
-        });
-      }
 
       // 4. Descargar el PDF oficial (Ticket o Guía) del pedido verificado
       console.log(`[SHALOM PROXY DOWNLOAD] ✓ Encontrado para ${matchedOrder.receiver?.name}: Descargando ${typeLabel} de Shalom para Orden #${matchedOrder.id} (DNI: ${matchedOrder.receiver?.document}, Guía: ${matchedOrder.serie}-${matchedOrder.guia})...`);

@@ -585,10 +585,10 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                   )}
 
                   {item.auditStatus === 'not_found' && (
-                    <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div className="text-[11px] text-amber-300 flex items-center gap-1.5">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                        <span>No encontrado con datos automáticos. Ingresa el N° de Guía o DNI de Shalom:</span>
+                    <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="text-[11px] text-amber-300 flex items-center gap-1.5 font-medium">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                        <span>⚠️ Sin Guía en Shalom Pro (Aún no registrada hoy)</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <input
@@ -598,7 +598,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                             item.manualGuideInput = e.target.value;
                             setProgressList([...progressList]);
                           }}
-                          placeholder="Ej: 001-049281 o DNI"
+                          placeholder="N° Guía Shalom o DNI"
                           className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-36 sm:w-44 font-mono"
                         />
                         <button
@@ -612,7 +612,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                           ) : (
                             <Search className="w-3 h-3" />
                           )}
-                          Buscar en Shalom
+                          Buscar Guía
                         </button>
                       </div>
                     </div>

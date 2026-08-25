@@ -428,6 +428,23 @@ export class ShalomApiService {
 
       const livePin = response.headers.get('x-shalom-pickup-code') || response.headers.get('X-Shalom-Pickup-Code');
       const liveGuia = response.headers.get('x-shalom-guia') || response.headers.get('X-Shalom-Guia');
+      const returnedDni = response.headers.get('x-shalom-receiver-dni') || response.headers.get('X-Shalom-Receiver-Dni');
+      const disposition = response.headers.get('content-disposition') || response.headers.get('Content-Disposition') || '';
+      
+      // Extraer DNI del content-disposition (ej: Ticket_Shalom_V204_92495242_78005117.pdf)
+      const dispositionDniMatch = disposition.match(/_(\d{8,12})\.pdf/i);
+      const extractedDoc = returnedDni || (dispositionDniMatch ? dispositionDniMatch[1] : null);
+
+      // BLOQUEO ESTRICTO: Si buscamos para una clienta con DNI y el PDF devuelto tiene otro DNI, RECHAZARLO
+      if (clientContext?.dni && clientContext.dni.length >= 8 && extractedDoc) {
+        const cleanReqDni = clientContext.dni.replace(/\D/g, '');
+        const cleanDoc = extractedDoc.replace(/\D/g, '');
+        if (cleanReqDni && cleanDoc && cleanReqDni !== cleanDoc) {
+          console.warn(`[SHALOM SECURITY LOCK] Rechazado comprobante de otra clienta. DNI Solicitado: ${cleanReqDni} vs DNI Comprobante: ${cleanDoc}`);
+          return null;
+        }
+      }
+
       if (onMetadata && (livePin || liveGuia)) {
         onMetadata({ pickupCode: livePin || undefined, guia: liveGuia || undefined });
       }

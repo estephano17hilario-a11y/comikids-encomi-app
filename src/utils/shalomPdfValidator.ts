@@ -56,7 +56,7 @@ export function validateShalomPdfContent(
 
     // 4. VALIDACIÓN ESTRICTA POR DNI
     const cleanExpectedDni = (expectedClient.dni || '').replace(/\D/g, '').trim();
-    if (cleanExpectedDni && cleanExpectedDni.length >= 8 && cleanExpectedDni !== '42020312') {
+    if (cleanExpectedDni && cleanExpectedDni.length >= 8 && cleanExpectedDni !== '42020312' && cleanExpectedDni !== '00000000') {
       // Si logramos extraer el DNI del PDF
       if (receiverDni) {
         if (receiverDni !== cleanExpectedDni) {
@@ -77,6 +77,27 @@ export function validateShalomPdfContent(
           extractedOrderNumber,
           reason: `El comprobante no contiene el DNI ${cleanExpectedDni} de la clienta.`
         };
+      }
+    } else if (expectedClient.name && expectedClient.name.trim().length >= 6) {
+      // Si la clienta no tenía DNI pero tiene nombre completo
+      const normalizedPdf = textSample.toUpperCase();
+      const nameWords = expectedClient.name
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Z0-9]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3 && !['CLIENTA', 'CLIENTE', 'COMIKIDS', 'DE', 'DEL', 'LA', 'LOS', 'SAN', 'SANTA'].includes(w));
+
+      if (nameWords.length >= 2) {
+        const matchesCount = nameWords.filter(w => normalizedPdf.includes(w)).length;
+        if (matchesCount < 2) {
+          console.warn(`[SHALOM PDF VALIDATOR REJECT] El PDF no coincide con el nombre de la clienta "${expectedClient.name}". Coincidieron ${matchesCount}/${nameWords.length} palabras.`);
+          return {
+            isValid: false,
+            reason: `El comprobante no coincide con el nombre de la clienta "${expectedClient.name}".`
+          };
+        }
       }
     }
 

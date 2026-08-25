@@ -105,38 +105,28 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         agencyName: o.destino_detalle || 'Agencia Shalom',
         fileName,
         pickupCode: orderPickupCode,
-        auditStatus: hasPriorRegistration ? 'auditing' : 'not_found',
+        auditStatus: 'auditing',
         sendStatus: 'idle',
       };
     });
 
 
     setProgressList(initial);
-    const ordersToAudit = initial.filter(p => p.auditStatus === 'auditing');
-
-    if (ordersToAudit.length === 0) {
-      setIsAuditing(false);
-      setOverallSuccess(false);
-      return;
-    }
-
     setIsAuditing(true);
     setOverallSuccess(false);
-    setCurrentStepText('Consultando Guías Oficiales Registradas en Shalom Pro API...');
+    setCurrentStepText('Buscando Guías Oficiales en Shalom Pro API por DNI, Guía y Nombre...');
 
     const auth = {
       email: tallerConfig?.shalom_email || 'milagrosjanetamis@gmail.com',
       password: tallerConfig?.shalom_password || '986398Mi$',
     };
 
-    // Ejecutar búsqueda profunda en Shalom Pro API SOLO para pedidos con registro previo
+    // Ejecutar búsqueda profunda en Shalom Pro API para TODOS los pedidos
     const runAudit = async () => {
       const updatedList = [...initial];
 
       for (let i = 0; i < updatedList.length; i++) {
         const item = updatedList[i];
-        if (item.auditStatus !== 'auditing') continue;
-
         const originalOrder = orders.find((o) => o.id === item.orderId);
 
         const clientCtx = {
@@ -158,24 +148,31 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           }
         };
 
-        // 1. Si tiene Guía Real registrada (ej: V204-123456 o manual)
-        if (item.manualGuideInput && !item.manualGuideInput.startsWith('SH-') && item.manualGuideInput !== 'S/G') {
+        // 1. Prioridad: Buscar por DNI del destinatario en Shalom Pro (el identificador más exacto)
+        if (item.dni && item.dni.length >= 8 && item.dni !== '42020312' && item.dni !== '00000000') {
+          try {
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx, handleMeta);
+          } catch {}
+        }
+
+        // 2. Si no encontró por DNI pero tiene Guía registrada (ej: V204-123456 o manual)
+        if (!pdfData && item.manualGuideInput && !item.manualGuideInput.startsWith('SH-') && item.manualGuideInput !== 'S/G') {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.manualGuideInput, auth, clientCtx, handleMeta);
           } catch {}
         }
 
-        // 2. Intentar por OSE ID oficial previo
+        // 3. Intentar por OSE ID oficial previo
         if (!pdfData && originalOrder?.shalom_ose_id) {
           try {
             pdfData = await ShalomApiService.fetchVoucherPdfBase64(originalOrder.shalom_ose_id, auth, clientCtx, handleMeta);
           } catch {}
         }
 
-        // 3. Intentar buscar por DNI en Shalom Pro (el identificador más exacto)
-        if (!pdfData && item.dni && item.dni.length >= 8 && item.dni !== '42020312' && item.dni !== '00000000') {
+        // 4. Si la clienta no tiene DNI, buscar por su Nombre Completo
+        if (!pdfData && !item.dni && item.customerName && item.customerName.length >= 6) {
           try {
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.dni, auth, clientCtx, handleMeta);
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(item.customerName, auth, clientCtx, handleMeta);
           } catch {}
         }
 

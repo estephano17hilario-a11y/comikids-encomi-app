@@ -108,7 +108,11 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       // Detectar nuevos pedidos que llegaron desde otro dispositivo
       if (!isInitialLoadRef.current) {
-        const newOrders = fetched.filter(p => !knownOrderIdsRef.current.has(p.id));
+        const nowMs = Date.now();
+        const newOrders = fetched.filter(p => 
+          !knownOrderIdsRef.current.has(p.id) &&
+          (p.created_at ? (nowMs - new Date(p.created_at).getTime() < 120000) : false)
+        );
         if (newOrders.length > 0) {
           soundService.playNewOrderAlert();
           for (const newP of newOrders) {
@@ -156,12 +160,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         broadcastChannel = new BroadcastChannel('incomi_orders_sync_channel');
         broadcastChannel.onmessage = async (event) => {
-          if (event.data?.type === 'NEW_ORDER' || event.data?.type === 'UPDATE_ORDER') {
+          if (event.data?.type === 'NEW_ORDER') {
             soundService.playNewOrderAlert();
             await refreshData();
             if (event.data?.pedido) {
               setLatestNewOrder(event.data.pedido);
             }
+          } else if (event.data?.type === 'UPDATE_ORDER') {
+            await refreshData();
           }
         };
       }
@@ -169,24 +175,24 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.warn('BroadcastChannel fallback:', e);
     }
 
-    // Polling ultrarrápido cada 3.5 segundos para cuentas de empresa y clientes
+    // Polling de sincronización periódica cada 10 segundos
     const fastSyncInterval = setInterval(() => {
       refreshData();
-    }, 3500);
+    }, 10000);
 
     // Supabase Realtime Channel
     let activeChannel: any = null;
     if (isSupabaseConfigured && supabase) {
       const activeSupabase = supabase;
       activeChannel = activeSupabase
-        .channel('incomi_realtime_orders_v4')
+        .channel('incomi_realtime_orders_v5')
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'pedidos' },
+          { event: 'INSERT', schema: 'public', table: 'pedidos' },
           async (payload) => {
             soundService.playNewOrderAlert();
             await refreshData();
-            if (payload.new && payload.eventType === 'INSERT') {
+            if (payload.new) {
               const newP = payload.new as Pedido;
               setLatestNewOrder(newP);
               NativeNotificationService.notifyNewOrder(
@@ -195,6 +201,20 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 newP.destino_detalle || 'Destino'
               );
             }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'pedidos' },
+          async () => {
+            await refreshData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'pedidos' },
+          async () => {
+            await refreshData();
           }
         )
         .on(

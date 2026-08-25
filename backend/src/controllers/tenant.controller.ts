@@ -216,22 +216,39 @@ export class TenantController {
         });
       }
 
-      // 1. Determinar instancia activa para envíos (Prioridad a la instancia principal activa)
-      let userSenderInstance = env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
+      // 1. Determinar instancia oficial de despacho: Prioridad TOTAL a ComiKids Tienda (+51 927 781 412 / tenant_Comikids_tienda)
+      let userSenderInstance = 'tenant_Comikids_tienda';
       try {
         const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
           headers: { apikey: env.EVOLUTION_API_KEY },
           timeout: 5000,
         });
         const instances = Array.isArray(fetchRes.data) ? fetchRes.data : [];
-        const mainOpen = instances.find((i: any) => 
-          (i.name === 'comikids_whatsapp' || i.name === 'main_bot' || i.name === env.EVOLUTION_INSTANCE_NAME) && 
-          i.connectionStatus === 'open'
+
+        // 1. Buscar la línea oficial de ComiKids (+51 927 781 412)
+        const comikidsStoreOpen = instances.find((i: any) => 
+          i.connectionStatus === 'open' && (
+            String(i.ownerJid || '').includes('927781412') ||
+            String(i.name || '').toLowerCase().includes('comikids_tienda') ||
+            String(i.name || '').toLowerCase().includes('tenant_comikids')
+          )
         );
+
+        // 2. Si no, cualquier sub-instancia abierta que no sea el bot master (+51 901 985 319)
+        const subOpen = instances.find((i: any) =>
+          i.connectionStatus === 'open' &&
+          i.name !== 'main_bot' &&
+          i.name !== 'comikids_whatsapp' &&
+          !String(i.ownerJid || '').includes('901985319')
+        );
+
+        // 3. Fallback a cualquier instancia abierta
         const anyOpen = instances.find((i: any) => i.connectionStatus === 'open');
 
-        if (mainOpen) {
-          userSenderInstance = mainOpen.name;
+        if (comikidsStoreOpen) {
+          userSenderInstance = comikidsStoreOpen.name;
+        } else if (subOpen) {
+          userSenderInstance = subOpen.name;
         } else if (anyOpen) {
           userSenderInstance = anyOpen.name;
         }
@@ -239,7 +256,7 @@ export class TenantController {
         console.warn('[SYNC DISPATCH INSTANCE CHECK WARN]', err);
       }
 
-      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}" con protección Anti-Ban...`);
+      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}" (+51 927 781 412) con protección Anti-Ban...`);
 
 
       const results = [];
@@ -351,22 +368,39 @@ export class TenantController {
         });
       }
 
-      // 1. Determinar instancia activa para envíos (Prioridad a la instancia principal activa)
-      let userSenderInstance = env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
+      // 1. Determinar instancia oficial de despacho: Prioridad TOTAL a ComiKids Tienda (+51 927 781 412 / tenant_Comikids_tienda)
+      let userSenderInstance = 'tenant_Comikids_tienda';
       try {
         const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
           headers: { apikey: env.EVOLUTION_API_KEY },
           timeout: 5000,
         });
         const instances = Array.isArray(fetchRes.data) ? fetchRes.data : [];
-        const mainOpen = instances.find((i: any) => 
-          (i.name === 'comikids_whatsapp' || i.name === 'main_bot' || i.name === env.EVOLUTION_INSTANCE_NAME) && 
-          i.connectionStatus === 'open'
+
+        // 1. Buscar la línea oficial de ComiKids (+51 927 781 412)
+        const comikidsStoreOpen = instances.find((i: any) => 
+          i.connectionStatus === 'open' && (
+            String(i.ownerJid || '').includes('927781412') ||
+            String(i.name || '').toLowerCase().includes('comikids_tienda') ||
+            String(i.name || '').toLowerCase().includes('tenant_comikids')
+          )
         );
+
+        // 2. Si no, cualquier sub-instancia abierta que no sea el bot master (+51 901 985 319)
+        const subOpen = instances.find((i: any) =>
+          i.connectionStatus === 'open' &&
+          i.name !== 'main_bot' &&
+          i.name !== 'comikids_whatsapp' &&
+          !String(i.ownerJid || '').includes('901985319')
+        );
+
+        // 3. Fallback a cualquier instancia abierta
         const anyOpen = instances.find((i: any) => i.connectionStatus === 'open');
 
-        if (mainOpen) {
-          userSenderInstance = mainOpen.name;
+        if (comikidsStoreOpen) {
+          userSenderInstance = comikidsStoreOpen.name;
+        } else if (subOpen) {
+          userSenderInstance = subOpen.name;
         } else if (anyOpen) {
           userSenderInstance = anyOpen.name;
         }
@@ -374,7 +408,7 @@ export class TenantController {
         console.warn('[DELIVERY VOUCHER SENDER WARN]', err);
       }
 
-      console.log(`[DELIVERY VOUCHERS] Despachando ${orders.length} guías de remisión oficiales vía "${userSenderInstance}" (+51927781412) con Anti-Ban (3-6s)...`);
+      console.log(`[DELIVERY VOUCHERS] Despachando ${orders.length} guías de remisión oficiales vía "${userSenderInstance}" (+51 927 781 412) con Anti-Ban (3-6s)...`);
 
       const results = [];
       let successCount = 0;
@@ -395,7 +429,6 @@ export class TenantController {
           console.log(`[ANTI-BAN VOUCHER] Esperando ${randomDelay}ms antes de enviar guía a ${phoneClean}...`);
           await new Promise(r => setTimeout(r, randomDelay));
         }
-
 
         const clientDni = String((order as any).dni || (order as any).customerDni || '').replace(/\D/g, '').trim() ||
           (order.agencyName?.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i)?.[1]) ||
@@ -466,8 +499,8 @@ export class TenantController {
           individualPickupCode = (request.body as any)?.pickupCode || '0808';
         }
 
-        // 3. Armar el Mensaje Oficial para WhatsApp con la Clave Real
-        const messageCaption = `¡Hola ${order.customerName || 'estimada clienta'}! 👋✨\n\n📦 Tu pedido *#${numbersOnly}* ya fue *Entregado y Recibido con éxito en Agencia Shalom (${order.agencyName || 'Destino'})* 🚚💨\n\n📋 *Número de Guía:* ${order.guideNumber || 'Oficial'}\n🔐 *Clave de recojo:* ${individualPickupCode}\n🔍 *Código de Seguimiento:* ${order.trackingCode || numbersOnly}\n📎 Te adjuntamos tu *Ticket Oficial de Shalom* con el detalle y costo final registrado en agencia.\n🌐 *Rastreo en tiempo real:* https://rastrea.shalom.pe\n\n¡Muchas gracias por tu preferencia en Comikids! ❤️`;
+        // 3. Armar el Mensaje Oficial Conciso para WhatsApp
+        const messageCaption = `¡Hola ${order.customerName || 'clienta'}! 👋✨\n\n📦 Tu pedido *#${numbersOnly}* ya fue entregado en *Shalom* (${order.agencyName || 'Agencia Destino'}).\n\n📋 *Guía:* ${order.guideNumber || 'Oficial'}\n🔐 *Clave de recojo:* ${individualPickupCode}\n🔍 *Seguimiento:* ${order.trackingCode || numbersOnly}\n🌐 *Rastreo:* https://rastrea.shalom.pe\n\n📎 Adjuntamos tu *Ticket Oficial con QR* de Shalom. ¡Gracias por tu compra en Comikids! ❤️`;
 
 
 

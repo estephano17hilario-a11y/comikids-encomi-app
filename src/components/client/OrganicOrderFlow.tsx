@@ -3,11 +3,14 @@ import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { ordersService } from '../../services/ordersService';
 import { useShalomAgencies, formatFullAgencyName, cleanAddressText } from '../../hooks/useShalomAgencies';
+import { useOlvaAgencies, formatFullOlvaAgencyName, cleanOlvaAddressText } from '../../hooks/useOlvaAgencies';
+import { DEPARTAMENTOS_OLVA } from '../../data/olvaAgencies';
 import { searchDistritos } from '../../data/distritosLima';
 import { PlacesMapPicker } from './PlacesMapPicker';
 import { ShalomAgenciesMap } from './ShalomAgenciesMap';
+import { OlvaAgenciesMap } from './OlvaAgenciesMap';
 import { EncomiAiChatModal } from './EncomiAiChatModal';
-import { MetodoEnvio, ShalomAgency, Pedido } from '../../types/database.types';
+import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido } from '../../types/database.types';
 import {
   DatosComprobante,
   enviarComprobanteAWhatsapp,
@@ -234,6 +237,25 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [selectedAgencyObject, setSelectedAgencyObject] = useState<ShalomAgency | null>(null);
   const [isAgencyListOpen, setIsAgencyListOpen] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
+
+  // Olva Hook & State (376 Agencias Nacionales)
+  const {
+    agencies: olvaAgenciesList,
+    isLocating: isLocatingOlva,
+    gpsError: gpsErrorOlva,
+    userLocation: userLocationOlva,
+    selectedDepartment: departamentoOlva,
+    setSelectedDepartment: setDepartamentoOlva,
+    searchQuery: olvaAgencySearchQuery,
+    setSearchQuery: setOlvaAgencySearchQuery,
+    showOnlyNearest5: showOnlyNearest5Olva,
+    setShowOnlyNearest5: setShowOnlyNearest5Olva,
+    locateAndSort: triggerOlvaGpsLookup,
+  } = useOlvaAgencies({ initialDepartment: 'TODOS', autoFetchNearby: true });
+
+  const [selectedOlvaAgencyObject, setSelectedOlvaAgencyObject] = useState<OlvaAgency | null>(null);
+  const [isOlvaAgencyListOpen, setIsOlvaAgencyListOpen] = useState(false);
+  const [showOlvaMapModal, setShowOlvaMapModal] = useState(false);
 
   // Motorizado Branch State
   const [motorizadoSubStep, setMotorizadoSubStep] = useState<'map' | 'form'>('map');
@@ -633,6 +655,48 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               onClose={() => setShowMapModal(false)}
               searchQuery={agencySearchQuery}
               onSearchChange={setAgencySearchQuery}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Mapa Oficial Olva Courier con Buscador y GPS Sincronizado */}
+      {showOlvaMapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-2xl animate-fadeIn">
+          <div className="w-full max-w-4xl bg-slate-900/95 border border-amber-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                  <span className="text-amber-400">🚚</span>
+                  <span>Mapa de Agencias Olva Courier</span>
+                </h3>
+                <p className="text-xs text-amber-200/70">Busca o toca cualquier sede oficial Olva en el mapa para seleccionarla</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOlvaMapModal(false)}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <OlvaAgenciesMap
+              agencies={olvaAgenciesList}
+              selectedAgency={selectedOlvaAgencyObject}
+              onSelectAgency={(agency) => {
+                setSelectedOlvaAgencyObject(agency);
+                setOlvaDireccion(formatFullOlvaAgencyName(agency));
+                if (agency.departamento) setDepartamentoOlva(agency.departamento);
+                setShowOlvaMapModal(false);
+                setIsOlvaAgencyListOpen(false);
+              }}
+              userLocation={userLocationOlva}
+              onRequestLocation={triggerOlvaGpsLookup}
+              isLocating={isLocatingOlva}
+              onClose={() => setShowOlvaMapModal(false)}
+              searchQuery={olvaAgencySearchQuery}
+              onSearchChange={setOlvaAgencySearchQuery}
             />
           </div>
         </div>
@@ -1470,15 +1534,35 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     <div className="grid grid-cols-2 gap-2.5">
                       <button
                         type="button"
-                        onClick={() => setOlvaModalidad('domicilio')}
+                        onClick={() => setOlvaModalidad('agencia')}
                         className={`p-3.5 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${
-                          olvaModalidad === 'domicilio'
-                            ? 'bg-linear-to-r from-yellow-500/20 to-amber-500/20 border-yellow-400 text-white shadow-lg shadow-yellow-500/10'
+                          olvaModalidad === 'agencia'
+                            ? 'bg-linear-to-r from-amber-500/25 to-yellow-500/20 border-amber-400 text-white shadow-lg shadow-amber-500/10'
                             : 'bg-white/4 border-white/10 text-slate-400 hover:text-white'
                         }`}
                       >
                         <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 ${
-                          olvaModalidad === 'domicilio' ? 'bg-yellow-400 text-slate-950 font-bold' : 'bg-white/8 text-slate-400'
+                          olvaModalidad === 'agencia' ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-white/8 text-slate-400'
+                        }`}>
+                          🏢
+                        </div>
+                        <div>
+                          <strong className="text-xs sm:text-sm font-black block leading-tight">Para Agencia Olva</strong>
+                          <span className="text-[10px] text-slate-400 block">Recojo en sede oficial Olva</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setOlvaModalidad('domicilio')}
+                        className={`p-3.5 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${
+                          olvaModalidad === 'domicilio'
+                            ? 'bg-linear-to-r from-amber-500/25 to-yellow-500/20 border-amber-400 text-white shadow-lg shadow-amber-500/10'
+                            : 'bg-white/4 border-white/10 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 ${
+                          olvaModalidad === 'domicilio' ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-white/8 text-slate-400'
                         }`}>
                           🏠
                         </div>
@@ -1487,32 +1571,271 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           <span className="text-[10px] text-slate-400 block">Directo a tu casa / trabajo</span>
                         </div>
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setOlvaModalidad('agencia')}
-                        className={`p-3.5 rounded-2xl border transition-all text-left flex items-center gap-3 cursor-pointer ${
-                          olvaModalidad === 'agencia'
-                            ? 'bg-linear-to-r from-yellow-500/20 to-amber-500/20 border-yellow-400 text-white shadow-lg shadow-yellow-500/10'
-                            : 'bg-white/4 border-white/10 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 ${
-                          olvaModalidad === 'agencia' ? 'bg-yellow-400 text-slate-950 font-bold' : 'bg-white/8 text-slate-400'
-                        }`}>
-                          🏢
-                        </div>
-                        <div>
-                          <strong className="text-xs sm:text-sm font-black block leading-tight">Para Agencia</strong>
-                          <span className="text-[10px] text-slate-400 block">Recojo en sede Olva</span>
-                        </div>
-                      </button>
                     </div>
                   </div>
 
-                  {/* Datos de quien recibe (Clienta) */}
-                  <div className="p-4 sm:p-5 rounded-3xl bg-white/4 border border-yellow-400/30 space-y-3.5 shadow-xl">
-                    <div className="flex items-center gap-2 pb-2 border-b border-white/8 text-xs font-black text-yellow-300 uppercase tracking-wider">
+                  {/* MODALIDAD 1: RECOJO EN AGENCIA OLVA CON MAPA, GPS Y 376 SEDES */}
+                  {olvaModalidad === 'agencia' && (
+                    <div className="p-4 sm:p-5 rounded-3xl bg-amber-500/5 border-2 border-amber-500/30 space-y-4 shadow-xl animate-fadeIn">
+                      <div className="flex items-center justify-between gap-2 pb-2 border-b border-amber-500/20">
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-400 text-base">🚚</span>
+                          <span className="text-xs font-black uppercase tracking-wider text-amber-300">
+                            Directorio Nacional de Agencias Olva (376 Sedes)
+                          </span>
+                        </div>
+
+                        {olvaAgencySearchQuery && (
+                          <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
+                            {olvaAgenciesList.length} sede{olvaAgenciesList.length === 1 ? '' : 's'}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Botones de Acción Rápida: Abrir Mapa & Encontrar Cercanas con GPS */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowOlvaMapModal(true)}
+                          className="w-full py-2.5 px-3.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-bold border border-amber-500/40 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md active:scale-98"
+                        >
+                          <MapPin className="w-4 h-4 text-amber-400" />
+                          <span>🗺️ Ver Mapa Interactivo de Agencias Olva</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await triggerOlvaGpsLookup();
+                            setIsOlvaAgencyListOpen(true);
+                          }}
+                          disabled={isLocatingOlva}
+                          className="w-full py-2.5 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold border border-amber-500/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
+                        >
+                          <Navigation className={`w-3.5 h-3.5 text-amber-400 ${isLocatingOlva ? 'animate-spin' : ''}`} />
+                          <span>{isLocatingOlva ? 'Localizando por GPS...' : '📍 5 Sedes Olva Más Cercanas a Mí'}</span>
+                        </button>
+                      </div>
+
+                      {gpsErrorOlva && (
+                        <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                          <span>{gpsErrorOlva}</span>
+                        </div>
+                      )}
+
+                      {/* Filtro por Departamentos de Olva */}
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                          Filtrar por Departamento:
+                        </label>
+                        <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                          {DEPARTAMENTOS_OLVA.map(dep => {
+                            const isSel = (departamentoOlva || 'TODOS') === dep;
+                            return (
+                              <button
+                                key={dep}
+                                type="button"
+                                onClick={() => {
+                                  setDepartamentoOlva(dep);
+                                  setShowOnlyNearest5Olva(false);
+                                }}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                                  isSel
+                                    ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
+                                    : 'bg-white/6 hover:bg-white/12 text-slate-300 border border-white/10'
+                                }`}
+                              >
+                                {dep}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Tarjeta de Agencia Olva Seleccionada */}
+                      {selectedOlvaAgencyObject && !isOlvaAgencyListOpen && (
+                        <div className="p-4 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 space-y-2.5 shadow-lg animate-fadeIn">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 block">
+                                Sede Olva Seleccionada ({selectedOlvaAgencyObject.tipo || 'TIENDA'})
+                              </span>
+                              <h4 className="text-sm font-black text-white">
+                                {selectedOlvaAgencyObject.departamento} / {selectedOlvaAgencyObject.provincia} / {selectedOlvaAgencyObject.distrito}
+                              </h4>
+                            </div>
+                            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/20 px-2.5 py-1 rounded-full border border-emerald-500/30 flex items-center gap-1 shrink-0">
+                              <CheckCircle className="w-3 h-3" />
+                              <span>Confirmada</span>
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 text-xs text-slate-200">
+                            <p className="leading-snug">
+                              <strong className="text-white">📍 Dirección:</strong> {cleanOlvaAddressText(selectedOlvaAgencyObject.direccion || selectedOlvaAgencyObject.address, selectedOlvaAgencyObject.provincia, selectedOlvaAgencyObject.departamento)}
+                            </p>
+                            {selectedOlvaAgencyObject.horario && (
+                              <p className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                <span>{selectedOlvaAgencyObject.horario}</span>
+                              </p>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setIsOlvaAgencyListOpen(true)}
+                            className="w-full py-2 rounded-xl bg-white/8 hover:bg-white/15 text-xs font-bold text-amber-300 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <span>Buscar / Cambiar de Sede Olva</span>
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Buscador & Lista de Agencias Olva */}
+                      {(isOlvaAgencyListOpen || !selectedOlvaAgencyObject) && (
+                        <div className="space-y-2.5 animate-fadeIn">
+                          <div className="relative flex items-center">
+                            <input
+                              type="text"
+                              value={olvaAgencySearchQuery}
+                              onChange={e => {
+                                setOlvaAgencySearchQuery(e.target.value);
+                                if (showOnlyNearest5Olva) setShowOnlyNearest5Olva(false);
+                              }}
+                              placeholder="Buscar sede Olva por distrito, calle o nombre (ej. Miraflores, Cusco, Huancayo)..."
+                              className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all font-medium"
+                            />
+                            <Search className="w-4 h-4 text-amber-400 absolute left-3.5 pointer-events-none" />
+                            {olvaAgencySearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setOlvaAgencySearchQuery('')}
+                                className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="max-h-90 overflow-y-auto space-y-2 p-2 rounded-2xl bg-slate-950/90 border border-amber-500/20 shadow-2xl">
+                            {olvaAgenciesList.length === 0 ? (
+                              <p className="text-center text-xs text-slate-400 py-6">
+                                No se encontraron agencias Olva con &quot;{olvaAgencySearchQuery}&quot;
+                              </p>
+                            ) : (
+                              olvaAgenciesList.map(ag => {
+                                const isSelected = selectedOlvaAgencyObject?.id === ag.id;
+                                const cleanAddr = cleanOlvaAddressText(ag.direccion || ag.address, ag.provincia, ag.departamento);
+                                const distanceText = ag.distance_meters !== undefined
+                                  ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
+                                  : null;
+
+                                const titleText = `${ag.departamento || ''} / ${ag.provincia || ''} / ${ag.distrito || ag.nombre || ''} (${ag.tipo || 'TIENDAS'})`;
+
+                                return (
+                                  <button
+                                    key={ag.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedOlvaAgencyObject(ag);
+                                      setOlvaDireccion(formatFullOlvaAgencyName(ag));
+                                      if (ag.departamento) setDepartamentoOlva(ag.departamento);
+                                      setIsOlvaAgencyListOpen(false);
+                                    }}
+                                    className={`w-full text-left p-3.5 rounded-xl transition-all flex flex-col gap-1.5 cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-amber-500/25 border border-amber-500/60 text-white shadow-md'
+                                        : 'bg-white/4 hover:bg-white/8 border border-white/8 text-slate-300'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <h5 className="text-xs font-bold text-white tracking-tight leading-snug">
+                                        <HighlightMatch text={titleText} query={olvaAgencySearchQuery} />
+                                      </h5>
+
+                                      {distanceText && (
+                                        <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full shrink-0 border border-amber-500/30">
+                                          📍 {distanceText}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <p className="text-[11px] text-slate-300 leading-snug">
+                                      <HighlightMatch text={cleanAddr || 'Dirección de sede Olva'} query={olvaAgencySearchQuery} />
+                                    </p>
+
+                                    {ag.horario && (
+                                      <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                                        <span>🕒</span>
+                                        <span>{ag.horario}</span>
+                                      </p>
+                                    )}
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {selectedOlvaAgencyObject && (
+                            <div className="pt-1 flex justify-center">
+                              <button
+                                type="button"
+                                onClick={() => setIsOlvaAgencyListOpen(false)}
+                                className="px-5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold border border-amber-500/30 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Cerrar lista de agencias</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* MODALIDAD 2: DIRECCIÓN EXACTA A DOMICILIO */}
+                  {olvaModalidad === 'domicilio' && (
+                    <div className="p-4 sm:p-5 rounded-3xl bg-white/4 border border-amber-400/30 space-y-3.5 shadow-xl animate-fadeIn">
+                      <div className="flex items-center gap-2 pb-2 border-b border-white/8 text-xs font-black text-amber-300 uppercase tracking-wider">
+                        <span>🏠</span>
+                        <span>Dirección Exacta de Entrega a Domicilio</span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                          📍 Dirección Exacta (Calle, Avenida, Número, Dpto, Distrito y Ciudad) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={olvaDireccion}
+                          onChange={e => setOlvaDireccion(e.target.value)}
+                          placeholder="Ej. Av. Los Fresnos 345, Dpto 302, Urb. Sol de Oro, Los Olivos, Lima"
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                          🏷️ Referencia de Entrega (Opcional)
+                        </label>
+                        <input
+                          type="text"
+                          value={olvaReferencia}
+                          onChange={e => setOlvaReferencia(e.target.value)}
+                          placeholder="Ej. Frente al parque Los Jazmines, portón negro, timbre blanco"
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* DATOS DE QUIEN RECIBE (CLIENTA) */}
+                  <div className="p-4 sm:p-5 rounded-3xl bg-white/4 border border-amber-400/30 space-y-3.5 shadow-xl">
+                    <div className="flex items-center gap-2 pb-2 border-b border-white/8 text-xs font-black text-amber-300 uppercase tracking-wider">
                       <span>👤</span>
                       <span>Datos Obligatorios de Quien Recibe (Clienta)</span>
                     </div>
@@ -1529,7 +1852,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           value={dniShalom}
                           onChange={e => setDniShalom(e.target.value)}
                           placeholder="Ej. 72345678"
-                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                         />
                       </div>
 
@@ -1544,7 +1867,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           value={whatsapp}
                           onChange={e => setWhatsapp(formatPhoneWithSpaces(e.target.value))}
                           placeholder="987 654 321"
-                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                         />
                       </div>
                     </div>
@@ -1560,47 +1883,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         value={correoCliente}
                         onChange={e => setCorreoCliente(e.target.value)}
                         placeholder="ejemplo@gmail.com"
-                        className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                       />
                       <p className="text-[10px] text-slate-400">Olva Courier enviará notificaciones del estado del envío a este correo.</p>
                     </div>
-
-                    {/* Dirección (cliente - si es agencia poner agencia, si es domicilio poner domicilio) */}
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                        {olvaModalidad === 'agencia'
-                          ? '🏢 Dirección / Nombre de la Agencia Olva de destino *'
-                          : '🏠 Dirección Exacta de tu Domicilio *'}
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={olvaDireccion}
-                        onChange={e => setOlvaDireccion(e.target.value)}
-                        placeholder={
-                          olvaModalidad === 'agencia'
-                            ? 'Ej. Agencia Olva - San Isidro (Av. Aramburú 1184) / Trujillo Centro'
-                            : 'Ej. Av. Los Fresnos 345, Dpto 302, Urb. Sol de Oro, Los Olivos, Lima'
-                        }
-                        className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-bold text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
-                      />
-                    </div>
-
-                    {/* Referencia (cliente - SOLO que aparezca si se escoge domicilio) */}
-                    {olvaModalidad === 'domicilio' && (
-                      <div className="space-y-1.5 animate-fadeIn">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                          🏷️ Referencia de Entrega (Solo para Domicilio)
-                        </label>
-                        <input
-                          type="text"
-                          value={olvaReferencia}
-                          onChange={e => setOlvaReferencia(e.target.value)}
-                          placeholder="Ej. Frente al parque Los Jazmines, portón negro, timbre blanco"
-                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400"
-                        />
-                      </div>
-                    )}
                   </div>
                 </div>
               )}

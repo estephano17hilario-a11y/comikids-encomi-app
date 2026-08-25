@@ -149,6 +149,58 @@ export interface ShalomAgencyDB {
   updated_at?: string;
 }
 
+export interface OlvaAgency {
+  id: number | string;
+  code?: string | null;
+  departamento: string;
+  provincia: string;
+  distrito: string;
+  department?: string;
+  province?: string;
+  district?: string;
+  ubigeo?: string | null;
+  nombre: string;
+  name?: string;
+  full_name?: string;
+  direccion: string;
+  address?: string;
+  telefono?: string | null;
+  phone?: string | null;
+  horario?: string | null;
+  schedule?: string | null;
+  tipo?: string;
+  type?: string;
+  partner?: boolean;
+  is_partner?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  distance_meters?: number;
+  is_active?: boolean;
+  updated_at?: string;
+  full_display_name?: string;
+}
+
+export interface OlvaAgencyDB {
+  id: number;
+  code: string | null;
+  name: string;
+  full_name: string;
+  department: string;
+  province: string;
+  district: string;
+  ubigeo: string | null;
+  address: string;
+  phone: string | null;
+  schedule: string | null;
+  tipo: string;
+  is_partner: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  is_active: boolean;
+  distance_meters?: number;
+  updated_at?: string;
+}
+
 export interface Colaborador {
   id: string;
   nombre: string;

@@ -513,10 +513,10 @@ export class ShalomController {
       // 3. Obtener TODAS las órdenes de Shalom Pro (multi-página sincronizada)
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
-      // Filtro de Recencia: Órdenes creadas en los últimos 4 días (96 horas)
-      const MAX_RECENCY_MS = 4 * 24 * 60 * 60 * 1000;
+      // Filtro de Recencia: Órdenes creadas Hoy y Ayer (últimas 72 horas con margen de zona horaria)
+      const MAX_RECENCY_MS = 3 * 24 * 60 * 60 * 1000;
       const isRecentOrder = (o: any) => {
-        const dateRaw = o.created_at || o.date || o.created_date || o.fecha;
+        const dateRaw = o.created_at || o.date || o.created_date || o.fecha || o.fecha_emision || o.emitted_at;
         if (!dateRaw) return true;
         const orderTimestamp = new Date(dateRaw).getTime();
         if (isNaN(orderTimestamp)) return true;

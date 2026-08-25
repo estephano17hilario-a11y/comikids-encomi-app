@@ -114,7 +114,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     setProgressList(initial);
     setIsAuditing(true);
     setOverallSuccess(false);
-    setCurrentStepText('Buscando Guías Oficiales en Shalom Pro API por DNI, Guía y Nombre...');
+    setCurrentStepText('Buscando Guías Oficiales de Hoy y Ayer en Shalom Pro API...');
 
     const auth = {
       email: tallerConfig?.shalom_email || 'milagrosjanetamis@gmail.com',
@@ -595,7 +595,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                     <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div className="text-[11px] text-amber-300 flex items-center gap-1.5 font-medium">
                         <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-                        <span>⚠️ Sin Guía en Shalom Pro (Aún no registrada hoy)</span>
+                        <span>⚠️ Sin Guía en Shalom Pro (No registrada hoy ni ayer)</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <input

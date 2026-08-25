@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Pedido } from '../../types/database.types';
-import { DatosComprobante, buildWhatsAppComprobanteUrl } from '../../services/whatsappService';
+import {
+  DatosComprobante,
+  buildWhatsAppComprobanteUrl,
+  buildWhatsAppNativeUrl,
+  enviarComprobanteAWhatsapp,
+  isMobileDevice
+} from '../../services/whatsappService';
 import {
   CheckCircle2,
   Package,
@@ -26,7 +32,10 @@ export const OrderSuccessAnimation: React.FC<Props> = ({
 }) => {
   const [step, setStep] = useState<number>(1);
   const [countdown, setCountdown] = useState<number>(2.5);
-  const whatsappUrl = buildWhatsAppComprobanteUrl(comprobanteData);
+  const isMobile = typeof window !== 'undefined' && isMobileDevice();
+  const whatsappUrl = isMobile 
+    ? buildWhatsAppNativeUrl(comprobanteData) 
+    : buildWhatsAppComprobanteUrl(comprobanteData);
 
   useEffect(() => {
     // Paso 1 -> 2
@@ -57,9 +66,7 @@ export const OrderSuccessAnimation: React.FC<Props> = ({
   }, []);
 
   const handleRedirect = () => {
-    if (typeof window !== 'undefined') {
-      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-    }
+    enviarComprobanteAWhatsapp(comprobanteData);
     onFinished();
   };
 

@@ -13,8 +13,7 @@ import {
   Share2
 } from 'lucide-react';
 
-import { sharePdfFile, printPdfDirect } from '../../utils/nativePrintService';
-
+import { sharePdfFile, printPdfDirect, printImagesDirect } from '../../utils/nativePrintService';
 
 interface Props {
   pedido: Pedido;
@@ -59,10 +58,30 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
   const handlePrint = async () => {
     setDownloading(true);
     try {
-      await printPdfDirect(generateSinglePdf, `Rotulo_${pedido.codigo_seguimiento}.pdf`);
+      const printArea = document.getElementById('shalom-print-area');
+      if (!printArea) {
+        throw new Error('No se encontró el área de impresión.');
+      }
+
+      const canvas = await html2canvas(printArea, {
+        scale: 2.5,
+        useCORS: true,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      await printImagesDirect(
+        [imgData],
+        `Rotulo_${pedido.codigo_seguimiento}.pdf`,
+        `Rótulo #${pedido.codigo_seguimiento}`
+      );
     } catch (err) {
       console.error('Error al imprimir:', err);
-      alert('No se pudo enviar a imprimir.');
+      alert('No se pudo enviar a imprimir. Descargando PDF como respaldo...');
+      try {
+        const pdf = await generateSinglePdf();
+        if (pdf) pdf.save(`Rotulo_${pedido.codigo_seguimiento}.pdf`);
+      } catch {}
     } finally {
       setDownloading(false);
     }

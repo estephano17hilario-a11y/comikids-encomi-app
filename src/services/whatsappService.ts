@@ -26,6 +26,14 @@ export interface DatosComprobante {
 export const ENCOMI_FUNNEL_URL = "https://comikids-encomi-app.vercel.app/?funnel=encomi";
 export const NUMERO_CONTACTO_ENCOMI = "+51 963097546";
 
+/**
+ * Detecta si el entorno actual es un dispositivo móvil (Android / iOS / etc.)
+ */
+export const isMobileDevice = (): boolean => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 // Helper para obtener el día de la semana y fecha formateada en español
 export const formatFechaConDia = (dateStr?: string): string => {
   if (!dateStr) return 'Programación estándar';
@@ -48,9 +56,10 @@ export const formatFechaConDia = (dateStr?: string): string => {
   return dateStr;
 };
 
-// Paso 2 y 3: Generador de texto dinámico y apertura del enlace oficial de WhatsApp
-export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => {
-  // 1. Extracción dinámica de variables con valores limpios
+/**
+ * Genera el texto formateado del Comprobante de Envío Oficial
+ */
+export const buildWhatsAppComprobanteMessage = (datos: DatosComprobante): string => {
   const nombre = (datos.destinatario || "Cliente").trim();
   const telefono = (datos.telefonoCliente || "").replace(/\D/g, '') || "No especificado";
   const documento = (datos.documentoRecojo || "").trim() || "No especificado";
@@ -59,7 +68,6 @@ export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => 
   const codigo = datos.codigoSeguimiento || "Vigente";
   const fechaFormateada = formatFechaConDia(datos.fechaDeseadaEnvio);
 
-  // Enlace dinámico y súper corto del Funnel
   const currentOrigin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://comikids-encomi-app.vercel.app';
   const funnelShortUrl = `${currentOrigin}/encomi`;
 
@@ -67,9 +75,7 @@ export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante): string => 
   const lineaMaps = datos.coordenadasMapsUrl ? `🗺️ *Ubicación GPS:*\n${datos.coordenadasMapsUrl}\n` : "";
   const lineaCorreo = datos.correoCliente ? `📧 *Correo:* ${datos.correoCliente.trim()}\n` : "";
 
-  // 2. Construcción del mensaje estructurado, ultra compacto y ordenado
-  const cuerpoMensaje = 
-`✨ *COMPROBANTE OFICIAL DE ENVÍO - COMIKIDS* 📦
+  return `✨ *COMPROBANTE OFICIAL DE ENVÍO - COMIKIDS* 📦
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🏷️ *Orden:* #${codigo}
 👤 *Cliente:* ${nombre}
@@ -85,26 +91,81 @@ ${lineaRef}${lineaMaps}━━━━━━━━━━━━━━━━━━━
 👉 ${funnelShortUrl}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ¡Muchas gracias por tu preferencia! 💖✨🙏`;
+};
 
-  // 3. Codificación con encodeURIComponent
-  const textoCodificado = encodeURIComponent(cuerpoMensaje);
+/**
+ * Genera la URL para abrir WhatsApp con el comprobante pre-cargado en la casilla de texto.
+ * Si preferNative es true o está en móvil, devuelve el esquema nativo `whatsapp://send?phone=...&text=...`
+ */
+export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante, preferNative: boolean = false): string => {
+  const message = buildWhatsAppComprobanteMessage(datos);
+  const textoCodificado = encodeURIComponent(message);
+  
+  if (preferNative || (typeof window !== 'undefined' && isMobileDevice())) {
+    return `whatsapp://send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${textoCodificado}`;
+  }
   return `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${textoCodificado}`;
 };
 
+export const buildWhatsAppNativeUrl = (datos: DatosComprobante): string => {
+  const message = buildWhatsAppComprobanteMessage(datos);
+  return `whatsapp://send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${encodeURIComponent(message)}`;
+};
 
+export const buildWhatsAppWebUrl = (datos: DatosComprobante): string => {
+  const message = buildWhatsAppComprobanteMessage(datos);
+  return `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${encodeURIComponent(message)}`;
+};
+
+/**
+ * Abre la app de WhatsApp de forma nativa e inmediata con el comprobante en la casilla de texto.
+ */
 export const enviarComprobanteAWhatsapp = (datos: DatosComprobante): string => {
-  const enlaceFinal = buildWhatsAppComprobanteUrl(datos);
-  if (typeof window !== 'undefined') {
-    window.open(enlaceFinal, '_blank', 'noopener,noreferrer');
+  const message = buildWhatsAppComprobanteMessage(datos);
+  openWhatsAppChat(NUMERO_WHATSAPP_RECEPTOR, message);
+  return buildWhatsAppComprobanteUrl(datos);
+};
+
+/**
+ * Abre cualquier chat de WhatsApp enviando directamente a la app nativa en móviles
+ * o a WhatsApp Web / API en navegadores de escritorio.
+ */
+export const openWhatsAppChat = (phone: string, text?: string): void => {
+  if (typeof window === 'undefined') return;
+
+  const cleanPhone = (phone || NUMERO_WHATSAPP_RECEPTOR).replace(/\D/g, '');
+  const encodedText = text ? encodeURIComponent(text) : '';
+  const textParam = encodedText ? `&text=${encodedText}` : '';
+  
+  const nativeUrl = `whatsapp://send?phone=${cleanPhone}${textParam}`;
+  const webUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}${textParam}`;
+
+  if (isMobileDevice()) {
+    // En móviles: Invocación directa del Intent nativo de la app de WhatsApp
+    window.location.href = nativeUrl;
+    
+    // Fallback suave en caso de que no tenga la app instalada
+    setTimeout(() => {
+      if (document.hasFocus()) {
+        window.open(webUrl, '_blank', 'noopener,noreferrer');
+      }
+    }, 1400);
+  } else {
+    // En PC / Desktop: Abrir WhatsApp Web
+    window.open(webUrl, '_blank', 'noopener,noreferrer');
   }
-  return enlaceFinal;
 };
 
 export function getWhatsAppBusinessChatUrl(text?: string): string {
   if (!text) {
-    return `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}`;
+    return isMobileDevice() 
+      ? `whatsapp://send?phone=${NUMERO_WHATSAPP_RECEPTOR}` 
+      : `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}`;
   }
-  return `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${encodeURIComponent(text)}`;
+  const encoded = encodeURIComponent(text);
+  return isMobileDevice()
+    ? `whatsapp://send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${encoded}`
+    : `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${encoded}`;
 }
 
 export function getWhatsAppEditOrderUrl(pedido: Pedido): string {
@@ -125,7 +186,10 @@ export const NUMERO_WHATSAPP_ENCOMI_DIRECTO = "51963097546";
 
 export function getJoinEncomiWhatsAppUrl(): string {
   const text = "¡Hola! 👋 Vi la plataforma al registrar mi envío y deseo más información sobre Encomi Envíos para enviar 10 veces más rápido en mi negocio 🚀📦";
-  return `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_ENCOMI_DIRECTO}&text=${encodeURIComponent(text)}`;
+  const encoded = encodeURIComponent(text);
+  return isMobileDevice()
+    ? `whatsapp://send?phone=${NUMERO_WHATSAPP_ENCOMI_DIRECTO}&text=${encoded}`
+    : `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_ENCOMI_DIRECTO}&text=${encoded}`;
 }
 
 export interface StatusNotifyParams {
@@ -166,6 +230,10 @@ ${customNote}
 
 ¡Gracias por tu confianza! 💖✨🙏`;
 
-  return `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(message)}`;
+  const encoded = encodeURIComponent(message);
+  return isMobileDevice()
+    ? `whatsapp://send?phone=${targetPhone}&text=${encoded}`
+    : `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encoded}`;
 }
+
 

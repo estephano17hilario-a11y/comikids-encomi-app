@@ -4,8 +4,7 @@ import { Pedido, TallerConfig } from '../../types/database.types';
 import { X, Printer, Download, CheckCircle, Loader2, Share2, Layers } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { sharePdfFile, printPdfDirect } from '../../utils/nativePrintService';
-
+import { sharePdfFile, printPdfDirect, printImagesDirect } from '../../utils/nativePrintService';
 
 interface Props {
   pedidos: Pedido[];
@@ -30,7 +29,6 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
   const uniquePedidos = Array.from(
     new Map(pedidos.map(p => [p.id || p.codigo_seguimiento, p])).values()
   );
-
 
   // Generador de PDF A4 centrado y calibrado exactamente para 6 rótulos por página (2x3)
   const generatePdfInstance = async (): Promise<jsPDF | null> => {
@@ -110,9 +108,30 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     setDownloadProgress('Preparando impresión...');
 
     try {
-      await printPdfDirect(
-        generatePdfInstance,
-        `Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`
+      const pageElements = document.querySelectorAll<HTMLElement>('.a4-print-page');
+      if (!pageElements || pageElements.length === 0) {
+        throw new Error('No se encontraron rótulos para imprimir.');
+      }
+
+      const images: string[] = [];
+      for (let i = 0; i < pageElements.length; i++) {
+        setDownloadProgress(`Renderizando página ${i + 1} de ${pageElements.length}...`);
+        const el = pageElements[i];
+        const canvas = await html2canvas(el, {
+          scale: 2.5,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: 794,
+          windowHeight: 1123,
+        });
+        images.push(canvas.toDataURL('image/jpeg', 0.98));
+      }
+
+      await printImagesDirect(
+        images,
+        `Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`,
+        `Rótulos ComiKids A4 (${uniquePedidos.length} pedidos)`
       );
 
       if (onPrintComplete) {
@@ -120,7 +139,11 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
       }
     } catch (err) {
       console.error('Error al imprimir rótulos:', err);
-      alert('No se pudo enviar a imprimir.');
+      alert('No se pudo abrir el diálogo de impresión. Intentando descargar como PDF...');
+      try {
+        const pdf = await generatePdfInstance();
+        if (pdf) pdf.save(`Rotulos_ComiKids_${uniquePedidos.length}pedidos.pdf`);
+      } catch {}
     } finally {
       setDownloading(false);
       setDownloadProgress('');

@@ -15,8 +15,10 @@ import {
   DatosComprobante,
   enviarComprobanteAWhatsapp,
   buildWhatsAppComprobanteUrl,
+  buildWhatsAppNativeUrl,
   getWhatsAppBusinessChatUrl,
-  getJoinEncomiWhatsAppUrl
+  getJoinEncomiWhatsAppUrl,
+  isMobileDevice
 } from '../../services/whatsappService';
 import { OrderSuccessAnimation } from './OrderSuccessAnimation';
 import {
@@ -582,16 +584,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       : undefined;
 
     return {
-      destinatario: nombreCompleto.trim(),
-      telefonoCliente: whatsapp.trim(),
-      documentoRecojo: dniShalom.trim(),
-      correoCliente: correoCliente.trim() || undefined,
+      destinatario: nombreCompleto.trim() || order?.usuario?.nombre_completo || 'Cliente',
+      telefonoCliente: whatsapp.trim() || order?.usuario?.telefono_default || order?.usuario?.dni || '',
+      documentoRecojo: dniShalom.trim() || order?.usuario?.dni_default || order?.usuario?.dni || '',
+      correoCliente: correoCliente.trim() || order?.usuario?.email_default || order?.usuario?.email || undefined,
       modalidadOlva: selectedMethod?.tipo_formulario === 'olva' ? olvaModalidad : undefined,
-      tipoEnvio: selectedMethod?.nombre || (selectedMethod?.tipo_formulario === 'shalom' ? 'Agencia Shalom Nacional' : (selectedMethod?.tipo_formulario === 'olva' ? 'Olva Courier Nacional' : 'Motorizado Local Lima')),
-      destinoDetalle: destinoTexto,
+      tipoEnvio: selectedMethod?.nombre || order?.metodo_envio_nombre || (selectedMethod?.tipo_formulario === 'shalom' ? 'Agencia Shalom Nacional' : (selectedMethod?.tipo_formulario === 'olva' ? 'Olva Courier Nacional' : 'Motorizado Local Lima')),
+      destinoDetalle: destinoTexto || order?.destino_detalle || 'Agencia de destino',
       codigoSeguimiento: order?.codigo_seguimiento,
-      fechaDeseadaEnvio: fechaEnvioDeseada,
-      referencia: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
+      fechaDeseadaEnvio: fechaEnvioDeseada || order?.fecha_limite,
+      referencia: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || order?.observaciones_cliente || undefined,
       coordenadasMapsUrl: mapsUrl,
       remitenteNombre: tallerConfig?.nombre_taller,
       remitenteDni: tallerConfig?.remitente_dni || tallerConfig?.ruc_dni,
@@ -601,7 +603,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   };
 
   const datosComprobanteActuales = getDatosComprobanteActual(createdOrder);
-  const whatsappUrl = buildWhatsAppComprobanteUrl(datosComprobanteActuales);
+  const isMobile = typeof window !== 'undefined' && isMobileDevice();
+  const whatsappUrl = isMobile
+    ? buildWhatsAppNativeUrl(datosComprobanteActuales)
+    : buildWhatsAppComprobanteUrl(datosComprobanteActuales);
 
   // Paso 3: Función de envío directo
   const handleEnviarComprobanteWhatsApp = () => {
@@ -1092,61 +1097,97 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           )}
 
           {/* =====================================================================
-              PASO 2: SELECCIÓN DE MÉTODO (CON LOGOS OFICIALES DE SHALOM Y OLVA)
+              PASO 2: SELECCIÓN DE MÉTODO (CON LOGOS OFICIALES, SHALOM Y OTRAS AGENCIAS)
               ===================================================================== */}
-          {organicStep === 2 && (
-            <div className="space-y-3.5 animate-fadeIn">
-              <p className="text-xs sm:text-sm text-slate-400">
-                Selecciona la opción de transporte de tu preferencia:
-              </p>
+          {organicStep === 2 && (() => {
+            const mainMethods = activeShippingMethods.filter(
+              m => m.tipo_formulario !== 'olva' && m.codigo !== 'olva'
+            );
+            const otherMethods = activeShippingMethods.filter(
+              m => m.tipo_formulario === 'olva' || m.codigo === 'olva'
+            );
 
-              <div className="grid grid-cols-1 gap-3">
-                {activeShippingMethods.map((method) => {
-                  const isShalom = method.tipo_formulario === 'shalom' || method.codigo === 'shalom';
-                  const isOlva = method.tipo_formulario === 'olva' || method.codigo === 'olva';
-                  return (
-                    <button
-                      key={method.id}
-                      type="button"
-                      onClick={() => handleMethodSelect(method.id)}
-                      className="p-4 sm:p-5 rounded-3xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-lg"
-                    >
-                      <div className="flex items-center gap-3.5">
-                        {isShalom ? (
-                          <div className="w-12 h-12 rounded-2xl bg-white/8 border border-white/15 flex items-center justify-center p-2 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-inner">
-                            <img src="/Shalom-Courier-Logo.webp" alt="Shalom Courier" className="w-full h-full object-contain" />
-                          </div>
-                        ) : isOlva ? (
-                          <div className="w-12 h-12 rounded-2xl bg-[#FFDE00] border border-yellow-400/60 flex items-center justify-center p-1 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-md">
-                            <img src="/Olva-Courier-Logo.svg" alt="Olva Courier" className="w-full h-full object-contain" />
-                          </div>
-                        ) : (
-                          <div className="w-12 h-12 rounded-2xl bg-white/6 border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
-                            <Truck className="w-6 h-6" />
-                          </div>
-                        )}
+            const renderMethodButton = (method: MetodoEnvio) => {
+              const isShalom = method.tipo_formulario === 'shalom' || method.codigo === 'shalom';
+              const isOlva = method.tipo_formulario === 'olva' || method.codigo === 'olva';
 
-                        <div>
-                          <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors flex items-center gap-2">
-                            <span>{method.nombre}</span>
-                            {isOlva && (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-yellow-400/20 text-yellow-300 border border-yellow-400/30">
-                                Olva
-                              </span>
-                            )}
-                          </h4>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {method.descripcion}
-                          </p>
-                        </div>
+              return (
+                <button
+                  key={method.id}
+                  type="button"
+                  onClick={() => handleMethodSelect(method.id)}
+                  className="p-4 sm:p-5 rounded-3xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center justify-between group cursor-pointer shadow-lg"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    {isShalom ? (
+                      <div className="w-12 h-12 rounded-2xl bg-white/8 border border-white/15 flex items-center justify-center p-2 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-inner">
+                        <img src="/Shalom-Courier-Logo.webp" alt="Shalom Courier" className="w-full h-full object-contain" />
                       </div>
-                      <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
-                    </button>
-                  );
-                })}
+                    ) : isOlva ? (
+                      <div className="w-12 h-12 rounded-2xl bg-[#FFDE00] border border-yellow-400/60 flex items-center justify-center p-1 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-md">
+                        <img src="/Olva-Courier-Logo.svg" alt="Olva Courier" className="w-full h-full object-contain" />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-2xl bg-white/6 border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
+                        <Truck className="w-6 h-6" />
+                      </div>
+                    )}
+
+                    <div className="min-w-0">
+                      <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-cyan-300 transition-colors flex items-center gap-2 flex-wrap">
+                        <span>{method.nombre}</span>
+                        {isShalom && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-red-600/25 text-red-400 border border-red-500/40 shadow-xs">
+                            Shalom
+                          </span>
+                        )}
+                        {isOlva && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-yellow-400/25 text-yellow-300 border border-yellow-400/40 shadow-xs">
+                            Olva
+                          </span>
+                        )}
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                        {method.descripcion}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
+                </button>
+              );
+            };
+
+            return (
+              <div className="space-y-4 animate-fadeIn">
+                <p className="text-xs sm:text-sm text-slate-400 font-medium">
+                  Selecciona la opción de transporte de tu preferencia:
+                </p>
+
+                {/* Métodos Principales */}
+                <div className="grid grid-cols-1 gap-3">
+                  {mainMethods.map(renderMethodButton)}
+                </div>
+
+                {/* Sección Otras Agencias (Olva Courier y otras) */}
+                {otherMethods.length > 0 && (
+                  <div className="pt-2 space-y-2.5">
+                    <div className="flex items-center gap-2.5 px-1">
+                      <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <span>📦</span>
+                        <span>Otras agencias</span>
+                      </span>
+                      <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                      {otherMethods.map(renderMethodButton)}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* =====================================================================
               PASO 3: DATOS DE ENTREGA & NOMBRE (COMPACTO CON EMOJIS)

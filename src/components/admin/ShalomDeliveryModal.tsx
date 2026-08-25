@@ -162,13 +162,13 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         for (const candidate of searchCandidates) {
           if (pdfData && pdfData.length > 100) break;
           try {
-            // PRIORIDAD 1: Guía de Remisión Oficial con QR (/label)
-            pdfData = await ShalomApiService.fetchLabelPdfBase64(candidate, auth, clientCtx, handleMeta);
+            // PRIORIDAD 1: Ticket Oficial POS Blanco y Negro con QR físico y Precios Actualizados (/voucher)
+            pdfData = await ShalomApiService.fetchVoucherPdfBase64(candidate, auth, clientCtx, handleMeta);
           } catch {}
           if (!pdfData || pdfData.length < 100) {
             try {
-              // PRIORIDAD 2: Ticket POS Oficial (/voucher)
-              pdfData = await ShalomApiService.fetchVoucherPdfBase64(candidate, auth, clientCtx, handleMeta);
+              // Respaldo (/label)
+              pdfData = await ShalomApiService.fetchLabelPdfBase64(candidate, auth, clientCtx, handleMeta);
             } catch {}
           }
         }
@@ -188,7 +188,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const verified = updatedList.filter((p) => p.auditStatus === 'verified_pdf').length;
       setCurrentStepText(
         verified === updatedList.length
-          ? '✓ Todos los pedidos fueron confirmados en Shalom Pro API (Guías oficiales con QR listas).'
+          ? '✓ Todos los pedidos fueron confirmados en Shalom Pro API (Tickets oficiales con QR listos).'
           : `${verified} de ${updatedList.length} pedidos confirmados en Shalom Pro API.`
       );
     };
@@ -228,18 +228,18 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     };
 
     try {
-      // Prioridad 1: Guía de Remisión Oficial con QR (/label)
-      let pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
+      // Prioridad 1: Ticket Oficial POS Blanco y Negro con QR físico y Precios Actualizados (/voucher)
+      let pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
       if (!pdfData || pdfData.length < 100) {
-        // Prioridad 2: Ticket POS Oficial (/voucher)
-        pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
+        // Respaldo (/label)
+        pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
       }
       if (pdfData && pdfData.length > 100) {
         item.pdfBase64 = pdfData;
         item.auditStatus = 'verified_pdf';
         setProgressList([...progressList]);
       } else {
-        alert(`No se encontró la guía oficial en Shalom Pro para "${keyToSearch}". Verifica el número de orden, guía o DNI.`);
+        alert(`No se encontró el ticket oficial en Shalom Pro para "${keyToSearch}". Verifica el número de orden, guía o DNI.`);
       }
     } catch (err: any) {
       alert(`Error consultando Shalom Pro: ${err.message}`);

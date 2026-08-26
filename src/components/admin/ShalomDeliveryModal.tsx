@@ -157,8 +157,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         const oseKey = originalOrder?.shalom_ose_id || '';
         const phoneKey = !dniKey && !guideKey && item.phone && item.phone.length >= 9 && item.phone !== '927781412' ? item.phone : '';
 
-        // Prioridad Estricta: DNI del cliente > Guía Oficial > OSE ID > Teléfono
-        const searchCandidates = [dniKey, guideKey, oseKey, phoneKey].filter(Boolean);
+        // Prioridad Estricta: OSE ID > Guía Oficial > DNI del cliente > Teléfono
+        const searchCandidates = [oseKey, guideKey, dniKey, phoneKey].filter(Boolean);
 
         for (const candidate of searchCandidates) {
           if (pdfData && pdfData.length > 100) break;

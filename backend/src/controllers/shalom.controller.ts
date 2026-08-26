@@ -560,34 +560,30 @@ export class ShalomController {
       // 2. Obtener listado sincronizado de órdenes recientes de Shalom Pro
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
-      // Filtro de Recencia: Órdenes creadas recientemente (últimos 14 días o serie reciente)
-      const isRecentOrder = (o: any) => {
-        if (Number(o.id || 0) >= 89000000) return true; // Órdenes recientes emitidas en Shalom Pro
-        const dateRaw = o.created_at || o.date || o.created_date || o.fecha || o.fecha_emision || o.emitted_at;
-        if (!dateRaw) return true;
-        const normalized = String(dateRaw).replace(' ', 'T');
-        const orderTimestamp = new Date(normalized).getTime();
-        if (isNaN(orderTimestamp)) return true;
-        return (Date.now() - orderTimestamp) <= (14 * 24 * 60 * 60 * 1000);
-      };
-
       // Función de coincidencia ESTRICTA NIVEL BANCARIO
       const findMatchingOrder = (list: any[]) => {
-        // CASO 1: Si se proporcionó DNI (Prioridad Absoluta e Inquebrantable)
+        // 1. Si cleanSearch es un ID directo de orden en Shalom (ej: 96844588)
+        if (/^\d{7,10}$/.test(cleanSearch)) {
+          const byId = list.find((o: any) => String(o.id) === cleanSearch);
+          if (byId) {
+            const orderDni = getOrderReceiverDni(byId);
+            // Si no se especificó DNI o coincide con el DNI de la orden, es un match directo
+            if (!targetDni || !orderDni || orderDni === targetDni) return byId;
+          }
+        }
+
+        // 2. Coincidencia por DNI exacto del destinatario (Prioridad Absoluta)
         if (targetDni && targetDni.length >= 6) {
-          const dniMatches = list.filter((o: any) => {
-            const doc = getOrderReceiverDni(o);
-            return doc === targetDni && isRecentOrder(o);
-          });
+          const dniMatches = list.filter((o: any) => getOrderReceiverDni(o) === targetDni);
 
           if (dniMatches.length > 0) {
-            // Si el cliente tiene múltiples paquetes, buscar por Guía si se especificó
+            // Si el cliente tiene múltiples paquetes, filtrar por Guía si se especificó
             if (targetGuia) {
               const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
               const gMatch = dniMatches.find((o: any) => {
-                const fullG = `${o.serie || ''}-${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                const fullG = `${o.serie || ''}${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
                 const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-                return (gOnly && gOnly === cleanG) || (fullG && fullG === cleanG) || String(o.id) === cleanG;
+                return fullG.includes(cleanG) || gOnly === cleanG || String(o.id) === cleanG;
               });
               if (gMatch) return gMatch;
             }
@@ -596,33 +592,27 @@ export class ShalomController {
             return dniMatches[0];
           }
 
-          // SI SE ESPECIFICÓ DNI Y NO COINCIDIÓ EN LA LISTA, NUNCA RETORNAR LA ORDEN DE OTRA PERSONA
+          // Si se especificó un DNI y no existe ninguna orden para ese DNI, no retornar la de otra persona
           return null;
         }
 
-        // CASO 2: Si se especificó Número de Guía Exacto (sin DNI)
+        // 3. Coincidencia por Número de Guía Exacto (si no hay DNI)
         if (targetGuia) {
           const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
           const gMatch = list.find((o: any) => {
-            const fullG = `${o.serie || ''}-${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const fullG = `${o.serie || ''}${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
             const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-            return (gOnly && gOnly === cleanG) || (fullG && fullG === cleanG) || String(o.id) === cleanG;
+            return fullG.includes(cleanG) || gOnly === cleanG || String(o.id) === cleanG;
           });
           if (gMatch) return gMatch;
         }
 
-        // CASO 3: Búsqueda por ID Directo de Shalom (ej: 92495242)
-        if (/^\d{7,10}$/.test(cleanSearch) && !rawPhone) {
-          const directMatch = list.find((o: any) => String(o.id) === cleanSearch);
-          if (directMatch) return directMatch;
-        }
-
-        // CASO 4: Coincidencia por Teléfono del Destinatario (solo si NO hay DNI ni Guía)
+        // 4. Coincidencia por Teléfono del Destinatario (solo si NO hay DNI ni Guía)
         if (targetPhone && targetPhone.length >= 9) {
           const phone9 = targetPhone.slice(-9);
           const phoneMatches = list.filter((o: any) => {
             const p = String(o.receiver?.phone || o.destinatario?.telefono || o.receiver?.phone_number || '').replace(/\D/g, '').trim();
-            return p && p.slice(-9) === phone9 && isRecentOrder(o);
+            return p && p.slice(-9) === phone9;
           });
           if (phoneMatches.length > 0) {
             phoneMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
@@ -630,11 +620,11 @@ export class ShalomController {
           }
         }
 
-        // CASO 5: Coincidencia por Nombre Completo (solo si NO hay DNI, Guía ni Teléfono)
-        if (targetName && targetName.length >= 6) {
+        // 5. Coincidencia por Nombre Completo (solo si NO hay DNI, Guía ni Teléfono)
+        if (targetName && targetName.length >= 5) {
           const nameMatches = list.filter((o: any) => {
-            const rFullName = `${o.receiver?.name || o.destinatario?.nombre || ''} ${o.receiver?.last_name || ''}`.toLowerCase().trim();
-            return (rFullName.includes(targetName) || targetName.includes(rFullName)) && isRecentOrder(o);
+            const rFullName = `${o.receiver?.name || o.destinatario?.nombre || ''} ${o.receiver?.last_name || ''} ${o.receiver?.full_name || ''}`.toLowerCase().trim();
+            return rFullName.includes(targetName) || targetName.includes(rFullName);
           });
           if (nameMatches.length > 0) {
             nameMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));

@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { ShalomLabelPrint } from './ShalomLabelPrint';
-import { X, Printer, FileText } from 'lucide-react';
+import { X, Printer, FileText, Droplet } from 'lucide-react';
 import { printElement } from '../../utils/nativePrintService';
+import { InkSavingLevel, INK_SAVING_LEVELS } from '../../utils/inkSavingService';
 
 interface Props {
   pedido: Pedido;
@@ -13,6 +14,7 @@ interface Props {
 
 export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClose }) => {
   const [printing, setPrinting] = useState(false);
+  const [inkSavingLevel, setInkSavingLevel] = useState<InkSavingLevel>(0);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -24,7 +26,7 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
   const handlePrint = async () => {
     setPrinting(true);
     try {
-      await printElement('shalom-print-area', `Rotulo_${pedido.codigo_seguimiento}`);
+      await printElement('shalom-print-area', `Rotulo_${pedido.codigo_seguimiento}_Eco${inkSavingLevel}`);
     } catch (err) {
       console.error('Error al imprimir:', err);
       window.print();
@@ -63,9 +65,53 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
           </button>
         </div>
 
-        {/* Label Preview */}
+        {/* SELECTOR DE AHORRO DE TINTA / ECO-PRINT (0%, 25%, 50%, 75%, 90%) */}
+        <div className="mb-3.5 p-3 rounded-2xl bg-slate-900/90 border border-slate-800 print:hidden" data-no-print="true">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-black text-slate-200 flex items-center gap-1.5">
+              <Droplet className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Ahorro de Tinta Inteligente:</span>
+            </span>
+            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              {INK_SAVING_LEVELS[inkSavingLevel].badge}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-5 gap-1.5">
+            {(Object.keys(INK_SAVING_LEVELS) as unknown as InkSavingLevel[]).map((lvl) => {
+              const opt = INK_SAVING_LEVELS[lvl];
+              const isSelected = inkSavingLevel === Number(lvl);
+              return (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => setInkSavingLevel(Number(lvl) as InkSavingLevel)}
+                  className={`py-1.5 px-1 rounded-xl text-center transition-all cursor-pointer text-xs font-bold ${
+                    isSelected
+                      ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25 scale-[1.02]'
+                      : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80 border border-slate-700/60'
+                  }`}
+                >
+                  <span className="block text-[11px] font-black">{opt.level}%</span>
+                  <span className="block text-[8px] opacity-80 leading-none truncate">
+                    {opt.level === 0 ? 'Normal' : opt.level === 90 ? 'Ultra' : 'Eco'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-2 leading-tight">
+            💡 {INK_SAVING_LEVELS[inkSavingLevel].description}
+          </p>
+        </div>
+
+        {/* Label Preview (Live dynamic Eco preview) */}
         <div className="mb-4 p-3 bg-slate-950/90 rounded-2xl border border-slate-800 flex justify-center overflow-x-auto print:p-0 print:m-0 print:border-none print:bg-white">
-          <ShalomLabelPrint pedido={pedido} tallerConfig={tallerConfig} />
+          <ShalomLabelPrint
+            pedido={pedido}
+            tallerConfig={tallerConfig}
+            inkSavingLevel={inkSavingLevel}
+          />
         </div>
 
         {/* ÚNICO BOTÓN PRINCIPAL PARA IMPRIMIR */}
@@ -86,4 +132,5 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
     document.body
   );
 };
+
 

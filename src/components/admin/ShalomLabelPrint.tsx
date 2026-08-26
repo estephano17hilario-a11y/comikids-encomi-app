@@ -1,42 +1,62 @@
 import React from 'react';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
+import { InkSavingLevel, getInkSavingStyles } from '../../utils/inkSavingService';
 
 interface Props {
   pedido: Pedido;
   tallerConfig: TallerConfig;
+  inkSavingLevel?: InkSavingLevel;
 }
 
-export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
+export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSavingLevel = 0 }) => {
   const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
   const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
+  const getClientDni = () => {
+    if (pedido.usuario?.dni && pedido.usuario.dni.length >= 8 && !pedido.usuario.dni.startsWith('9')) {
+      return pedido.usuario.dni;
+    }
+    if (pedido.usuario?.dni_default) {
+      return pedido.usuario.dni_default;
+    }
+    if (pedido.destino_detalle) {
+      const match = pedido.destino_detalle.match(/(?:DNI|CE|Doc)[\s:]*([0-9A-Za-z]{7,12})/i);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    return pedido.usuario?.dni || 'No registrado';
+  };
+
+  const clientDni = getClientDni();
+  const eco = getInkSavingStyles(inkSavingLevel);
+
   return (
     <div
       id="shalom-print-area"
-      className="w-full max-w-110 mx-auto bg-white text-slate-900 p-5 rounded-3xl border-4 border-dashed border-cyan-500 shadow-2xl font-sans relative overflow-hidden"
-      style={{ fontFamily: 'Arial, sans-serif' }}
+      className={`w-full max-w-110 mx-auto p-4 sm:p-5 rounded-3xl ${eco.containerBorder} shadow-2xl relative overflow-hidden transition-all duration-200`}
+      style={{ fontFamily: eco.fontFamily }}
     >
       {/* Top Header ComiKids & Badge con Logo Shalom / Olva / Moto */}
-      <div className="flex items-center justify-between border-b-2 border-dashed border-pink-500 pb-3 mb-3">
+      <div className={`flex items-center justify-between border-b-2 border-dashed ${inkSavingLevel >= 50 ? 'border-slate-400' : 'border-pink-500'} pb-2.5 mb-2.5`}>
         <div className="flex items-center gap-2">
           <img
             src="/Comikids.png"
             alt="ComiKids"
-            className="w-10 h-10 object-contain rounded-xl shadow"
+            className={`w-10 h-10 object-contain rounded-xl shadow ${inkSavingLevel >= 75 ? 'grayscale contrast-125' : ''}`}
           />
           <div>
             <h2 className="text-base font-black uppercase tracking-tight text-slate-900 leading-none">
               ComiKids
             </h2>
+            <span className="text-[10px] text-slate-500 font-bold">Envíos Seguros</span>
           </div>
         </div>
 
         <div className="text-right flex flex-col items-end">
-          <div className={`flex items-center gap-1 px-2.5 py-1 rounded border border-black mb-1 ${
-            isOlva ? 'bg-yellow-300' : isShalom ? 'bg-yellow-300' : 'bg-slate-100'
-          }`}>
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black text-[10px] uppercase mb-1 ${eco.badgeCarrier}`}>
             {isOlva ? (
               <>
                 <img
@@ -44,9 +64,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
                   alt="Olva"
                   className="h-3.5 w-auto object-contain"
                 />
-                <span className="text-slate-950 font-black text-[9px] uppercase">
-                  OLVA COURIER
-                </span>
+                <span>OLVA COURIER</span>
               </>
             ) : isShalom ? (
               <>
@@ -55,16 +73,12 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
                   alt="Shalom"
                   className="h-3.5 w-auto object-contain"
                 />
-                <span className="text-slate-950 font-black text-[9px] uppercase">
-                  SHALOM VIP
-                </span>
+                <span>SHALOM VIP</span>
               </>
             ) : (
               <>
-                <span className="text-xs">🛵</span>
-                <span className="text-slate-950 font-black text-[9px] uppercase">
-                  MOTORIZADO
-                </span>
+                <span>🛵</span>
+                <span>MOTORIZADO</span>
               </>
             )}
           </div>
@@ -74,14 +88,14 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
         </div>
       </div>
 
-      {/* Barcode Simulation with Stars */}
-      <div className="my-2 p-2.5 bg-cyan-50/70 rounded-2xl border-2 border-cyan-300 text-center">
-        <div className="flex justify-center items-center gap-0.5 h-9 mb-1">
+      {/* Barcode Simulation with Eco-Print calculation */}
+      <div className={`my-2 p-2 rounded-2xl border ${inkSavingLevel >= 50 ? 'bg-white border-slate-400' : 'bg-cyan-50/70 border-cyan-300'} text-center`}>
+        <div className={`flex justify-center items-center gap-0.5 ${eco.barcodeHeight} mb-1`}>
           {[4, 2, 6, 2, 8, 3, 2, 5, 2, 7, 3, 2, 4, 6, 2, 5, 3, 8, 2, 4, 3, 6, 2, 4, 2, 7, 2, 3, 5, 2, 4].map((w, i) => (
             <div
               key={i}
-              className="bg-slate-900 h-full"
-              style={{ width: `${w}px` }}
+              className={`${eco.barcodeBar} h-full`}
+              style={{ width: `${Math.max(1, Math.round(w * eco.barcodeMultiplier))}px` }}
             />
           ))}
         </div>
@@ -91,79 +105,87 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig }) => {
       </div>
 
       {/* DESTINO DESTACADO */}
-      <div className="bg-slate-950 text-white p-3 rounded-2xl mb-3 text-center border-2 border-cyan-400">
-        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 flex items-center justify-center gap-1">
+      <div className={`${eco.destinoBox} rounded-2xl mb-2.5 text-center`}>
+        <span className={`text-[10px] uppercase tracking-wider ${eco.destinoSub} flex items-center justify-center gap-1`}>
           <span>🚀</span>
           <span>{isOlva ? 'DESTINO OLVA COURIER:' : isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA MOTORIZADO:'}</span>
         </span>
-        <h2 className="text-base sm:text-lg font-black uppercase tracking-tight text-white leading-tight mt-0.5">
+        <h2 className={`text-base sm:text-lg uppercase tracking-tight leading-tight mt-0.5 ${eco.destinoTitle}`}>
           {pedido.destino_detalle}
         </h2>
       </div>
 
-      {/* SECCIÓN CONSIGNATARIO (DESTINATARIO) */}
-      <div className="border-2 border-dashed border-slate-900 rounded-2xl p-3 mb-3 bg-yellow-50/70">
+      {/* SECCIÓN CONSIGNATARIO (DESTINATARIO) CON DNI GIGANTE */}
+      <div className={`rounded-2xl p-3 mb-2.5 ${eco.sectionBg}`}>
         <div className="flex items-center justify-between border-b border-slate-300 pb-1 mb-2">
-          <span className="text-[11px] font-black uppercase text-cyan-700 flex items-center gap-1">
+          <span className="text-[11px] font-black uppercase text-slate-800 flex items-center gap-1">
             <span>👤</span>
             <span>DESTINATARIO (CLIENTE)</span>
           </span>
           <span className="text-[10px] font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-300">
-            PRIORIDAD
+            RECOJO EN AGENCIA
           </span>
         </div>
-        <div className="space-y-1.5 text-xs text-slate-900">
-          <p>
-            <span className="font-bold text-slate-700">Nombre:</span>{' '}
-            <span className="font-black text-sm uppercase">{pedido.usuario?.nombre_completo || 'Cliente'}</span>
-          </p>
-          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
-            <p>
-              <span className="font-bold text-slate-700">DNI / Doc:</span>{' '}
-              <span className="font-mono font-black">{pedido.usuario?.dni || 'No especificado'}</span>
-            </p>
-            <p>
-              <span className="font-bold text-slate-700">Celular / WA:</span>{' '}
-              <span className="font-mono font-bold text-cyan-700">{clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}</span>
-            </p>
+
+        <div className="space-y-2 text-xs text-slate-900">
+          <div>
+            <span className={eco.subtleText}>Nombre del Cliente:</span>{' '}
+            <span className="font-black text-base uppercase block text-slate-950">{pedido.usuario?.nombre_completo || 'Cliente'}</span>
           </div>
+
+          {/* DNI GIGANTE Y DESTACADO (REQ: DNI MAS GRANDE) */}
+          <div className={`${eco.dniBox} rounded-xl flex items-center justify-between shadow-xs`}>
+            <div>
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none">
+                🪪 DNI / DOC RECOJO:
+              </span>
+              <span className={`${eco.dniText} block leading-tight mt-0.5`}>
+                {clientDni}
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none">
+                TELÉFONO:
+              </span>
+              <span className="text-sm sm:text-base font-mono font-bold text-slate-900 block leading-tight mt-0.5">
+                {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+              </span>
+            </div>
+          </div>
+
           {(pedido.usuario?.email || pedido.usuario?.email_default) && (
-            <p className="pt-1 border-t border-slate-200 text-[11px]">
-              <span className="font-bold text-slate-700">Correo:</span>{' '}
-              <span className="font-mono font-bold text-slate-900">{pedido.usuario.email || pedido.usuario.email_default}</span>
+            <p className="pt-0.5 text-[10.5px]">
+              <span className={eco.subtleText}>Correo:</span>{' '}
+              <span className="font-mono font-bold text-slate-800">{pedido.usuario.email || pedido.usuario.email_default}</span>
             </p>
           )}
         </div>
       </div>
 
       {/* SECCIÓN REMITENTE (ENCOMI ENVÍOS / COMIKIDS) */}
-      <div className="border border-slate-300 rounded-2xl p-2.5 mb-3 bg-slate-50 text-[11px] text-slate-800 space-y-0.5">
-        <div className="font-black uppercase text-slate-700 mb-1 flex items-center justify-between">
+      <div className={`rounded-xl p-2 mb-2 text-[10.5px] ${eco.sectionBg} space-y-0.5`}>
+        <div className="font-black uppercase text-slate-800 mb-0.5 flex items-center justify-between">
           <span>REMITENTE OFICIAL:</span>
-          <span className="text-cyan-600 font-bold">{tallerConfig.nombre_taller || 'Comikids Envíos'}</span>
+          <span className="font-bold text-slate-900">{tallerConfig.nombre_taller || 'Comikids Envíos'}</span>
         </div>
-        <p><span className="font-bold">DNI / RUC:</span> {tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312'}</p>
-        <p><span className="font-bold">Celular Remitente:</span> {tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412'}</p>
-        {tallerConfig.remitente_email && (
-          <p><span className="font-bold">Correo Remitente:</span> {tallerConfig.remitente_email}</p>
-        )}
-        <p><span className="font-bold">Origen:</span> {tallerConfig.direccion_taller}</p>
+        <div className="grid grid-cols-2 gap-1 text-slate-700">
+          <p><span className="font-bold">DNI/RUC:</span> {tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312'}</p>
+          <p><span className="font-bold">Celular:</span> {tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412'}</p>
+        </div>
+        <p className="text-slate-600 text-[10px]"><span className="font-bold">Origen:</span> {tallerConfig.direccion_taller}</p>
       </div>
 
       {/* DETALLES DE PAQUETE */}
-      <div className="border-t-2 border-dashed border-slate-300 pt-2 flex items-center justify-between text-[11px] text-slate-600">
+      <div className="border-t border-dashed border-slate-300 pt-1.5 flex items-center justify-between text-[10px] text-slate-600">
         <div className="flex items-center gap-1 font-bold text-slate-800">
           <span>📦</span>
-          <span>Paquete de Despacho Oficial</span>
+          <span>Paquete de Despacho Seguro</span>
         </div>
-        <div className="font-black text-cyan-700 uppercase bg-cyan-100 border border-cyan-300 px-2 py-0.5 rounded-full text-[10px]">
-          ★ Despacho Seguro Encomi ★
+        <div className="font-bold text-slate-700">
+          Impreso el {formatDate(new Date().toISOString())}
         </div>
-      </div>
-
-      <div className="mt-2 text-center text-[9px] text-slate-400">
-        Impreso el {formatDate(new Date().toISOString())} • Encomi Envíos
       </div>
     </div>
   );
 };
+

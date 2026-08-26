@@ -180,11 +180,12 @@
     display: block !important;
     width: 100% !important;
     max-width: 200mm !important;
-    height: 284mm !important;
-    max-height: 286mm !important;
+    height: auto !important;
+    max-height: 268mm !important;
     margin: 0 auto !important;
     padding: 0 !important;
     box-sizing: border-box !important;
+    overflow: hidden !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
@@ -194,27 +195,34 @@
     break-after: page !important;
   }
 
+  .a4-print-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
   .a4-print-page > div.grid {
     display: grid !important;
     grid-template-columns: repeat(2, 1fr) !important;
-    grid-template-rows: repeat(3, 90mm) !important;
-    gap: 3mm !important;
+    grid-template-rows: repeat(3, 85mm) !important;
+    gap: 2.5mm !important;
     width: 100% !important;
-    height: 100% !important;
+    height: auto !important;
+    max-height: 266mm !important;
     box-sizing: border-box !important;
+    overflow: hidden !important;
   }
 
   .a4-rotulo-card {
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
-    height: 90mm !important;
-    max-height: 90mm !important;
+    height: 85mm !important;
+    max-height: 85mm !important;
     box-sizing: border-box !important;
-    border: 1.5px dashed #000000 !important;
+    border: 1px dashed #000000 !important;
     background: #ffffff !important;
     color: #000000 !important;
-    padding: 2.5mm 3mm !important;
+    padding: 2mm 3mm !important;
     border-radius: 6px !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;

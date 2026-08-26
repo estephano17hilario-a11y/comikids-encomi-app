@@ -246,17 +246,48 @@ export const printMultipleElements = async (
                 margin: 0 !important;
                 padding: 0 !important;
                 width: 100% !important;
+                height: auto !important;
               }
               .a4-print-page {
-                page-break-after: always !important;
-                break-after: page !important;
+                display: block !important;
+                width: 100% !important;
+                max-width: 200mm !important;
+                height: auto !important;
+                max-height: 268mm !important;
+                margin: 0 auto !important;
+                padding: 0 !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
-                margin: 0 auto !important;
+                page-break-after: always !important;
+                break-after: page !important;
               }
               .a4-print-page:last-child {
                 page-break-after: auto !important;
                 break-after: auto !important;
+              }
+              .a4-print-page > div.grid {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                grid-template-rows: repeat(3, 85mm) !important;
+                gap: 2.5mm !important;
+                width: 100% !important;
+                height: auto !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
+              }
+              .a4-rotulo-card {
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                height: 85mm !important;
+                max-height: 85mm !important;
+                box-sizing: border-box !important;
+                padding: 2mm 3mm !important;
+                overflow: hidden !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
               }
               @media print {
                 body {

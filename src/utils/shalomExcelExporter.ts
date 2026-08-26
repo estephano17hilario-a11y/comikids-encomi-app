@@ -278,48 +278,57 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
 
 
 export const extractShalomDni = (pedido: Pedido): string => {
+  const SENDER_DOCS = new Set(['42020312', '20512528458', '20000000001', '00000000']);
+  const phone = (extractShalomPhone(pedido) || '').replace(/\D/g, '');
+
+  const isValidDoc = (doc: string): boolean => {
+    if (!doc) return false;
+    const clean = doc.trim();
+    if (clean.startsWith('usr-') || SENDER_DOCS.has(clean)) return false;
+    const digits = clean.replace(/\D/g, '');
+    // Un celular de 9 dígitos que empieza con 9 NO es un DNI
+    if (digits.length === 9 && digits.startsWith('9')) return false;
+    if (digits === phone) return false;
+    // DNI válido (8 dígitos), RUC (11 dígitos) o CE (6 a 12 caracteres alfanuméricos)
+    if (digits.length === 8 || digits.length === 11) return true;
+    if (clean.length >= 6 && clean.length <= 12) return true;
+    return false;
+  };
+
+  // 1. Extraer desde destino_detalle explícito (ej: "DNI: 78005117", "(DNI 78005117)", "Doc: 78005117", "CE: 00123456")
   if (pedido.destino_detalle) {
-    const match = pedido.destino_detalle.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
+    const match = pedido.destino_detalle.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento|RUC)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
     if (match && match[1] && match[1].toLowerCase() !== 'recojo') {
       const doc = match[1].trim();
-      const phoneDigits = (pedido.usuario?.telefono_default || '').replace(/\D/g, '');
-      if (doc !== phoneDigits && !doc.startsWith('usr-') && doc.length <= 12) {
-        return doc;
+      if (isValidDoc(doc)) {
+        return doc.replace(/\D/g, '') || doc;
       }
     }
   }
 
+  // 2. Extraer desde usuario.dni_default
   if (pedido.usuario?.dni_default) {
     const doc = pedido.usuario.dni_default.trim();
-    if (doc.length >= 6 && doc.length <= 12 && !doc.startsWith('usr-') && !doc.startsWith('9')) {
-      return doc;
+    if (isValidDoc(doc)) {
+      return doc.replace(/\D/g, '') || doc;
     }
   }
 
+  // 3. Extraer desde usuario.dni
   if (pedido.usuario?.dni) {
     const raw = pedido.usuario.dni.trim();
-    if (!raw.startsWith('usr-') && raw !== '00000000') {
-      if (raw.length === 8 && !raw.startsWith('9')) {
-        return raw;
-      }
-      if (raw.length >= 6 && raw.length <= 12) {
-        return raw;
-      }
+    if (isValidDoc(raw)) {
+      return raw.replace(/\D/g, '') || raw;
     }
   }
 
+  // 4. Búsqueda de cualquier bloque de 8 dígitos en destino_detalle u observaciones
   const combined = `${pedido.destino_detalle || ''} ${pedido.observaciones_cliente || ''}`;
   const digitMatches = combined.match(/\b([0-9]{8})\b/g);
   if (digitMatches && digitMatches.length > 0) {
-    const phone = extractShalomPhone(pedido);
     for (const d of digitMatches) {
-      if (d !== phone && !d.startsWith('usr-')) return d;
+      if (isValidDoc(d)) return d;
     }
-  }
-
-  const rawFallback = (pedido.usuario?.dni || pedido.usuario?.dni_default || '').trim();
-  if (rawFallback && !rawFallback.startsWith('usr-') && rawFallback !== '00000000' && rawFallback.length >= 6) {
-    return rawFallback;
   }
 
   return '';

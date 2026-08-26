@@ -29,20 +29,21 @@ export function validateShalomPdfContent(
       .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
       .replace(/\s+/g, ' ');
 
+    const SENDER_DOCS = ['42020312', '20512528458', '20000000001', '00000000'];
+
     // 1. Extraer DNI del Destinatario en el Ticket de Shalom (ej: "DNI/RUC: 78005117" o "DNI: 78005117")
-    const dniMatches = Array.from(textSample.matchAll(/(?:DNI\/RUC|DNI|RUC|DOC)[\s:]*([0-9]{8,12})/gi));
+    const dniMatches = Array.from(textSample.matchAll(/(?:DNI\/RUC|DNI\/CE|DNI|RUC|DOC|DOCUMENTO)[\s:]*([0-9A-Za-z]{6,12})/gi));
     let receiverDni = '';
     if (dniMatches.length > 0) {
-      // El último DNI suele ser el del destinatario (el primero es el del remitente 42020312)
       for (const m of dniMatches) {
-        const found = m[1];
-        if (found !== '42020312' && found !== '20512528458') {
+        const found = m[1].replace(/\D/g, '');
+        if (found && !SENDER_DOCS.includes(found)) {
           receiverDni = found;
           break;
         }
       }
       if (!receiverDni && dniMatches.length > 0) {
-        receiverDni = dniMatches[dniMatches.length - 1][1];
+        receiverDni = dniMatches[dniMatches.length - 1][1].replace(/\D/g, '');
       }
     }
 
@@ -54,10 +55,9 @@ export function validateShalomPdfContent(
     const destMatch = textSample.match(/Destino[\s:]*([^.\n\r]+)/i);
     const extractedDestination = destMatch ? destMatch[1].trim() : undefined;
 
-    // 4. VALIDACIÓN ESTRICTA POR DNI
+    // 4. VALIDACIÓN ESTRICTA POR DNI (NIVEL BANCARIO)
     const cleanExpectedDni = (expectedClient.dni || '').replace(/\D/g, '').trim();
-    if (cleanExpectedDni && cleanExpectedDni.length >= 8 && cleanExpectedDni !== '42020312' && cleanExpectedDni !== '00000000') {
-      // Si logramos extraer el DNI del PDF
+    if (cleanExpectedDni && cleanExpectedDni.length >= 6 && !SENDER_DOCS.includes(cleanExpectedDni)) {
       if (receiverDni) {
         if (receiverDni !== cleanExpectedDni) {
           console.warn(`[SHALOM PDF VALIDATOR REJECT] PDF contiene DNI "${receiverDni}" pero la clienta es DNI "${cleanExpectedDni}". RECHAZADO.`);
@@ -66,11 +66,10 @@ export function validateShalomPdfContent(
             extractedDni: receiverDni,
             extractedOrderNumber,
             extractedDestination,
-            reason: `El PDF devuelto pertenece al DNI ${receiverDni}, no a la clienta (DNI ${cleanExpectedDni}).`
+            reason: `Seguridad: El comprobante descargado tiene DNI ${receiverDni}, pero el pedido es de DNI ${cleanExpectedDni}.`
           };
         }
       } else if (!textSample.includes(cleanExpectedDni)) {
-        // Si el stream de texto no contiene en ninguna parte el DNI de la clienta
         console.warn(`[SHALOM PDF VALIDATOR REJECT] El PDF no contiene el DNI ${cleanExpectedDni} de la clienta.`);
         return {
           isValid: false,
@@ -87,7 +86,7 @@ export function validateShalomPdfContent(
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^A-Z0-9]/g, ' ')
         .split(/\s+/)
-        .filter(w => w.length >= 3 && !['CLIENTA', 'CLIENTE', 'COMIKIDS', 'DE', 'DEL', 'LA', 'LOS', 'SAN', 'SANTA'].includes(w));
+        .filter(w => w.length >= 3 && !['CLIENTA', 'CLIENTE', 'COMIKIDS', 'DE', 'DEL', 'LA', 'LOS', 'SAN', 'SANTA', 'PARA'].includes(w));
 
       if (nameWords.length >= 2) {
         const matchesCount = nameWords.filter(w => normalizedPdf.includes(w)).length;
@@ -111,7 +110,10 @@ export function validateShalomPdfContent(
 
   } catch (err: any) {
     console.warn('[SHALOM PDF VALIDATOR] Error parseando streams de PDF:', err?.message);
-    // Si falla el parseo pero no hay DNI esperado, devolver válido con precaución
+    const cleanExpectedDni = (expectedClient.dni || '').replace(/\D/g, '').trim();
+    if (cleanExpectedDni && cleanExpectedDni.length >= 6) {
+      return { isValid: false, reason: 'No se pudo verificar la autenticidad del PDF contra el DNI.' };
+    }
     return { isValid: true };
   }
 }

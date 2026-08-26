@@ -438,8 +438,8 @@ export class ShalomApiService {
       const liveGuia = response.headers.get('x-shalom-guia') || response.headers.get('X-Shalom-Guia');
       const returnedDni = response.headers.get('x-shalom-receiver-dni') || response.headers.get('X-Shalom-Receiver-Dni');
 
-      // Validar DNI únicamente si el backend envía explícitamente el DNI verificado de la clienta
-      if (clientContext?.dni && clientContext.dni.length >= 8 && returnedDni && returnedDni !== 'DNI') {
+      // Validar DNI con header de seguridad
+      if (clientContext?.dni && clientContext.dni.length >= 6 && returnedDni && returnedDni !== 'DNI') {
         const cleanReqDni = clientContext.dni.replace(/\D/g, '');
         const cleanDoc = returnedDni.replace(/\D/g, '');
         if (cleanReqDni && cleanDoc && cleanReqDni !== cleanDoc) {
@@ -455,13 +455,13 @@ export class ShalomApiService {
       const blob = await response.blob();
       if (!blob || blob.size < 200) return null;
 
-      return new Promise<string>((resolve) => {
+      const base64Data = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => {
           const result = reader.result as string;
-          const base64Data = result.includes('base64,') ? result.split('base64,')[1] : result;
-          if (base64Data && (base64Data.startsWith('JVBERi') || base64Data.startsWith('/9j/') || base64Data.startsWith('iVBOR') || base64Data.startsWith('UklGR'))) {
-            resolve(base64Data);
+          const data = result.includes('base64,') ? result.split('base64,')[1] : result;
+          if (data && (data.startsWith('JVBERi') || data.startsWith('/9j/') || data.startsWith('iVBOR') || data.startsWith('UklGR'))) {
+            resolve(data);
           } else {
             resolve('');
           }
@@ -469,6 +469,19 @@ export class ShalomApiService {
         reader.onerror = () => resolve('');
         reader.readAsDataURL(blob);
       });
+
+      if (!base64Data) return null;
+
+      // Validación de contenido de stream PDF a nivel bancario
+      if (clientContext) {
+        const validation = validateShalomPdfContent(base64Data, clientContext);
+        if (!validation.isValid) {
+          console.warn(`[SHALOM SECURITY LOCK] Validación de stream fallida: ${validation.reason}`);
+          return null;
+        }
+      }
+
+      return base64Data;
     } catch {
       return null;
     }

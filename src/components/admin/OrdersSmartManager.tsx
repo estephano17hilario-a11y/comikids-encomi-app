@@ -1027,6 +1027,16 @@ export const OrdersSmartManager: React.FC = () => {
           onClose={() => setShowShalomRegister(false)}
           onRegistered={async (results) => {
             for (const r of results) {
+              const currentOrder = pedidos.find(p => p.id === r.pedidoId);
+              let newDestino = currentOrder?.destino_detalle || '';
+              if (r.dni && !newDestino.includes(r.dni)) {
+                if (newDestino.includes('(DNI')) {
+                  newDestino = newDestino.replace(/\(DNI[^)]*\)/gi, `(DNI: ${r.dni})`);
+                } else {
+                  newDestino = `${newDestino} (DNI: ${r.dni})`.trim();
+                }
+              }
+
               await updatePedido(r.pedidoId, {
                 registrado_shalom: true,
                 rotulado: true,
@@ -1034,6 +1044,13 @@ export const OrdersSmartManager: React.FC = () => {
                 shalom_ose_id: r.oseId || null,
                 shalom_numero_guia: r.guideNumber || null,
                 shalom_clave_recojo: r.pickupCode || null,
+                destino_detalle: newDestino || undefined,
+                usuario: currentOrder?.usuario ? {
+                  ...currentOrder.usuario,
+                  dni: r.dni || currentOrder.usuario.dni || '',
+                  telefono_default: r.phone || currentOrder.usuario.telefono_default || '',
+                  nombre_completo: r.name || currentOrder.usuario.nombre_completo || '',
+                } : undefined,
               });
             }
           }}

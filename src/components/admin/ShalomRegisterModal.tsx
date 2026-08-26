@@ -31,7 +31,7 @@ interface Props {
   totalSelectedCount: number;
   tallerConfig: TallerConfig;
   onClose: () => void;
-  onRegistered: (results: Array<{ pedidoId: string; oseId?: string; guideNumber?: string; pickupCode?: string }>) => Promise<void>;
+  onRegistered: (results: Array<{ pedidoId: string; oseId?: string; guideNumber?: string; pickupCode?: string; dni?: string; phone?: string; name?: string }>) => Promise<void>;
 }
 
 
@@ -189,8 +189,14 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
       if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
         try {
+          const clientCtx = {
+            dni: row.data.dni,
+            phone: row.data.phone,
+            name: row.data.name,
+            guia: res.guideNumber,
+          };
           const pdfKey = String(res.oseId || res.guideNumber || res.trackingCode || row.data.phone);
-          const pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth);
+          const pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth, clientCtx);
           if (pdfBase64 && pdfBase64.length > 100) {
             res.pdfBase64 = pdfBase64;
           }
@@ -204,6 +210,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
             oseId: res.oseId ? String(res.oseId) : undefined,
             guideNumber: res.guideNumber,
             pickupCode: rowPickupCode,
+            dni: row.data.dni,
+            phone: row.data.phone,
+            name: row.data.name,
           }]);
         } catch (onRegErr) {
           console.warn('[ON REGISTERED RETRY WARN]', onRegErr);
@@ -288,14 +297,20 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         const res = await ShalomApiService.registerOrder(payload, auth);
         res.pickupCode = rowPickupCode;
         
-        // Descargar inmediatamente el Ticket Shalom Oficial (formato físico POS con QR)
+        // Descargar inmediatamente el Ticket Shalom Oficial (formato físico POS con QR) con verificación de DNI
         if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
           successfulIds.push(row.pedido.id);
           try {
+            const clientCtx = {
+              dni: row.data.dni,
+              phone: row.data.phone,
+              name: row.data.name,
+              guia: res.guideNumber,
+            };
             const pdfKey = String(res.oseId || res.guideNumber || res.trackingCode || row.data.phone);
-            let pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth);
+            let pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth, clientCtx);
             if (!pdfBase64 || pdfBase64.length < 100) {
-              pdfBase64 = await ShalomApiService.fetchLabelPdfBase64(pdfKey, auth);
+              pdfBase64 = await ShalomApiService.fetchLabelPdfBase64(pdfKey, auth, clientCtx);
             }
             if (pdfBase64 && pdfBase64.length > 100) {
               res.pdfBase64 = pdfBase64;
@@ -335,6 +350,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
             oseId: res?.oseId ? String(res.oseId) : undefined,
             guideNumber: res?.guideNumber,
             pickupCode: res?.pickupCode || row?.data.pickupCode || pickupCode,
+            dni: row?.data.dni,
+            phone: row?.data.phone,
+            name: row?.data.name,
           };
         });
         await onRegistered(successResults);

@@ -446,7 +446,7 @@ export class TenantController {
 
         // 1. Búsqueda en vivo de la versión más actualizada del ticket en Shalom Pro API emparejado por DNI estricto
         const searchKey = clientDni || order.guideNumber || order.trackingCode || phoneClean.slice(-9);
-        if (searchKey) {
+        if (searchKey && !pdfToSend) {
           try {
             const qParams = new URLSearchParams();
             if (clientDni) qParams.set('dni', clientDni);
@@ -460,8 +460,11 @@ export class TenantController {
               timeout: 12000,
             });
             if (pdfRes.status === 200 && pdfRes.data && pdfRes.data.length > 100) {
-              if (!pdfToSend) {
+              const returnedDni = (pdfRes.headers['x-shalom-receiver-dni'] as string) || '';
+              if (!clientDni || !returnedDni || returnedDni === clientDni) {
                 pdfToSend = Buffer.from(pdfRes.data).toString('base64');
+              } else {
+                console.warn(`[DELIVERY VOUCHER SECURITY LOCK] Comprobante rechazado: DNI devuelto ${returnedDni} no coincide con ${clientDni}`);
               }
               
               // Extraer la clave de recojo REAL con la que se registró en Shalom Pro

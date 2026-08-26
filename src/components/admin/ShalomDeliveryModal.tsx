@@ -131,8 +131,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         const item = updatedList[i];
         const originalOrder = orders.find((o) => o.id === item.orderId);
 
+        const cleanItemDni = (item.dni || '').replace(/\D/g, '');
         const clientCtx = {
-          dni: item.dni,
+          dni: cleanItemDni,
           phone: item.phone,
           name: item.customerName,
           guia: item.manualGuideInput || item.guideNumber,
@@ -151,13 +152,13 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           }
         };
 
+        const dniKey = cleanItemDni && cleanItemDni.length >= 6 && cleanItemDni !== '42020312' && cleanItemDni !== '00000000' ? cleanItemDni : '';
         const guideKey = item.manualGuideInput || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '');
-        const dniKey = item.dni && item.dni.length >= 6 && item.dni !== '42020312' && item.dni !== '00000000' ? item.dni : '';
         const oseKey = originalOrder?.shalom_ose_id || '';
-        const phoneKey = item.phone && item.phone.length >= 9 && item.phone !== '927781412' ? item.phone : '';
-        const nameKey = item.customerName && item.customerName.length >= 5 ? item.customerName : '';
+        const phoneKey = !dniKey && !guideKey && item.phone && item.phone.length >= 9 && item.phone !== '927781412' ? item.phone : '';
 
-        const searchCandidates = [guideKey, dniKey, oseKey, phoneKey, nameKey].filter(Boolean);
+        // Prioridad Estricta: DNI del cliente > Guía Oficial > OSE ID > Teléfono
+        const searchCandidates = [dniKey, guideKey, oseKey, phoneKey].filter(Boolean);
 
         for (const candidate of searchCandidates) {
           if (pdfData && pdfData.length > 100) break;
@@ -200,7 +201,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
   // Búsqueda manual personalizada por Guía o DNI ingresado por el usuario
   const handleManualSearch = async (item: DeliveryOrderProgress) => {
-    const keyToSearch = item.manualGuideInput.trim() || item.dni || item.trackingCode;
+    const cleanDni = (item.dni || '').replace(/\D/g, '').trim();
+    const cleanGuide = item.manualGuideInput.trim();
+    const keyToSearch = cleanGuide || cleanDni || item.trackingCode;
     if (!keyToSearch) return;
 
     setSearchingId(item.orderId);
@@ -209,12 +212,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       password: tallerConfig.shalom_password || '',
     } : undefined;
 
-    const isNumDni = /^\d{8,12}$/.test(keyToSearch);
     const clientCtx = {
-      dni: isNumDni ? keyToSearch : (item.dni || keyToSearch),
+      dni: cleanDni,
       phone: item.phone,
       name: item.customerName,
-      guia: !isNumDni ? keyToSearch : (item.manualGuideInput || item.guideNumber),
+      guia: cleanGuide || item.guideNumber,
     };
 
     const handleMeta = (meta: { pickupCode?: string; guia?: string }) => {
@@ -239,7 +241,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         item.auditStatus = 'verified_pdf';
         setProgressList([...progressList]);
       } else {
-        alert(`No se encontró el ticket oficial en Shalom Pro para "${keyToSearch}". Verifica el número de orden, guía o DNI.`);
+        alert(`No se encontró comprobante en Shalom Pro para "${keyToSearch}" con DNI "${cleanDni || 'S/DNI'}". Verifica el DNI o número de guía.`);
       }
     } catch (err: any) {
       alert(`Error consultando Shalom Pro: ${err.message}`);
@@ -501,11 +503,21 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                         <span className="text-[11px] text-slate-400 font-mono">
                           (+{item.phone})
                         </span>
-                        {item.dni && (
-                          <span className="text-[10px] font-mono bg-slate-700/60 text-slate-300 px-1.5 py-0.5 rounded">
-                            DNI: {item.dni}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded-lg border border-slate-700/80">
+                          <span className="text-[10px] text-slate-400 font-bold">DNI:</span>
+                          <input
+                            type="text"
+                            maxLength={12}
+                            value={item.dni}
+                            onChange={(e) => {
+                              item.dni = e.target.value.replace(/\D/g, '');
+                              setProgressList([...progressList]);
+                            }}
+                            placeholder="DNI"
+                            className="w-20 px-1 py-0.5 rounded bg-slate-950 border border-slate-700 text-cyan-300 font-mono font-bold text-xs focus:outline-none focus:border-cyan-400"
+                            title="DNI de la clienta (utilizado para vincular el PDF oficial)"
+                          />
+                        </div>
                         <span className="text-[10px] font-mono font-bold bg-cyan-950/60 text-cyan-300 px-2 py-0.5 rounded border border-cyan-800/40">
                           #{item.trackingCode}
                         </span>
@@ -568,7 +580,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                   {item.auditStatus === 'auditing' && (
                     <span className="inline-flex items-center gap-1.5 text-[11px] text-indigo-300 animate-pulse">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                      Consultando en Shalom Pro API...
+                      Consultando en Shalom Pro API (Validando DNI {item.dni || 'del cliente'})...
                     </span>
                   )}
 
@@ -576,7 +588,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-300 bg-emerald-950/80 px-2.5 py-1 rounded-lg border border-emerald-500/40">
                         <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        ✓ GUÍA OFICIAL EXTRAÍDA DE SHALOM PRO API (PDF AUTÉNTICO)
+                        ✓ GUÍA OFICIAL EXTRAÍDA Y VERIFICADA (DNI: {item.dni || 'OK'})
                       </span>
                       <button
                         type="button"
@@ -593,7 +605,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                     <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div className="text-[11px] text-amber-300 flex items-center gap-1.5 font-medium">
                         <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-                        <span>⚠️ Sin Guía en Shalom Pro (No registrada hoy ni ayer)</span>
+                        <span>⚠️ Sin Guía verificada para DNI {item.dni || 'ingresado'}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <input
@@ -603,7 +615,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                             item.manualGuideInput = e.target.value;
                             setProgressList([...progressList]);
                           }}
-                          placeholder="N° Guía Shalom o DNI"
+                          placeholder="N° Guía Shalom (opcional)"
                           className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-36 sm:w-44 font-mono"
                         />
                         <button

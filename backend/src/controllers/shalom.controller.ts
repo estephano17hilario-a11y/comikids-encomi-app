@@ -497,6 +497,10 @@ export class ShalomController {
   /**
    * Extracción de PDF (Ticket POS Blanco y Negro con QR Físico Oficial)
    */
+  /**
+   * Extracción de PDF (Ticket POS Blanco y Negro con QR Físico Oficial)
+   * Nivel de Robustez Bancario: Validación y tipado 100% estricto de DNI del destinatario.
+   */
   private static async fetchOrderPdf(
     request: FastifyRequest<{
       Params: { oseId: string };
@@ -523,47 +527,37 @@ export class ShalomController {
       const filePrefix = 'Ticket_Shalom';
 
       const SHOP_PHONES = ['927781412', '987654321', '986398000', '989834969', '51927781412', '51987654321'];
-      const SHOP_DNIS = ['42020312', '00000000'];
+      const SHOP_DNIS = ['42020312', '00000000', '20512528458', '20000000001'];
 
       // 1. Extraer identificadores limpios del cliente
-      let rawDni = (qDni || (cleanSearch.match(/^\d{8,12}$/) ? cleanSearch : '')).replace(/\D/g, '').trim();
-      let rawPhone = (qPhone || '').replace(/\D/g, '').trim();
+      const isSearchAn8DigitDni = /^\d{8}$/.test(cleanSearch) && !cleanSearch.startsWith('9');
+      const isSearchAn11DigitRuc = /^\d{11}$/.test(cleanSearch);
+      let rawDni = (qDni || (isSearchAn8DigitDni || isSearchAn11DigitRuc ? cleanSearch : '')).replace(/\D/g, '').trim();
+      let rawPhone = (qPhone || (/^9\d{8}$/.test(cleanSearch) ? cleanSearch : '')).replace(/\D/g, '').trim();
       let rawName = (qName || '').toLowerCase().trim();
-      const targetGuia = (qGuia || (cleanSearch.match(/^(?:V\d{3}-)?\d{6,12}$/i) ? cleanSearch : '')).toUpperCase().trim();
+      const isSearchGuia = cleanSearch.includes('-') || cleanSearch.toUpperCase().startsWith('V') || (/^\d{6,8}$/.test(cleanSearch) && !isSearchAn8DigitDni);
+      const targetGuia = (qGuia || (isSearchGuia ? cleanSearch : '')).toUpperCase().trim();
 
       // Limpiar datos de tienda/remitente para evitar falsos positivos
       const targetDni = SHOP_DNIS.includes(rawDni) ? '' : rawDni;
       const targetPhone = SHOP_PHONES.includes(rawPhone) || SHOP_PHONES.some(p => rawPhone.endsWith(p)) ? '' : rawPhone;
       const targetName = ['clienta', 'cliente', 'comikids', 'encomi', 'milagros', 'usuario', 'destinatario'].includes(rawName) || rawName.length < 4 ? '' : rawName;
 
-      console.log(`[SHALOM PROXY POS TICKET] Buscando Ticket Oficial con QR para Clienta (DNI: "${targetDni}", Guía: "${targetGuia}", Tel: "${targetPhone}", Nombre: "${targetName}")...`);
+      console.log(`[SHALOM PROXY POS TICKET] Consultando Ticket Oficial Shalom (DNI: "${targetDni || 'S/DNI'}", Guía: "${targetGuia || 'S/G'}", Tel: "${targetPhone || 'S/T'}", Nombre: "${targetName || 'S/N'}")...`);
 
-      // 2. Si cleanSearch es un ID puramente numérico de orden en Shalom (ej: 92495242, 89022438)
-      if (/^\d{7,10}$/.test(cleanSearch) && !targetDni) {
-        try {
-          const directRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/voucher`,
-            {
-              headers,
-              responseType: 'arraybuffer',
-              timeout: 10000,
-            }
-          );
+      // Helper para extraer DNI normalizado de una orden
+      const getOrderReceiverDni = (o: any): string => {
+        return String(
+          o.receiver?.document || 
+          o.receiver?.document_number || 
+          o.destinatario?.documento || 
+          o.receiver?.doc || 
+          o.receiver_document || 
+          ''
+        ).replace(/\D/g, '').trim();
+      };
 
-          if (directRes.data && directRes.data.length > 100) {
-            console.log(`[SHALOM PROXY POS TICKET] ✓ Ticket Oficial con QR descargado directamente por ID #${cleanSearch}`);
-            reply.header('Content-Type', 'application/pdf');
-            reply.header('Content-Disposition', `inline; filename="${filePrefix}_${cleanSearch}.pdf"`);
-            reply.header('Access-Control-Expose-Headers', 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni');
-            reply.header('X-Shalom-Guia', cleanSearch);
-            return reply.send(directRes.data);
-          }
-        } catch (directErr: any) {
-          // continuar a búsqueda en vivo
-        }
-      }
-
-      // 3. Obtener TODAS las órdenes de Shalom Pro (multi-página sincronizada)
+      // 2. Obtener listado sincronizado de órdenes recientes de Shalom Pro
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
       // Filtro de Recencia: Órdenes creadas recientemente (últimos 14 días o serie reciente)
@@ -577,9 +571,36 @@ export class ShalomController {
         return (Date.now() - orderTimestamp) <= (14 * 24 * 60 * 60 * 1000);
       };
 
-      // Función de coincidencia ESTRICTA
+      // Función de coincidencia ESTRICTA NIVEL BANCARIO
       const findMatchingOrder = (list: any[]) => {
-        // PRIORIDAD 1: Coincidencia Exacta por Número de Guía (si se especificó guía real)
+        // CASO 1: Si se proporcionó DNI (Prioridad Absoluta e Inquebrantable)
+        if (targetDni && targetDni.length >= 6) {
+          const dniMatches = list.filter((o: any) => {
+            const doc = getOrderReceiverDni(o);
+            return doc === targetDni && isRecentOrder(o);
+          });
+
+          if (dniMatches.length > 0) {
+            // Si el cliente tiene múltiples paquetes, buscar por Guía si se especificó
+            if (targetGuia) {
+              const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
+              const gMatch = dniMatches.find((o: any) => {
+                const fullG = `${o.serie || ''}-${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                return (gOnly && gOnly === cleanG) || (fullG && fullG === cleanG) || String(o.id) === cleanG;
+              });
+              if (gMatch) return gMatch;
+            }
+            // Si no hay guía o no coincidió, ordenar por más reciente (ID descendente)
+            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+            return dniMatches[0];
+          }
+
+          // SI SE ESPECIFICÓ DNI Y NO COINCIDIÓ EN LA LISTA, NUNCA RETORNAR LA ORDEN DE OTRA PERSONA
+          return null;
+        }
+
+        // CASO 2: Si se especificó Número de Guía Exacto (sin DNI)
         if (targetGuia) {
           const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
           const gMatch = list.find((o: any) => {
@@ -590,28 +611,13 @@ export class ShalomController {
           if (gMatch) return gMatch;
         }
 
-        // PRIORIDAD 2: Coincidencia Exacta por DNI del Destinatario (6 a 12 dígitos) en ÓRDENES RECIENTES
-        if (targetDni && targetDni.length >= 6) {
-          const dniMatches = list.filter((o: any) => {
-            const doc = String(
-              o.receiver?.document || 
-              o.receiver?.document_number || 
-              o.destinatario?.documento || 
-              o.receiver?.doc || 
-              o.receiver_document || 
-              ''
-            ).replace(/\D/g, '').trim();
-            const docMatches = doc === targetDni || (targetDni.length >= 8 && doc.endsWith(targetDni)) || (doc.length >= 8 && targetDni.endsWith(doc));
-            return docMatches && isRecentOrder(o);
-          });
-
-          if (dniMatches.length > 0) {
-            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-            return dniMatches[0];
-          }
+        // CASO 3: Búsqueda por ID Directo de Shalom (ej: 92495242)
+        if (/^\d{7,10}$/.test(cleanSearch) && !rawPhone) {
+          const directMatch = list.find((o: any) => String(o.id) === cleanSearch);
+          if (directMatch) return directMatch;
         }
 
-        // PRIORIDAD 3: Coincidencia por Teléfono del Destinatario (solo si no es teléfono de tienda)
+        // CASO 4: Coincidencia por Teléfono del Destinatario (solo si NO hay DNI ni Guía)
         if (targetPhone && targetPhone.length >= 9) {
           const phone9 = targetPhone.slice(-9);
           const phoneMatches = list.filter((o: any) => {
@@ -624,8 +630,8 @@ export class ShalomController {
           }
         }
 
-        // PRIORIDAD 4: Coincidencia por Nombre Completo
-        if (targetName && targetName.length >= 5) {
+        // CASO 5: Coincidencia por Nombre Completo (solo si NO hay DNI, Guía ni Teléfono)
+        if (targetName && targetName.length >= 6) {
           const nameMatches = list.filter((o: any) => {
             const rFullName = `${o.receiver?.name || o.destinatario?.nombre || ''} ${o.receiver?.last_name || ''}`.toLowerCase().trim();
             return (rFullName.includes(targetName) || targetName.includes(rFullName)) && isRecentOrder(o);
@@ -641,25 +647,36 @@ export class ShalomController {
 
       let matchedOrder = findMatchingOrder(ordersList);
 
-      // Si no encontró, forzar refresco fresco desde Shalom Pro
+      // Si no se encontró, forzar refresco fresco desde Shalom Pro
       if (!matchedOrder) {
-        console.log(`[SHALOM PROXY] No encontrado en cache, forzando refresco de órdenes de Shalom Pro...`);
+        console.log(`[SHALOM PROXY] No encontrado en caché, forzando refresco en vivo de órdenes desde Shalom Pro...`);
         ordersList = await ShalomController.getAllShalomOrders(headers, true);
         matchedOrder = findMatchingOrder(ordersList);
       }
 
       // Si no hubo coincidencia verificada para esta clienta
       if (!matchedOrder) {
-        console.log(`[SHALOM PROXY NOTICE] No hay registro reciente en Shalom Pro para DNI: "${targetDni || 'S/DNI'}", Nombre: "${targetName}", Guía: "${targetGuia}"`);
-        return reply.code(200).header('Content-Type', 'application/json').send({
+        console.warn(`[SHALOM PROXY NOTICE] Sin registro verificado en Shalom Pro para DNI: "${targetDni || 'S/DNI'}", Guía: "${targetGuia || 'S/G'}", Nombre: "${targetName || 'S/N'}"`);
+        return reply.code(404).send({
           success: false,
           found: false,
-          error: `No se encontró Ticket Oficial con QR reciente en Shalom Pro para la clienta indicada (DNI: ${targetDni || 'S/DNI'}).`,
+          error: `No se encontró comprobante en Shalom Pro para la clienta con DNI ${targetDni || 'indicado'}. Verifica el número de DNI o guía.`,
+        });
+      }
+
+      // Validación de Seguridad Bancaria: Si se solicitó un DNI, verificar que la orden encontrada corresponda EXACTAMENTE a ese DNI
+      const matchedOrderDni = getOrderReceiverDni(matchedOrder);
+      if (targetDni && targetDni.length >= 6 && matchedOrderDni && matchedOrderDni !== targetDni) {
+        console.error(`[SHALOM PROXY SECURITY BLOCK] BLOQUEADO: Se solicitó DNI ${targetDni} pero la orden encontrada (#${matchedOrder.id}) pertenece a DNI ${matchedOrderDni}.`);
+        return reply.code(403).send({
+          success: false,
+          found: false,
+          error: `Seguridad: El comprobante encontrado pertenece a otro DNI (${matchedOrderDni}). Operación bloqueada.`,
         });
       }
 
       // 4. Descargar el Ticket Oficial POS con QR (/voucher) del pedido verificado
-      console.log(`[SHALOM PROXY DOWNLOAD] ✓ Encontrado para ${matchedOrder.receiver?.name}: Descargando Ticket Oficial con QR de Shalom para Orden #${matchedOrder.id} (DNI: ${matchedOrder.receiver?.document}, Guía: ${matchedOrder.serie}-${matchedOrder.guia})...`);
+      console.log(`[SHALOM PROXY DOWNLOAD] ✓ Descargando Ticket Oficial con QR para ${matchedOrder.receiver?.name} (DNI: ${matchedOrderDni}, Guía: ${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}, Orden #${matchedOrder.id})...`);
 
       let docRes;
       try {
@@ -684,43 +701,24 @@ export class ShalomController {
       }
 
       if (docRes.data && docRes.data.length > 100) {
-        const clientCleanDni = matchedOrder.receiver?.document || targetDni || 'DNI';
+        const clientCleanDni = matchedOrderDni || targetDni || 'DNI';
         const filename = `${filePrefix}_${matchedOrder.serie || 'V204'}_${matchedOrder.guia || matchedOrder.id}_${clientCleanDni}.pdf`;
         const realPickupCode = String(matchedOrder.pickup_code || matchedOrder.request?.pickup_code || '').trim();
         const fullGuia = `${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}`;
-
-        // Sincronizar en segundo plano la clave real y guía oficial en Supabase
-        if (realPickupCode || fullGuia) {
-          try {
-            const updateFields: any = {};
-            if (realPickupCode) updateFields.shalom_clave_recojo = realPickupCode;
-            if (matchedOrder.guia) updateFields.shalom_numero_guia = fullGuia;
-            if (matchedOrder.id) updateFields.shalom_ose_id = String(matchedOrder.id);
-
-            const searchFilter = cleanSearch.length >= 4
-              ? `codigo_seguimiento.ilike.%${cleanSearch}%,destino_detalle.ilike.%${clientCleanDni}%,id.ilike.%${cleanSearch}%`
-              : `destino_detalle.ilike.%${clientCleanDni}%`;
-
-            supabaseAdmin
-              .from('pedidos')
-              .update(updateFields)
-              .or(searchFilter)
-              .then(() => {
-                console.log(`[SHALOM CONTROLLER] ✓ Sincronizada clave real "${realPickupCode}" y guía "${fullGuia}" en BD para clienta DNI ${clientCleanDni}`);
-              });
-          } catch (err: any) {
-            console.warn('[SHALOM CONTROLLER DB SYNC WARN]', err?.message);
-          }
-        }
+        const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
 
         reply.header('Content-Type', 'application/pdf');
         reply.header('Content-Disposition', `inline; filename="${filename}"`);
-        reply.header('Access-Control-Expose-Headers', 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni');
+        reply.header('Access-Control-Expose-Headers', 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni, X-Shalom-Receiver-Name, X-Shalom-Ose-Id');
         if (realPickupCode) {
           reply.header('X-Shalom-Pickup-Code', realPickupCode);
         }
         reply.header('X-Shalom-Guia', fullGuia);
         reply.header('X-Shalom-Receiver-Dni', clientCleanDni);
+        if (receiverFullName) {
+          reply.header('X-Shalom-Receiver-Name', encodeURIComponent(receiverFullName));
+        }
+        reply.header('X-Shalom-Ose-Id', String(matchedOrder.id));
         return reply.send(docRes.data);
       }
 

@@ -11,6 +11,7 @@ import { ShalomAgenciesMap } from './ShalomAgenciesMap';
 import { OlvaAgenciesMap } from './OlvaAgenciesMap';
 import { EncomiAiChatModal } from './EncomiAiChatModal';
 import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido } from '../../types/database.types';
+import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import {
   DatosComprobante,
   enviarComprobanteAWhatsapp,
@@ -20,6 +21,7 @@ import {
   getJoinEncomiWhatsAppUrl,
   isMobileDevice
 } from '../../services/whatsappService';
+
 import { OrderSuccessAnimation } from './OrderSuccessAnimation';
 import {
   Package,
@@ -876,11 +878,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
                 {selectedAgencyObject && (
                   <div className="pt-2 border-t border-white/6 text-xs space-y-2">
-                    <div className="space-y-0.5">
+                    <div className="space-y-1">
                       <span className="text-slate-400 text-[11px] font-medium block">📦 Agencia Shalom de Destino:</span>
                       <p className="text-white font-bold text-xs leading-snug">
                         {formatFullAgencyName(selectedAgencyObject)}
                       </p>
+                      <div className="flex items-center gap-1.5 text-xs text-rose-300 font-bold bg-rose-950/40 px-2.5 py-1 rounded-xl border border-rose-500/30">
+                        <span>🏢 Sede Oficial Destino:</span>
+                        <strong className="text-white font-black">{extractShalomDestino(formatFullAgencyName(selectedAgencyObject), selectedAgencyObject.code || undefined)}</strong>
+                        {selectedAgencyObject.code && (
+                          <span className="text-[10px] font-mono text-rose-200 bg-rose-900/70 px-1.5 py-0.2 rounded-md border border-rose-500/40 font-black">
+                            {selectedAgencyObject.code}
+                          </span>
+                        )}
+                      </div>
                       {selectedAgencyObject.horario && (
                         <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3 text-slate-500" />
@@ -888,6 +899,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </p>
                       )}
                     </div>
+
 
                     {/* Botón al costado / pie del comprobante Shalom: Ver tiempo aproximado de envío */}
                     <div className="pt-1 flex items-center justify-start">

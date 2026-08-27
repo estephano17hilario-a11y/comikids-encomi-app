@@ -1,5 +1,6 @@
 import { Pedido, TallerConfig } from '../types/database.types';
-import { extractShalomDni, extractShalomPhone, extractShalomDestino, extractShalomOrigen } from '../utils/shalomExcelExporter';
+import { extractShalomDni, extractShalomPhone, extractShalomOrigen } from '../utils/shalomExcelExporter';
+import { resolveShalomAgencyDetails, ResolvedShalomAgency } from '../utils/shalomAgencyResolver';
 import { getApiBaseUrl } from '../config/api';
 import { validateShalomPdfContent } from '../utils/shalomPdfValidator';
 import { Capacitor } from '@capacitor/core';
@@ -9,7 +10,6 @@ import { Share } from '@capacitor/share';
 const SHALOM_API_KEY = import.meta.env.VITE_SHALOM_API_KEY || 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
 
 export interface ShalomAuthCredentials {
-
   email: string;
   password?: string;
   sessionToken?: string;
@@ -18,6 +18,10 @@ export interface ShalomAuthCredentials {
 export interface ShalomOrderPayload {
   pedidoId: string;
   codigoSeguimiento: string;
+  pickup_code?: string;
+  destinyTerminalId?: number;
+  agencyCode?: string;
+  agencyOfficialName?: string;
   remitente: {
     nombre: string;
     documento: string;
@@ -30,13 +34,14 @@ export interface ShalomOrderPayload {
     telefono: string;
     agenciaDestino: string;
     direccionFisica?: string;
+    destinyTerminalId?: number;
+    agencyCode?: string;
   };
   paquete: {
     descripcion: string;
     cantidadBultos: number;
     tipoEnvio: 'PAGADO' | 'PAGO EN DESTINO';
   };
-  pickup_code?: string;
 }
 
 export interface ShalomDispatchResult {
@@ -50,11 +55,13 @@ export interface ShalomDispatchResult {
   labelPdfBase64?: string;
   pdfBase64?: string;
   customerPhone?: string;
-
   customerName?: string;
   agencyName?: string;
+  agencyFullName?: string;
+  terminalId?: number;
   pickupCode?: string;
 }
+
 
 export class ShalomApiService {
   /**
@@ -104,10 +111,14 @@ export class ShalomApiService {
   /**
    * Prepara el payload estandarizado para un pedido individual.
    */
+  /**
+   * Prepara el payload estandarizado para un pedido individual.
+   * Resuelve de forma determinista la agencia de destino con el mismo extractor oficial de Excel.
+   */
   public static buildOrderPayload(pedido: Pedido, tallerConfig: TallerConfig, pickupCode: string = '0808'): ShalomOrderPayload {
     const dni = extractShalomDni(pedido) || '00000000';
     const phone = extractShalomPhone(pedido) || '999999999';
-    const destino = extractShalomDestino(pedido.destino_detalle);
+    const agencyDetails = resolveShalomAgencyDetails(pedido.destino_detalle);
     const origen = extractShalomOrigen(tallerConfig);
     const clientName = pedido.usuario?.nombre_completo || 'CLIENTE';
 
@@ -115,6 +126,9 @@ export class ShalomApiService {
       pedidoId: pedido.id,
       codigoSeguimiento: pedido.codigo_seguimiento,
       pickup_code: pickupCode,
+      destinyTerminalId: agencyDetails.terminalId,
+      agencyCode: agencyDetails.code,
+      agencyOfficialName: agencyDetails.officialDestination,
       remitente: {
         nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
         documento: tallerConfig.ruc_dni || '20000000001',
@@ -125,7 +139,9 @@ export class ShalomApiService {
         nombre: clientName,
         documento: dni,
         telefono: phone,
-        agenciaDestino: destino,
+        agenciaDestino: agencyDetails.officialDestination,
+        destinyTerminalId: agencyDetails.terminalId,
+        agencyCode: agencyDetails.code,
         direccionFisica: pedido.destino_detalle,
       },
       paquete: {
@@ -144,8 +160,18 @@ export class ShalomApiService {
     auth: ShalomAuthCredentials
   ): Promise<ShalomDispatchResult> {
     try {
+      const agencyDetails = resolveShalomAgencyDetails({
+        destino_detalle: payload.destinatario.direccionFisica || payload.destinatario.agenciaDestino,
+        agencyCode: payload.agencyCode || payload.destinatario.agencyCode,
+        agencyId: payload.destinyTerminalId || payload.destinatario.destinyTerminalId,
+      });
+
       const orderBody = {
         pickup_code: payload.pickup_code || '0808',
+        destiny_terminal_id: agencyDetails.terminalId,
+        destination_agency: agencyDetails.officialDestination,
+        destination_agency_code: agencyDetails.code,
+        destination_agency_full_name: agencyDetails.agencyName,
         sender: {
           name: payload.remitente.nombre,
           document_number: payload.remitente.documento,
@@ -156,7 +182,9 @@ export class ShalomApiService {
           name: payload.destinatario.nombre,
           document_number: payload.destinatario.documento,
           phone: payload.destinatario.telefono,
-          destination_agency: payload.destinatario.agenciaDestino,
+          destination_agency: agencyDetails.officialDestination,
+          destination_agency_code: agencyDetails.code,
+          destiny_terminal_id: agencyDetails.terminalId,
           address: payload.destinatario.direccionFisica,
         },
         package: {
@@ -166,7 +194,6 @@ export class ShalomApiService {
           internal_code: payload.codigoSeguimiento,
         },
       };
-
 
       const response = await fetch(`${getApiBaseUrl()}/shalom/orders`, {
         method: 'POST',
@@ -190,7 +217,8 @@ export class ShalomApiService {
         const oseId = data.ose_id || data.id;
         const guideNumber = data.guia ? `${data.serie ? data.serie + '-' : ''}${data.guia}` : (data.guide_number || data.numero_guia || `SH-${oseId}`);
         const trackingCode = data.codigo || data.tracking_code || data.codigo_rastreo || String(oseId);
-
+        const confirmedAgency = resJson.agency_official || resJson.agency_name || agencyDetails.officialDestination;
+        const confirmedFullName = resJson.agency_full_name || agencyDetails.agencyName;
 
         return {
           pedidoId: payload.pedidoId,
@@ -201,7 +229,9 @@ export class ShalomApiService {
           trackingCode,
           customerPhone: payload.destinatario.telefono,
           customerName: payload.destinatario.nombre,
-          agencyName: payload.destinatario.agenciaDestino,
+          agencyName: confirmedAgency,
+          agencyFullName: confirmedFullName,
+          terminalId: agencyDetails.terminalId,
         };
       }
 
@@ -214,7 +244,9 @@ export class ShalomApiService {
         errorMessage: errorMsg,
         customerPhone: payload.destinatario.telefono,
         customerName: payload.destinatario.nombre,
-        agencyName: payload.destinatario.agenciaDestino,
+        agencyName: agencyDetails.officialDestination,
+        agencyFullName: agencyDetails.agencyName,
+        terminalId: agencyDetails.terminalId,
       };
     } catch (err: any) {
       const catchError = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Fallo de conexión al registrar con la API de Shalom';
@@ -229,7 +261,6 @@ export class ShalomApiService {
         agencyName: payload.destinatario.agenciaDestino,
       };
     }
-
   }
 
   /**

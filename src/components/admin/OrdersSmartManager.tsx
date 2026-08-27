@@ -33,8 +33,11 @@ import {
   MoveRight,
   X,
   FileSpreadsheet,
-  Tag
+  Tag,
+  Building2
 } from 'lucide-react';
+import { resolveShalomAgencyDetails, extractShalomDestino } from '../../utils/shalomAgencyResolver';
+
 
 export const OrdersSmartManager: React.FC = () => {
   const {
@@ -758,6 +761,43 @@ export const OrdersSmartManager: React.FC = () => {
                     </p>
                   </div>
 
+                  {/* Insignia Canónica Oficial de la Agencia de Destino */}
+                  {(() => {
+                    const isShalomOrder = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');
+                    if (isShalomOrder) {
+                      const agencyInfo = resolveShalomAgencyDetails(order.destino_detalle);
+                      return (
+                        <div className="space-y-1 pt-1">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-xl border border-rose-500/30 shadow-xs">
+                            <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                            <span className="truncate">Agencia Destino: <strong className="text-white font-black">{agencyInfo.officialDestination}</strong></span>
+                            {agencyInfo.code && (
+                              <span className="text-[10px] font-mono text-rose-200 bg-rose-900/70 px-1.5 py-0.2 rounded-md border border-rose-500/40 font-black shrink-0">
+                                {agencyInfo.code}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Confirmación de registro vía API con guía */}
+                          {order.registrado_shalom && (
+                            <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/50 px-2.5 py-1 rounded-xl border border-emerald-500/40">
+                              <div className="flex items-center gap-1.5 truncate">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                <span className="truncate">Despachado API: <strong>{order.shalom_numero_guia || `OSE #${order.shalom_ose_id || ''}`}</strong></span>
+                              </div>
+                              {order.shalom_clave_recojo && (
+                                <span className="text-[9px] font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded-md border border-amber-500/30 shrink-0">
+                                  PIN: {order.shalom_clave_recojo}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   {order.observaciones_cliente && (
                     <p className="text-[10px] text-slate-400 italic bg-white/5 p-1.5 rounded-lg break-words">
                       Ref: {order.observaciones_cliente}
@@ -770,6 +810,7 @@ export const OrdersSmartManager: React.FC = () => {
                   <div className="pt-1">
                     <a
                       href={`https://www.google.com/maps/search/?api=1&query=${order.latitud},${order.longitud}`}
+
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}

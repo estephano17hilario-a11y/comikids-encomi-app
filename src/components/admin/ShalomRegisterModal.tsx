@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
-import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalomDestino, extractShalomOrigen } from '../../utils/shalomExcelExporter';
+import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalomOrigen } from '../../utils/shalomExcelExporter';
+import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
 import { ShalomApiService, ShalomDispatchResult } from '../../services/shalomApiService';
 import {
   X,
@@ -107,7 +108,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     });
   }, [pedidos, todayStr]);
 
-  // Validación de datos por fila
+  // Validación de datos por fila con resolución canónica anti-errores
   const auditedRows = useMemo(() => {
     return pedidos.map(p => {
       const row = editedData[p.id] || {
@@ -115,7 +116,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         phone: extractShalomPhone(p) || '',
         name: p.usuario?.nombre_completo || 'Cliente',
       };
-      const destino = extractShalomDestino(p.destino_detalle);
+      const agencyDetails = resolveShalomAgencyDetails(p.destino_detalle);
+      const destino = agencyDetails.officialDestination;
       const cleanDni = row.dni.replace(/\D/g, '');
       const cleanPhone = row.phone.replace(/\D/g, '');
       const isDniValid = cleanDni.length >= 6 || row.dni.length >= 6;
@@ -126,12 +128,14 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         pedido: p,
         data: row,
         destino,
+        agencyDetails,
         isDniValid,
         isPhoneValid,
         isComplete,
       };
     });
   }, [pedidos, editedData]);
+
 
   const allValid = auditedRows.every(r => r.isComplete);
 
@@ -163,6 +167,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       pedidoId: row.pedido.id,
       codigoSeguimiento: row.pedido.codigo_seguimiento,
       pickup_code: rowPickupCode,
+      destinyTerminalId: row.agencyDetails.terminalId,
+      agencyCode: row.agencyDetails.code,
+      agencyOfficialName: row.agencyDetails.officialDestination,
       remitente: {
         nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
         documento: tallerConfig.ruc_dni || '20000000001',
@@ -174,6 +181,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         documento: row.data.dni,
         telefono: row.data.phone,
         agenciaDestino: row.destino,
+        destinyTerminalId: row.agencyDetails.terminalId,
+        agencyCode: row.agencyDetails.code,
         direccionFisica: row.pedido.destino_detalle,
       },
       paquete: {
@@ -273,6 +282,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         pedidoId: row.pedido.id,
         codigoSeguimiento: row.pedido.codigo_seguimiento,
         pickup_code: rowPickupCode,
+        destinyTerminalId: row.agencyDetails.terminalId,
+        agencyCode: row.agencyDetails.code,
+        agencyOfficialName: row.agencyDetails.officialDestination,
         remitente: {
           nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
           documento: tallerConfig.ruc_dni || '20000000001',
@@ -284,6 +296,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           documento: row.data.dni,
           telefono: row.data.phone,
           agenciaDestino: row.destino,
+          destinyTerminalId: row.agencyDetails.terminalId,
+          agencyCode: row.agencyDetails.code,
           direccionFisica: row.pedido.destino_detalle,
         },
         paquete: {
@@ -292,6 +306,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           tipoEnvio: 'PAGADO' as const,
         },
       };
+
 
       try {
         const res = await ShalomApiService.registerOrder(payload, auth);
@@ -555,8 +570,14 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                       </span>
                     </div>
 
-                    <div className="text-[11px] font-bold text-cyan-300 bg-cyan-950/50 px-2.5 py-1 rounded-lg border border-cyan-800/50 truncate max-w-[280px]">
-                      📍 {row.destino}
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300 bg-cyan-950/60 px-2.5 py-1 rounded-xl border border-cyan-500/40 truncate max-w-[320px]">
+                      <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span className="truncate">Destino: <strong className="text-white font-black">{row.destino}</strong></span>
+                      {row.agencyDetails.code && (
+                        <span className="text-[10px] font-mono text-cyan-300 bg-cyan-900/60 px-1 py-0.2 rounded border border-cyan-500/30 font-bold shrink-0">
+                          {row.agencyDetails.code}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -719,6 +740,10 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                             <p className="text-[11px] text-cyan-300">
                               Guía Oficial: <strong>{String(res.guideNumber || 'Generada')}</strong> • OSE #{String(res.oseId || '')}
                             </p>
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-cyan-950/80 text-cyan-200 border border-cyan-500/40 flex items-center gap-1">
+                              <Building2 className="w-3 h-3 text-cyan-400 shrink-0" />
+                              <span>Enviado a: <strong className="text-white">{res.agencyName || 'Agencia Shalom'}</strong></span>
+                            </span>
                             {res.pdfBase64 && (
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                                 📎 Ticket Shalom con QR Listo

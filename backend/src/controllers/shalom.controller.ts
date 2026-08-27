@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import axios from 'axios';
 import { supabaseAdmin } from '../config/supabase.js';
+import { resolveShalomAgencyDetails, extractShalomDestino } from '../services/shalomAgencyResolver.js';
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
 const DEFAULT_API_KEY = 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
@@ -204,88 +205,16 @@ export class ShalomController {
   }
 
   private static resolveTerminalId(agencies: any[], searchString: string, defaultId: number = 4): number {
-    if (!searchString || !Array.isArray(agencies) || agencies.length === 0) return defaultId;
-    const cleanSearch = searchString.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-
-    // 1. Código de agencia explícito (ej: (CÓDIGO: CLLMA), (COD: MIRAF), (CODIGO: PICHAN))
-    const codeMatch = searchString.match(/(?:CODIGO|COD|CÓDIGO)[\s:]*([A-Za-z0-9._-]+)/i);
-    if (codeMatch && codeMatch[1]) {
-      const targetCode = codeMatch[1].toUpperCase().trim();
-      const codeAgency = agencies.find(a => {
-        const c = String(a.code || a.codigo || '').toUpperCase().trim();
-        return c && c === targetCode;
-      });
-      if (codeAgency && codeAgency.id) return codeAgency.id;
+    if (!searchString) return defaultId;
+    const resolved = resolveShalomAgencyDetails(searchString);
+    if (resolved && resolved.terminalId) {
+      return resolved.terminalId;
     }
-
-    // 2. Coincidencia Exacta por nombre completo o terminal
-    const exactMatch = agencies.find(a => {
-      const name = (a.name || a.nombre || a.terminal || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      const code = (a.code || a.codigo || '').toUpperCase().trim();
-      return (name && (name === cleanSearch || cleanSearch === name)) || (code && code === cleanSearch);
-    });
-    if (exactMatch && exactMatch.id) return exactMatch.id;
-
-    // 3. Puntuación Jerárquica Ponderada (Departamento -> Provincia -> Distrito -> Local)
-    const searchWords = new Set(cleanSearch.split(/\s+/));
-    const noiseWords = new Set(['AGENCIA', 'SHALOM', 'PARA', 'TERMINAL', 'REF', 'REFERENCIA', 'AVENIDA', 'JIRON', 'CALLE', 'CUADRAS', 'FRENTE', 'LOTE', 'URB', 'URBANIZACION']);
-    const meaningfulWords = Array.from(searchWords).filter(w => w.length > 2 && !noiseWords.has(w));
-
-    let bestScore = -9999;
-    let bestAgency: any = null;
-
-    for (const a of agencies) {
-      let score = 0;
-      const aName = (a.name || a.nombre || a.terminal || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      const aDept = (a.department || a.departamento || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      const aProv = (a.province || a.provincia || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      const aDist = (a.district || a.distrito || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      const aAddr = (a.address || a.direccion || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      const aCode = (a.code || a.codigo || '').toUpperCase().trim();
-
-      // Puntos por Departamento
-      if (aDept && searchWords.has(aDept)) {
-        score += 150;
-      }
-
-      // Puntos por Provincia
-      if (aProv && searchWords.has(aProv)) {
-        score += 150;
-      }
-
-      // Puntos por Distrito / Local de Agencia
-      if (aDist && searchWords.has(aDist)) {
-        score += 200;
-      }
-
-      // Puntos por coincidencia completa de palabras clave en el nombre de la agencia
-      if (aName && meaningfulWords.length > 0 && meaningfulWords.every(w => aName.includes(w))) {
-        score += 300;
-      }
-
-      // Puntos por palabras individuales coincidentes
-      const fullAgencyText = `${aName} ${aDept} ${aProv} ${aDist} ${aAddr} ${aCode}`;
-      for (const w of meaningfulWords) {
-        if (fullAgencyText.includes(w)) {
-          score += 40;
-        }
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestAgency = a;
-      }
-    }
-
-    if (bestAgency && bestScore > 50 && bestAgency.id) {
-      return bestAgency.id;
-    }
-
     return defaultId;
   }
 
   /**
-   * Crea una orden en Shalom Pro API
+   * Crea una orden en Shalom Pro API de forma 100% determinista y anti-errores
    */
   public static async createOrder(
     request: FastifyRequest<{
@@ -324,21 +253,24 @@ export class ShalomController {
         headers['X-Shalom-Password'] = credentials.password;
       }
 
-      const agencies = await ShalomController.getAgencies(headers);
-
       // Resolver terminal de origen (por defecto 4: AV MEXICO CO)
       let originTerminalId = order.origin_terminal_id;
       if (!originTerminalId) {
         const originQuery = order.sender?.origin_agency || order.remitente?.agenciaOrigen || 'AV MEXICO CO';
-        originTerminalId = ShalomController.resolveTerminalId(agencies, originQuery, 4);
+        const originResolved = resolveShalomAgencyDetails(originQuery);
+        originTerminalId = originResolved?.terminalId || 4;
       }
 
-      // Resolver terminal de destino por búsqueda inteligente
-      let destinyTerminalId = order.destiny_terminal_id;
-      if (!destinyTerminalId) {
-        const destQuery = order.receiver?.destination_agency || order.destinatario?.agenciaDestino || order.destination_agency || order.destino_detalle || 'LIMA';
-        destinyTerminalId = ShalomController.resolveTerminalId(agencies, destQuery, 4);
-      }
+      // Resolver terminal de destino canónico de forma 100% anti-errores
+      const resolvedDestino = resolveShalomAgencyDetails({
+        destino_detalle: order.receiver?.destination_agency || order.destinatario?.agenciaDestino || order.destination_agency || order.destino_detalle || '',
+        agencyCode: order.destination_agency_code || order.receiver?.destination_agency_code || order.agencyCode,
+        agencyId: order.destiny_terminal_id || order.receiver?.destiny_terminal_id,
+      });
+
+      const destinyTerminalId = order.destiny_terminal_id ? Number(order.destiny_terminal_id) : resolvedDestino.terminalId;
+      const officialAgencyName = resolvedDestino.officialDestination;
+      const agencyFullName = resolvedDestino.agencyName;
 
       // Parsear datos del destinatario
       const rawReceiverName = (order.receiver?.name || order.destinatario?.nombre || order.customer_name || 'Cliente').trim();
@@ -369,7 +301,7 @@ export class ShalomController {
         }
       };
 
-      console.log(`[SHALOM PROXY CREATE ORDER] Despachando a terminal ${destinyTerminalId} para ${firstName} ${lastName} (${rawDoc})...`);
+      console.log(`[SHALOM PROXY CREATE ORDER] Despachando a terminal ${destinyTerminalId} ("${officialAgencyName}") para ${firstName} ${lastName} (${rawDoc})...`);
 
       const response = await axios.post(
         `${SHALOM_BASE_URL}/v1/orders`,
@@ -383,6 +315,10 @@ export class ShalomController {
       return reply.code(200).send({
         success: true,
         data: response.data,
+        agency_name: officialAgencyName,
+        agency_official: officialAgencyName,
+        agency_full_name: agencyFullName,
+        terminal_id: destinyTerminalId,
       });
     } catch (error: any) {
       console.error('[SHALOM PROXY CREATE ORDER ERROR]', error?.response?.data || error?.message);

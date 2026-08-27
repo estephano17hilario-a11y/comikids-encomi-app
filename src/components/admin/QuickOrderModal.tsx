@@ -2,14 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { ordersService } from '../../services/ordersService';
 import { useShalomAgencies, formatFullAgencyName } from '../../hooks/useShalomAgencies';
+import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import {
   X,
   PlusCircle,
   Scissors,
   Store,
   MapPin,
-  Search
+  Search,
+  Building2
 } from 'lucide-react';
+
 
 interface Props {
   onClose: () => void;
@@ -273,12 +276,22 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
               {(() => {
                 const sel = shalomAgenciesList.find(a => String(a.id) === String(selectedAgencyId));
                 if (!sel) return null;
+                const canonicalOfficial = extractShalomDestino(formatFullAgencyName(sel), sel.code);
                 return (
-                  <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-[11px] text-cyan-200 space-y-1">
+                  <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-[11px] text-cyan-200 space-y-1.5">
                     <p className="font-bold text-white flex items-center gap-1.5">
                       <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                       {formatFullAgencyName(sel)}
                     </p>
+                    <div className="flex items-center gap-1.5 text-xs text-rose-300 font-bold bg-rose-950/50 px-2 py-0.5 rounded-lg border border-rose-500/40">
+                      <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>Sede Oficial: <strong className="text-white font-black">{canonicalOfficial}</strong></span>
+                      {sel.code && (
+                        <span className="text-[10px] font-mono text-rose-200 bg-rose-900/80 px-1 rounded border border-rose-500/30 font-bold">
+                          {sel.code}
+                        </span>
+                      )}
+                    </div>
                     {sel.horario && <p className="text-slate-400 text-[10px]">⏰ {sel.horario}</p>}
                   </div>
                 );

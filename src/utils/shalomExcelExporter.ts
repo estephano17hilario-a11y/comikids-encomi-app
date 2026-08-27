@@ -12,36 +12,16 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
-export const OFFICIAL_DESTINATIONS: string[] = officialAgenciesData.destinations || [];
-export const OFFICIAL_ORIGINS: string[] = officialAgenciesData.origins || [];
+import {
+  extractShalomDestino,
+  OFFICIAL_DESTINATIONS,
+  OFFICIAL_ORIGINS,
+  normalizeTextKey as normalizeKey,
+  normalizeCompactKey as normalizeCompact,
+  resolveShalomAgencyDetails
+} from './shalomAgencyResolver';
 
-// Mapas de búsqueda rápida normalizada
-const normalizeKey = (str: string): string => {
-  return (str || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-};
-
-const normalizeCompact = (str: string): string => {
-  if (!str) return '';
-  return str
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '');
-};
-
-const destLookup = new Map<string, string>();
-const destCompactLookup = new Map<string, string>();
-for (const d of OFFICIAL_DESTINATIONS) {
-  destLookup.set(d.toUpperCase().trim(), d);
-  destLookup.set(normalizeKey(d), d);
-  destCompactLookup.set(normalizeCompact(d), d);
-}
+export { extractShalomDestino, OFFICIAL_DESTINATIONS, OFFICIAL_ORIGINS, resolveShalomAgencyDetails };
 
 const originLookup = new Map<string, string>();
 const originCompactLookup = new Map<string, string>();
@@ -51,7 +31,6 @@ for (const o of OFFICIAL_ORIGINS) {
   originCompactLookup.set(normalizeCompact(o), o);
 }
 
-const sortedDestinations = [...OFFICIAL_DESTINATIONS].sort((a, b) => b.length - a.length);
 const sortedOrigins = [...OFFICIAL_ORIGINS].sort((a, b) => b.length - a.length);
 
 /**
@@ -80,201 +59,6 @@ export const extractShalomOrigen = (tallerConfigOrName?: TallerConfig | string):
   return 'AV MEXICO CO';
 };
 
-/**
- * Normaliza y extrae ÚNICAMENTE el nombre canónico EXACTO de la agencia de destino (DESTINO - Columna G)
- * utilizando el diccionario canónico oficial de Shalom y resolución jerárquica de alta precisión.
- * 
- * Jerarquía estricta:
- * 1. Código explícito o código embebido `(CÓDIGO: XXX)`
- * 2. Ruta jerárquica canónica (DEP / PROV / DIST / LOCAL)
- * 3. Nombre local / terminal exacto de la agencia
- * 4. Ponderación de tokens sobre la jerarquía (NUNCA sobre la dirección física)
- */
-export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string): string => {
-  // 1. Si se proporciona código de agencia explícito (ej. OVM, AVPAS, AVCLO, CCA.SMP, CBT, SRA)
-  if (agencyCode) {
-    const codeClean = agencyCode.toUpperCase().trim();
-    if (SHALOM_CODE_TO_OFFICIAL_MAP[codeClean]) {
-      return SHALOM_CODE_TO_OFFICIAL_MAP[codeClean];
-    }
-    const ag = SHALOM_AGENCIES.find(a => a.code && a.code.toUpperCase().trim() === codeClean);
-    if (ag) {
-      const off = (ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) || ag.distrito || ag.nombre;
-      if (off) return off;
-    }
-  }
-
-  if (!destinoDetalle) return 'LIMA AV TINGO MARÍA';
-
-  // 2. Extraer código de agencia si viene embebido en el texto (ej: "(CÓDIGO: OVM)", "(CODIGO: SRA)", "(COD: AVCLO)")
-  const embeddedCodeMatch = destinoDetalle.match(/(?:CÓDIGO|CODIGO|COD)[\s:]*([A-Za-z0-9._-]+)/i);
-  if (embeddedCodeMatch && embeddedCodeMatch[1]) {
-    const extractedCode = embeddedCodeMatch[1].toUpperCase().trim();
-    if (SHALOM_CODE_TO_OFFICIAL_MAP[extractedCode]) {
-      return SHALOM_CODE_TO_OFFICIAL_MAP[extractedCode];
-    }
-    const ag = SHALOM_AGENCIES.find(a => a.code && a.code.toUpperCase().trim() === extractedCode);
-    if (ag && ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) {
-      return SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()];
-    }
-  }
-
-  // 3. Limpieza de metadatos de cliente (DNI, Tel, Correo, Ref, Distancia) SIN borrar nombres de agencia
-  const clean = destinoDetalle
-    .replace(/^Agencia Shalom:\s*/i, '')
-    .replace(/\(DNI[\s\/]*CE[^)]*\)/gi, '')
-    .replace(/\(DNI[^)]*\)/gi, '')
-    .replace(/\(CE[^)]*\)/gi, '')
-    .replace(/\(Doc[^)]*\)/gi, '')
-    .replace(/\(Tel[^)]*\)/gi, '')
-    .replace(/\(Correo[^)]*\)/gi, '')
-    .replace(/\(Email[^)]*\)/gi, '')
-    .replace(/\(Ref[^)]*\)/gi, '')
-    .replace(/\(\d+(?:\.\d+)?\s*(?:km|m)\)/gi, '')
-    .replace(/\(CÓDIGO:[^)]+\)/gi, '')
-    .replace(/\(CODIGO:[^)]+\)/gi, '')
-    .trim();
-
-  // 4. Separación estricta entre Jerarquía Geográfica / Nombre de Agencia y Dirección Física
-  let locationPath = clean;
-  
-  if (clean.includes(' – ')) {
-    const p = clean.split(' – ');
-    locationPath = p[0].trim();
-  } else if (clean.includes(' — ')) {
-    const p = clean.split(' — ');
-    locationPath = p[0].trim();
-  } else if (clean.includes(' • ')) {
-    const p = clean.split(' • ');
-    locationPath = p[0].trim();
-  } else if (clean.includes(' - ')) {
-    const p = clean.split(' - ');
-    if (p[0].includes('/')) {
-      locationPath = p[0].trim();
-    }
-  }
-
-  // Si locationPath contenía nombre local entre paréntesis (ej: VILLA EL SALVADOR (ÓVALO MARIÁTEGUI))
-  let extractedParenName = '';
-  const parenMatch = locationPath.match(/\(([^)]+)\)/);
-  if (parenMatch && parenMatch[1]) {
-    extractedParenName = parenMatch[1].trim().toUpperCase();
-  }
-
-  const compactLocation = normalizeCompact(locationPath);
-
-  // 5. Coincidencia directa en mapa canónico de nombres
-  if (SHALOM_NAME_TO_OFFICIAL_MAP[locationPath.toUpperCase()]) {
-    return SHALOM_NAME_TO_OFFICIAL_MAP[locationPath.toUpperCase()];
-  }
-  if (SHALOM_NAME_TO_OFFICIAL_MAP[compactLocation]) {
-    return SHALOM_NAME_TO_OFFICIAL_MAP[compactLocation];
-  }
-
-  // 6. Coincidencia de nombre local extraído de paréntesis si existía
-  if (extractedParenName) {
-    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[extractedParenName]) {
-      return SHALOM_LOCAL_TO_OFFICIAL_MAP[extractedParenName];
-    }
-    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[normalizeCompact(extractedParenName)]) {
-      return SHALOM_LOCAL_TO_OFFICIAL_MAP[normalizeCompact(extractedParenName)];
-    }
-    if (SHALOM_NAME_TO_OFFICIAL_MAP[extractedParenName]) {
-      return SHALOM_NAME_TO_OFFICIAL_MAP[extractedParenName];
-    }
-    if (SHALOM_NAME_TO_OFFICIAL_MAP[normalizeCompact(extractedParenName)]) {
-      return SHALOM_NAME_TO_OFFICIAL_MAP[normalizeCompact(extractedParenName)];
-    }
-  }
-
-  // 7. Segmentación jerárquica [DEP, PROV, DIST, LOCAL]
-  const cleanPathNoParen = locationPath.replace(/\([^)]+\)/g, '').trim();
-  const segments = cleanPathNoParen
-    .split('/')
-    .map(s => s.trim().toUpperCase())
-    .filter(Boolean);
-
-  const depSeg = segments[0] || '';
-  const lastSeg = segments.length > 0 ? segments[segments.length - 1] : '';
-  const compactLast = normalizeCompact(lastSeg);
-
-  // Prioridad 1: Coincidencia del segmento terminal (nombre local de la agencia)
-  if (lastSeg && SHALOM_LOCAL_TO_OFFICIAL_MAP[lastSeg]) {
-    return SHALOM_LOCAL_TO_OFFICIAL_MAP[lastSeg];
-  }
-  if (compactLast && SHALOM_LOCAL_TO_OFFICIAL_MAP[compactLast]) {
-    return SHALOM_LOCAL_TO_OFFICIAL_MAP[compactLast];
-  }
-
-  // Prioridad 2: Coincidencia de Departamento + Local
-  if (depSeg && lastSeg) {
-    const depLocalKey = normalizeCompact(depSeg + ' ' + lastSeg);
-    if (SHALOM_NAME_TO_OFFICIAL_MAP[depLocalKey]) {
-      return SHALOM_NAME_TO_OFFICIAL_MAP[depLocalKey];
-    }
-    if (SHALOM_LOCAL_TO_OFFICIAL_MAP[depLocalKey]) {
-      return SHALOM_LOCAL_TO_OFFICIAL_MAP[depLocalKey];
-    }
-  }
-
-  // Prioridad 3: Búsqueda en SHALOM_AGENCIES por coincidencias exactas de nombre/distrito
-  const matchedAg = SHALOM_AGENCIES.find(a => {
-    const aNameNorm = normalizeCompact(a.name || a.nombre || '');
-    const aDistNorm = normalizeCompact(a.distrito || a.district || '');
-    return (
-      (compactLast && (aDistNorm === compactLast || aNameNorm.endsWith(compactLast))) ||
-      (compactLocation && (aNameNorm === compactLocation || compactLocation.endsWith(aDistNorm)))
-    );
-  });
-
-  if (matchedAg) {
-    const off = (matchedAg.code && SHALOM_CODE_TO_OFFICIAL_MAP[matchedAg.code.toUpperCase().trim()]) || matchedAg.distrito || matchedAg.nombre;
-    if (off) return off;
-  }
-
-  // Prioridad 4: Ponderación de tokens EXCLUSIVAMENTE sobre la jerarquía y nombre de la agencia (NUNCA sobre la dirección física)
-  const hierarchyTokens = (locationPath + ' ' + (extractedParenName || ''))
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, ' ')
-    .split(/\s+/)
-    .filter(t => t.length > 1 && !['AV', 'JR', 'CALLE', 'PASAJE', 'AUTOPISTA', 'CARRETERA', 'MZ', 'LT', 'NRO', 'NUM', 'REF', 'AGENCIA', 'SHALOM', 'PERU', 'LIMA'].includes(t));
-
-  let bestMatch = null;
-  let bestScore = -1;
-
-  for (const official of OFFICIAL_DESTINATIONS) {
-    const offTokens = official
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, ' ')
-      .split(/\s+/)
-      .filter(t => t.length > 1 && !['AV', 'JR', 'CALLE', 'PASAJE', 'AUTOPISTA', 'CARRETERA', 'MZ', 'LT', 'NRO', 'NUM', 'REF', 'AGENCIA', 'SHALOM'].includes(t));
-
-    let score = 0;
-    for (const tok of offTokens) {
-      if (hierarchyTokens.includes(tok)) {
-        score += 15;
-      }
-    }
-
-    const extraTokens = offTokens.filter(t => !hierarchyTokens.includes(t)).length;
-    score -= extraTokens * 3;
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = official;
-    }
-  }
-
-  if (bestScore > 0 && bestMatch) {
-    return bestMatch;
-  }
-
-  return 'LIMA AV TINGO MARÍA';
-};
 
 
 export const extractShalomDni = (pedido: Pedido): string => {

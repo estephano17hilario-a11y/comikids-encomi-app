@@ -7,6 +7,7 @@ import { ShalomAgenciesMap } from '../client/ShalomAgenciesMap';
 import { OlvaAgenciesMap } from '../client/OlvaAgenciesMap';
 import { DEPARTAMENTOS_PERU } from '../../data/shalomAgencies';
 import { DEPARTAMENTOS_OLVA } from '../../data/olvaAgencies';
+import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import {
   X,
   Save,
@@ -25,8 +26,10 @@ import {
   Sparkles,
   AlertCircle,
   Truck,
-  Edit3
+  Edit3,
+  Building2
 } from 'lucide-react';
+
 
 interface Props {
   pedido: Pedido;
@@ -573,6 +576,12 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                         <CheckCircle2 className="w-3 h-3" />
                         <span>Sede Activa</span>
                       </span>
+                    </div>
+
+                    {/* Badge Destino Oficial Shalom */}
+                    <div className="flex items-center gap-1.5 text-xs text-rose-300 font-bold bg-rose-950/50 px-2.5 py-1 rounded-xl border border-rose-500/40">
+                      <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>Sede Oficial Destino: <strong className="text-white font-black">{extractShalomDestino(formatFullAgencyName(selectedShalomAgency), selectedShalomAgency.code)}</strong></span>
                     </div>
 
                     <p className="text-[11px] text-slate-300 pt-1 border-t border-cyan-500/20">

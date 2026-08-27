@@ -678,31 +678,28 @@ export class ShalomController {
         });
       }
 
-      // 4. Descargar el Ticket Oficial POS con QR (/voucher) del pedido verificado
-      console.log(`[SHALOM PROXY DOWNLOAD] ✓ Descargando Ticket Oficial con QR para ${matchedOrder.receiver?.name || matchedOrder.destinatario?.nombre} (DNI: ${matchedOrderDni}, Guía: ${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}, Orden #${matchedOrder.id})...`);
-
+      // 4. Descargar EXCLUSIVAMENTE el Ticket Oficial POS con QR físico (/voucher) del pedido verificado
+      const endpoint = pdfType === 'label' ? 'label' : 'voucher';
+      console.log(`[SHALOM PROXY DOWNLOAD] ✓ Descargando ${endpoint === 'voucher' ? 'Ticket Oficial POS con QR' : 'Rótulo'} para ${matchedOrder.receiver?.name || matchedOrder.destinatario?.nombre} (DNI: ${matchedOrderDni}, Guía: ${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}, Orden #${matchedOrder.id})...`);
 
       let docRes;
       try {
         docRes = await axios.get(
-          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/voucher`,
+          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${endpoint}`,
           {
             headers,
             responseType: 'arraybuffer',
-            timeout: 15000,
+            timeout: 18000,
           }
         );
-      } catch (voucherErr) {
-        // Respaldo de contingencia
-        docRes = await axios.get(
-          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/label`,
-          {
-            headers,
-            responseType: 'arraybuffer',
-            timeout: 15000,
-          }
-        );
+      } catch (dlErr: any) {
+        console.error(`[SHALOM PROXY DOWNLOAD ERROR] Falló la descarga del ${endpoint} para orden #${matchedOrder.id}:`, dlErr?.message);
+        return reply.code(502).send({
+          success: false,
+          error: `Error descargando ${endpoint} oficial con QR desde Shalom Pro: ${dlErr?.message}`,
+        });
       }
+
 
       if (docRes.data && docRes.data.length > 100) {
         const clientCleanDni = matchedOrderDni || targetDni || 'DNI';

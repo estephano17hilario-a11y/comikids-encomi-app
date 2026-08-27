@@ -348,10 +348,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               guia: res.guideNumber,
             };
             const pdfKey = String(res.oseId || res.guideNumber || res.trackingCode || row.data.phone);
-            let pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth, clientCtx);
-            if (!pdfBase64 || pdfBase64.length < 100) {
-              pdfBase64 = await ShalomApiService.fetchLabelPdfBase64(pdfKey, auth, clientCtx);
-            }
+            const pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth, clientCtx);
             if (pdfBase64 && pdfBase64.length > 100) {
               res.pdfBase64 = pdfBase64;
             }
@@ -359,6 +356,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
             console.warn('[FETCH SHALOM VOUCHER PDF AFTER REGISTRATION WARN]', pdfErr);
           }
         }
+
 
         resultsMap[row.pedido.id] = res;
       } catch (err: any) {

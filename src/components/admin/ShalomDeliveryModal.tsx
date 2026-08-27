@@ -160,16 +160,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           item.trackingCode;
 
         try {
-          // PRIORIDAD 1: Ticket Oficial POS Blanco y Negro con QR físico y Precios Actualizados (/voucher)
+          // EXCLUSIVAMENTE Ticket Oficial POS Blanco y Negro con QR físico y Precios Actualizados (/voucher)
           pdfData = await ShalomApiService.fetchVoucherPdfBase64(primarySearchKey, auth, clientCtx, handleMeta);
-        } catch {}
-        if (!pdfData || pdfData.length < 100) {
-          try {
-            // Respaldo (/label)
-            pdfData = await ShalomApiService.fetchLabelPdfBase64(primarySearchKey, auth, clientCtx, handleMeta);
-          } catch {}
+        } catch (e: any) {
+          console.warn(`[SHALOM AUDIT VOUCHER WITH QR ERROR] #${item.trackingCode}:`, e?.message);
         }
-
 
         if (pdfData && pdfData.length > 100) {
           item.pdfBase64 = pdfData;
@@ -230,19 +225,16 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     };
 
     try {
-      // Prioridad 1: Ticket Oficial POS Blanco y Negro con QR físico y Precios Actualizados (/voucher)
-      let pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
-      if (!pdfData || pdfData.length < 100) {
-        // Respaldo (/label)
-        pdfData = await ShalomApiService.fetchLabelPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
-      }
+      // EXCLUSIVAMENTE Ticket Oficial POS Blanco y Negro con QR físico y Precios Actualizados (/voucher)
+      const pdfData = await ShalomApiService.fetchVoucherPdfBase64(keyToSearch, auth, clientCtx, handleMeta);
       if (pdfData && pdfData.length > 100) {
         item.pdfBase64 = pdfData;
         item.auditStatus = 'verified_pdf';
         setProgressList([...progressList]);
       } else {
-        alert(`No se encontró comprobante en Shalom Pro para "${keyToSearch}" con DNI "${cleanDni || 'S/DNI'}". Verifica el DNI o número de guía.`);
+        alert(`No se encontró el Ticket oficial POS con QR en Shalom Pro para "${keyToSearch}" con DNI "${cleanDni || 'S/DNI'}". Verifica el DNI o número de guía.`);
       }
+
     } catch (err: any) {
       alert(`Error consultando Shalom Pro: ${err.message}`);
     } finally {

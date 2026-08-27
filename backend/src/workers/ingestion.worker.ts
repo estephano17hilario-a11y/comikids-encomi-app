@@ -40,59 +40,69 @@ export const ingestionWorker = new Worker<IngestionJobData>(
     let processingType = 'texto_plano';
 
     try {
-      // 1. SI ES NOTA DE VOZ O AUDIO: Transcribir en segundo plano
+      // 1. NOTAS DE VOZ O AUDIOS
       if (message?.audioMessage || messageType === 'audioMessage') {
-        processingType = 'audio_transcripcion';
-        try {
-          const media = await EvolutionService.getMediaBuffer(messageData, instanceName);
-          const transcription = await processAudioMessage(
-            media.buffer,
-            media.mimeType || 'audio/ogg; codecs=opus',
-            { storeName: `Tienda ${tenantId}`, customerName: pushName }
-          );
-          extractedText = `[AUDIO TRANSCRITO]: ${transcription}`;
-          console.log(`[INGESTION WORKER] ✅ Audio procesado para tenant ${tenantId}: "${extractedText.slice(0, 80)}..."`);
-        } catch (audioErr) {
-          console.warn(`[INGESTION WORKER] No se pudo procesar audio:`, audioErr);
-          extractedText = '[Audio sin transcribir]';
-        }
+        processingType = isFromMe ? 'audio_saliente' : 'audio_recibido';
+        extractedText = isFromMe ? '[Nota de voz saliente enviada]' : '[Nota de voz recibida]';
       }
 
-      // 2. SI ES IMAGEN O COMPROBANTE DE PAGO: Extraer OCR estructurado con Qwen 3.7 Flash
+      // 2. IMÁGENES / COMPROBANTES DE PAGO
       else if (message?.imageMessage || messageType === 'imageMessage') {
-        processingType = 'ocr_comprobante';
-        try {
-          const media = await EvolutionService.getMediaBuffer(messageData, instanceName);
-          const voucher = await auditPaymentVoucher(media.buffer.toString('base64'), media.mimeType || 'image/jpeg');
+        if (isFromMe) {
+          processingType = 'imagen_saliente';
+          extractedText = extractedText || '[Imagen saliente enviada por el comercio]';
+        } else {
+          // Solo auditar con IA si el texto / pie de foto tiene palabras clave de pago o comprobante
+          const isVoucherCandidate =
+            Boolean(extractedText) &&
+            /(yape|plin|pago|pagó|pague|pagué|bcp|bbva|interbank|banco|transferencia|transferí|deposito|depósito|abono|constancia|comprobante|voucher|vaucher|captura|boleta|operacion|operación|s\/|soles)/i.test(
+              extractedText
+            );
 
-          const parsedVoucher = {
-            banco: voucher.banco || 'Desconocido',
-            monto: Number(voucher.monto) || 0,
-            moneda: 'PEN',
-            numeroOperacion: String(voucher.numero_operacion || ''),
-            fechaHora: voucher.fecha || new Date().toISOString(),
-            esComprobanteValido: Boolean(voucher.es_comprobante_valido),
-            motivoRechazo: voucher.es_comprobante_valido ? undefined : 'Comprobante no válido o ilegible',
-          };
+          if (isVoucherCandidate) {
+            processingType = 'ocr_comprobante';
+            try {
+              const media = await EvolutionService.getMediaBuffer(messageData, instanceName);
+              const voucher = await auditPaymentVoucher(
+                media.buffer.toString('base64'),
+                media.mimeType || 'image/jpeg'
+              );
 
-          await SupabaseService.registerPaymentVoucher(parsedVoucher as any, {
-            tenantId,
-            whatsappSender: phoneClean,
-            imageUrl: message?.imageMessage?.url,
-          });
+              const parsedVoucher = {
+                banco: voucher.banco || 'Desconocido',
+                monto: Number(voucher.monto) || 0,
+                moneda: 'PEN',
+                numeroOperacion: String(voucher.numero_operacion || ''),
+                fechaHora: voucher.fecha || new Date().toISOString(),
+                esComprobanteValido: Boolean(voucher.es_comprobante_valido),
+                motivoRechazo: voucher.es_comprobante_valido ? undefined : 'Comprobante no válido o ilegible',
+              };
 
-          extractedText = `[COMPROBANTE EXTRAÍDO]: Banco=${parsedVoucher.banco}, Monto=${parsedVoucher.monto}, Op=${parsedVoucher.numeroOperacion}, Valido=${parsedVoucher.esComprobanteValido}`;
-          console.log(`[INGESTION WORKER] ✅ Comprobante indexado con Qwen 3.7 Flash para tenant ${tenantId}: Banco ${parsedVoucher.banco} S/ ${parsedVoucher.monto}`);
-        } catch (voucherErr) {
-          console.warn(`[INGESTION WORKER] Error analizando comprobante:`, voucherErr);
-          extractedText = '[Imagen no comprobante]';
+              await SupabaseService.registerPaymentVoucher(parsedVoucher as any, {
+                tenantId,
+                whatsappSender: phoneClean,
+                imageUrl: message?.imageMessage?.url,
+              });
+
+              extractedText = `[COMPROBANTE EXTRAÍDO]: Banco=${parsedVoucher.banco}, Monto=${parsedVoucher.monto}, Op=${parsedVoucher.numeroOperacion}, Valido=${parsedVoucher.esComprobanteValido}`;
+              console.log(
+                `[INGESTION WORKER] ✅ Comprobante indexado con IA para tenant ${tenantId}: Banco ${parsedVoucher.banco} S/ ${parsedVoucher.monto}`
+              );
+            } catch (voucherErr) {
+              console.warn(`[INGESTION WORKER] Error analizando comprobante:`, voucherErr);
+              extractedText = '[Imagen / Comprobante no procesable]';
+            }
+          } else {
+            // Imagen normal (ropa, prendas, capturas, stickers, fotos de catálogo) -> No consume tokens IA
+            processingType = 'imagen_recibida';
+            extractedText = extractedText || '[Imagen adjunta recibida]';
+          }
         }
       }
 
       // 3. Persistir en el log omnisciente de mensajes de Supabase
       const durationMs = Date.now() - startTime;
       await SupabaseService.logWhatsAppMessage({
-
         tenantId,
         messageId,
         remoteJid,
@@ -105,7 +115,6 @@ export const ingestionWorker = new Worker<IngestionJobData>(
         duracionMs: durationMs,
         estado: 'completado',
       });
-
 
       console.log(`[INGESTION WORKER] ✅ Mensaje ${messageId} indexado en BD con éxito en ${durationMs}ms`);
     } catch (error: any) {

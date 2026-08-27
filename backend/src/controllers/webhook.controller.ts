@@ -66,8 +66,27 @@ export class WebhookController {
         if (!msgItem?.key?.remoteJid) continue;
         const remoteJid = msgItem.key.remoteJid;
 
-        // Ignorar grupos y broadcasts en webhooks
-        if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) {
+        // 1. Ignorar grupos de WhatsApp (@g.us), difusiones/estados (@broadcast) y reacciones
+        if (
+          remoteJid.endsWith('@g.us') ||
+          remoteJid.endsWith('@broadcast') ||
+          remoteJid.includes('status@broadcast') ||
+          (msgItem as any).messageType === 'reactionMessage' ||
+          Boolean((msgItem as any).message?.reactionMessage)
+        ) {
+          continue;
+        }
+
+        // 2. Anti-drenaje de tokens: Ignorar mensajes históricos antiguos (> 2 minutos)
+        // Evita que reconexiones o sincronizaciones de Baileys consuman tokens en segundo plano
+        const nowSec = Math.floor(Date.now() / 1000);
+        const rawTs = msgItem.messageTimestamp;
+        const msgTs = typeof rawTs === 'number'
+          ? (rawTs > 1e11 ? Math.floor(rawTs / 1000) : rawTs)
+          : (rawTs?.low ? rawTs.low : nowSec);
+
+        if (nowSec - msgTs > 120) {
+          console.log(`[IGNORE OLD MESSAGE] Omitiendo mensaje antiguo (${nowSec - msgTs}s) ${msgItem.key?.id} en "${instance}"`);
           continue;
         }
 
@@ -85,15 +104,20 @@ export class WebhookController {
 
         const isAdminSender = ['51963097546', '51927781412', '51901985319', '963097546', '927781412', '901985319'].includes(senderNumber);
 
-        // CASO A: Mensaje dirigido al BOT MASTER o enviado por Administrador
-        if (
-          instance === 'main_bot' ||
-          instance === env.EVOLUTION_INSTANCE_NAME ||
-          instance === 'comikids_whatsapp' ||
-          isAdminSender
-        ) {
-          if (!msgItem.key.fromMe) {
-            console.log(`[COPILOT ROUTE] Encolando consulta de ${senderNumber} (Instancia: ${instance}) al Copiloto: "${queryText}"`);
+        // Determinación ESTRICTA de si la instancia que recibió el webhook es el BOT MASTER
+        const isMasterBot =
+          (instance === 'main_bot' ||
+           instance === 'comikids_whatsapp' ||
+           instance === env.EVOLUTION_INSTANCE_NAME) &&
+          !instance?.startsWith('tenant_') &&
+          !instance?.startsWith('tienda_');
+
+        // CASO A: Mensaje recibido DIRECTAMENTE en el BOT MASTER
+        if (isMasterBot) {
+          // El Bot Master SOLO procesa mensajes entrantes (no enviados por sí mismo)
+          // Y SOLO de administradores autorizados para evitar consumo de tokens de terceros o bucles
+          if (!msgItem.key.fromMe && isAdminSender) {
+            console.log(`[COPILOT ROUTE] Encolando consulta de ${senderNumber} (Instancia Master: ${instance}) al Copiloto: "${queryText}"`);
 
             await enqueueCopilotQuery(
               {
@@ -101,16 +125,19 @@ export class WebhookController {
                 remoteJid: remoteJid,
                 queryText,
                 messageData: msgItem,
-                timestamp: msgItem.messageTimestamp || Date.now(),
+                timestamp: msgTs * 1000,
               },
               msgItem.key.id
             );
+          } else if (!msgItem.key.fromMe && !isAdminSender) {
+            console.log(`[COPILOT IGNORED] Mensaje en Master Bot de ${senderNumber} (no admin). Omitiendo procesamiento IA.`);
           }
         }
 
-        // CASO B: Ingesta Pasiva Silenciosa en sub-instancias
-        if (instance?.startsWith('tenant_') || instance?.startsWith('tienda_')) {
-          const tenantId = instance.replace(/^(tenant_|tienda_)/, '');
+        // CASO B: Sub-Instancias (Sub-QRs de despacho, tiendas, líneas de atención)
+        // REGLA FUNDAMENTAL: NUNCA encolar al Copiloto ni responder desde el Bot Master.
+        else {
+          const tenantId = (instance || 'default').replace(/^(tenant_|tienda_)/, '');
 
           console.log(
             `[SILENT INGESTION ROUTE] Encolando mensaje ${msgItem.key.id} de Sub-Instancia "${instance}" (fromMe: ${msgItem.key.fromMe})`
@@ -118,7 +145,7 @@ export class WebhookController {
 
           await enqueueIngestionEvent({
             tenantId,
-            instanceName: instance,
+            instanceName: instance || 'unknown',
             messageData: msgItem,
             isFromMe: Boolean(msgItem.key.fromMe),
           });

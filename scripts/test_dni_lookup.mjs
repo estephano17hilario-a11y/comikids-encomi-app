@@ -19,8 +19,8 @@ if (fs.existsSync('.env')) {
   });
 }
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://uwmdjsxwetjvsxsdngko.supabase.co';
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || '';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://api.89.117.73.97.sslip.io';
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4Nzg0OTc2MCwiZXhwIjo0OTQzNTIzMzYwLCJyb2xlIjoiYW5vbiJ9._DvifLx6sViDd5UePak7xswzmT6dQp9FoQZqPnyxeRU';
 const TIMEOUT_MS = 2500;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

@@ -103,7 +103,7 @@ export class SupabaseService {
           estado_verificacion: (voucher.esComprobanteValido ?? voucher.es_comprobante_valido) ? 'procesado_ia' : 'rechazado',
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       return data;

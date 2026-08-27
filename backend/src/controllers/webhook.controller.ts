@@ -104,13 +104,21 @@ export class WebhookController {
 
         const isAdminSender = ['51963097546', '51927781412', '51901985319', '963097546', '927781412', '901985319'].includes(senderNumber);
 
+        // Normalización estricta de la instancia
+        const rawInstance = (instance || '').trim();
+        const lowerInstance = rawInstance.toLowerCase();
+        const masterEnvName = (env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp').trim().toLowerCase();
+
         // Determinación ESTRICTA de si la instancia que recibió el webhook es el BOT MASTER
+        // Solo es Master Bot si coincide exactamente con el nombre de la instancia master y NO es ningún tenant/tienda/sub
         const isMasterBot =
-          (instance === 'main_bot' ||
-           instance === 'comikids_whatsapp' ||
-           instance === env.EVOLUTION_INSTANCE_NAME) &&
-          !instance?.startsWith('tenant_') &&
-          !instance?.startsWith('tienda_');
+          (lowerInstance === 'main_bot' ||
+           lowerInstance === 'comikids_whatsapp' ||
+           lowerInstance === masterEnvName) &&
+          !lowerInstance.startsWith('tenant_') &&
+          !lowerInstance.startsWith('tienda_') &&
+          !lowerInstance.startsWith('sub_') &&
+          lowerInstance !== 'tenant_comikids_tienda';
 
         // CASO A: Mensaje recibido DIRECTAMENTE en el BOT MASTER
         if (isMasterBot) {
@@ -137,7 +145,7 @@ export class WebhookController {
         // CASO B: Sub-Instancias (Sub-QRs de despacho, tiendas, líneas de atención)
         // REGLA FUNDAMENTAL: NUNCA encolar al Copiloto ni responder desde el Bot Master.
         else {
-          const tenantId = (instance || 'default').replace(/^(tenant_|tienda_)/, '');
+          const tenantId = (rawInstance || 'default').replace(/^(tenant_|tienda_|sub_)/i, '');
 
           console.log(
             `[SILENT INGESTION ROUTE] Encolando mensaje ${msgItem.key.id} de Sub-Instancia "${instance}" (fromMe: ${msgItem.key.fromMe})`
@@ -145,7 +153,7 @@ export class WebhookController {
 
           await enqueueIngestionEvent({
             tenantId,
-            instanceName: instance || 'unknown',
+            instanceName: rawInstance || 'unknown',
             messageData: msgItem,
             isFromMe: Boolean(msgItem.key.fromMe),
           });

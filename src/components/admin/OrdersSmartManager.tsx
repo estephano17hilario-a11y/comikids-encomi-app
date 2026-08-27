@@ -778,18 +778,38 @@ export const OrdersSmartManager: React.FC = () => {
                             )}
                           </div>
 
-                          {/* Confirmación de registro vía API con guía */}
+                          {/* Confirmación de registro vía API con guía y botón para desvincular */}
                           {order.registrado_shalom && (
                             <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/50 px-2.5 py-1 rounded-xl border border-emerald-500/40">
                               <div className="flex items-center gap-1.5 truncate">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                                 <span className="truncate">Despachado API: <strong>{order.shalom_numero_guia || `OSE #${order.shalom_ose_id || ''}`}</strong></span>
                               </div>
-                              {order.shalom_clave_recojo && (
-                                <span className="text-[9px] font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded-md border border-amber-500/30 shrink-0">
-                                  PIN: {order.shalom_clave_recojo}
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1 shrink-0">
+                                {order.shalom_clave_recojo && (
+                                  <span className="text-[9px] font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded-md border border-amber-500/30 shrink-0">
+                                    PIN: {order.shalom_clave_recojo}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (confirm('¿Desvincular despacho de Shalom de este pedido para volver a registrarlo o ingresar otra guía?')) {
+                                      await updatePedido(order.id, {
+                                        registrado_shalom: false,
+                                        shalom_ose_id: null,
+                                        shalom_numero_guia: null,
+                                        shalom_clave_recojo: null,
+                                      });
+                                    }
+                                  }}
+                                  className="text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 p-0.5 rounded transition-colors text-[9px] cursor-pointer"
+                                  title="Desvincular guía para registrar de nuevo"
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -797,6 +817,7 @@ export const OrdersSmartManager: React.FC = () => {
                     }
                     return null;
                   })()}
+
 
                   {order.observaciones_cliente && (
                     <p className="text-[10px] text-slate-400 italic bg-white/5 p-1.5 rounded-lg break-words">
@@ -1179,13 +1200,24 @@ export const OrdersSmartManager: React.FC = () => {
           orders={deliveryTargetOrders}
           tallerConfig={tallerConfig}
           onClose={() => setDeliveryTargetOrders(null)}
-          onOrdersDelivered={async (deliveredIds) => {
+          onOrdersDelivered={async (deliveredIds, updatedMeta) => {
             for (const id of deliveredIds) {
-              await updateEstadoEnvio(id, 'entregado');
+              const meta = updatedMeta?.[id];
+              if (meta?.guia || meta?.pickupCode || meta?.oseId) {
+                await updatePedido(id, {
+                  estado_envio: 'entregado',
+                  ...(meta?.guia ? { shalom_numero_guia: meta.guia } : {}),
+                  ...(meta?.pickupCode ? { shalom_clave_recojo: meta.pickupCode } : {}),
+                  ...(meta?.oseId ? { shalom_ose_id: meta.oseId } : {}),
+                });
+              } else {
+                await updateEstadoEnvio(id, 'entregado');
+              }
             }
             clearSelection();
             setDeliveryTargetOrders(null);
           }}
+
         />
       )}
 

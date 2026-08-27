@@ -472,15 +472,19 @@ export class ShalomController {
       const SHOP_PHONES = ['927781412', '987654321', '986398000', '989834969', '51927781412', '51987654321'];
       const SHOP_DNIS = ['42020312', '00000000', '20512528458', '20000000001'];
 
-      // 1. Extraer identificadores limpios del cliente
-      const isSearchAn8DigitDni = /^\d{8}$/.test(cleanSearch) && !cleanSearch.startsWith('9');
-      const isSearchAn11DigitRuc = /^\d{11}$/.test(cleanSearch);
-      let rawDni = (qDni || (isSearchAn8DigitDni || isSearchAn11DigitRuc ? cleanSearch : '')).replace(/\D/g, '').trim();
-      let rawPhone = (qPhone || (/^9\d{8}$/.test(cleanSearch) ? cleanSearch : '')).replace(/\D/g, '').trim();
+      // 1. Extraer identificadores limpios del cliente (Sin falsos positivos)
+      const is8DigitDni = /^\d{8}$/.test(cleanSearch);
+      const is11DigitRuc = /^\d{11}$/.test(cleanSearch);
+      const is9DigitPhone = /^9\d{8}$/.test(cleanSearch);
+      const isShalomGuide = /^(V\d{3}|[A-Z]\d{3})[- ]?\d{4,8}$/i.test(cleanSearch);
+      const isInternalCode = cleanSearch.startsWith('CMD-') || cleanSearch.startsWith('SH-') || (/^\d{1,6}$/.test(cleanSearch) && !is8DigitDni);
+      const isNumericOseId = /^\d{7,10}$/.test(cleanSearch) && !is8DigitDni && !is9DigitPhone;
+
+      let rawDni = (qDni || (is8DigitDni || is11DigitRuc ? cleanSearch : '')).replace(/\D/g, '').trim();
+      let rawPhone = (qPhone || (is9DigitPhone ? cleanSearch : '')).replace(/\D/g, '').trim();
       let rawName = (qName || '').toLowerCase().trim();
-      const isSearchGuia = cleanSearch.includes('-') || cleanSearch.toUpperCase().startsWith('V') || (/^\d{6,8}$/.test(cleanSearch) && !isSearchAn8DigitDni);
-      const targetGuia = (qGuia || (isSearchGuia ? cleanSearch : '')).toUpperCase().trim();
-      const targetInternalCode = (qInternalCode || (cleanSearch.startsWith('CMD-') || cleanSearch.startsWith('SH-') ? cleanSearch : '')).toUpperCase().trim();
+      const targetGuia = (qGuia || (isShalomGuide ? cleanSearch : '')).toUpperCase().trim();
+      const targetInternalCode = (qInternalCode || (isInternalCode ? cleanSearch : '')).toUpperCase().trim();
 
       // Limpiar datos de tienda/remitente para evitar falsos positivos
       const targetDni = SHOP_DNIS.includes(rawDni) ? '' : rawDni;
@@ -548,53 +552,43 @@ export class ShalomController {
         return true;
       };
 
+      // Filtrar órdenes anuladas / canceladas en Shalom
+      const isActiveOrder = (o: any): boolean => {
+        const st = String(o.status || o.estado || '').toLowerCase();
+        return !['annulled', 'cancelled', 'anulado', 'cancelado'].includes(st) && !o.anulado && !o.is_annulled;
+      };
+
       // 2. Obtener listado sincronizado de órdenes recientes de Shalom Pro
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
       // Fecha de referencia del pedido para evitar asociar guías viejas de meses anteriores
       const orderRefDate = qOrderDate ? new Date(qOrderDate) : new Date();
 
-      // Función de coincidencia ESTRICTA ANTI-ERROR
+      // Función de coincidencia ESTRICTA ANTI-ERROR (Con soporte para re-despachos y eliminación)
       const findMatchingOrder = (list: any[]) => {
-        // 1. Coincidencia por Código Interno Único de Pedido (ej: CMD-1049) - Prioridad Absoluta
-        if (targetInternalCode) {
-          const cleanTargetCode = targetInternalCode.replace(/[^A-Z0-9]/g, '');
-          const byInternal = list.find((o: any) => {
-            const code = getOrderInternalCode(o).replace(/[^A-Z0-9]/g, '');
-            return code && code === cleanTargetCode;
-          });
-          if (byInternal && isDniCompatible(byInternal) && isNameCompatible(byInternal)) {
-            return byInternal;
-          }
-        }
+        const pool = list.filter(isActiveOrder);
 
-        // 2. Si cleanSearch es un ID numérico de orden en Shalom Pro (ej: 96844588)
-        if (/^\d{7,10}$/.test(cleanSearch) && !isSearchAn8DigitDni) {
-          const byId = list.find((o: any) => String(o.id) === cleanSearch);
-          if (byId && isDniCompatible(byId) && isNameCompatible(byId)) {
-            return byId;
-          }
-        }
-
-        // 3. Coincidencia por Número de Guía Exacto (ej: V204-12345 o 0012345)
-        if (targetGuia && targetGuia.length >= 5 && !targetGuia.startsWith('CMD-') && !targetGuia.startsWith('SH-')) {
-          const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
-          const gMatch = list.find((o: any) => {
-            const fullG = `${o.serie || ''}${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-            return fullG === cleanG || gOnly === cleanG;
-          });
-          if (gMatch && isDniCompatible(gMatch) && isNameCompatible(gMatch)) {
-            return gMatch;
-          }
-        }
-
-        // 4. Coincidencia por DNI con Filtro de Ventana de Tiempo (ANTI-GUÍAS VIEJAS)
+        // 1. PRIORIDAD ABSOLUTA: Coincidencia por DNI del destinatario
+        // Si la clienta fue re-despachada o se borró el despacho anterior, toma SIEMPRE el despacho activo MÁS NUEVO
         if (targetDni && targetDni.length >= 6) {
-          const dniMatches = list.filter((o: any) => getOrderReceiverDni(o) === targetDni);
+          const dniMatches = pool.filter((o: any) => getOrderReceiverDni(o) === targetDni);
 
           if (dniMatches.length > 0) {
-            // Filtrar únicamente órdenes recientes creadas dentro de 5 días respecto al pedido
+            // Ordenar por ID descendente (despacho más nuevo de hoy al inicio)
+            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+
+            // Si el usuario especificó una guía manual exacta, verificarla
+            if (targetGuia && targetGuia.length >= 5) {
+              const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
+              const gMatch = dniMatches.find((o: any) => {
+                const fullG = `${o.serie || ''}${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                return fullG === cleanG || gOnly === cleanG;
+              });
+              if (gMatch && isNameCompatible(gMatch)) return gMatch;
+            }
+
+            // Filtrar órdenes recientes dentro de la ventana de 5 días
             const recentMatches = dniMatches.filter((o: any) => {
               const oDate = getOrderCreationDate(o);
               if (oDate.getTime() === 0) return true;
@@ -604,8 +598,8 @@ export class ShalomController {
 
             if (recentMatches.length > 0) {
               const nameFiltered = recentMatches.filter(isNameCompatible);
-              const bestMatch = nameFiltered.length > 0 ? nameFiltered[0] : recentMatches[0];
-              return bestMatch;
+              // SIEMPRE retornar el despacho más reciente (con ID más alto)
+              return nameFiltered.length > 0 ? nameFiltered[0] : recentMatches[0];
             }
 
             console.warn(`[SHALOM PROXY ANTI-STALE-LOCK] Se encontraron ${dniMatches.length} órdenes para DNI ${targetDni} pero todas son de fechas pasadas.`);
@@ -615,8 +609,44 @@ export class ShalomController {
           return null;
         }
 
+        // 2. PRIORIDAD: Código Interno Único de Pedido (ej: CMD-1049)
+        if (targetInternalCode) {
+          const cleanTargetCode = targetInternalCode.replace(/[^A-Z0-9]/g, '');
+          const byInternal = pool.filter((o: any) => {
+            const code = getOrderInternalCode(o).replace(/[^A-Z0-9]/g, '');
+            return code && code === cleanTargetCode;
+          });
+          if (byInternal.length > 0) {
+            byInternal.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+            const candidate = byInternal.find(o => isDniCompatible(o) && isNameCompatible(o));
+            if (candidate) return candidate;
+          }
+        }
+
+        // 3. PRIORIDAD: Número de Guía Exacto (ej: V204-12345 o 0012345)
+        if (targetGuia && targetGuia.length >= 5) {
+          const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
+          const gMatch = pool.find((o: any) => {
+            const fullG = `${o.serie || ''}${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return fullG === cleanG || gOnly === cleanG;
+          });
+          if (gMatch && isDniCompatible(gMatch) && isNameCompatible(gMatch)) {
+            return gMatch;
+          }
+        }
+
+        // 4. PRIORIDAD: OSE ID Directo
+        if (isNumericOseId) {
+          const byId = pool.find((o: any) => String(o.id) === cleanSearch);
+          if (byId && isDniCompatible(byId) && isNameCompatible(byId)) {
+            return byId;
+          }
+        }
+
         return null;
       };
+
 
       let matchedOrder = findMatchingOrder(ordersList);
 

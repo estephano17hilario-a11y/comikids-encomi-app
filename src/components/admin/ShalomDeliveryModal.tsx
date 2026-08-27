@@ -28,8 +28,9 @@ interface ShalomDeliveryModalProps {
   onClose: () => void;
   orders: Pedido[];
   tallerConfig?: TallerConfig;
-  onOrdersDelivered: (deliveredOrderIds: string[]) => void;
+  onOrdersDelivered: (deliveredOrderIds: string[], updatedMeta?: Record<string, { guia?: string; pickupCode?: string; oseId?: string }>) => void;
 }
+
 
 interface DeliveryOrderProgress {
   orderId: string;
@@ -347,15 +348,35 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     setOverallSuccess(true);
     setCurrentStepText('¡Guías oficiales en PDF de Shalom entregadas exitosamente por WhatsApp!');
 
+    const metaMap: Record<string, { guia?: string; pickupCode?: string; oseId?: string }> = {};
+    for (const item of updatedList) {
+      if (item.guideNumber || item.manualGuideInput || item.pickupCode) {
+        metaMap[item.orderId] = {
+          guia: item.manualGuideInput || item.guideNumber || undefined,
+          pickupCode: item.pickupCode || undefined,
+        };
+      }
+    }
+
     const successIds = updatedList.map((p) => p.orderId);
-    onOrdersDelivered(successIds);
+    onOrdersDelivered(successIds, metaMap);
   };
 
   const handleOnlyMarkDelivered = () => {
+    const metaMap: Record<string, { guia?: string; pickupCode?: string; oseId?: string }> = {};
+    for (const item of progressList) {
+      if (item.guideNumber || item.manualGuideInput || item.pickupCode) {
+        metaMap[item.orderId] = {
+          guia: item.manualGuideInput || item.guideNumber || undefined,
+          pickupCode: item.pickupCode || undefined,
+        };
+      }
+    }
     const allIds = orders.map((o) => o.id);
-    onOrdersDelivered(allIds);
+    onOrdersDelivered(allIds, metaMap);
     onClose();
   };
+
 
   const totalCount = progressList.length;
   const verifiedCount = progressList.filter((p) => p.auditStatus === 'verified_pdf').length;

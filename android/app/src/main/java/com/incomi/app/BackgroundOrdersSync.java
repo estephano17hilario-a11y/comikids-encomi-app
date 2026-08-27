@@ -28,7 +28,7 @@ import org.json.JSONObject;
 
 public class BackgroundOrdersSync {
 
-    private static final String SUPABASE_URL = "http://api.89.117.73.97.sslip.io/rest/v1/pedidos?select=id,codigo_seguimiento,destino_detalle,estado_envio,estado_produccion,created_at,usuario:usuarios(nombre_completo,telefono_default)&order=created_at.desc&limit=30";
+    private static final String SUPABASE_URL = "https://api.89.117.73.97.sslip.io/rest/v1/pedidos?select=id,codigo_seguimiento,destino_detalle,estado_envio,estado_produccion,created_at,usuario:usuarios(nombre_completo,telefono_default)&order=created_at.desc&limit=30";
     private static final String SUPABASE_ANON_KEY = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4Nzg0OTc2MCwiZXhwIjo0OTQzNTIzMzYwLCJyb2xlIjoiYW5vbiJ9._DvifLx6sViDd5UePak7xswzmT6dQp9FoQZqPnyxeRU";
     private static final String CHANNEL_ID = "comikids_orders_high_priority";
 

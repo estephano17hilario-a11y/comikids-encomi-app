@@ -524,7 +524,7 @@ export class ShalomController {
 
       const getOrderCreationDate = (o: any): Date => {
         const raw = o.created_at || o.fecha_emision || o.fecha || o.request?.created_at || o.emision_fecha || '';
-        const parsed = new Date(raw);
+        const parsed = new Date(String(raw).replace(' ', 'T'));
         return isNaN(parsed.getTime()) ? new Date(0) : parsed;
       };
 
@@ -561,20 +561,17 @@ export class ShalomController {
       // 2. Obtener listado sincronizado de órdenes recientes de Shalom Pro
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
-      // Fecha de referencia del pedido para evitar asociar guías viejas de meses anteriores
-      const orderRefDate = qOrderDate ? new Date(qOrderDate) : new Date();
-
-      // Función de coincidencia ESTRICTA ANTI-ERROR (Con soporte para re-despachos y eliminación)
+      // Función de coincidencia ESTRICTA ANTI-ERROR (SIEMPRE retorna la versión más actual / reciente)
       const findMatchingOrder = (list: any[]) => {
         const pool = list.filter(isActiveOrder);
 
         // 1. PRIORIDAD ABSOLUTA: Coincidencia por DNI del destinatario
-        // Si la clienta fue re-despachada o se borró el despacho anterior, toma SIEMPRE el despacho activo MÁS NUEVO
+        // Toma SIEMPRE el despacho activo MÁS NUEVO de esta clienta (ID más alto)
         if (targetDni && targetDni.length >= 6) {
           const dniMatches = pool.filter((o: any) => getOrderReceiverDni(o) === targetDni);
 
           if (dniMatches.length > 0) {
-            // Ordenar por ID descendente (despacho más nuevo de hoy al inicio)
+            // Ordenar por ID descendente (el despacho más nuevo al inicio)
             dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 
             // Si el usuario especificó una guía manual exacta, verificarla
@@ -588,26 +585,17 @@ export class ShalomController {
               if (gMatch && isNameCompatible(gMatch)) return gMatch;
             }
 
-            // Filtrar órdenes recientes dentro de la ventana de 5 días
-            const recentMatches = dniMatches.filter((o: any) => {
-              const oDate = getOrderCreationDate(o);
-              if (oDate.getTime() === 0) return true;
-              const diffDays = Math.abs(orderRefDate.getTime() - oDate.getTime()) / (1000 * 60 * 60 * 24);
-              return diffDays <= 5;
-            });
+            // Filtrar por compatibilidad de nombre si fue proporcionado
+            const nameFiltered = dniMatches.filter(isNameCompatible);
+            const bestMatches = nameFiltered.length > 0 ? nameFiltered : dniMatches;
 
-            if (recentMatches.length > 0) {
-              const nameFiltered = recentMatches.filter(isNameCompatible);
-              // SIEMPRE retornar el despacho más reciente (con ID más alto)
-              return nameFiltered.length > 0 ? nameFiltered[0] : recentMatches[0];
-            }
-
-            console.warn(`[SHALOM PROXY ANTI-STALE-LOCK] Se encontraron ${dniMatches.length} órdenes para DNI ${targetDni} pero todas son de fechas pasadas.`);
-            return null;
+            // Retornar SIEMPRE el despacho más nuevo (ID más alto)
+            return bestMatches[0];
           }
 
           return null;
         }
+
 
         // 2. PRIORIDAD: Código Interno Único de Pedido (ej: CMD-1049)
         if (targetInternalCode) {

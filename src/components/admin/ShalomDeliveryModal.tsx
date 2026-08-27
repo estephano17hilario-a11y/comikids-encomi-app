@@ -154,28 +154,21 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           }
         };
 
-        const dniKey = cleanItemDni && cleanItemDni.length >= 6 && cleanItemDni !== '42020312' && cleanItemDni !== '00000000' ? cleanItemDni : '';
-        const guideKey = item.manualGuideInput || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '');
-        const oseKey = originalOrder?.shalom_ose_id || '';
-        const internalKey = item.trackingCode;
-        const phoneKey = !dniKey && !guideKey && item.phone && item.phone.length >= 9 && item.phone !== '927781412' ? item.phone : '';
+        const primarySearchKey = originalOrder?.shalom_ose_id || 
+          (item.manualGuideInput?.trim() || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '')) || 
+          item.trackingCode;
 
-        // Prioridad Estricta: OSE ID > Guía Oficial > Código Interno > DNI del cliente > Teléfono
-        const searchCandidates = [oseKey, guideKey, internalKey, dniKey, phoneKey].filter(Boolean);
-
-        for (const candidate of searchCandidates) {
-          if (pdfData && pdfData.length > 100) break;
+        try {
+          // PRIORIDAD 1: Ticket Oficial POS Blanco y Negro con QR físico y Precios Actualizados (/voucher)
+          pdfData = await ShalomApiService.fetchVoucherPdfBase64(primarySearchKey, auth, clientCtx, handleMeta);
+        } catch {}
+        if (!pdfData || pdfData.length < 100) {
           try {
-            // PRIORIDAD 1: Ticket Oficial POS Blanco y Negro con QR físico y Precios Actualizados (/voucher)
-            pdfData = await ShalomApiService.fetchVoucherPdfBase64(candidate, auth, clientCtx, handleMeta);
+            // Respaldo (/label)
+            pdfData = await ShalomApiService.fetchLabelPdfBase64(primarySearchKey, auth, clientCtx, handleMeta);
           } catch {}
-          if (!pdfData || pdfData.length < 100) {
-            try {
-              // Respaldo (/label)
-              pdfData = await ShalomApiService.fetchLabelPdfBase64(candidate, auth, clientCtx, handleMeta);
-            } catch {}
-          }
         }
+
 
         if (pdfData && pdfData.length > 100) {
           item.pdfBase64 = pdfData;

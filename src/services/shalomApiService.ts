@@ -472,8 +472,10 @@ export class ShalomApiService {
       const livePin = response.headers.get('x-shalom-pickup-code') || response.headers.get('X-Shalom-Pickup-Code');
       const liveGuia = response.headers.get('x-shalom-guia') || response.headers.get('X-Shalom-Guia');
       const returnedDni = response.headers.get('x-shalom-receiver-dni') || response.headers.get('X-Shalom-Receiver-Dni');
+      const returnedNameRaw = response.headers.get('x-shalom-receiver-name') || response.headers.get('X-Shalom-Receiver-Name');
+      const returnedName = returnedNameRaw ? decodeURIComponent(returnedNameRaw).toLowerCase() : '';
 
-      // Validar DNI con header de seguridad
+      // 1. Validar DNI con header de seguridad
       if (clientContext?.dni && clientContext.dni.length >= 6 && returnedDni && returnedDni !== 'DNI') {
         const cleanReqDni = clientContext.dni.replace(/\D/g, '');
         const cleanDoc = returnedDni.replace(/\D/g, '');
@@ -483,9 +485,26 @@ export class ShalomApiService {
         }
       }
 
+      // 2. Validar Nombre con header de seguridad (Zero Falsos Positivos)
+      if (clientContext?.name && returnedName) {
+        const clientTokens = clientContext.name
+          .toLowerCase()
+          .replace(/[^a-zñáéíóú\s]/gi, '')
+          .split(/\s+/)
+          .filter(w => w.length >= 3 && !['clienta', 'cliente', 'destinatario', 'usuario', 'lima', 'peru'].includes(w));
+        if (clientTokens.length > 0) {
+          const hasMatchingToken = clientTokens.some(tok => returnedName.includes(tok));
+          if (!hasMatchingToken) {
+            console.warn(`[SHALOM SECURITY LOCK] Rechazado comprobante de otra clienta. Nombre solicitado: "${clientContext.name}" vs Nombre Comprobante: "${returnedName}"`);
+            return null;
+          }
+        }
+      }
+
       if (onMetadata && (livePin || liveGuia)) {
         onMetadata({ pickupCode: livePin || undefined, guia: liveGuia || undefined });
       }
+
 
       const blob = await response.blob();
       if (!blob || blob.size < 200) return null;

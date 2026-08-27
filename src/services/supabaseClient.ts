@@ -3,8 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL_DEFAULT = 'https://api.89.117.73.97.sslip.io';
 const SUPABASE_ANON_KEY_DEFAULT = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4Nzg0OTc2MCwiZXhwIjo0OTQzNTIzMzYwLCJyb2xlIjoiYW5vbiJ9._DvifLx6sViDd5UePak7xswzmT6dQp9FoQZqPnyxeRU';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL_DEFAULT;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY_DEFAULT;
+let rawUrl = (import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL_DEFAULT).trim();
+
+// Auto-enforce HTTPS when web page is served over HTTPS to guarantee WSS WebSocket connection
+if (typeof window !== 'undefined' && window.location.protocol === 'https:' && rawUrl.startsWith('http://')) {
+  rawUrl = rawUrl.replace(/^http:\/\//, 'https://');
+}
+
+const supabaseUrl = rawUrl;
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY_DEFAULT).trim();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 

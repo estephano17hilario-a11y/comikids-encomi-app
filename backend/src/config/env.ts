@@ -36,9 +36,11 @@ const envSchema = z.object({
 
   // Shalom
   SHALOM_API_URL: z.string().optional(),
+  SHALOM_API_KEY: z.string().optional(),
   SHALOM_CLIENT_ID: z.string().optional(),
   SHALOM_CLIENT_SECRET: z.string().optional(),
 });
+
 
 const parsedEnv = envSchema.parse(process.env);
 

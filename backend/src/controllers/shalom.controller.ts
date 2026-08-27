@@ -2,6 +2,8 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import axios from 'axios';
 import { supabaseAdmin } from '../config/supabase.js';
 import { resolveShalomAgencyDetails, extractShalomDestino } from '../services/shalomAgencyResolver.js';
+import { ShalomSyncService } from '../services/shalomSync.service.js';
+
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
 const DEFAULT_API_KEY = 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
@@ -437,10 +439,15 @@ export class ShalomController {
    * Extracción de PDF (Ticket POS Blanco y Negro con QR Físico Oficial)
    * Nivel de Robustez Bancario: Validación y tipado 100% estricto de DNI del destinatario.
    */
+  /**
+   * Extracción de PDF (Ticket POS Blanco y Negro con QR Físico Oficial)
+   * Nivel de Robustez Bancario: Validación y tipado 100% estricto de DNI del destinatario,
+   * ventana de tiempo del pedido (Anti-Guías Antiguas) y código interno único.
+   */
   private static async fetchOrderPdf(
     request: FastifyRequest<{
       Params: { oseId: string };
-      Querystring: { dni?: string; phone?: string; name?: string; guia?: string };
+      Querystring: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string };
       Headers: { [key: string]: string };
     }>,
     reply: FastifyReply,
@@ -448,7 +455,7 @@ export class ShalomController {
   ) {
     try {
       const { oseId } = request.params;
-      const { dni: qDni, phone: qPhone, name: qName, guia: qGuia } = request.query || {};
+      const { dni: qDni, phone: qPhone, name: qName, guia: qGuia, orderDate: qOrderDate, internalCode: qInternalCode } = request.query || {};
       const cleanSearch = decodeURIComponent(oseId || '').trim();
       const credentials = await ShalomController.getShalomCredentials(request.headers);
 
@@ -473,13 +480,14 @@ export class ShalomController {
       let rawName = (qName || '').toLowerCase().trim();
       const isSearchGuia = cleanSearch.includes('-') || cleanSearch.toUpperCase().startsWith('V') || (/^\d{6,8}$/.test(cleanSearch) && !isSearchAn8DigitDni);
       const targetGuia = (qGuia || (isSearchGuia ? cleanSearch : '')).toUpperCase().trim();
+      const targetInternalCode = (qInternalCode || (cleanSearch.startsWith('CMD-') || cleanSearch.startsWith('SH-') ? cleanSearch : '')).toUpperCase().trim();
 
       // Limpiar datos de tienda/remitente para evitar falsos positivos
       const targetDni = SHOP_DNIS.includes(rawDni) ? '' : rawDni;
       const targetPhone = SHOP_PHONES.includes(rawPhone) || SHOP_PHONES.some(p => rawPhone.endsWith(p)) ? '' : rawPhone;
       const targetName = ['clienta', 'cliente', 'comikids', 'encomi', 'milagros', 'usuario', 'destinatario'].includes(rawName) || rawName.length < 4 ? '' : rawName;
 
-      console.log(`[SHALOM PROXY POS TICKET] Consultando Ticket Oficial Shalom (DNI: "${targetDni || 'S/DNI'}", Guía: "${targetGuia || 'S/G'}", Tel: "${targetPhone || 'S/T'}", Nombre: "${targetName || 'S/N'}")...`);
+      console.log(`[SHALOM PROXY POS TICKET] Consultando Ticket Oficial Shalom (DNI: "${targetDni || 'S/DNI'}", Guía: "${targetGuia || 'S/G'}", Code: "${targetInternalCode || 'S/C'}", Tel: "${targetPhone || 'S/T'}", Nombre: "${targetName || 'S/N'}")...`);
 
       // Helper para extraer DNI normalizado de una orden
       const getOrderReceiverDni = (o: any): string => {
@@ -493,46 +501,54 @@ export class ShalomController {
         ).replace(/\D/g, '').trim();
       };
 
+      const getOrderInternalCode = (o: any): string => {
+        return String(
+          o.internal_code || 
+          o.request?.internal_code || 
+          o.codigo || 
+          o.tracking_code || 
+          o.codigo_seguimiento || 
+          ''
+        ).toUpperCase().trim();
+      };
+
+      const getOrderCreationDate = (o: any): Date => {
+        const raw = o.created_at || o.fecha_emision || o.fecha || o.request?.created_at || o.emision_fecha || '';
+        const parsed = new Date(raw);
+        return isNaN(parsed.getTime()) ? new Date(0) : parsed;
+      };
+
       // 2. Obtener listado sincronizado de órdenes recientes de Shalom Pro
       let ordersList = await ShalomController.getAllShalomOrders(headers);
 
-      // Función de coincidencia ESTRICTA NIVEL BANCARIO
+      // Fecha de referencia del pedido para evitar asociar guías viejas de meses anteriores
+      const orderRefDate = qOrderDate ? new Date(qOrderDate) : new Date();
+
+      // Función de coincidencia ESTRICTA ANTI-ERROR
       const findMatchingOrder = (list: any[]) => {
-        // 1. Si cleanSearch es un ID directo de orden en Shalom (ej: 96844588)
-        if (/^\d{7,10}$/.test(cleanSearch)) {
+        // 1. Coincidencia por Código Interno Único de Pedido (ej: CMD-1049) - Prioridad Absoluta
+        if (targetInternalCode) {
+          const cleanTargetCode = targetInternalCode.replace(/[^A-Z0-9]/g, '');
+          const byInternal = list.find((o: any) => {
+            const code = getOrderInternalCode(o).replace(/[^A-Z0-9]/g, '');
+            return code && (code === cleanTargetCode || cleanTargetCode.includes(code) || code.includes(cleanTargetCode));
+          });
+          if (byInternal) {
+            const orderDni = getOrderReceiverDni(byInternal);
+            if (!targetDni || !orderDni || orderDni === targetDni) return byInternal;
+          }
+        }
+
+        // 2. Si cleanSearch es un ID numérico de orden en Shalom Pro (ej: 96844588), y NO es un DNI
+        if (/^\d{7,10}$/.test(cleanSearch) && !isSearchAn8DigitDni) {
           const byId = list.find((o: any) => String(o.id) === cleanSearch);
           if (byId) {
             const orderDni = getOrderReceiverDni(byId);
-            // Si no se especificó DNI o coincide con el DNI de la orden, es un match directo
             if (!targetDni || !orderDni || orderDni === targetDni) return byId;
           }
         }
 
-        // 2. Coincidencia por DNI exacto del destinatario (Prioridad Absoluta)
-        if (targetDni && targetDni.length >= 6) {
-          const dniMatches = list.filter((o: any) => getOrderReceiverDni(o) === targetDni);
-
-          if (dniMatches.length > 0) {
-            // Si el cliente tiene múltiples paquetes, filtrar por Guía si se especificó
-            if (targetGuia) {
-              const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
-              const gMatch = dniMatches.find((o: any) => {
-                const fullG = `${o.serie || ''}${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-                return fullG.includes(cleanG) || gOnly === cleanG || String(o.id) === cleanG;
-              });
-              if (gMatch) return gMatch;
-            }
-            // Si no hay guía o no coincidió, ordenar por más reciente (ID descendente)
-            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-            return dniMatches[0];
-          }
-
-          // Si se especificó un DNI y no existe ninguna orden para ese DNI, no retornar la de otra persona
-          return null;
-        }
-
-        // 3. Coincidencia por Número de Guía Exacto (si no hay DNI)
+        // 3. Coincidencia por Número de Guía Exacto (ej: V204-12345)
         if (targetGuia) {
           const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
           const gMatch = list.find((o: any) => {
@@ -540,31 +556,53 @@ export class ShalomController {
             const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
             return fullG.includes(cleanG) || gOnly === cleanG || String(o.id) === cleanG;
           });
-          if (gMatch) return gMatch;
+          if (gMatch) {
+            const orderDni = getOrderReceiverDni(gMatch);
+            if (!targetDni || !orderDni || orderDni === targetDni) return gMatch;
+          }
         }
 
-        // 4. Coincidencia por Teléfono del Destinatario (solo si NO hay DNI ni Guía)
+        // 4. Coincidencia por DNI con Filtro de Ventana de Tiempo (ANTI-GUÍAS VIEJAS)
+        if (targetDni && targetDni.length >= 6) {
+          const dniMatches = list.filter((o: any) => getOrderReceiverDni(o) === targetDni);
+
+          if (dniMatches.length > 0) {
+            // Filtrar únicamente órdenes recientes dentro de una ventana razonable (máx 7 días respecto al pedido)
+            const recentMatches = dniMatches.filter((o: any) => {
+              const oDate = getOrderCreationDate(o);
+              if (oDate.getTime() === 0) return true; // Si no tiene fecha, permitir verificación posterior
+              const diffDays = Math.abs(orderRefDate.getTime() - oDate.getTime()) / (1000 * 60 * 60 * 24);
+              return diffDays <= 7;
+            });
+
+            if (recentMatches.length > 0) {
+              recentMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+              return recentMatches[0];
+            }
+
+            // Si todos los pedidos encontrados con ese DNI son antiguos (de semanas o meses pasados),
+            // NO asociar la guía vieja: este pedido actual NO ha sido registrado aún.
+            console.warn(`[SHALOM PROXY ANTI-STALE-LOCK] Se encontraron ${dniMatches.length} órdenes para DNI ${targetDni} pero todas son de fechas pasadas. Bloqueado para no enviar guía vieja.`);
+            return null;
+          }
+
+          return null;
+        }
+
+        // 5. Coincidencia por Teléfono del Destinatario (solo órdenes recientes)
         if (targetPhone && targetPhone.length >= 9) {
           const phone9 = targetPhone.slice(-9);
           const phoneMatches = list.filter((o: any) => {
             const p = String(o.receiver?.phone || o.destinatario?.telefono || o.receiver?.phone_number || '').replace(/\D/g, '').trim();
-            return p && p.slice(-9) === phone9;
+            if (!p || p.slice(-9) !== phone9) return false;
+            const oDate = getOrderCreationDate(o);
+            if (oDate.getTime() === 0) return true;
+            const diffDays = Math.abs(orderRefDate.getTime() - oDate.getTime()) / (1000 * 60 * 60 * 24);
+            return diffDays <= 7;
           });
           if (phoneMatches.length > 0) {
             phoneMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
             return phoneMatches[0];
-          }
-        }
-
-        // 5. Coincidencia por Nombre Completo (solo si NO hay DNI, Guía ni Teléfono)
-        if (targetName && targetName.length >= 5) {
-          const nameMatches = list.filter((o: any) => {
-            const rFullName = `${o.receiver?.name || o.destinatario?.nombre || ''} ${o.receiver?.last_name || ''} ${o.receiver?.full_name || ''}`.toLowerCase().trim();
-            return rFullName.includes(targetName) || targetName.includes(rFullName);
-          });
-          if (nameMatches.length > 0) {
-            nameMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-            return nameMatches[0];
           }
         }
 
@@ -582,11 +620,12 @@ export class ShalomController {
 
       // Si no hubo coincidencia verificada para esta clienta
       if (!matchedOrder) {
-        console.warn(`[SHALOM PROXY NOTICE] Sin registro verificado en Shalom Pro para DNI: "${targetDni || 'S/DNI'}", Guía: "${targetGuia || 'S/G'}", Nombre: "${targetName || 'S/N'}"`);
+        console.warn(`[SHALOM PROXY NOTICE] Sin registro verificado en Shalom Pro para DNI: "${targetDni || 'S/DNI'}", Guía: "${targetGuia || 'S/G'}", Code: "${targetInternalCode || 'S/C'}"`);
         return reply.code(404).send({
           success: false,
           found: false,
-          error: `No se encontró comprobante en Shalom Pro para la clienta con DNI ${targetDni || 'indicado'}. Verifica el número de DNI o guía.`,
+          notRegistered: true,
+          error: `No se encontró comprobante en Shalom Pro para la clienta con DNI ${targetDni || 'indicado'} en la fecha de este pedido. El paquete aún no ha sido despachado en Shalom API o no se ha generado la guía.`,
         });
       }
 
@@ -659,4 +698,39 @@ export class ShalomController {
       });
     }
   }
+
+  /**
+   * Ejecuta la sincronización de agencias Shalom y propagación de cambios a pedidos
+   */
+  public static async syncAgencies(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const report = await ShalomSyncService.syncAgenciesAndPropagateOrders();
+      return reply.code(200).send({
+        success: true,
+        report,
+      });
+    } catch (err: any) {
+      return reply.code(500).send({
+        success: false,
+        error: err?.message || 'Error en sincronización de agencias',
+      });
+    }
+  }
+
+  /**
+   * Consulta el estado del último sync y la hora del próximo cron 23:59
+   */
+  public static async getSyncStatus(request: FastifyRequest, reply: FastifyReply) {
+    const lastReport = ShalomSyncService.getLastSyncReport();
+    const msUntilNext = ShalomSyncService.getMsUntilNext2359();
+    const nextCronDate = new Date(Date.now() + msUntilNext);
+
+    return reply.code(200).send({
+      success: true,
+      lastReport,
+      nextScheduledCron: nextCronDate.toISOString(),
+      msUntilNext,
+    });
+  }
 }
+

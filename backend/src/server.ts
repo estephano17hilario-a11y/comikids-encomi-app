@@ -10,6 +10,8 @@ import { ingestionWorker } from './workers/ingestion.worker.js';
 import { copilotWorker } from './workers/copilot.worker.js';
 import { redisClient } from './config/redis.js';
 import { EvolutionService } from './services/evolution.service.js';
+import { ShalomSyncService } from './services/shalomSync.service.js';
+
 
 const app = Fastify({
   bodyLimit: 50 * 1024 * 1024, // 50MB para soportar sincronización de mensajes e imágenes
@@ -52,12 +54,11 @@ async function start() {
     await app.listen({ port: env.PORT, host: env.HOST });
     console.log(`🚀 [BACKEND MASTER & MULTI-TENANT] Fastify escuchando en http://${env.HOST}:${env.PORT}`);
 
-    // Asegurar que todas las instancias de Evolution API tengan su webhook vinculado
-    EvolutionService.ensureAllWebhooksConfigured().catch((e) => {
-      console.warn('[SERVER STARTUP] Error sincronizando webhooks de Evolution:', e);
-    });
+    // Iniciar Cron Job Diario de Shalom (23:59 todos los días con propagación a pedidos)
+    ShalomSyncService.initDailyCron();
 
     // 4. Manejo de Cierre Elegante (Graceful Shutdown)
+
     const gracefulShutdown = async (signal: string) => {
       console.log(`\n[SHUTDOWN] Señal ${signal} recibida. Cerrando conexiones...`);
       await app.close();

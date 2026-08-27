@@ -137,6 +137,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           phone: item.phone,
           name: item.customerName,
           guia: item.manualGuideInput || item.guideNumber,
+          orderDate: originalOrder?.created_at || originalOrder?.fecha_limite,
+          internalCode: item.trackingCode,
         };
 
         let pdfData: string | null = null;
@@ -155,10 +157,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         const dniKey = cleanItemDni && cleanItemDni.length >= 6 && cleanItemDni !== '42020312' && cleanItemDni !== '00000000' ? cleanItemDni : '';
         const guideKey = item.manualGuideInput || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '');
         const oseKey = originalOrder?.shalom_ose_id || '';
+        const internalKey = item.trackingCode;
         const phoneKey = !dniKey && !guideKey && item.phone && item.phone.length >= 9 && item.phone !== '927781412' ? item.phone : '';
 
-        // Prioridad Estricta: OSE ID > Guía Oficial > DNI del cliente > Teléfono
-        const searchCandidates = [oseKey, guideKey, dniKey, phoneKey].filter(Boolean);
+        // Prioridad Estricta: OSE ID > Guía Oficial > Código Interno > DNI del cliente > Teléfono
+        const searchCandidates = [oseKey, guideKey, internalKey, dniKey, phoneKey].filter(Boolean);
 
         for (const candidate of searchCandidates) {
           if (pdfData && pdfData.length > 100) break;
@@ -212,11 +215,14 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       password: tallerConfig.shalom_password || '',
     } : undefined;
 
+    const originalOrder = orders.find((o) => o.id === item.orderId);
     const clientCtx = {
       dni: cleanDni,
       phone: item.phone,
       name: item.customerName,
       guia: cleanGuide || item.guideNumber,
+      orderDate: originalOrder?.created_at || originalOrder?.fecha_limite,
+      internalCode: item.trackingCode,
     };
 
     const handleMeta = (meta: { pickupCode?: string; guia?: string }) => {
@@ -249,6 +255,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       setSearchingId(null);
     }
   };
+
 
 
   // Descarga / visualización directa del PDF oficial extraído

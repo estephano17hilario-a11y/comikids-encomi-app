@@ -4,6 +4,8 @@ import { Pedido, TallerConfig } from '../../types/database.types';
 import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalomOrigen } from '../../utils/shalomExcelExporter';
 import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
 import { ShalomApiService, ShalomDispatchResult } from '../../services/shalomApiService';
+import { getApiBaseUrl } from '../../config/api';
+
 import {
   X,
   FileSpreadsheet,
@@ -63,6 +65,29 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
   // Modo tradicional Excel fallback
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  // Sincronización dinámica de agencias con API (Cron 23:59 & manual)
+  const [isSyncingAgencies, setIsSyncingAgencies] = useState(false);
+  const [syncAgenciesReport, setSyncAgenciesReport] = useState<string | null>(null);
+
+  const handleSyncAgenciesApi = async () => {
+    setIsSyncingAgencies(true);
+    setSyncAgenciesReport(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/sync-agencies`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.report) {
+        setSyncAgenciesReport(`✓ Sincronizadas ${data.report.totalAgenciesFromApi} agencias (${data.report.newAgenciesCount} nuevas, ${data.report.updatedAgenciesCount} modificadas, ${data.report.updatedOrdersCount} pedidos actualizados).`);
+      } else {
+        setSyncAgenciesReport(`Aviso: ${data.error || 'Error al conectar con la API de Shalom'}`);
+      }
+    } catch {
+      setSyncAgenciesReport('Error de conexión al sincronizar con la API de Shalom.');
+    } finally {
+      setIsSyncingAgencies(false);
+    }
+  };
+
 
 
   useEffect(() => {
@@ -506,17 +531,44 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               </div>
             </div>
 
-            <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+            <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="flex items-center gap-2 text-xs text-slate-300">
-                <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
                 <span>Auditoría de Datos Requeridos para Shalom (DNI, Teléfono y Destino)</span>
               </div>
-              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
-                allValid ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-              }`}>
-                {allValid ? '✓ Todo Listo' : '⚠ Campos por Corregir'}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleSyncAgenciesApi}
+                  disabled={isSyncingAgencies}
+                  className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Sincroniza el catálogo completo con Shalom Pro y propaga cambios de nombres a pedidos activos (Automático cada noche a las 23:59)"
+                >
+                  {isSyncingAgencies ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  <span>{isSyncingAgencies ? 'Sincronizando...' : '🔄 Sincronizar API (23:59)'}</span>
+                </button>
+                <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
+                  allValid ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                }`}>
+                  {allValid ? '✓ Todo Listo' : '⚠ Campos por Corregir'}
+                </span>
+              </div>
             </div>
+
+            {/* Banner de Resultado de Sincronización */}
+            {syncAgenciesReport && (
+              <div className="p-3 rounded-xl bg-cyan-950/50 border border-cyan-500/40 text-cyan-200 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+                <span>{syncAgenciesReport}</span>
+                <button
+                  type="button"
+                  onClick={() => setSyncAgenciesReport(null)}
+                  className="text-cyan-400 hover:text-white text-xs font-bold px-1.5"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
 
 
             {/* Advertencia de Pedidos con Fecha Programada Diferente a Hoy */}

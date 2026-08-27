@@ -424,7 +424,7 @@ export class ShalomApiService {
   public static async fetchLabelPdfBase64(
     oseId: number | string,
     auth?: ShalomAuthCredentials,
-    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string },
+    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string },
     onMetadata?: (meta: { pickupCode?: string; guia?: string }) => void
   ): Promise<string | null> {
     return this.fetchVoucherPdfBase64(oseId, auth, clientContext, onMetadata);
@@ -433,11 +433,12 @@ export class ShalomApiService {
 
   /**
    * Obtiene el PDF del Ticket Oficial / Voucher (Formato Físico POS con QR) en Base64.
+   * Con validación anti-guías antiguas y anti-falsos positivos.
    */
   public static async fetchVoucherPdfBase64(
     oseId: number | string,
     auth?: ShalomAuthCredentials,
-    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string },
+    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string },
     onMetadata?: (meta: { pickupCode?: string; guia?: string }) => void
   ): Promise<string | null> {
     try {
@@ -452,11 +453,14 @@ export class ShalomApiService {
       if (clientContext?.phone) qParams.set('phone', clientContext.phone);
       if (clientContext?.name) qParams.set('name', clientContext.name);
       if (clientContext?.guia) qParams.set('guia', clientContext.guia);
+      if (clientContext?.orderDate) qParams.set('orderDate', clientContext.orderDate);
+      if (clientContext?.internalCode) qParams.set('internalCode', clientContext.internalCode);
       const qStr = qParams.toString() ? `?${qParams.toString()}` : '';
 
       const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/voucher${qStr}`, {
         headers,
       });
+
 
       if (!response.ok) return null;
 

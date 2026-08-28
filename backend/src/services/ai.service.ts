@@ -20,12 +20,12 @@ export const aiClient = new OpenAI({
 
 // Lista de modelos de respaldo en caso de 429 / sobrecarga / límites de tasa
 const FALLBACK_MODELS = [
-  'qwen/qwen3.7-flash',
+  'google/gemini-2.5-flash',
+  'google/gemini-2.0-flash-001',
   'meta-llama/llama-3.3-70b-instruct',
-  'google/gemini-2.0-flash-exp:free',
-  'google/gemini-flash-1.5',
   'deepseek/deepseek-chat',
   'openai/gpt-4o-mini',
+  'qwen/qwen-2.5-72b-instruct',
 ];
 
 // A. OCR y Auditoría de Comprobantes (Yape, Plin, Transferencias)

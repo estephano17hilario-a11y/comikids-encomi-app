@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { useOrders } from '../../context/OrderContext';
 import { TallerConfig } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
-import { X, Settings, Save, Store, Phone, MapPin, Check, Eye, EyeOff, Copy } from 'lucide-react';
+import { evaluateShippingCutoff, formatFriendlyTime, formatFriendlyDate } from '../../utils/shippingCutoff';
+import { X, Settings, Save, Store, Phone, MapPin, Check, Eye, EyeOff, Copy, Clock, Calendar } from 'lucide-react';
 
 interface Props {
   onClose: () => void;
@@ -311,6 +312,147 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
           </div>
 
 
+          {/* Horario de Corte & Días de Despacho para Envíos el Mismo Día */}
+          <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 space-y-3.5 shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-indigo-400" />
+                <span>Horario Límite de Envío Hoy & Días de Despacho</span>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                Regla Automática
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Define hasta qué hora se reciben pedidos para enviar <strong>hoy</strong>. Al superar esta hora, el sistema establecerá automáticamente el <strong>siguiente día hábil de despacho</strong> y bloqueará fechas anteriores en el registro.
+            </p>
+
+            {/* Hora de Corte + Presets */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+                ⏰ Hora Límite de Corte (Envío Mismo Día)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  required
+                  value={formData.hora_corte_envio_hoy || '18:00'}
+                  onChange={e => setFormData({ ...formData, hora_corte_envio_hoy: e.target.value })}
+                  className="px-3 py-2 bg-slate-900 border border-indigo-500/50 rounded-xl text-xs font-mono font-bold text-indigo-200 focus:outline-none focus:border-indigo-400 shadow-inner"
+                />
+                <div className="flex items-center gap-1 flex-wrap">
+                  {['12:00', '14:00', '16:00', '18:00', '20:00'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, hora_corte_envio_hoy: t })}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold font-mono transition-colors cursor-pointer ${
+                        formData.hora_corte_envio_hoy === t
+                          ? 'bg-indigo-600 text-white border border-indigo-400 shadow'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+                      }`}
+                    >
+                      {formatFriendlyTime(t)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Selector de Días de Despacho Activos */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+                📅 Días Semanales Habilitados para Despacho
+              </label>
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                {[
+                  { key: 'lunes', label: 'Lun' },
+                  { key: 'martes', label: 'Mar' },
+                  { key: 'miercoles', label: 'Mié' },
+                  { key: 'jueves', label: 'Jue' },
+                  { key: 'viernes', label: 'Vie' },
+                  { key: 'sabado', label: 'Sáb' },
+                  { key: 'domingo', label: 'Dom' },
+                ].map(day => {
+                  const currentDays = (formData.dias_despacho_activos || ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']).map(d => d.toLowerCase());
+                  const isActive = currentDays.includes(day.key);
+
+                  const toggleDay = () => {
+                    let updated: string[];
+                    if (isActive) {
+                      updated = currentDays.filter(d => d !== day.key);
+                      if (updated.length === 0) updated = ['lunes']; // Al menos un día activo
+                    } else {
+                      updated = [...currentDays, day.key];
+                    }
+                    setFormData({
+                      ...formData,
+                      dias_despacho_activos: updated,
+                      despacho_domingo_habilitado: updated.includes('domingo'),
+                    });
+                  };
+
+                  return (
+                    <button
+                      key={day.key}
+                      type="button"
+                      onClick={toggleDay}
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center ${
+                        isActive
+                          ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/20 border border-indigo-400'
+                          : 'bg-slate-900/90 text-slate-500 hover:text-slate-300 border border-slate-800'
+                      }`}
+                    >
+                      {day.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Mensaje de Aviso de Corte Personalizado */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                💬 Mensaje Personalizado cuando se supera la hora límite (Opcional)
+              </label>
+              <textarea
+                rows={2}
+                value={formData.mensaje_corte_personalizado || ''}
+                onChange={e => setFormData({ ...formData, mensaje_corte_personalizado: e.target.value })}
+                placeholder="Ej. El despacho de hoy cerró a las 2:00 PM. Tu paquete se programará para el siguiente día hábil 🚚✨"
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400"
+              />
+            </div>
+
+            {/* Monitor en Vivo de Corte */}
+            {(() => {
+              const cutoffEval = evaluateShippingCutoff(formData);
+              return (
+                <div className="p-2.5 rounded-xl bg-slate-900/90 border border-indigo-500/30 flex items-center justify-between gap-2 text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{cutoffEval.isPastCutoff ? '⏰' : '⚡'}</span>
+                    <div>
+                      <span className="font-bold text-white block leading-tight">
+                        {cutoffEval.isPastCutoff ? 'Corte de hoy finalizado' : 'Envíos para hoy abiertos'}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Hora Perú: <strong className="text-indigo-300 font-mono">{cutoffEval.currentTimeStr}</strong> • Límite: <strong className="text-amber-300 font-mono">{formatFriendlyTime(formData.hora_corte_envio_hoy || '18:00')}</strong>
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-lg font-bold text-[10px] shrink-0 ${
+                    cutoffEval.isPastCutoff
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  }`}>
+                    Próximo: {formatFriendlyDate(cutoffEval.minAvailableDateYMD)}
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">WhatsApp para Pedidos y Clientes</label>
             <input
@@ -323,7 +465,6 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
             />
             <p className="text-[10px] text-slate-400 mt-1">Con código de país (Ej: 51987654321)</p>
           </div>
-
 
           <button
             type="submit"

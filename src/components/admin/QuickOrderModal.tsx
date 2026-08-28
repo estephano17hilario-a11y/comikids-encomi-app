@@ -3,6 +3,7 @@ import { useOrders } from '../../context/OrderContext';
 import { ordersService } from '../../services/ordersService';
 import { useShalomAgencies, formatFullAgencyName } from '../../hooks/useShalomAgencies';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
+import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import {
   X,
   PlusCircle,
@@ -10,7 +11,8 @@ import {
   Store,
   MapPin,
   Search,
-  Building2
+  Building2,
+  Clock
 } from 'lucide-react';
 
 
@@ -19,7 +21,10 @@ interface Props {
 }
 
 export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
-  const { createPedido, activeShippingMethods } = useOrders();
+  const { createPedido, activeShippingMethods, tallerConfig } = useOrders();
+  const cutoffStatus = evaluateShippingCutoff(tallerConfig);
+  const minShippingDate = cutoffStatus.minAvailableDateYMD;
+
   const [nombre, setNombre] = useState('');
   const [tiktokUsuario, setTiktokUsuario] = useState('');
   const [dni, setDni] = useState('');
@@ -39,9 +44,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
   const [selectedAgencyId, setSelectedAgencyId] = useState<string | number>('');
   const [direccionSimple, setDireccionSimple] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [fechaLimite, setFechaLimite] = useState(
-    new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
-  );
+  const [fechaLimite, setFechaLimite] = useState<string>(() => minShippingDate);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -209,12 +212,25 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Fecha Límite</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-300">Fecha de Despacho</label>
+                {cutoffStatus.isPastCutoff && (
+                  <span className="text-[10px] text-amber-400 font-bold">⏰ Corte aplicado</span>
+                )}
+              </div>
               <input
                 type="date"
+                min={minShippingDate}
                 value={fechaLimite}
-                onChange={e => setFechaLimite(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val && val < minShippingDate) {
+                    setFechaLimite(minShippingDate);
+                  } else {
+                    setFechaLimite(val);
+                  }
+                }}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
               />
             </div>
           </div>

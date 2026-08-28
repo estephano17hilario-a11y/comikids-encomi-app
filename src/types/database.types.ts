@@ -93,6 +93,10 @@ export interface TallerConfig {
   copilot_password?: string;
   copilot_sub_instance?: string;
   copilot_owner_phone?: string;
+  hora_corte_envio_hoy?: string;
+  dias_despacho_activos?: string[];
+  despacho_domingo_habilitado?: boolean;
+  mensaje_corte_personalizado?: string;
 }
 
 

@@ -12,6 +12,7 @@ import { OlvaAgenciesMap } from './OlvaAgenciesMap';
 import { EncomiAiChatModal } from './EncomiAiChatModal';
 import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido } from '../../types/database.types';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
+import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import {
   DatosComprobante,
   enviarComprobanteAWhatsapp,
@@ -113,17 +114,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     return currentUser?.nombre_completo || localStorage.getItem('incomi_saved_fullname') || '';
   });
 
-  const getLocalDateString = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+  const cutoffStatus = evaluateShippingCutoff(tallerConfig);
+  const minShippingDate = cutoffStatus.minAvailableDateYMD;
 
   const [fechaEnvioDeseada, setFechaEnvioDeseada] = useState<string>(() => {
-    return getLocalDateString();
+    return getMinAvailableShippingDate(tallerConfig);
   });
+
+  useEffect(() => {
+    if (fechaEnvioDeseada < minShippingDate) {
+      setFechaEnvioDeseada(minShippingDate);
+    }
+  }, [minShippingDate]);
 
 
   const [dniShalom, setDniShalom] = useState<string>(() => {
@@ -1981,20 +1983,57 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     </div>
                   </div>
 
-                  {/* Casilla: Fecha Deseada de Envío / Despacho */}
-                  <div className="space-y-2">
-                    <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                      📅 Fecha en la que deseas el Envío / Despacho *
-                    </label>
+                  {/* Casilla: Fecha Deseada de Envío / Despacho con Restricción de Corte Horario */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                        📅 Fecha en la que deseas el Envío / Despacho *
+                      </label>
+                      <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border flex items-center gap-1 shrink-0 ${
+                        cutoffStatus.isPastCutoff
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      }`}>
+                        {cutoffStatus.isPastCutoff ? '⏰ Corte de hoy finalizado' : '⚡ Despacho hoy disponible'}
+                      </span>
+                    </div>
+
                     <div className="relative flex items-center">
                       <input
                         type="date"
                         required
+                        min={minShippingDate}
                         value={fechaEnvioDeseada}
-                        onChange={e => setFechaEnvioDeseada(e.target.value)}
+                        onChange={e => {
+                          const selected = e.target.value;
+                          if (selected && selected < minShippingDate) {
+                            setFechaEnvioDeseada(minShippingDate);
+                          } else {
+                            setFechaEnvioDeseada(selected);
+                          }
+                        }}
                         className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-cyan-300 placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner font-mono cursor-pointer"
                       />
                       <Calendar className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+                    </div>
+
+                    {/* Aviso Explicativo del Horario de Corte */}
+                    <div className={`p-3 rounded-2xl border text-xs flex items-start gap-2.5 shadow-md animate-fadeIn ${
+                      cutoffStatus.isPastCutoff
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                    }`}>
+                      {cutoffStatus.isPastCutoff ? (
+                        <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      )}
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-white block">
+                          {cutoffStatus.isPastCutoff ? '⏰ Información del Despacho:' : '⚡ Despacho el Mismo Día:'}
+                        </span>
+                        <p className="leading-snug">{cutoffStatus.noticeText}</p>
+                      </div>
                     </div>
                   </div>
 

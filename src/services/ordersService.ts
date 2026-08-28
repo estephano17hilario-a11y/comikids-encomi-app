@@ -92,6 +92,10 @@ export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   copilot_password: '989834969MI',
   copilot_sub_instance: 'tenant_Comikids',
   copilot_owner_phone: '51927781412',
+  hora_corte_envio_hoy: '18:00',
+  dias_despacho_activos: ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'],
+  despacho_domingo_habilitado: false,
+  mensaje_corte_personalizado: '',
 };
 
 

@@ -6,7 +6,9 @@ import { ChangePasswordModal } from './ChangePasswordModal';
 import { EvolutionWhatsAppManager } from './EvolutionWhatsAppManager';
 import { yapeReaderService } from '../../services/yapeReaderService';
 
-import { Volume2 } from 'lucide-react';
+import { evaluateShippingCutoff, formatFriendlyTime, formatFriendlyDate } from '../../utils/shippingCutoff';
+
+import { Volume2, Clock, Calendar } from 'lucide-react';
 import {
   Store,
   Users,
@@ -60,6 +62,12 @@ export const CompanyAccountSettings: React.FC = () => {
   const [remitenteCelular, setRemitenteCelular] = useState(tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412');
   const [remitenteNombre, setRemitenteNombre] = useState(tallerConfig.nombre_taller || 'Comikids Envíos');
   const [remitenteSuccessMsg, setRemitenteSuccessMsg] = useState('');
+
+  // State for Cutoff & Shipping Days Settings
+  const [horaCorte, setHoraCorte] = useState(tallerConfig.hora_corte_envio_hoy || '18:00');
+  const [diasDespacho, setDiasDespacho] = useState<string[]>(tallerConfig.dias_despacho_activos || ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']);
+  const [mensajeCorte, setMensajeCorte] = useState(tallerConfig.mensaje_corte_personalizado || '');
+  const [cutoffSuccessMsg, setCutoffSuccessMsg] = useState('');
 
   // State for Custom Client Notice
   const [anuncioTexto, setAnuncioTexto] = useState(tallerConfig.anuncio_publico_clientes || '');
@@ -122,6 +130,18 @@ export const CompanyAccountSettings: React.FC = () => {
     });
     setAnuncioSuccessMsg('¡Mensaje de aviso guardado y visible en el formulario de clientes!');
     setTimeout(() => setAnuncioSuccessMsg(''), 4000);
+  };
+
+  const handleSaveCutoffSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateTallerConfig({
+      hora_corte_envio_hoy: horaCorte,
+      dias_despacho_activos: diasDespacho,
+      despacho_domingo_habilitado: diasDespacho.includes('domingo'),
+      mensaje_corte_personalizado: mensajeCorte.trim() || undefined,
+    });
+    setCutoffSuccessMsg('¡Horarios de corte y días de despacho guardados con éxito!');
+    setTimeout(() => setCutoffSuccessMsg(''), 4000);
   };
 
   const handleSaveColaborador = (e: React.FormEvent) => {
@@ -346,6 +366,175 @@ export const CompanyAccountSettings: React.FC = () => {
         {remitenteSuccessMsg && (
           <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn">
             ✓ {remitenteSuccessMsg}
+          </p>
+        )}
+      </div>
+
+      {/* --- SECCIÓN HORARIO DE CORTE Y DÍAS DE DESPACHO --- */}
+      <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-indigo-500/30 bg-indigo-950/10 backdrop-blur-2xl space-y-5 shadow-xl">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white">Horario Límite de Envío Hoy & Días de Despacho</h3>
+              <p className="text-xs text-slate-300">
+                Controla el plazo máximo para enviar paquetes el mismo día y restringe la selección de fechas pasadas
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            Regla de Corte Activa
+          </span>
+        </div>
+
+        <form onSubmit={handleSaveCutoffSettings} className="space-y-4">
+          {/* Hora de Corte + Presets */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              ⏰ Hora Límite de Corte para Despachar Hoy *
+            </label>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                type="time"
+                required
+                value={horaCorte}
+                onChange={e => setHoraCorte(e.target.value)}
+                className="px-4 py-2.5 bg-slate-950/90 border border-indigo-500/50 rounded-2xl text-sm font-mono font-bold text-indigo-200 focus:outline-none focus:border-indigo-400 shadow-inner"
+              />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {['12:00', '14:00', '16:00', '18:00', '20:00'].map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setHoraCorte(t)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer ${
+                      horaCorte === t
+                        ? 'bg-indigo-600 text-white border border-indigo-400 shadow-md shadow-indigo-600/30'
+                        : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10'
+                    }`}
+                  >
+                    {formatFriendlyTime(t)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Días Semanales Habilitados */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              📅 Días de la Semana con Envíos Habilitados
+            </label>
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+              {[
+                { key: 'lunes', label: 'Lunes' },
+                { key: 'martes', label: 'Martes' },
+                { key: 'miercoles', label: 'Miércoles' },
+                { key: 'jueves', label: 'Jueves' },
+                { key: 'viernes', label: 'Viernes' },
+                { key: 'sabado', label: 'Sábado' },
+                { key: 'domingo', label: 'Domingo' },
+              ].map(day => {
+                const currentDays = diasDespacho.map(d => d.toLowerCase());
+                const isActive = currentDays.includes(day.key);
+
+                const toggleDay = () => {
+                  let updated: string[];
+                  if (isActive) {
+                    updated = currentDays.filter(d => d !== day.key);
+                    if (updated.length === 0) updated = ['lunes'];
+                  } else {
+                    updated = [...currentDays, day.key];
+                  }
+                  setDiasDespacho(updated);
+                };
+
+                return (
+                  <button
+                    key={day.key}
+                    type="button"
+                    onClick={toggleDay}
+                    className={`py-2.5 px-3 rounded-2xl text-xs font-bold transition-all cursor-pointer text-center ${
+                      isActive
+                        ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20 border border-indigo-400'
+                        : 'bg-white/4 text-slate-500 hover:text-slate-300 border border-white/8'
+                    }`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Mensaje de Corte Personalizado */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              💬 Mensaje de Explicación al Cliente si se Supera el Corte (Opcional)
+            </label>
+            <textarea
+              rows={2}
+              value={mensajeCorte}
+              onChange={e => setMensajeCorte(e.target.value)}
+              placeholder="Ej. El corte para envíos de hoy era hasta las 2:00 PM. Los nuevos pedidos se programan para el siguiente día hábil."
+              className="w-full p-3.5 bg-slate-950/90 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 transition-colors shadow-inner"
+            />
+          </div>
+
+          {/* Monitor en Vivo de Corte */}
+          {(() => {
+            const cutoffEval = evaluateShippingCutoff({
+              hora_corte_envio_hoy: horaCorte,
+              dias_despacho_activos: diasDespacho,
+              despacho_domingo_habilitado: diasDespacho.includes('domingo'),
+              mensaje_corte_personalizado: mensajeCorte,
+            });
+            return (
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-indigo-500/30 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{cutoffEval.isPastCutoff ? '⏰' : '⚡'}</span>
+                  <div>
+                    <span className="font-bold text-white text-xs sm:text-sm block">
+                      {cutoffEval.isPastCutoff ? 'Plazo de Hoy Finalizado' : 'Envíos para Hoy Disponibles'}
+                    </span>
+                    <span className="text-[11px] text-slate-400">
+                      Hora actual en Perú: <strong className="text-indigo-300 font-mono">{cutoffEval.currentTimeStr}</strong> • Corte: <strong className="text-amber-300 font-mono">{formatFriendlyTime(horaCorte)}</strong>
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full font-bold text-xs ${
+                    cutoffEval.isPastCutoff
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  }`}>
+                    Próximo Despacho: {formatFriendlyDate(cutoffEval.minAvailableDateYMD)}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
+            <span className="text-[11px] text-slate-400">
+              ✓ Los formularios de clientes y el bot de WhatsApp respetarán automáticamente esta regla.
+            </span>
+
+            <button
+              type="submit"
+              className="py-2.5 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>Guardar Reglas de Despacho</span>
+            </button>
+          </div>
+        </form>
+
+        {cutoffSuccessMsg && (
+          <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn">
+            ✓ {cutoffSuccessMsg}
           </p>
         )}
       </div>

@@ -16,8 +16,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
-scripts/deploy_*.py
-scripts/test_*.py
+scripts/*.py
 __pycache__/
 *.pyc
 

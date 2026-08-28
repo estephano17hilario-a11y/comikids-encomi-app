@@ -346,6 +346,64 @@ export class CopilotService {
   }
 
   /**
+   * Calcula la fecha programada de despacho para un nuevo pedido respetando el corte horario del taller
+   */
+  private static async getCutoffShippingDate(): Promise<string> {
+    const now = new Date();
+    const peruOffset = -5 * 60;
+    const peruTime = new Date(now.getTime() + (peruOffset + now.getTimezoneOffset()) * 60000);
+
+    let cutoffTime = '18:00';
+    let activeDays = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+    let isSundayEnabled = false;
+
+    try {
+      const { data: configRow } = await supabaseAdmin
+        .from('taller_config')
+        .select('hora_corte_envio_hoy, dias_despacho_activos, despacho_domingo_habilitado')
+        .limit(1)
+        .maybeSingle();
+
+      if (configRow) {
+        if (configRow.hora_corte_envio_hoy) cutoffTime = configRow.hora_corte_envio_hoy;
+        if (Array.isArray(configRow.dias_despacho_activos) && configRow.dias_despacho_activos.length > 0) {
+          activeDays = configRow.dias_despacho_activos.map((d: string) => d.toLowerCase());
+        }
+        if (configRow.despacho_domingo_habilitado) isSundayEnabled = true;
+      }
+    } catch (e) {
+      console.warn('[COPILOT CUTOFF CONFIG FETCH WARN]', e);
+    }
+
+    if (isSundayEnabled && !activeDays.includes('domingo')) {
+      activeDays.push('domingo');
+    }
+
+    const dayNames = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+    const currentDayName = dayNames[peruTime.getDay()] || 'lunes';
+    const isDispatchDayToday = activeDays.includes(currentDayName);
+
+    const [cutoffHour, cutoffMin] = cutoffTime.split(':').map(n => parseInt(n || '0', 10));
+    const currentTotalMinutes = peruTime.getHours() * 60 + peruTime.getMinutes();
+    const cutoffTotalMinutes = cutoffHour * 60 + (cutoffMin || 0);
+    const isPastCutoff = currentTotalMinutes >= cutoffTotalMinutes;
+
+    let targetDate = new Date(peruTime.getTime());
+    if (!isDispatchDayToday || isPastCutoff) {
+      for (let i = 1; i <= 14; i++) {
+        const nextDate = new Date(peruTime.getTime() + i * 24 * 60 * 60 * 1000);
+        const nextDayName = dayNames[nextDate.getDay()];
+        if (activeDays.includes(nextDayName)) {
+          targetDate = nextDate;
+          break;
+        }
+      }
+    }
+
+    return targetDate.toISOString().slice(0, 10);
+  }
+
+  /**
    * Obtiene la vista completa de la base de datos de pedidos y estadísticas en tiempo real
    */
   private static async getCompleteDatabaseView(queryText: string): Promise<{
@@ -356,22 +414,51 @@ export class CopilotService {
     rawOrders: any[];
   }> {
     const todayStr = this.getTodayDateString();
-    const startOfTodayIso = `${todayStr}T00:00:00.000Z`;
 
-    // 1. Consultar todos los pedidos en vivo desde Supabase (hasta 60 registros) con JOIN a usuarios
+    // 1. Consultar todos los pedidos en vivo desde Supabase (hasta 100 registros)
     const { data: allOrders, count: totalOrdersCount } = await supabaseAdmin
       .from('pedidos')
-      .select('id, created_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario_id, usuario:usuarios(id, nombre_completo, dni, telefono_default)', { count: 'exact' })
+      .select('id, created_at, updated_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario_id, fecha_limite, metodo_envio_nombre', { count: 'exact' })
       .order('created_at', { ascending: false })
-      .limit(60);
+      .limit(100);
 
     const ordersList = allOrders || [];
 
-    // Calcular estadísticas en tiempo real
+    // 2. Extraer usuario_ids y consultar usuarios en lote
+    const userIds = Array.from(new Set(ordersList.map(o => o.usuario_id).filter(Boolean)));
+    const usersMap = new Map<string, any>();
+    if (userIds.length > 0) {
+      try {
+        const { data: usersData } = await supabaseAdmin
+          .from('usuarios')
+          .select('id, dni, nombre_completo, telefono_default, dni_default')
+          .in('id', userIds);
+        if (usersData) {
+          usersData.forEach((u: any) => usersMap.set(u.id, u));
+        }
+      } catch (uErr) {
+        console.warn('[COPILOT USERS FETCH WARN]', uErr);
+      }
+    }
+
+    // 3. Calcular estadísticas en tiempo real en zona horaria Perú
     const todayOrders = ordersList.filter(o => {
-      if (!o.created_at) return false;
-      const createdDateStr = new Date(o.created_at).toISOString().slice(0, 10);
-      return createdDateStr === todayStr || o.created_at >= startOfTodayIso;
+      let orderScheduledDate = '';
+      if (o.fecha_limite) {
+        orderScheduledDate = o.fecha_limite.split('T')[0];
+      }
+
+      let createdDatePeru = '';
+      if (o.created_at) {
+        const d = new Date(o.created_at);
+        const peruTime = new Date(d.getTime() + (-5 * 60 + d.getTimezoneOffset()) * 60000);
+        createdDatePeru = peruTime.toISOString().slice(0, 10);
+      }
+
+      const isScheduledToday = orderScheduledDate === todayStr;
+      const isCreatedToday = createdDatePeru === todayStr;
+
+      return isScheduledToday || isCreatedToday;
     });
 
     const pendingProd = ordersList.filter(o => o.estado_produccion === 'en_cola' || o.estado_produccion === 'bordando').length;
@@ -379,29 +466,55 @@ export class CopilotService {
     const completedDeliv = ordersList.filter(o => o.estado_envio === 'entregado').length;
 
     const statsSummary = `
-📊 ESTADÍSTICAS EN VIVO DEL SISTEMA COMIKIDS (${todayStr}):
+📊 ESTADÍSTICAS EN VIVO DEL SISTEMA COMIKIDS (Fecha Perú: ${todayStr}):
 - Total de pedidos/envíos en base de datos: ${totalOrdersCount || ordersList.length} pedidos
-- Pedidos registrados hoy (${todayStr}): ${todayOrders.length} pedidos
+- Pedidos registrados / programados para hoy (${todayStr}): ${todayOrders.length} pedidos
 - Pedidos en producción/bordado: ${pendingProd}
 - Pedidos en preparación / tránsito: ${pendingDeliv}
 - Pedidos entregados a Shalom / clientes: ${completedDeliv}`;
 
-    // 2. Formatear cada orden de manera clara con el nombre y DNI real
+    // 4. Formatear cada orden de manera clara con el nombre y DNI real
     const formattedOrders = ordersList.map((o) => {
-      const user = Array.isArray(o.usuario) ? o.usuario[0] : o.usuario;
-      const name = user?.nombre_completo || 'Cliente';
-      const dni = user?.dni || (o.destino_detalle?.match(/(?:DNI\/CE|DNI|CE)\s*Recojo:\s*([0-9A-Za-z]+)/i)?.[1]) || 'S/DNI';
+      const user = usersMap.get(o.usuario_id);
+      let name = user?.nombre_completo;
+      if (!name || name === 'Encomi Envíos' || name === 'ComiKids' || name.trim() === '') {
+        if (o.detalles_bordado && o.detalles_bordado.includes('Envío de Mercadería para ')) {
+          name = o.detalles_bordado.replace(/^Envío de Mercadería para\s+/i, '').trim();
+        } else if (o.detalles_bordado && o.detalles_bordado.includes('Venta directa a ')) {
+          name = o.detalles_bordado.replace(/^Venta directa a\s+/i, '').trim();
+        } else {
+          name = 'Cliente';
+        }
+      }
+
+      let dni = user?.dni || user?.dni_default;
+      if (!dni || dni.startsWith('usr-') || dni === '00000000') {
+        const matchDoc = String(o.destino_detalle || '').match(/(?:DNI\/CE|DNI|CE)\s*Recojo:\s*([0-9A-Za-z]+)/i);
+        dni = matchDoc ? matchDoc[1].trim() : (dni || 'S/DNI');
+      }
+
       const cel = user?.telefono_default || '';
       const dateLocal = o.created_at ? new Date(o.created_at).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : 'Reciente';
-      const isToday = o.created_at && (new Date(o.created_at).toISOString().slice(0, 10) === todayStr || o.created_at >= startOfTodayIso);
+      const fechaLimiteStr = o.fecha_limite ? o.fecha_limite.split('T')[0] : '';
 
-      return `[Orden #${o.codigo_seguimiento || o.id?.slice(0, 8)}] ${isToday ? '⭐ (REGISTRADO HOY)' : ''}
+      let createdDatePeru = '';
+      if (o.created_at) {
+        const d = new Date(o.created_at);
+        const peruTime = new Date(d.getTime() + (-5 * 60 + d.getTimezoneOffset()) * 60000);
+        createdDatePeru = peruTime.toISOString().slice(0, 10);
+      }
+
+      const isToday = createdDatePeru === todayStr || fechaLimiteStr === todayStr;
+
+      return `[Orden #${o.codigo_seguimiento || o.id?.slice(0, 8)}] ${isToday ? '⭐ (PARA HOY / REGISTRADO HOY)' : ''}
   • Cliente: ${name} (DNI: ${dni}${cel ? `, Cel: ${cel}` : ''})
   • Destino: ${o.destino_detalle || 'Agencia Shalom'}
+  • Fecha Programada Envío: ${fechaLimiteStr || 'Hoy'}
   • Estado Producción: ${o.estado_produccion || 'en_cola'} | Estado Envío: ${o.estado_envio || 'pendiente'}
-  • Prendas / Bordado: ${o.detalles_bordado || 'Bordado'}
+  • Tipo de Envío: ${o.metodo_envio_nombre || 'Agencia Shalom Nacional'}
+  • Prendas / Descripción: ${o.detalles_bordado || 'Bordado personalizado'}
   • Clave Recojo: ${o.shalom_clave_recojo || '0808'}
-  • Fecha y Hora: ${dateLocal}`;
+  • Registrado el: ${dateLocal}`;
     });
 
     return {
@@ -858,13 +971,38 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
       // -------------------------------------------------------------
       // PASO 8: EJECUCIÓN DE ACCIONES EN BASE DE DATOS O WHATSAPP
       // -------------------------------------------------------------
+      let parsedActionData: any = null;
       const jsonMatch =
         aiResponse.match(/```json\s*([\s\S]*?)\s*```/) ||
         aiResponse.match(/(\{[\s\S]*"action"\s*:\s*"(?:CREATE_ORDER|REGISTRAR_PEDIDO|UPDATE_ORDER|SEND_WHATSAPP_MESSAGE)"[\s\S]*\})/);
 
       if (jsonMatch) {
         try {
-          const actionData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+          parsedActionData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+        } catch (parseErr) {
+          console.warn('[COPILOT ACTION PARSE WARN]', parseErr);
+        }
+      }
+
+      // Fallback: Si la IA no devolvió JSON pero el mensaje contiene datos de registro (DNI + Teléfono + Intención/Destino)
+      if (!parsedActionData) {
+        const dniMatch = textTrimmed.match(/(?:DNI|doc|documento|ce)?\s*[:#]?\s*([0-9]{8,12})\b/i);
+        const phoneMatch = textTrimmed.match(/(?:cel|celular|telefono|tel|whatsapp|wa|ws)?\s*[:#]?\s*(?:51)?(9\d{8})\b/i);
+        const hasDest = textTrimmed.toLowerCase().includes('shalom') || textTrimmed.toLowerCase().includes('agencia') || textTrimmed.toLowerCase().includes('lima') || textTrimmed.toLowerCase().includes('motorizado') || textTrimmed.toLowerCase().includes('olva');
+        const hasRegisterIntent = textTrimmed.toLowerCase().includes('registra') || textTrimmed.toLowerCase().includes('envio') || textTrimmed.toLowerCase().includes('envío') || textTrimmed.toLowerCase().includes('paquete') || textTrimmed.toLowerCase().includes('pedido');
+
+        if (dniMatch && (phoneMatch || hasDest || hasRegisterIntent)) {
+          parsedActionData = {
+            action: 'CREATE_ORDER',
+            clienteDni: dniMatch[1],
+            clienteTelefono: phoneMatch ? phoneMatch[1] : '',
+          };
+        }
+      }
+
+      if (parsedActionData) {
+        try {
+          const actionData = parsedActionData;
 
           // =========================================================
           // ACCIÓN A: CREAR PEDIDO EN BASE DE DATOS (CON DESAMBIGUACIÓN SHALOM)
@@ -936,7 +1074,7 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
             }
 
             if (!clienteTelefono || clienteTelefono.length < 9) {
-              const phoneMatch = textTrimmed.match(/(?:cel|celular|telefono|tel|whatsapp|wa|ws)?\s*[:#]?\s*(9\d{8})\b/i);
+              const phoneMatch = textTrimmed.match(/(?:cel|celular|telefono|tel|whatsapp|wa|ws)?\s*[:#]?\s*(?:51)?(9\d{8})\b/i);
               if (phoneMatch && phoneMatch[1]) clienteTelefono = phoneMatch[1].trim();
             }
 
@@ -944,6 +1082,13 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               const nameMatch = textTrimmed.match(/(?:para|cliente|nombre)\s*[:#]?\s*([A-Za-záéíóúÁÉÍÓÚñÑ\s]{3,35}?)(?=\s+(?:DNI|doc|cel|telefono|tel|destino|con|de|\d))/i);
               if (nameMatch && nameMatch[1]) {
                 clienteNombre = nameMatch[1].trim();
+              }
+            }
+
+            if (!destino) {
+              const destMatch = textTrimmed.match(/(?:destino|agencia|para|enviar a|sede)\s*[:#]?\s*([A-Za-záéíóúÁÉÍÓÚñÑ0-9\s,.-]{3,45})/i);
+              if (destMatch && destMatch[1]) {
+                destino = destMatch[1].trim();
               }
             }
 
@@ -1034,7 +1179,7 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               }).eq('id', targetUserId);
             } else {
               targetUserId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
-              const { error: insUserErr } = await supabaseAdmin.from('usuarios').insert({
+              const { error: insUserErr } = await supabaseAdmin.from('usuarios').upsert({
                 id: targetUserId,
                 dni: clienteDni,
                 nombre_completo: clienteNombre.trim(),
@@ -1048,17 +1193,18 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
                 puntos_xp: 0,
                 nivel: 1,
                 created_at: new Date().toISOString(),
-              });
+              }, { onConflict: 'dni' });
 
               if (insUserErr) {
                 console.error('[USER INSERT ERROR]', insUserErr);
               }
             }
 
-            // 6. Generar Código de Seguimiento Único
+            // 6. Generar Código de Seguimiento Único y Fecha Programada con Corte Horario
             const randomCode = Math.floor(1000 + Math.random() * 9000);
             const trackingCode = `COM-2026-${randomCode}`;
             const orderId = `ped-${Date.now()}`;
+            const targetFechaLimite = await this.getCutoffShippingDate();
 
             // 7. Insertar Pedido en Supabase vinculado al usuario
             const { error: orderErr } = await supabaseAdmin.from('pedidos').insert({
@@ -1071,6 +1217,7 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               destino_detalle: resolvedDestination,
               estado_produccion: 'en_cola',
               estado_envio: 'pendiente',
+              fecha_limite: targetFechaLimite,
               shalom_clave_recojo: isMotorizado ? null : '0808',
               observaciones_cliente: referencia ? `Ref: ${referencia}` : null,
               created_at: new Date().toISOString(),
@@ -1089,11 +1236,12 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
               clienteDni,
               destino: resolvedDestination,
               metodoEnvio: metodoEnvioNombre,
+              fechaLimite: targetFechaLimite,
             });
 
             // 9. Emitir Comprobante Oficial Idéntico al de la Web Encomi / Comikids
             const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
-            const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* ${metodoEnvioNombre}\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
+            const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* ${metodoEnvioNombre}\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
 
             await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, receiptMsg);
             return receiptMsg;

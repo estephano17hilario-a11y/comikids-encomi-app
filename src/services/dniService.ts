@@ -47,7 +47,12 @@ export class DniService {
 
     try {
       const startTime = performance.now();
-      const response = await fetch(`${getApiBaseUrl()}/api/dni/${cleanDni}`, {
+      const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+      const url = baseUrl.endsWith('/api')
+        ? `${baseUrl}/dni/${cleanDni}`
+        : `${baseUrl}/api/dni/${cleanDni}`;
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

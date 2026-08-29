@@ -8,6 +8,7 @@ import { OlvaAgenciesMap } from '../client/OlvaAgenciesMap';
 import { DEPARTAMENTOS_PERU } from '../../data/shalomAgencies';
 import { DEPARTAMENTOS_OLVA } from '../../data/olvaAgencies';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
+import { DniService } from '../../services/dniService';
 import {
   X,
   Save,
@@ -27,7 +28,8 @@ import {
   AlertCircle,
   Truck,
   Edit3,
-  Building2
+  Building2,
+  Loader2
 } from 'lucide-react';
 
 
@@ -85,6 +87,32 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   const [nombreCliente, setNombreCliente] = useState(initialClientName);
   const [telefonoCliente, setTelefonoCliente] = useState(pedido.usuario?.telefono_default || '');
   const [dniCliente, setDniCliente] = useState(pedido.usuario?.dni || '');
+  const [isResolvingDni, setIsResolvingDni] = useState(false);
+  const [dniSource, setDniSource] = useState<string | null>(null);
+
+  const handleDniInputChange = async (val: string) => {
+    const clean = val.replace(/\D/g, '').slice(0, 12);
+    setDniCliente(clean);
+    if (!dniRecojoShalom) handleShalomDniChange(clean);
+    if (!olvaDni) setOlvaDni(clean);
+
+    if (clean.length === 8) {
+      setIsResolvingDni(true);
+      try {
+        const res = await DniService.lookupByDni(clean);
+        if (res.success && res.data?.nombreCompleto) {
+          setNombreCliente(res.data.nombreCompleto);
+          setDniSource(res.source || 'sunat_padron_local');
+        }
+      } catch (err) {
+        console.warn('[DNI LOOKUP WARN]', err);
+      } finally {
+        setIsResolvingDni(false);
+      }
+    } else {
+      setDniSource(null);
+    }
+  };
 
   // Detección inicial del método / courier
   const detectInitialCourier = (): 'shalom' | 'olva' | 'motorizado' | 'otro' => {
@@ -391,17 +419,31 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
           {/* Datos del Cliente */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-1">
-              <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-cyan-400" />
-                Nombre Clienta *
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-cyan-400" />
+                  Nombre Clienta *
+                </label>
+                {isResolvingDni && (
+                  <span className="text-[10px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Buscando...
+                  </span>
+                )}
+                {dniSource && !isResolvingDni && (
+                  <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
+                    ✨ SUNAT
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 required
                 value={nombreCliente}
                 onChange={e => setNombreCliente(e.target.value)}
                 placeholder="Ej. María Pérez"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 font-bold"
+                className={`w-full px-3 py-2 bg-slate-950 border rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 font-bold transition-colors ${
+                  dniSource ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800'
+                }`}
               />
             </div>
 
@@ -423,18 +465,21 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <CreditCard className="w-3.5 h-3.5 text-pink-400" />
-                DNI / Documento *
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-pink-400" />
+                  DNI / Documento *
+                </label>
+                {isResolvingDni && (
+                  <span className="text-[10px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 value={dniCliente}
-                onChange={e => {
-                  setDniCliente(e.target.value);
-                  if (!dniRecojoShalom) handleShalomDniChange(e.target.value);
-                  if (!olvaDni) setOlvaDni(e.target.value);
-                }}
+                onChange={e => handleDniInputChange(e.target.value)}
                 placeholder="Ej. 71234567"
                 className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 font-mono"
               />

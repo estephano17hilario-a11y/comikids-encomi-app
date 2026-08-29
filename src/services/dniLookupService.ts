@@ -6,6 +6,8 @@
  * NUNCA llama directamente a los portales estatales (evita CORS).
  */
 
+import { DniService } from './dniService';
+
 export interface DniLookupResult {
   success: boolean;
   nombreCompleto?: string;
@@ -13,67 +15,34 @@ export interface DniLookupResult {
   error?: string;
 }
 
-const LOOKUP_TIMEOUT_MS = 3500;
-
 /**
- * Detecta si estamos en producción (Vercel), desarrollo local (Vite) o Capacitor móvil.
- * El endpoint siempre es relativo para que funcione en cualquier entorno.
- */
-function getApiBase(): string {
-  if (typeof window !== 'undefined' && window.location) {
-    const origin = window.location.origin;
-    // Capacitor app (file://) → usar la URL de producción Vercel
-    if (origin.startsWith('file://') || origin === 'capacitor://localhost') {
-      return import.meta.env.VITE_API_BASE_URL || 'https://incomi-app.vercel.app';
-    }
-    return origin;
-  }
-  return '';
-}
-
-/**
- * Consulta el nombre completo de un DNI peruano.
+ * Consulta el nombre completo de un DNI peruano mediante el microservicio de SUNAT (<1ms).
  *
  * @param dni - 8 dígitos numéricos
  * @returns DniLookupResult con nombreCompleto si se encontró
- *
- * @example
- * const result = await lookupDni('74561234');
- * if (result.success) {
- *   console.log(result.nombreCompleto); // "GARCIA PEREZ JUAN"
- *   console.log(result.fuente);         // "cache" | "sunat" | "sis" ...
- * }
  */
 export async function lookupDni(dni: string): Promise<DniLookupResult> {
-  // Validación defensiva en cliente
-  if (!dni || !/^\d{8}$/.test(dni.trim())) {
+  const cleanDni = String(dni || '').replace(/\D/g, '').trim();
+  if (cleanDni.length !== 8) {
     return { success: false, error: 'DNI inválido' };
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), LOOKUP_TIMEOUT_MS);
-
   try {
-    const base = getApiBase();
-    const res = await fetch(`${base}/api/dni/${dni.trim()}`, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    const data = await res.json();
-    return data as DniLookupResult;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err?.name === 'AbortError') {
+    const res = await DniService.lookupByDni(cleanDni);
+    if (res.success && res.data?.nombreCompleto) {
       return {
-        success: false,
-        fuente: 'timeout',
-        error: 'Tiempo de espera agotado. Puedes ingresar tu nombre manualmente.',
+        success: true,
+        nombreCompleto: res.data.nombreCompleto,
+        fuente: 'sunat',
       };
     }
+
+    return {
+      success: false,
+      fuente: 'none',
+      error: res.message || 'DNI no encontrado',
+    };
+  } catch (err: any) {
     return {
       success: false,
       error: 'No se pudo conectar con el servidor de consulta.',

@@ -24,6 +24,7 @@ import {
 } from '../../services/whatsappService';
 
 import { OrderSuccessAnimation } from './OrderSuccessAnimation';
+import { DniService } from '../../services/dniService';
 import {
   Package,
   Truck,
@@ -44,7 +45,8 @@ import {
   FileCheck2,
   RotateCcw,
   Maximize2,
-  Calendar
+  Calendar,
+  Loader2
 } from 'lucide-react';
 
 
@@ -131,6 +133,36 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [dniShalom, setDniShalom] = useState<string>(() => {
     return currentUser?.dni_default || localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
   });
+
+  const [isResolvingDni, setIsResolvingDni] = useState(false);
+  const [dniSource, setDniSource] = useState<'sunat_padron_local' | 'database_history' | 'cache' | null>(null);
+  const lastResolvedDniRef = React.useRef<string>('');
+
+  const handleDniChange = async (val: string) => {
+    const rawVal = val.replace(/\D/g, '').slice(0, 12);
+    setDniShalom(rawVal);
+
+    if (rawVal.length === 8) {
+      if (lastResolvedDniRef.current === rawVal) return;
+      setIsResolvingDni(true);
+      try {
+        const res = await DniService.lookupByDni(rawVal);
+        if (res.success && res.data?.nombreCompleto) {
+          setNombreCompleto(res.data.nombreCompleto);
+          setDniSource(res.source || 'sunat_padron_local');
+          lastResolvedDniRef.current = rawVal;
+        } else {
+          setDniSource(null);
+        }
+      } catch (err) {
+        console.warn('[DNI LOOKUP ERROR]', err);
+      } finally {
+        setIsResolvingDni(false);
+      }
+    } else {
+      setDniSource(null);
+    }
+  };
 
   const [correoCliente, setCorreoCliente] = useState<string>(() => {
     return currentUser?.email_default || currentUser?.email || localStorage.getItem('incomi_saved_email') || '';
@@ -1414,14 +1446,26 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
                   {/* DNI o CE con Emoji */}
                   <div className="space-y-2">
-                    <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                      🪪 DNI o Carnet de Extranjería (CE) de quien recibirá *
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                        🪪 DNI o Carnet de Extranjería (CE) de quien recibirá *
+                      </label>
+                      {isResolvingDni && (
+                        <span className="text-[11px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando en SUNAT...
+                        </span>
+                      )}
+                      {dniSource && !isResolvingDni && (
+                        <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                          ✨ {dniSource === 'sunat_padron_local' ? 'SUNAT Oficial' : 'Verificado'}
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       required
                       value={dniShalom}
-                      onChange={e => setDniShalom(e.target.value)}
+                      onChange={e => handleDniChange(e.target.value)}
                       placeholder="Número de DNI o Carnet de Extranjería"
                       className="w-full px-5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
                     />
@@ -1898,14 +1942,26 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {/* DNI (cliente) */}
                       <div className="space-y-1.5">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                          🪪 DNI o CE (Cliente) *
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                            🪪 DNI o CE (Cliente) *
+                          </label>
+                          {isResolvingDni && (
+                            <span className="text-[10px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">
+                              <Loader2 className="w-3 h-3 animate-spin" /> SUNAT...
+                            </span>
+                          )}
+                          {dniSource && !isResolvingDni && (
+                            <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                              ✨ {dniSource === 'sunat_padron_local' ? 'SUNAT Oficial' : 'Verificado'}
+                            </span>
+                          )}
+                        </div>
                         <input
                           type="text"
                           required
                           value={dniShalom}
-                          onChange={e => setDniShalom(e.target.value)}
+                          onChange={e => handleDniChange(e.target.value)}
                           placeholder="Ej. 72345678"
                           className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                         />
@@ -1967,9 +2023,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               {(selectedMethod?.tipo_formulario !== 'mapa_direccion' || motorizadoSubStep === 'form') && (
                 <>
                   <div className="space-y-2 pt-2 border-t border-white/8">
-                    <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                      👤 Nombres y Apellidos (Destinatario) *
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                        👤 Nombres y Apellidos (Destinatario) *
+                      </label>
+                      {isResolvingDni && (
+                        <span className="text-[11px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Autocompletando...
+                        </span>
+                      )}
+                      {dniSource && !isResolvingDni && (
+                        <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                          ✨ Nombre Legal SUNAT
+                        </span>
+                      )}
+                    </div>
                     <div className="relative flex items-center">
                       <input
                         type="text"
@@ -1977,9 +2045,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         value={nombreCompleto}
                         onChange={e => setNombreCompleto(e.target.value)}
                         placeholder="Ej. Carlos Mendoza Ramos"
-                        className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner"
+                        className={`w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 rounded-2xl text-base sm:text-lg font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner transition-colors ${
+                          dniSource ? 'border-emerald-500/40 bg-emerald-950/10' : 'border-white/15'
+                        }`}
                       />
-                      <User className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+                      <User className={`w-5 h-5 absolute left-4 pointer-events-none ${dniSource ? 'text-emerald-400' : 'text-cyan-400'}`} />
                     </div>
                   </div>
 

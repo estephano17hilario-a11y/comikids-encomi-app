@@ -1479,7 +1479,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         
                         {/* Panel Flotante de Resultados: Solo aparece cuando isAgencyListOpen es TRUE */}
                         {isAgencyListOpen && (
-                          <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[34vh] sm:max-h-[38vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
+                          <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[39vh] sm:max-h-[43vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
                             {shalomAgenciesList.length === 0 ? (
                               <p className="text-center text-xs text-slate-400 py-6">
                                 No se encontraron agencias con &quot;{agencySearchQuery}&quot;
@@ -1955,7 +1955,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           
                           {/* Panel Flotante de Resultados: Solo aparece cuando isOlvaAgencyListOpen es TRUE */}
                           {isOlvaAgencyListOpen && (
-                            <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[34vh] sm:max-h-[38vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
+                            <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[39vh] sm:max-h-[43vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
                               {olvaAgenciesList.length === 0 ? (
                                 <p className="text-center text-xs text-slate-400 py-6">
                                   No se encontraron agencias Olva con &quot;{olvaAgencySearchQuery}&quot;

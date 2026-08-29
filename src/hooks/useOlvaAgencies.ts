@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { OlvaAgency } from '../types/database.types';
 import { OLVA_AGENCIES } from '../data/olvaAgencies';
+import { searchAndRankAgencies, normalizeSearchText } from '../utils/agencySearch';
 
 export interface UseOlvaAgenciesOptions {
   autoFetchNearby?: boolean;
@@ -116,14 +117,6 @@ export function calculateDistanceMeters(lat1: number, lon1: number, lat2: number
 
   return R * c;
 }
-
-const normalizeSearchText = (str: string | number | null | undefined): string => {
-  return String(str || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-};
 
 /**
  * Hook personalizado para la gestión, mapa interactivo y geolocalización inteligente de Agencias Olva Courier
@@ -378,29 +371,9 @@ export function useOlvaAgencies(options: UseOlvaAgenciesOptions = {}) {
       result = result.filter(a => normalizeSearchText(a.departamento || a.department) === normDep);
     }
 
-    // 2. Filtro por Query de Búsqueda
+    // 2. Filtro por Query de Búsqueda inteligente
     if (searchQuery.trim()) {
-      const terms = normalizeSearchText(searchQuery).split(/\s+/).filter(Boolean);
-      result = result.filter(a => {
-        const fullSearchTarget = [
-          a.nombre,
-          a.name,
-          a.full_name,
-          a.direccion,
-          a.address,
-          a.distrito,
-          a.district,
-          a.provincia,
-          a.province,
-          a.departamento,
-          a.department,
-          a.code,
-          a.ubigeo,
-          a.tipo
-        ].map(normalizeSearchText).join(' ');
-
-        return terms.every(term => fullSearchTarget.includes(term));
-      });
+      result = searchAndRankAgencies(result, searchQuery);
     }
 
     // 3. Top 5 más cercanos

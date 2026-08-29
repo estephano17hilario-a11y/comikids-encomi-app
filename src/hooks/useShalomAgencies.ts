@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { ShalomAgency } from '../types/database.types';
 import { SHALOM_AGENCIES } from '../data/shalomAgencies';
+import { searchAndRankAgencies, normalizeSearchText } from '../utils/agencySearch';
 
 export interface UseShalomAgenciesOptions {
   autoFetchNearby?: boolean;
@@ -113,14 +114,6 @@ export function calculateDistanceMeters(lat1: number, lon1: number, lat2: number
 
   return R * c;
 }
-
-const normalizeSearchText = (str: string | number | null | undefined): string => {
-  return String(str || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-};
 
 /**
  * Hook personalizado para la gestión, mapa interactivo y geolocalización inteligente de Agencias Shalom
@@ -368,7 +361,7 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
   }, [allAgencies, agencies]);
 
   /**
-   * Filtrar por texto, departamento o modo "Top 5 más cercanas"
+   * Filtrar por texto inteligente, departamento o modo "Top 5 más cercanas"
    */
   const filteredAgencies = useMemo(() => {
     let source = allAgencies.length > 0 ? allAgencies : (agencies.length > 0 ? agencies : SHALOM_AGENCIES);
@@ -379,28 +372,8 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
         .slice(0, 5);
     }
 
-    const q = normalizeSearchText(searchQuery);
-
-    if (q) {
-      return source.filter((a) => {
-        const fullStr = normalizeSearchText(a.full_display_name || formatFullAgencyName(a));
-        const dep = normalizeSearchText(a.departamento || a.department);
-        const prov = normalizeSearchText(a.provincia || a.province);
-        const dist = normalizeSearchText(a.distrito || a.district);
-        const nom = normalizeSearchText(a.nombre);
-        const dir = normalizeSearchText(a.direccion);
-        const ubi = normalizeSearchText(a.ubigeo);
-
-        return (
-          fullStr.includes(q) ||
-          dep.includes(q) ||
-          prov.includes(q) ||
-          dist.includes(q) ||
-          nom.includes(q) ||
-          dir.includes(q) ||
-          ubi.includes(q)
-        );
-      });
+    if (searchQuery.trim()) {
+      return searchAndRankAgencies(source, searchQuery);
     } else if (selectedDepartment && selectedDepartment !== 'TODOS') {
       const depTarget = normalizeSearchText(selectedDepartment);
       return source.filter(

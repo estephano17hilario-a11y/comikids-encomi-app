@@ -55,7 +55,7 @@ interface Props {
 }
 
 /**
- * Componente que resalta las letras coincidentes con la búsqueda (sin subrayado)
+ * Componente que resalta las palabras o tokens coincidentes con la búsqueda
  */
 const HighlightMatch: React.FC<{ text: string; query: string; className?: string }> = ({
   text,
@@ -66,9 +66,11 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
     return <span className={className}>{text}</span>;
   }
 
-  const q = query.trim();
+  const tokens = query.trim().split(/\s+/).filter(t => t.length > 0);
+  if (tokens.length === 0) return <span className={className}>{text}</span>;
+
   try {
-    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
     const regex = new RegExp(`(${escaped})`, 'gi');
     const parts = text.split(regex);
 
@@ -78,7 +80,7 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
           regex.test(part) ? (
             <span
               key={idx}
-              className="font-bold text-cyan-300 bg-cyan-400/20 px-1 py-0.5 rounded"
+              className="font-black text-cyan-300 bg-cyan-400/25 px-1 py-0.5 rounded shadow-xs"
             >
               {part}
             </span>
@@ -1262,34 +1264,34 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               {selectedMethod?.tipo_formulario === 'shalom' && (
                 <div className="space-y-3.5">
                   
-                  {/* Botones Compactos de Acción Superior */}
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* Botones de Acción Superior */}
+                  <div className="grid grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={handleQuickNearest5}
                       disabled={isLocating}
-                      className="py-2 px-3 rounded-xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2 group cursor-pointer shadow-xs"
+                      className="py-2.5 sm:py-3 px-3 rounded-2xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
-                        <Navigation className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
+                      <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
+                        <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
                       </div>
                       <div className="min-w-0">
-                        <span className="block text-[9px] text-slate-400 leading-none">GPS</span>
-                        <span className="block text-xs font-bold text-white leading-tight truncate">Sedes Cercanas</span>
+                        <span className="block text-[10px] text-slate-400 leading-tight">GPS</span>
+                        <span className="block text-xs sm:text-sm font-bold text-white leading-tight truncate">Sedes Cercanas</span>
                       </div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setShowMapModal(true)}
-                      className="py-2 px-3 rounded-xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2 group cursor-pointer shadow-xs"
+                      className="py-2.5 sm:py-3 px-3 rounded-2xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
-                        <MapPin className="w-3.5 h-3.5" />
+                      <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
+                        <MapPin className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <span className="block text-[9px] text-slate-400 leading-none">Visual</span>
-                        <span className="block text-xs font-bold text-white leading-tight truncate">Ver en Mapa</span>
+                        <span className="block text-[10px] text-slate-400 leading-tight">Visual</span>
+                        <span className="block text-xs sm:text-sm font-bold text-white leading-tight truncate">Ver en Mapa</span>
                       </div>
                     </button>
                   </div>
@@ -1366,35 +1368,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </div>
                     )}
 
-                    {/* Buscador & Lista Compacta */}
+                    {/* Buscador & Lista Flotante de Agencias (Aparece ARRIBA del buscador sobreponiéndose) */}
                     {(isAgencyListOpen || !selectedAgencyObject) && (
-                      <div className="space-y-2.5 animate-fadeIn">
+                      <div className="relative space-y-2 animate-fadeIn z-40">
                         
-                        <div className="relative flex items-center">
-                          <input
-                            type="text"
-                            autoFocus
-                            value={agencySearchQuery}
-                            onChange={e => {
-                              setAgencySearchQuery(e.target.value);
-                              if (showOnlyNearest5) setShowOnlyNearest5(false);
-                            }}
-                            placeholder="Buscar por distrito o provincia (ej. Gamarra, San Isidro, Trujillo)..."
-                            className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all font-medium"
-                          />
-                          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
-                          {agencySearchQuery && (
-                            <button
-                              type="button"
-                              onClick={() => setAgencySearchQuery('')}
-                              className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="max-h-90 overflow-y-auto space-y-2 p-2 rounded-2xl bg-slate-950/90 border border-white/10 shadow-2xl">
+                        {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador */}
+                        <div className="absolute bottom-full mb-2 left-0 right-0 z-50 max-h-72 sm:max-h-80 overflow-y-auto space-y-1.5 p-2 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-500/40 shadow-2xl animate-fadeIn">
                           {shalomAgenciesList.length === 0 ? (
                             <p className="text-center text-xs text-slate-400 py-6">
                               No se encontraron agencias con &quot;{agencySearchQuery}&quot;
@@ -1418,9 +1397,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                     if (ag.departamento) setDepartamentoShalom(ag.departamento);
                                     setIsAgencyListOpen(false);
                                   }}
-                                  className={`w-full text-left p-3.5 rounded-xl transition-all flex flex-col gap-1.5 cursor-pointer ${
+                                  className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
                                     isSelected
-                                      ? 'bg-cyan-500/20 border border-cyan-500/50 text-white shadow-md'
+                                      ? 'bg-cyan-500/25 border border-cyan-500/60 text-white shadow-md'
                                       : 'bg-white/4 hover:bg-white/8 border border-white/8 text-slate-300'
                                   }`}
                                 >
@@ -1443,20 +1422,47 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               );
                             })
                           )}
+
+                          {selectedAgencyObject && (
+                            <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/90 py-1 backdrop-blur-sm rounded-b-xl">
+                              <button
+                                type="button"
+                                onClick={() => setIsAgencyListOpen(false)}
+                                className="px-4 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold border border-cyan-500/40 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Cerrar lista de agencias</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
 
-                        {selectedAgencyObject && (
-                          <div className="pt-1 flex justify-center">
+                        {/* Input del Buscador */}
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={agencySearchQuery}
+                            onFocus={() => setIsAgencyListOpen(true)}
+                            onChange={e => {
+                              setAgencySearchQuery(e.target.value);
+                              if (!isAgencyListOpen) setIsAgencyListOpen(true);
+                              if (showOnlyNearest5) setShowOnlyNearest5(false);
+                            }}
+                            placeholder="Buscar por distrito o provincia (ej. Pangoa co, Gamarra, Trujillo)..."
+                            className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all font-medium"
+                          />
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                          {agencySearchQuery && (
                             <button
                               type="button"
-                              onClick={() => setIsAgencyListOpen(false)}
-                              className="px-5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-xs font-bold border border-cyan-500/30 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                              onClick={() => setAgencySearchQuery('')}
+                              className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
                             >
                               <X className="w-3.5 h-3.5" />
-                              <span>Cerrar lista de agencias</span>
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1720,9 +1726,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         <button
                           type="button"
                           onClick={() => setShowOlvaMapModal(true)}
-                          className="w-full py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-bold border border-amber-500/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98"
+                          className="w-full py-2.5 sm:py-3 px-3.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs sm:text-sm font-bold border border-amber-500/40 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98"
                         >
-                          <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                          <MapPin className="w-4 h-4 text-amber-400" />
                           <span>🗺️ Ver Mapa de Agencias Olva</span>
                         </button>
 
@@ -1733,9 +1739,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             setIsOlvaAgencyListOpen(true);
                           }}
                           disabled={isLocatingOlva}
-                          className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold border border-amber-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98"
+                          className="w-full py-2.5 sm:py-3 px-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs sm:text-sm font-bold border border-amber-500/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
                         >
-                          <Navigation className={`w-3.5 h-3.5 text-amber-400 ${isLocatingOlva ? 'animate-spin' : ''}`} />
+                          <Navigation className={`w-4 h-4 text-amber-400 ${isLocatingOlva ? 'animate-spin' : ''}`} />
                           <span>{isLocatingOlva ? 'Localizando...' : '📍 5 Sedes Más Cercanas a Mí'}</span>
                         </button>
                       </div>
@@ -1817,33 +1823,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </div>
                       )}
 
-                      {/* Buscador & Lista de Agencias Olva */}
+                      {/* Buscador & Lista Flotante de Agencias Olva (Se posiciona ARRIBA del buscador sobreponiéndose) */}
                       {(isOlvaAgencyListOpen || !selectedOlvaAgencyObject) && (
-                        <div className="space-y-2.5 animate-fadeIn">
-                          <div className="relative flex items-center">
-                            <input
-                              type="text"
-                              value={olvaAgencySearchQuery}
-                              onChange={e => {
-                                setOlvaAgencySearchQuery(e.target.value);
-                                if (showOnlyNearest5Olva) setShowOnlyNearest5Olva(false);
-                              }}
-                              placeholder="Buscar sede Olva por distrito, calle o nombre (ej. Miraflores, Cusco, Huancayo)..."
-                              className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all font-medium"
-                            />
-                            <Search className="w-4 h-4 text-amber-400 absolute left-3.5 pointer-events-none" />
-                            {olvaAgencySearchQuery && (
-                              <button
-                                type="button"
-                                onClick={() => setOlvaAgencySearchQuery('')}
-                                className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-
-                          <div className="max-h-90 overflow-y-auto space-y-2 p-2 rounded-2xl bg-slate-950/90 border border-amber-500/20 shadow-2xl">
+                        <div className="relative space-y-2 animate-fadeIn z-40">
+                          
+                          {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador */}
+                          <div className="absolute bottom-full mb-2 left-0 right-0 z-50 max-h-72 sm:max-h-80 overflow-y-auto space-y-1.5 p-2 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-500/40 shadow-2xl animate-fadeIn">
                             {olvaAgenciesList.length === 0 ? (
                               <p className="text-center text-xs text-slate-400 py-6">
                                 No se encontraron agencias Olva con &quot;{olvaAgencySearchQuery}&quot;
@@ -1868,7 +1853,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                       if (ag.departamento) setDepartamentoOlva(ag.departamento);
                                       setIsOlvaAgencyListOpen(false);
                                     }}
-                                    className={`w-full text-left p-3.5 rounded-xl transition-all flex flex-col gap-1.5 cursor-pointer ${
+                                    className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
                                       isSelected
                                         ? 'bg-amber-500/25 border border-amber-500/60 text-white shadow-md'
                                         : 'bg-white/4 hover:bg-white/8 border border-white/8 text-slate-300'
@@ -1900,20 +1885,46 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                 );
                               })
                             )}
+
+                            {selectedOlvaAgencyObject && (
+                              <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/90 py-1 backdrop-blur-sm rounded-b-xl">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsOlvaAgencyListOpen(false)}
+                                  className="px-4 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/40 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Cerrar lista de agencias</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
 
-                          {selectedOlvaAgencyObject && (
-                            <div className="pt-1 flex justify-center">
+                          {/* Input del Buscador Olva */}
+                          <div className="relative flex items-center">
+                            <input
+                              type="text"
+                              value={olvaAgencySearchQuery}
+                              onFocus={() => setIsOlvaAgencyListOpen(true)}
+                              onChange={e => {
+                                setOlvaAgencySearchQuery(e.target.value);
+                                if (!isOlvaAgencyListOpen) setIsOlvaAgencyListOpen(true);
+                                if (showOnlyNearest5Olva) setShowOnlyNearest5Olva(false);
+                              }}
+                              placeholder="Buscar sede Olva por distrito, calle o nombre (ej. Pangoa, Miraflores, Cusco)..."
+                              className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all font-medium"
+                            />
+                            <Search className="w-4 h-4 text-amber-400 absolute left-3.5 pointer-events-none" />
+                            {olvaAgencySearchQuery && (
                               <button
                                 type="button"
-                                onClick={() => setIsOlvaAgencyListOpen(false)}
-                                className="px-5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold border border-amber-500/30 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                                onClick={() => setOlvaAgencySearchQuery('')}
+                                className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
                               >
                                 <X className="w-3.5 h-3.5" />
-                                <span>Cerrar lista de agencias</span>
                               </button>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

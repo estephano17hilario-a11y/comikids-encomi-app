@@ -82,8 +82,8 @@ export const ClientPortal: React.FC = () => {
         </header>
       )}
 
-      {/* Main Container con Espacios Optimizados */}
-      <main className="relative z-20 flex-1 w-full max-w-4xl mx-auto px-3 sm:px-6 py-2 sm:py-3 pb-20 sm:pb-10 space-y-3.5">
+      {/* Main Container con Espacios Optimizados y holgura superior */}
+      <main className="relative z-20 flex-1 w-full max-w-4xl mx-auto px-3 sm:px-6 pt-5 sm:pt-7 pb-28 sm:pb-16 space-y-4">
         
         {/* Desktop Section Switcher Tabs */}
         {currentUser && (

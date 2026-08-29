@@ -568,7 +568,7 @@ export const EncomiFunnelLanding: React.FC = () => {
             </h3>
 
             <p className="text-xs sm:text-base text-white/90 leading-relaxed font-medium">
-              Contáctanos directamente para agendar una demostración personalizada o activar Encomi en tu taller.
+              Contáctanos directamente para agendar una demostración personalizada o activar Encomi en tu Negocio.
             </p>
 
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -582,7 +582,7 @@ export const EncomiFunnelLanding: React.FC = () => {
             </div>
 
             <p className="text-[11px] text-white/75 pt-2">
-              ⚡ Respuesta inmediata • Atención personalizada para marcas textiles y talleres
+              ⚡ Respuesta inmediata • Atención personalizada para marcas textiles y negocios
             </p>
           </div>
         </section>
@@ -591,7 +591,7 @@ export const EncomiFunnelLanding: React.FC = () => {
 
       {/* Footer */}
       <footer className="mt-20 border-t border-white/10 py-8 text-center text-xs text-slate-500">
-        <p>© 2026 Encomi Envíos OS • Potenciando la Logística y Talleres de Confección del Perú 🇵🇪</p>
+        <p>© 2026 Encomi Envíos OS • Potenciando la Logística y Negocios del Perú 🇵🇪</p>
       </footer>
 
       {/* Botón Flotante Permanente de WhatsApp */}

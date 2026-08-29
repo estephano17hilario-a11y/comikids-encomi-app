@@ -48,6 +48,41 @@ function isFuzzyMatch(s1: string, s2: string): boolean {
  * - Tolerancia de errores tipográficos (fuzzy match con distancia de Levenshtein <= 1)
  * - Puntuación de relevancia (score) y ordenamiento prioritario de resultados
  */
+const normalizedAgencyCache = new WeakMap<object, {
+  dist: string;
+  nom: string;
+  code: string;
+  prov: string;
+  dep: string;
+  dir: string;
+  full: string;
+  words: string[];
+}>();
+
+function getCachedNormalized(a: any) {
+  let cached = normalizedAgencyCache.get(a);
+  if (!cached) {
+    const dep = normalizeSearchText(a.departamento || a.department);
+    const prov = normalizeSearchText(a.provincia || a.province);
+    const dist = normalizeSearchText(a.distrito || a.district);
+    const nom = normalizeSearchText(a.nombre || a.name);
+    const dir = normalizeSearchText(a.direccion || a.address);
+    const code = normalizeSearchText(a.code || a.codigo);
+    const full = `${dep} ${prov} ${dist} ${nom} ${dir} ${code}`;
+    const words = full.split(/\s+/).filter(Boolean);
+    cached = { dist, nom, code, prov, dep, dir, full, words };
+    normalizedAgencyCache.set(a, cached);
+  }
+  return cached;
+}
+
+/**
+ * Motor de búsqueda inteligente de agencias (Shalom y Olva) con caché de alto rendimiento:
+ * - Soporta orden inverso de palabras ("co pangoa" -> "pangoa co", "san isidro lima")
+ * - Búsqueda por tokens múltiples e independientes
+ * - Tolerancia de errores tipográficos (fuzzy match rápido)
+ * - Puntuación de relevancia (score) y ordenamiento prioritario
+ */
 export function searchAndRankAgencies<T extends ShalomAgency | OlvaAgency>(
   agenciesList: T[],
   query: string
@@ -59,82 +94,58 @@ export function searchAndRankAgencies<T extends ShalomAgency | OlvaAgency>(
   const rawTokens = normalizeSearchText(query).split(/\s+/).filter(t => t.length > 0);
   if (rawTokens.length === 0) return agenciesList;
 
+  const cleanQ = normalizeSearchText(query);
   const scoredList: { agency: T; score: number }[] = [];
 
-  for (const a of agenciesList) {
-    const dep = normalizeSearchText(a.departamento || (a as any).department);
-    const prov = normalizeSearchText(a.provincia || (a as any).province);
-    const dist = normalizeSearchText(a.distrito || (a as any).district);
-    const nom = normalizeSearchText(a.nombre || (a as any).name);
-    const dir = normalizeSearchText(a.direccion || (a as any).address);
-    const code = normalizeSearchText((a as any).code || (a as any).codigo);
-    const ubi = normalizeSearchText(a.ubigeo);
-    const full = normalizeSearchText((a as any).full_display_name || (a as any).full_name || `${dep} ${prov} ${dist} ${nom} ${dir}`);
-
-    const primaryFields = [dist, nom, code];
-    const secondaryFields = [prov, dep];
-    const tertiaryFields = [dir, ubi, full];
+  for (let idx = 0; idx < agenciesList.length; idx++) {
+    const a = agenciesList[idx];
+    const { dist, nom, code, prov, dep, dir, full, words } = getCachedNormalized(a);
 
     let matchesAllTokens = true;
     let score = 0;
 
-    for (const token of rawTokens) {
+    for (let tIdx = 0; tIdx < rawTokens.length; tIdx++) {
+      const token = rawTokens[tIdx];
       let tokenMatched = false;
 
-      // 1. Coincidencia exacta o de prefijo en Distrito, Nombre o Código
-      for (const field of primaryFields) {
-        if (!field) continue;
-        if (field === token) {
-          score += 150;
-          tokenMatched = true;
-          break;
-        } else if (field.startsWith(token) || field.includes(` ${token}`)) {
-          score += 100;
-          tokenMatched = true;
-          break;
-        } else if (field.includes(token)) {
-          score += 60;
-          tokenMatched = true;
-          break;
-        }
+      // 1. Coincidencia directa en Distrito, Nombre o Código
+      if (dist === token || nom === token || code === token) {
+        score += 150;
+        tokenMatched = true;
+      } else if (dist.startsWith(token) || nom.startsWith(token) || code.startsWith(token)) {
+        score += 100;
+        tokenMatched = true;
+      } else if (dist.includes(token) || nom.includes(token) || code.includes(token)) {
+        score += 60;
+        tokenMatched = true;
       }
 
       // 2. Coincidencia en Provincia o Departamento
       if (!tokenMatched) {
-        for (const field of secondaryFields) {
-          if (!field) continue;
-          if (field === token) {
-            score += 70;
-            tokenMatched = true;
-            break;
-          } else if (field.startsWith(token) || field.includes(` ${token}`)) {
-            score += 50;
-            tokenMatched = true;
-            break;
-          } else if (field.includes(token)) {
-            score += 30;
-            tokenMatched = true;
-            break;
-          }
+        if (prov === token || dep === token) {
+          score += 70;
+          tokenMatched = true;
+        } else if (prov.startsWith(token) || dep.startsWith(token)) {
+          score += 50;
+          tokenMatched = true;
+        } else if (prov.includes(token) || dep.includes(token)) {
+          score += 30;
+          tokenMatched = true;
         }
       }
 
       // 3. Coincidencia en Dirección o texto completo
       if (!tokenMatched) {
-        for (const field of tertiaryFields) {
-          if (!field) continue;
-          if (field.includes(token)) {
-            score += 15;
-            tokenMatched = true;
-            break;
-          }
+        if (dir.includes(token) || full.includes(token)) {
+          score += 15;
+          tokenMatched = true;
         }
       }
 
-      // 4. Si el token tiene 4+ letras, tolerar 1 letra de diferencia (typo)
+      // 4. Fuzzy match tolerante a 1 typo para tokens de 4+ letras
       if (!tokenMatched && token.length >= 4) {
-        const allWords = `${dist} ${nom} ${prov} ${dep} ${dir}`.split(/\s+/);
-        for (const word of allWords) {
+        for (let wIdx = 0; wIdx < words.length; wIdx++) {
+          const word = words[wIdx];
           if (word.length >= 3 && isFuzzyMatch(token, word)) {
             score += 35;
             tokenMatched = true;
@@ -150,14 +161,13 @@ export function searchAndRankAgencies<T extends ShalomAgency | OlvaAgency>(
     }
 
     if (matchesAllTokens) {
-      const cleanQ = normalizeSearchText(query);
       if (dist.includes(cleanQ) || nom.includes(cleanQ)) {
         score += 300;
       } else if (full.includes(cleanQ)) {
         score += 100;
       }
 
-      // Desempate por distancia haversine
+      // Desempate por distancia GPS si está disponible
       if (a.distance_meters !== undefined && a.distance_meters !== null) {
         const distKm = a.distance_meters / 1000;
         score += Math.max(0, 10 - distKm * 0.05);

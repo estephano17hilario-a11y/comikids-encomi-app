@@ -57,7 +57,7 @@ interface Props {
 /**
  * Componente que resalta las palabras o tokens coincidentes con la búsqueda
  */
-const HighlightMatch: React.FC<{ text: string; query: string; className?: string }> = ({
+const HighlightMatch: React.FC<{ text: string; query: string; className?: string }> = React.memo(({
   text,
   query,
   className = ''
@@ -93,7 +93,7 @@ const HighlightMatch: React.FC<{ text: string; query: string; className?: string
   } catch {
     return <span className={className}>{text}</span>;
   }
-};
+});
 
 const formatPhoneWithSpaces = (raw: string) => {
   const digits = (raw || '').replace(/\D/g, '').slice(0, 9);
@@ -1372,14 +1372,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     {(isAgencyListOpen || !selectedAgencyObject) && (
                       <div className="relative space-y-2 animate-fadeIn z-50">
                         
-                        {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador con altura compacta */}
-                        <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[42vh] sm:max-h-[46vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
+                        {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador con altura aún más compacta */}
+                        <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[34vh] sm:max-h-[38vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
                           {shalomAgenciesList.length === 0 ? (
                             <p className="text-center text-xs text-slate-400 py-6">
                               No se encontraron agencias con &quot;{agencySearchQuery}&quot;
                             </p>
                           ) : (
-                            shalomAgenciesList.map(ag => {
+                            shalomAgenciesList.slice(0, 35).map(ag => {
                               const isSelected = selectedAgencyObject?.id === ag.id;
                               const cleanAddr = cleanAddressText(ag.direccion, ag.provincia, ag.departamento);
                               const distanceText = ag.distance_meters !== undefined
@@ -1833,14 +1833,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       {(isOlvaAgencyListOpen || !selectedOlvaAgencyObject) && (
                         <div className="relative space-y-2 animate-fadeIn z-50">
                           
-                          {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador con altura compacta */}
-                          <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[42vh] sm:max-h-[46vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
+                          {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador con altura aún más compacta */}
+                          <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[34vh] sm:max-h-[38vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
                             {olvaAgenciesList.length === 0 ? (
                               <p className="text-center text-xs text-slate-400 py-6">
                                 No se encontraron agencias Olva con &quot;{olvaAgencySearchQuery}&quot;
                               </p>
                             ) : (
-                              olvaAgenciesList.map(ag => {
+                              olvaAgenciesList.slice(0, 35).map(ag => {
                                 const isSelected = selectedOlvaAgencyObject?.id === ag.id;
                                 const cleanAddr = cleanOlvaAddressText(ag.direccion || ag.address, ag.provincia, ag.departamento);
                                 const distanceText = ag.distance_meters !== undefined

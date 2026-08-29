@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { ordersService } from '../../services/ordersService';
@@ -313,6 +313,26 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [selectedOlvaAgencyObject, setSelectedOlvaAgencyObject] = useState<OlvaAgency | null>(null);
   const [isOlvaAgencyListOpen, setIsOlvaAgencyListOpen] = useState(false);
   const [showOlvaMapModal, setShowOlvaMapModal] = useState(false);
+
+  // Refs for fixed-position dropdown portals (escape sticky header stacking context)
+  const shalomSearchInputRef = useRef<HTMLInputElement>(null);
+  const olvaSearchInputRef = useRef<HTMLInputElement>(null);
+  const [shalomDropdownRect, setShalomDropdownRect] = useState<DOMRect | null>(null);
+  const [olvaDropdownRect, setOlvaDropdownRect] = useState<DOMRect | null>(null);
+
+  // Recalculate dropdown position when opening
+  const openShalomDropdown = useCallback(() => {
+    if (shalomSearchInputRef.current) {
+      setShalomDropdownRect(shalomSearchInputRef.current.getBoundingClientRect());
+    }
+    setIsAgencyListOpen(true);
+  }, []);
+  const openOlvaDropdown = useCallback(() => {
+    if (olvaSearchInputRef.current) {
+      setOlvaDropdownRect(olvaSearchInputRef.current.getBoundingClientRect());
+    }
+    setIsOlvaAgencyListOpen(true);
+  }, []);
 
   // Motorizado Branch State
   const [motorizadoSubStep, setMotorizadoSubStep] = useState<'map' | 'form'>('map');
@@ -1368,85 +1388,102 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </div>
                     )}
 
-                    {/* Buscador & Lista Flotante de Agencias (Aparece ARRIBA del buscador sobreponiéndose a TODO) */}
+                    {/* Buscador & Lista Flotante de Agencias — usa position:fixed para escapar cualquier stacking context del header */}
                     {(isAgencyListOpen || !selectedAgencyObject) && (
-                      <div className="relative space-y-2 animate-fadeIn z-50">
+                      <div className="relative space-y-2 animate-fadeIn">
                         
-                        {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador con z-[9999] */}
-                        <div className="absolute bottom-full mb-2.5 left-0 right-0 z-[9999] max-h-60 sm:max-h-72 overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-400/80 shadow-[0_20px_50px_rgba(0,0,0,0.9)] animate-fadeIn">
-                          {shalomAgenciesList.length === 0 ? (
-                            <p className="text-center text-xs text-slate-400 py-6">
-                              No se encontraron agencias con &quot;{agencySearchQuery}&quot;
-                            </p>
-                          ) : (
-                            shalomAgenciesList.map(ag => {
-                              const isSelected = selectedAgencyObject?.id === ag.id;
-                              const cleanAddr = cleanAddressText(ag.direccion, ag.provincia, ag.departamento);
-                              const distanceText = ag.distance_meters !== undefined
-                                ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
-                                : null;
+                        {/* Panel Flotante FIJO: escapamos cualquier stacking context con position:fixed */}
+                        {isAgencyListOpen && shalomDropdownRect && (
+                          <div
+                            style={{
+                              position: 'fixed',
+                              bottom: `${window.innerHeight - shalomDropdownRect.top + 8}px`,
+                              left: `${shalomDropdownRect.left}px`,
+                              width: `${shalomDropdownRect.width}px`,
+                              zIndex: 99999,
+                            }}
+                            className="max-h-60 sm:max-h-72 overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950 border-2 border-cyan-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn"
+                          >
+                            {shalomAgenciesList.length === 0 ? (
+                              <p className="text-center text-xs text-slate-400 py-6">
+                                No se encontraron agencias con &quot;{agencySearchQuery}&quot;
+                              </p>
+                            ) : (
+                              shalomAgenciesList.map(ag => {
+                                const isSelected = selectedAgencyObject?.id === ag.id;
+                                const cleanAddr = cleanAddressText(ag.direccion, ag.provincia, ag.departamento);
+                                const distanceText = ag.distance_meters !== undefined
+                                  ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
+                                  : null;
 
-                              const titleText = `${ag.departamento || ''} / ${ag.provincia || ''} / ${ag.distrito || ag.nombre || ''}`;
+                                const titleText = `${ag.departamento || ''} / ${ag.provincia || ''} / ${ag.distrito || ag.nombre || ''}`;
 
-                              return (
+                                return (
+                                  <button
+                                    key={ag.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedAgencyObject(ag);
+                                      if (ag.departamento) setDepartamentoShalom(ag.departamento);
+                                      setIsAgencyListOpen(false);
+                                    }}
+                                    className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-cyan-500/25 border border-cyan-500/60 text-white shadow-md'
+                                        : 'bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <h5 className="text-xs font-bold text-white tracking-tight leading-snug">
+                                        <HighlightMatch text={titleText} query={agencySearchQuery} />
+                                      </h5>
+
+                                      {distanceText && (
+                                        <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-full shrink-0 border border-cyan-500/25">
+                                          📍 {distanceText}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <p className="text-[11px] text-slate-300 leading-snug">
+                                      <HighlightMatch text={cleanAddr || 'Dirección de la sede'} query={agencySearchQuery} />
+                                    </p>
+                                  </button>
+                                );
+                              })
+                            )}
+
+                            {selectedAgencyObject && (
+                              <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/95 py-1.5 backdrop-blur-md rounded-b-xl border-t border-white/8">
                                 <button
-                                  key={ag.id}
                                   type="button"
-                                  onClick={() => {
-                                    setSelectedAgencyObject(ag);
-                                    if (ag.departamento) setDepartamentoShalom(ag.departamento);
-                                    setIsAgencyListOpen(false);
-                                  }}
-                                  className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
-                                    isSelected
-                                      ? 'bg-cyan-500/25 border border-cyan-500/60 text-white shadow-md'
-                                      : 'bg-white/4 hover:bg-white/8 border border-white/8 text-slate-300'
-                                  }`}
+                                  onClick={() => setIsAgencyListOpen(false)}
+                                  className="px-4 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold border border-cyan-500/40 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
                                 >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <h5 className="text-xs font-bold text-white tracking-tight leading-snug">
-                                      <HighlightMatch text={titleText} query={agencySearchQuery} />
-                                    </h5>
-
-                                    {distanceText && (
-                                      <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-full shrink-0 border border-cyan-500/25">
-                                        📍 {distanceText}
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <p className="text-[11px] text-slate-300 leading-snug">
-                                    <HighlightMatch text={cleanAddr || 'Dirección de la sede'} query={agencySearchQuery} />
-                                  </p>
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Cerrar lista de agencias</span>
                                 </button>
-                              );
-                            })
-                          )}
-
-                          {selectedAgencyObject && (
-                            <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/95 py-1.5 backdrop-blur-md rounded-b-xl border-t border-white/8">
-                              <button
-                                type="button"
-                                onClick={() => setIsAgencyListOpen(false)}
-                                className="px-4 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold border border-cyan-500/40 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                                <span>Cerrar lista de agencias</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Input del Buscador */}
                         <div className="relative flex items-center">
                           <input
+                            ref={shalomSearchInputRef}
                             type="text"
                             autoFocus
                             value={agencySearchQuery}
-                            onFocus={() => setIsAgencyListOpen(true)}
+                            onFocus={() => {
+                              if (shalomSearchInputRef.current) {
+                                setShalomDropdownRect(shalomSearchInputRef.current.getBoundingClientRect());
+                              }
+                              setIsAgencyListOpen(true);
+                            }}
                             onChange={e => {
                               setAgencySearchQuery(e.target.value);
-                              if (!isAgencyListOpen) setIsAgencyListOpen(true);
+                              if (!isAgencyListOpen) openShalomDropdown();
                               if (showOnlyNearest5) setShowOnlyNearest5(false);
                             }}
                             placeholder="Buscar por distrito o provincia (ej. Pangoa co, Gamarra, Trujillo)..."
@@ -1828,92 +1865,109 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </div>
                       )}
 
-                      {/* Buscador & Lista Flotante de Agencias Olva (Se posiciona ARRIBA del buscador sobreponiéndose a TODO) */}
+                      {/* Buscador & Lista Flotante de Agencias Olva — usa position:fixed para escapar cualquier stacking context del header */}
                       {(isOlvaAgencyListOpen || !selectedOlvaAgencyObject) && (
-                        <div className="relative space-y-2 animate-fadeIn z-50">
+                        <div className="relative space-y-2 animate-fadeIn">
                           
-                          {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador con z-[9999] */}
-                          <div className="absolute bottom-full mb-2.5 left-0 right-0 z-[9999] max-h-60 sm:max-h-72 overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-400/80 shadow-[0_20px_50px_rgba(0,0,0,0.9)] animate-fadeIn">
-                            {olvaAgenciesList.length === 0 ? (
-                              <p className="text-center text-xs text-slate-400 py-6">
-                                No se encontraron agencias Olva con &quot;{olvaAgencySearchQuery}&quot;
-                              </p>
-                            ) : (
-                              olvaAgenciesList.map(ag => {
-                                const isSelected = selectedOlvaAgencyObject?.id === ag.id;
-                                const cleanAddr = cleanOlvaAddressText(ag.direccion || ag.address, ag.provincia, ag.departamento);
-                                const distanceText = ag.distance_meters !== undefined
-                                  ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
-                                  : null;
+                          {/* Panel Flotante FIJO: escapamos cualquier stacking context con position:fixed */}
+                          {isOlvaAgencyListOpen && olvaDropdownRect && (
+                            <div
+                              style={{
+                                position: 'fixed',
+                                bottom: `${window.innerHeight - olvaDropdownRect.top + 8}px`,
+                                left: `${olvaDropdownRect.left}px`,
+                                width: `${olvaDropdownRect.width}px`,
+                                zIndex: 99999,
+                              }}
+                              className="max-h-60 sm:max-h-72 overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950 border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn"
+                            >
+                              {olvaAgenciesList.length === 0 ? (
+                                <p className="text-center text-xs text-slate-400 py-6">
+                                  No se encontraron agencias Olva con &quot;{olvaAgencySearchQuery}&quot;
+                                </p>
+                              ) : (
+                                olvaAgenciesList.map(ag => {
+                                  const isSelected = selectedOlvaAgencyObject?.id === ag.id;
+                                  const cleanAddr = cleanOlvaAddressText(ag.direccion || ag.address, ag.provincia, ag.departamento);
+                                  const distanceText = ag.distance_meters !== undefined
+                                    ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
+                                    : null;
 
-                                const titleText = `${ag.departamento || ''} / ${ag.provincia || ''} / ${ag.distrito || ag.nombre || ''} (${ag.tipo || 'TIENDAS'})`;
+                                  const titleText = `${ag.departamento || ''} / ${ag.provincia || ''} / ${ag.distrito || ag.nombre || ''} (${ag.tipo || 'TIENDAS'})`;
 
-                                return (
-                                  <button
-                                    key={ag.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedOlvaAgencyObject(ag);
-                                      setOlvaDireccion(formatFullOlvaAgencyName(ag));
-                                      if (ag.departamento) setDepartamentoOlva(ag.departamento);
-                                      setIsOlvaAgencyListOpen(false);
-                                    }}
-                                    className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
-                                      isSelected
-                                        ? 'bg-amber-500/25 border border-amber-500/60 text-white shadow-md'
-                                        : 'bg-white/4 hover:bg-white/8 border border-white/8 text-slate-300'
-                                    }`}
-                                  >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <h5 className="text-xs font-bold text-white tracking-tight leading-snug">
-                                        <HighlightMatch text={titleText} query={olvaAgencySearchQuery} />
-                                      </h5>
+                                  return (
+                                    <button
+                                      key={ag.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedOlvaAgencyObject(ag);
+                                        setOlvaDireccion(formatFullOlvaAgencyName(ag));
+                                        if (ag.departamento) setDepartamentoOlva(ag.departamento);
+                                        setIsOlvaAgencyListOpen(false);
+                                      }}
+                                      className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-amber-500/25 border border-amber-500/60 text-white shadow-md'
+                                          : 'bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300'
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <h5 className="text-xs font-bold text-white tracking-tight leading-snug">
+                                          <HighlightMatch text={titleText} query={olvaAgencySearchQuery} />
+                                        </h5>
 
-                                      {distanceText && (
-                                        <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full shrink-0 border border-amber-500/30">
-                                          📍 {distanceText}
-                                        </span>
-                                      )}
-                                    </div>
+                                        {distanceText && (
+                                          <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full shrink-0 border border-amber-500/30">
+                                            📍 {distanceText}
+                                          </span>
+                                        )}
+                                      </div>
 
-                                    <p className="text-[11px] text-slate-300 leading-snug">
-                                      <HighlightMatch text={cleanAddr || 'Dirección de sede Olva'} query={olvaAgencySearchQuery} />
-                                    </p>
-
-                                    {ag.horario && (
-                                      <p className="text-[10px] text-slate-400 flex items-center gap-1">
-                                        <span>🕒</span>
-                                        <span>{ag.horario}</span>
+                                      <p className="text-[11px] text-slate-300 leading-snug">
+                                        <HighlightMatch text={cleanAddr || 'Dirección de sede Olva'} query={olvaAgencySearchQuery} />
                                       </p>
-                                    )}
-                                  </button>
-                                );
-                              })
-                            )}
 
-                            {selectedOlvaAgencyObject && (
-                              <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/95 py-1.5 backdrop-blur-md rounded-b-xl border-t border-white/8">
-                                <button
-                                  type="button"
-                                  onClick={() => setIsOlvaAgencyListOpen(false)}
-                                  className="px-4 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/40 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                  <span>Cerrar lista de agencias</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                                      {ag.horario && (
+                                        <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                                          <span>🕒</span>
+                                          <span>{ag.horario}</span>
+                                        </p>
+                                      )}
+                                    </button>
+                                  );
+                                })
+                              )}
+
+                              {selectedOlvaAgencyObject && (
+                                <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/95 py-1.5 backdrop-blur-md rounded-b-xl border-t border-white/8">
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsOlvaAgencyListOpen(false)}
+                                    className="px-4 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/40 shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Cerrar lista de agencias</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           {/* Input del Buscador Olva */}
                           <div className="relative flex items-center">
                             <input
+                              ref={olvaSearchInputRef}
                               type="text"
                               value={olvaAgencySearchQuery}
-                              onFocus={() => setIsOlvaAgencyListOpen(true)}
+                              onFocus={() => {
+                                if (olvaSearchInputRef.current) {
+                                  setOlvaDropdownRect(olvaSearchInputRef.current.getBoundingClientRect());
+                                }
+                                setIsOlvaAgencyListOpen(true);
+                              }}
                               onChange={e => {
                                 setOlvaAgencySearchQuery(e.target.value);
-                                if (!isOlvaAgencyListOpen) setIsOlvaAgencyListOpen(true);
+                                if (!isOlvaAgencyListOpen) openOlvaDropdown();
                                 if (showOnlyNearest5Olva) setShowOnlyNearest5Olva(false);
                               }}
                               placeholder="Buscar sede Olva por distrito, calle o nombre (ej. Pangoa, Miraflores, Cusco)..."

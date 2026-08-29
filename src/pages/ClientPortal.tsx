@@ -44,16 +44,15 @@ export const ClientPortal: React.FC = () => {
         <header className="glass-panel border-b border-cyan-500/20 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-6 sticky top-0 z-10 backdrop-blur-xl shadow-lg transition-all">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              {/* Ícono de Encomi: Abre WhatsApp de Encomi directamente */}
-              <a
-                href="https://wa.me/51927781412?text=Hola%20Encomi%2C%20deseo%20m%C3%A1s%20informaci%C3%B3n%20sobre%20los%20env%C3%ADos"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Abrir WhatsApp oficial de Encomi"
+              {/* Ícono de Encomi: Redirige al Funnel de Encomi */}
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/?funnel=encomi'; }}
+                title="Ir al Funnel oficial de Encomi"
                 className="w-9 h-9 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-lg shadow-md shadow-cyan-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer"
               >
                 📦
-              </a>
+              </button>
 
               {/* Nombre de Encomi: Redirige al Funnel */}
               <button

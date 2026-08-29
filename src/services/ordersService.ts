@@ -793,7 +793,16 @@ class OrdersService {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('pedidos').delete().eq('id', pedidoId);
+        await supabase.from('comprobantes_pago').delete().eq('pedido_id', pedidoId);
+      } catch (e) {
+        // ignore if not present
+      }
+
+      try {
+        const { error } = await supabase.from('pedidos').delete().eq('id', pedidoId);
+        if (error) {
+          console.error('[DELETE PEDIDO SUPABASE ERROR]', error);
+        }
       } catch (e) {
         console.warn('Error eliminando pedido en Supabase:', e);
       }
@@ -811,7 +820,16 @@ class OrdersService {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('pedidos').delete().in('id', pedidoIds);
+        await supabase.from('comprobantes_pago').delete().in('pedido_id', pedidoIds);
+      } catch (e) {
+        // ignore
+      }
+
+      try {
+        const { error } = await supabase.from('pedidos').delete().in('id', pedidoIds);
+        if (error) {
+          console.error('[DELETE MULTIPLE PEDIDOS SUPABASE ERROR]', error);
+        }
       } catch (e) {
         console.warn('Error eliminando pedidos en Supabase:', e);
       }

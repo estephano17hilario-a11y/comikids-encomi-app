@@ -275,6 +275,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const handleDeletePedido = async (pedidoId: string) => {
+    setPedidos(prev => prev.filter(p => p.id !== pedidoId));
     const ok = await ordersService.deletePedido(pedidoId);
     if (ok) {
       soundService.playStatusChangeSuccess();
@@ -284,6 +285,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const handleDeleteMultiplePedidos = async (pedidoIds: string[]) => {
+    const setIds = new Set(pedidoIds);
+    setPedidos(prev => prev.filter(p => !setIds.has(p.id)));
     const ok = await ordersService.deleteMultiplePedidos(pedidoIds);
     if (ok) {
       soundService.playStatusChangeSuccess();

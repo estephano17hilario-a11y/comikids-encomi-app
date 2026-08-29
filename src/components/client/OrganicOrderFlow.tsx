@@ -133,7 +133,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
 
   const [dniShalom, setDniShalom] = useState<string>(() => {
-    return currentUser?.dni_default || localStorage.getItem('incomi_saved_doc') || currentUser?.dni || '';
+    const savedDoc = localStorage.getItem('incomi_saved_doc');
+    if (savedDoc && savedDoc.trim().length >= 8) return savedDoc.trim();
+    if (currentUser?.dni_default && currentUser.dni_default.trim().length >= 8) return currentUser.dni_default.trim();
+    if (currentUser?.dni && !currentUser.dni.startsWith('usr-') && currentUser.dni !== '061625' && currentUser.dni.trim().length >= 8) {
+      return currentUser.dni.trim();
+    }
+    return (savedDoc || '').trim();
   });
 
   const [isResolvingDni, setIsResolvingDni] = useState(false);
@@ -143,6 +149,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const handleDniChange = async (val: string) => {
     const rawVal = val.replace(/\D/g, '').slice(0, 12);
     setDniShalom(rawVal);
+    if (rawVal.length >= 8) {
+      localStorage.setItem('incomi_saved_doc', rawVal);
+    }
 
     // Si tiene exactamente 8 dígitos, consultar en SUNAT / BD
     if (rawVal.length === 8) {
@@ -211,16 +220,24 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     return currentUser?.referencia_default || localStorage.getItem('incomi_saved_reference') || '';
   });
 
-  const [selectedMethodId, setSelectedMethodId] = useState<string>(
-    activeShippingMethods[0]?.id || 'met-shalom'
-  );
+  const [selectedMethodId, setSelectedMethodId] = useState<string>(() => {
+    const savedMethod = localStorage.getItem('incomi_saved_method_id');
+    if (savedMethod && activeShippingMethods.some(m => m.id === savedMethod)) {
+      return savedMethod;
+    }
+    return activeShippingMethods[0]?.id || 'met-shalom';
+  });
 
   // Sincronizar automáticamente cuando el usuario actualiza sus datos predeterminados en el perfil
   useEffect(() => {
     if (currentUser) {
       if (currentUser.nombre_completo) setNombreCompleto(currentUser.nombre_completo);
       if (currentUser.telefono_default) setWhatsapp(currentUser.telefono_default);
-      if (currentUser.dni_default) setDniShalom(currentUser.dni_default);
+      if (currentUser.dni_default && currentUser.dni_default.trim().length >= 8) {
+        setDniShalom(currentUser.dni_default.trim());
+      } else if (currentUser.dni && currentUser.dni.trim().length >= 8 && !currentUser.dni.startsWith('usr-') && currentUser.dni !== '061625') {
+        setDniShalom(currentUser.dni.trim());
+      }
       if (currentUser.email_default || currentUser.email) setCorreoCliente(currentUser.email_default || currentUser.email || '');
       if (currentUser.distrito_default) setDistritoQuery(currentUser.distrito_default);
       if (currentUser.direccion_default) {
@@ -245,8 +262,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   }, [nombreCompleto]);
 
   useEffect(() => {
-    if (dniShalom) localStorage.setItem('incomi_saved_doc', dniShalom);
+    if (dniShalom && dniShalom.trim().length >= 8) {
+      localStorage.setItem('incomi_saved_doc', dniShalom.trim());
+    }
   }, [dniShalom]);
+
+  useEffect(() => {
+    if (selectedMethodId) {
+      localStorage.setItem('incomi_saved_method_id', selectedMethodId);
+    }
+  }, [selectedMethodId]);
 
   useEffect(() => {
     if (correoCliente) localStorage.setItem('incomi_saved_email', correoCliente);
@@ -291,7 +316,24 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     getTopNearestAgencies
   } = useShalomAgencies({ initialDepartment: 'TODOS' });
 
-  const [selectedAgencyObject, setSelectedAgencyObject] = useState<ShalomAgency | null>(null);
+  const [selectedAgencyObject, setSelectedAgencyObject] = useState<ShalomAgency | null>(() => {
+    try {
+      const saved = localStorage.getItem('incomi_saved_shalom_agency');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (selectedAgencyObject) {
+      localStorage.setItem('incomi_saved_shalom_agency', JSON.stringify(selectedAgencyObject));
+      if (selectedAgencyObject.departamento) {
+        setDepartamentoShalom(selectedAgencyObject.departamento);
+      }
+    }
+  }, [selectedAgencyObject]);
+
   const [isAgencyListOpen, setIsAgencyListOpen] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
 
@@ -310,7 +352,24 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     locateAndSort: triggerOlvaGpsLookup,
   } = useOlvaAgencies({ initialDepartment: 'TODOS', autoFetchNearby: true });
 
-  const [selectedOlvaAgencyObject, setSelectedOlvaAgencyObject] = useState<OlvaAgency | null>(null);
+  const [selectedOlvaAgencyObject, setSelectedOlvaAgencyObject] = useState<OlvaAgency | null>(() => {
+    try {
+      const saved = localStorage.getItem('incomi_saved_olva_agency');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (selectedOlvaAgencyObject) {
+      localStorage.setItem('incomi_saved_olva_agency', JSON.stringify(selectedOlvaAgencyObject));
+      if (selectedOlvaAgencyObject.departamento) {
+        setDepartamentoOlva(selectedOlvaAgencyObject.departamento);
+      }
+    }
+  }, [selectedOlvaAgencyObject]);
+
   const [isOlvaAgencyListOpen, setIsOlvaAgencyListOpen] = useState(false);
   const [showOlvaMapModal, setShowOlvaMapModal] = useState(false);
 
@@ -519,53 +578,72 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       }
     }
 
-    // Persistir todos los datos
-    localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
-    localStorage.setItem('incomi_saved_doc', dniShalom.trim());
-    if (correoCliente) localStorage.setItem('incomi_saved_email', correoCliente.trim());
-    if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery.trim());
-    if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta.trim());
-    if (referencia) localStorage.setItem('incomi_saved_reference', referencia.trim());
-    if (olvaDireccion) localStorage.setItem('incomi_saved_olva_address', olvaDireccion.trim());
-    if (olvaReferencia) localStorage.setItem('incomi_saved_olva_reference', olvaReferencia.trim());
-    localStorage.setItem('incomi_saved_olva_modalidad', olvaModalidad);
-
-    setSubmitting(true);
-    try {
-      const userIdentifier = dniShalom.trim() || whatsapp.trim();
-      let activeUser: any = null;
-
-      // Si el usuario actual es cliente y coincide con este identificador, usarlo
-      if (currentUser && currentUser.rol !== 'empresa' && (currentUser.dni === userIdentifier || currentUser.id === userIdentifier)) {
-        activeUser = currentUser;
-        const userUpdates: any = {
-          nombre_completo: nombreCompleto.trim(),
-          telefono_default: whatsapp.trim() || activeUser.telefono_default,
-          email_default: correoCliente.trim() || activeUser.email_default,
-          olva_modalidad_default: olvaModalidad,
-        };
-        activeUser = { ...activeUser, ...userUpdates };
-        await ordersService.updateUserProfile(activeUser.id, userUpdates);
-      } else {
-        // Registrar o actualizar el perfil de la clienta
-        const regRes = await ordersService.registerUser(
-          nombreCompleto.trim(),
-          userIdentifier,
-          undefined,
-          'incomi2026',
-          whatsapp.trim()
-        );
-        activeUser = regRes.user || null;
-        if (activeUser && correoCliente.trim()) {
-          await ordersService.updateUserProfile(activeUser.id, {
-            email_default: correoCliente.trim(),
-            olva_modalidad_default: olvaModalidad,
-          } as any);
-        }
-        if (currentUser?.rol !== 'empresa' && activeUser) {
-          await login(userIdentifier, 'incomi2026');
-        }
+      // Persistir todos los datos
+      localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
+      if (dniShalom.trim().length >= 8) {
+        localStorage.setItem('incomi_saved_doc', dniShalom.trim());
       }
+      if (selectedAgencyObject) {
+        localStorage.setItem('incomi_saved_shalom_agency', JSON.stringify(selectedAgencyObject));
+      }
+      if (selectedOlvaAgencyObject) {
+        localStorage.setItem('incomi_saved_olva_agency', JSON.stringify(selectedOlvaAgencyObject));
+      }
+      if (selectedMethodId) {
+        localStorage.setItem('incomi_saved_method_id', selectedMethodId);
+      }
+      if (correoCliente) localStorage.setItem('incomi_saved_email', correoCliente.trim());
+      if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery.trim());
+      if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta.trim());
+      if (referencia) localStorage.setItem('incomi_saved_reference', referencia.trim());
+      if (olvaDireccion) localStorage.setItem('incomi_saved_olva_address', olvaDireccion.trim());
+      if (olvaReferencia) localStorage.setItem('incomi_saved_olva_reference', olvaReferencia.trim());
+      localStorage.setItem('incomi_saved_olva_modalidad', olvaModalidad);
+
+      setSubmitting(true);
+      try {
+        const userIdentifier = (dniShalom.trim().length >= 8 ? dniShalom.trim() : '') || whatsapp.trim();
+        let activeUser: any = null;
+
+        // Si el usuario actual es cliente y coincide con este identificador, usarlo
+        if (currentUser && currentUser.rol !== 'empresa' && (currentUser.dni === userIdentifier || currentUser.id === userIdentifier || currentUser.telefono_default === whatsapp.trim())) {
+          activeUser = currentUser;
+          const userUpdates: any = {
+            nombre_completo: nombreCompleto.trim(),
+            telefono_default: whatsapp.trim() || activeUser.telefono_default,
+            dni_default: (dniShalom.trim().length >= 8 ? dniShalom.trim() : '') || activeUser.dni_default,
+            email_default: correoCliente.trim() || activeUser.email_default,
+            distrito_default: distritoQuery.trim() || activeUser.distrito_default,
+            direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || activeUser.direccion_default,
+            referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || activeUser.referencia_default,
+            olva_modalidad_default: olvaModalidad,
+          };
+          activeUser = { ...activeUser, ...userUpdates };
+          await ordersService.updateUserProfile(activeUser.id, userUpdates);
+        } else {
+          // Registrar o actualizar el perfil de la clienta
+          const regRes = await ordersService.registerUser(
+            nombreCompleto.trim(),
+            userIdentifier,
+            undefined,
+            'incomi2026',
+            whatsapp.trim()
+          );
+          activeUser = regRes.user || null;
+          if (activeUser) {
+            await ordersService.updateUserProfile(activeUser.id, {
+              dni_default: dniShalom.trim().length >= 8 ? dniShalom.trim() : undefined,
+              email_default: correoCliente.trim() || undefined,
+              distrito_default: distritoQuery.trim() || undefined,
+              direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || undefined,
+              referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || undefined,
+              olva_modalidad_default: olvaModalidad,
+            } as any);
+          }
+          if (currentUser?.rol !== 'empresa' && activeUser) {
+            await login(userIdentifier, 'incomi2026');
+          }
+        }
 
       let finalDestinoDetalle = '';
       let agencyLat = selectedAgencyObject?.latitude ? Number(selectedAgencyObject.latitude) : undefined;
@@ -1010,6 +1088,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               </button>
             </div>
           )}
+
+          {/* 4. Botón para Registrar Nuevo Envío */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCreatedOrder(null);
+                setOrganicStep(1);
+              }}
+              className="w-full py-3 rounded-2xl bg-white/6 hover:bg-white/12 active:scale-[0.98] text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border border-white/10 shadow-md"
+            >
+              <span>➕ Registrar un Nuevo Envío</span>
+            </button>
+          </div>
 
         </div>
       ) : isEmpresaUnlock ? (

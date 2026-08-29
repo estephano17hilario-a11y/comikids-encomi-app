@@ -324,16 +324,32 @@ export class CopilotService {
   }> {
     const todayStr = this.getTodayDateString();
 
-    // 1. Consultar todos los pedidos en vivo desde Supabase (hasta 100 registros)
-    const { data: allOrders, count: totalOrdersCount } = await supabaseAdmin
+    // 1. Consultar todos los pedidos ACTIVOS vigentes (no entregados)
+    const { data: activeOrdersData } = await supabaseAdmin
       .from('pedidos')
-      .select('id, created_at, updated_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario_id, fecha_limite, metodo_envio_nombre', { count: 'exact' })
+      .select('id, created_at, updated_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario_id, fecha_limite, metodo_envio_nombre, registrado_shalom, shalom_numero_guia')
+      .neq('estado_envio', 'entregado')
+      .order('created_at', { ascending: false });
+
+    // 2. Consultar muestra de pedidos recientemente entregados (últimos 15)
+    const { data: recentDeliveredData } = await supabaseAdmin
+      .from('pedidos')
+      .select('id, created_at, updated_at, codigo_seguimiento, destino_detalle, estado_produccion, estado_envio, detalles_bordado, shalom_clave_recojo, usuario_id, fecha_limite, metodo_envio_nombre, registrado_shalom, shalom_numero_guia')
+      .eq('estado_envio', 'entregado')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(15);
 
-    const ordersList = allOrders || [];
+    // 3. Conteo histórico total de entregados
+    const { count: totalDeliveredCount } = await supabaseAdmin
+      .from('pedidos')
+      .select('*', { count: 'exact', head: true })
+      .eq('estado_envio', 'entregado');
 
-    // 2. Extraer usuario_ids y consultar usuarios en lote
+    const activeOrders = activeOrdersData || [];
+    const recentDelivered = recentDeliveredData || [];
+    const ordersList = [...activeOrders, ...recentDelivered];
+
+    // 4. Extraer usuario_ids y consultar usuarios en lote
     const userIds = Array.from(new Set(ordersList.map(o => o.usuario_id).filter(Boolean)));
     const usersMap = new Map<string, any>();
     if (userIds.length > 0) {
@@ -350,8 +366,8 @@ export class CopilotService {
       }
     }
 
-    // 3. Calcular estadísticas en tiempo real en zona horaria Perú
-    const todayOrders = ordersList.filter(o => {
+    // 5. Calcular estadísticas EXACTAS en tiempo real en zona horaria Perú
+    const todayOrders = activeOrders.filter(o => {
       let orderScheduledDate = '';
       if (o.fecha_limite) {
         orderScheduledDate = o.fecha_limite.split('T')[0];
@@ -370,20 +386,25 @@ export class CopilotService {
       return isScheduledToday || isCreatedToday;
     });
 
-    const pendingProd = ordersList.filter(o => o.estado_produccion === 'en_cola' || o.estado_produccion === 'bordando').length;
-    const pendingDeliv = ordersList.filter(o => o.estado_envio === 'pendiente' || o.estado_envio === 'en_camino').length;
-    const completedDeliv = ordersList.filter(o => o.estado_envio === 'entregado').length;
+    const totalActive = activeOrders.length;
+    const enAlmacen = activeOrders.filter(o => o.estado_produccion === 'en_cola' && o.estado_envio === 'pendiente').length;
+    const alistando = activeOrders.filter(o => o.estado_produccion === 'bordando' && o.estado_envio === 'pendiente').length;
+    const despachando = activeOrders.filter(o => (o.estado_produccion === 'completado' && o.estado_envio === 'pendiente') || o.estado_envio === 'en_camino').length;
+    const listosRecojo = activeOrders.filter(o => o.estado_envio === 'listo_para_recojo').length;
+    const historicalDelivered = totalDeliveredCount || 0;
 
     const statsSummary = `
-📊 ESTADÍSTICAS EN VIVO DEL SISTEMA COMIKIDS (Fecha Perú: ${todayStr}):
-- Total de pedidos/envíos en base de datos: ${totalOrdersCount || ordersList.length} pedidos
-- Pedidos registrados / programados para hoy (${todayStr}): ${todayOrders.length} pedidos
-- Pedidos en producción/bordado: ${pendingProd}
-- Pedidos en preparación / tránsito: ${pendingDeliv}
-- Pedidos entregados a Shalom / clientes: ${completedDeliv}`;
+📊 ESTADÍSTICAS REALES Y EXACTAS DEL SISTEMA (Fecha Perú: ${todayStr}):
+• TOTAL DE PEDIDOS ACTIVOS EN GESTIÓN: ${totalActive} pedidos
+  - 🏬 En Almacén (en cola por preparar): ${enAlmacen} pedidos
+  - 🪡 Alistándolo (en bordado): ${alistando} pedidos
+  - 🚚 Despachando / En Camino: ${despachando} pedidos
+  - 🏢 Listos para Recoger en Agencia: ${listosRecojo} pedidos
+• PEDIDOS PROGRAMADOS / REGISTRADOS PARA HOY (${todayStr}): ${todayOrders.length} pedidos
+• HISTORIAL PASADO DE ENTREGADOS: ${historicalDelivered} pedidos finalizados`;
 
-    // 4. Formatear cada orden de manera clara con el nombre y DNI real
-    const formattedOrders = ordersList.map((o) => {
+    // 6. Formatear cada orden de manera clara con el nombre y DNI real
+    const formatOrderEntry = (o: any) => {
       const user = usersMap.get(o.usuario_id);
       let name = user?.nombre_completo;
       if (!name || name === 'Encomi Envíos' || name === 'ComiKids' || name.trim() === '') {
@@ -424,14 +445,25 @@ export class CopilotService {
   • Prendas / Descripción: ${o.detalles_bordado || 'Bordado personalizado'}
   • Clave Recojo: ${o.shalom_clave_recojo || '0808'}
   • Registrado el: ${dateLocal}`;
-    });
+    };
+
+    const formattedActive = activeOrders.map(formatOrderEntry).join('\n\n');
+    const formattedDelivered = recentDelivered.map(formatOrderEntry).join('\n\n');
+
+    const fullOrdersText = `--- PEDIDOS ACTIVOS EN GESTIÓN (${totalActive} PEDIDOS) ---
+${formattedActive || '(No hay pedidos activos actualmente)'}
+--- FIN PEDIDOS ACTIVOS ---
+
+--- MUESTRA HISTÓRICA DE ENTREGADOS RECIENTES (${recentDelivered.length} PEDIDOS) ---
+${formattedDelivered || '(No hay pedidos entregados recientes)'}
+--- FIN HISTORIAL ENTREGADOS ---`;
 
     return {
-      fullOrdersText: formattedOrders.join('\n\n'),
+      fullOrdersText,
       statsSummary,
       todayOrdersCount: todayOrders.length,
-      totalCount: totalOrdersCount || ordersList.length,
-      rawOrders: ordersList,
+      totalCount: totalActive,
+      rawOrders: activeOrders,
     };
   }
 
@@ -820,16 +852,20 @@ MENSAJE / INSTRUCCIÓN DEL ADMINISTRADOR:
 
 --- REGLAS CRÍTICAS DE RESPUESTA Y ACCIÓN ---
 
-1. CONSULTAS DE PEDIDOS, ENVÍOS O PAQUETES:
-- TIENES ACCESO TOTAL A LA BASE DE DATOS EN LA SECCIÓN DE ARRIBA.
-- IMPORTANTE: Para el negocio, "envíos", "paquetes" y "pedidos" significan EXACTAMENTE LO MISMO: todas las órdenes registradas en el sistema.
-- Si el usuario pregunta "¿cuántos pedidos/envíos hay para hoy?", "¿qué envíos hay para hoy?" o similar:
-  - Revisa las órdenes marcadas con "⭐ (REGISTRADO HOY)". Hay ${todayOrdersCount} pedidos registrados hoy (${todayString}).
-  - Lista detalladamente cada uno de los pedidos con su código de orden, cliente, destino y estado.
-  - NUNCA digas que no hay envíos si existen pedidos registrados.
-- Si el usuario busca por nombre (ej: "busca el paquete de Estephano" o "Rosario"):
-  - Revisa la lista de arriba y responde con los datos exactos del pedido encontrado.
-  - Usa SIEMPRE el nombre exacto de la persona (ej: "Estephano Andree Hilario Ampuero").
+1. CONSULTAS DE PEDIDOS, MÉTRICAS Y RESÚMENES:
+- Usa ÚNICAMENTE las estadísticas reales y exactas indicadas en "ESTADÍSTICAS REALES Y EXACTAS":
+  • Hay EXACTAMENTE ${totalCount} pedidos activos en gestión en el sistema.
+  • Hay ${todayOrdersCount} pedidos programados/registrados para hoy (${todayString}).
+- NUNCA inventes números ni alucines cifras del pasado (ej: NUNCA digas 75 entregados).
+- Si el usuario pregunta "¿cuántos pedidos/envíos hay?" o pide un resumen:
+  - Responde con los ${totalCount} pedidos activos vigentes y su desglose real de la sección de estadísticas (en almacén, en camino, etc.).
+- Si el usuario pregunta "¿qué pedidos hay para hoy?":
+  - Revisa las órdenes marcadas con "⭐ (PARA HOY / REGISTRADO HOY)".
+  - Si hay pedidos para hoy, lístalos detalladamente con su código, cliente, DNI, destino y estado.
+  - Si no hay pedidos fechados para hoy, indícalo claramente y menciona los pedidos pendientes en almacén.
+- Si el usuario busca por nombre (ej: "busca el paquete de Estephano" o "Rosario") o por DNI/código:
+  - Revisa la lista de pedidos y responde con los datos exactos del pedido encontrado.
+  - Usa SIEMPRE el nombre exacto de la persona.
 
 2. REGISTRO DE NUEVO PEDIDO (SOLO 4 DATOS REQUERIDOS):
 Para registrar un nuevo pedido, SOLO SE NECESITAN ESTOS 4 DATOS (NO pidas prendas ni bordado):

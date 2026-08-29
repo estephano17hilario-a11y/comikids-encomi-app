@@ -1270,28 +1270,28 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       type="button"
                       onClick={handleQuickNearest5}
                       disabled={isLocating}
-                      className="py-2.5 sm:py-3 px-3 rounded-2xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
+                      className="py-3.5 sm:py-4 px-3.5 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-[0.98] border border-white/12 text-left transition-all flex items-center gap-3 group cursor-pointer shadow-md min-h-[58px]"
                     >
-                      <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
-                        <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
+                      <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                        <Navigation className={`w-4.5 h-4.5 ${isLocating ? 'animate-spin' : ''}`} />
                       </div>
                       <div className="min-w-0">
-                        <span className="block text-[10px] text-slate-400 leading-tight">GPS</span>
-                        <span className="block text-xs sm:text-sm font-bold text-white leading-tight truncate">Sedes Cercanas</span>
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider leading-tight">GPS</span>
+                        <span className="block text-xs sm:text-sm font-black text-white leading-tight truncate">Sedes Cercanas</span>
                       </div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setShowMapModal(true)}
-                      className="py-2.5 sm:py-3 px-3 rounded-2xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
+                      className="py-3.5 sm:py-4 px-3.5 rounded-2xl bg-white/5 hover:bg-white/10 active:scale-[0.98] border border-white/12 text-left transition-all flex items-center gap-3 group cursor-pointer shadow-md min-h-[58px]"
                     >
-                      <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
-                        <MapPin className="w-4 h-4" />
+                      <div className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+                        <MapPin className="w-4.5 h-4.5" />
                       </div>
                       <div className="min-w-0">
-                        <span className="block text-[10px] text-slate-400 leading-tight">Visual</span>
-                        <span className="block text-xs sm:text-sm font-bold text-white leading-tight truncate">Ver en Mapa</span>
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider leading-tight">Visual</span>
+                        <span className="block text-xs sm:text-sm font-black text-white leading-tight truncate">Ver en Mapa</span>
                       </div>
                     </button>
                   </div>
@@ -1368,12 +1368,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </div>
                     )}
 
-                    {/* Buscador & Lista Flotante de Agencias (Aparece ARRIBA del buscador sobreponiéndose) */}
+                    {/* Buscador & Lista Flotante de Agencias (Aparece ARRIBA del buscador sobreponiéndose a TODO) */}
                     {(isAgencyListOpen || !selectedAgencyObject) && (
-                      <div className="relative space-y-2 animate-fadeIn z-40">
+                      <div className="relative space-y-2 animate-fadeIn z-50">
                         
-                        {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador */}
-                        <div className="absolute bottom-full mb-2 left-0 right-0 z-50 max-h-72 sm:max-h-80 overflow-y-auto space-y-1.5 p-2 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-500/40 shadow-2xl animate-fadeIn">
+                        {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador con z-[9999] */}
+                        <div className="absolute bottom-full mb-2.5 left-0 right-0 z-[9999] max-h-60 sm:max-h-72 overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-400/80 shadow-[0_20px_50px_rgba(0,0,0,0.9)] animate-fadeIn">
                           {shalomAgenciesList.length === 0 ? (
                             <p className="text-center text-xs text-slate-400 py-6">
                               No se encontraron agencias con &quot;{agencySearchQuery}&quot;
@@ -1424,7 +1424,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           )}
 
                           {selectedAgencyObject && (
-                            <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/90 py-1 backdrop-blur-sm rounded-b-xl">
+                            <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/95 py-1.5 backdrop-blur-md rounded-b-xl border-t border-white/8">
                               <button
                                 type="button"
                                 onClick={() => setIsAgencyListOpen(false)}
@@ -1727,13 +1727,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </div>
 
                       {/* Botones de Acción Rápida: Abrir Mapa & Encontrar Cercanas con GPS */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <button
                           type="button"
                           onClick={() => setShowOlvaMapModal(true)}
-                          className="w-full py-2.5 sm:py-3 px-3.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs sm:text-sm font-bold border border-amber-500/40 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98"
+                          className="w-full py-3.5 sm:py-4 px-4 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs sm:text-sm font-black border border-amber-500/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-md active:scale-98 min-h-[54px]"
                         >
-                          <MapPin className="w-4 h-4 text-amber-400" />
+                          <MapPin className="w-4.5 h-4.5 text-amber-400" />
                           <span>🗺️ Ver Mapa de Agencias Olva</span>
                         </button>
 
@@ -1744,10 +1744,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             setIsOlvaAgencyListOpen(true);
                           }}
                           disabled={isLocatingOlva}
-                          className="w-full py-2.5 sm:py-3 px-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs sm:text-sm font-bold border border-amber-500/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
+                          className="w-full py-3.5 sm:py-4 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs sm:text-sm font-black border border-amber-500/30 flex items-center justify-center gap-2.5 transition-all cursor-pointer active:scale-98 min-h-[54px]"
                         >
-                          <Navigation className={`w-4 h-4 text-amber-400 ${isLocatingOlva ? 'animate-spin' : ''}`} />
-                          <span>{isLocatingOlva ? 'Localizando...' : '📍 5 Sedes Más Cercanas a Mí'}</span>
+                          <Navigation className={`w-4.5 h-4.5 text-amber-400 ${isLocatingOlva ? 'animate-spin' : ''}`} />
+                          <span>{isLocatingOlva ? 'Localizando...' : '📍 5 Sedes Más Cercanas'}</span>
                         </button>
                       </div>
 
@@ -1828,12 +1828,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </div>
                       )}
 
-                      {/* Buscador & Lista Flotante de Agencias Olva (Se posiciona ARRIBA del buscador sobreponiéndose) */}
+                      {/* Buscador & Lista Flotante de Agencias Olva (Se posiciona ARRIBA del buscador sobreponiéndose a TODO) */}
                       {(isOlvaAgencyListOpen || !selectedOlvaAgencyObject) && (
-                        <div className="relative space-y-2 animate-fadeIn z-40">
+                        <div className="relative space-y-2 animate-fadeIn z-50">
                           
-                          {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador */}
-                          <div className="absolute bottom-full mb-2 left-0 right-0 z-50 max-h-72 sm:max-h-80 overflow-y-auto space-y-1.5 p-2 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-500/40 shadow-2xl animate-fadeIn">
+                          {/* Panel Flotante de Resultados: Posicionado ARRIBA del buscador con z-[9999] */}
+                          <div className="absolute bottom-full mb-2.5 left-0 right-0 z-[9999] max-h-60 sm:max-h-72 overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-400/80 shadow-[0_20px_50px_rgba(0,0,0,0.9)] animate-fadeIn">
                             {olvaAgenciesList.length === 0 ? (
                               <p className="text-center text-xs text-slate-400 py-6">
                                 No se encontraron agencias Olva con &quot;{olvaAgencySearchQuery}&quot;
@@ -1892,7 +1892,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             )}
 
                             {selectedOlvaAgencyObject && (
-                              <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/90 py-1 backdrop-blur-sm rounded-b-xl">
+                              <div className="pt-1 flex justify-center sticky bottom-0 bg-slate-950/95 py-1.5 backdrop-blur-md rounded-b-xl border-t border-white/8">
                                 <button
                                   type="button"
                                   onClick={() => setIsOlvaAgencyListOpen(false)}
@@ -2077,7 +2077,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   <div className="space-y-2 pt-2 border-t border-white/8">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                        👤 Nombres y Apellidos (Destinatario) *
+                        👤 Nombres y Apellidos *
                       </label>
                       {isResolvingDni && (
                         <span className="text-[11px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">

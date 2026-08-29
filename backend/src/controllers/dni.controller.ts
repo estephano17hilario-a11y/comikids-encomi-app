@@ -50,10 +50,37 @@ function getDbInstance() {
   return { db: null, queryStmt: null };
 }
 
-// Inicializar inmediatamente al cargar el módulo
-try {
-  getDbInstance();
-} catch {}
+export function formatSunatNameToGivenFirst(rawName: string): string {
+  if (!rawName) return '';
+  const parts = rawName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return rawName.trim();
+
+  // En el padrón oficial de SUNAT para personas naturales, el formato es [APELLIDO1] [APELLIDO2] [NOMBRES...]
+  if (parts.length === 2) {
+    return `${parts[1]} ${parts[0]}`;
+  }
+
+  // 3 palabras: APE1 APE2 NOM1 (ej: HILARIO FUENTES JUNIOR -> JUNIOR HILARIO FUENTES)
+  if (parts.length === 3) {
+    if (['DE', 'DEL', 'SAN', 'SANTA'].includes(parts[0].toUpperCase())) {
+      return `${parts[2]} ${parts[0]} ${parts[1]}`;
+    }
+    return `${parts[2]} ${parts[0]} ${parts[1]}`;
+  }
+
+  // 4 palabras: APE1 APE2 NOM1 NOM2 (ej: AMPUERO SANTIAGO MILAGROS JANET -> MILAGROS JANET AMPUERO SANTIAGO)
+  if (parts.length === 4) {
+    if (['DE', 'DEL', 'SAN', 'SANTA'].includes(parts[0].toUpperCase())) {
+      return `${parts[3]} ${parts[0]} ${parts[1]} ${parts[2]}`;
+    }
+    return `${parts[2]} ${parts[3]} ${parts[0]} ${parts[1]}`;
+  }
+
+  // 5 o más palabras: normalmente los primeros 2 tokens son los apellidos y el resto nombres
+  const surnames = parts.slice(0, 2);
+  const givenNames = parts.slice(2);
+  return `${givenNames.join(' ')} ${surnames.join(' ')}`;
+}
 
 export class DniController {
   /**
@@ -97,6 +124,7 @@ export class DniController {
         if (row && row.razon_social) {
           const endTime = process.hrtime.bigint();
           const latencyMs = Number(endTime - startTime) / 1_000_000;
+          const formattedName = formatSunatNameToGivenFirst(row.razon_social);
 
           return reply.code(200).send({
             success: true,
@@ -105,7 +133,8 @@ export class DniController {
             data: {
               dni: cleanDni,
               ruc,
-              nombreCompleto: row.razon_social.trim(),
+              nombreCompleto: formattedName,
+              nombreOriginal: row.razon_social.trim(),
               estado: row.estado || 'ACTIVO',
               condicion: row.condicion || 'HABIDO',
               ubigeo: row.ubigeo || '',

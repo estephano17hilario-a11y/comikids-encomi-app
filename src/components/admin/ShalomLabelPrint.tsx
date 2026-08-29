@@ -130,30 +130,32 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
         <div className="space-y-2 text-xs text-slate-900">
           <div>
             <span className={eco.subtleText}>Nombre del Cliente:</span>{' '}
-            <span className="font-black text-base uppercase block text-slate-950">{pedido.usuario?.nombre_completo || 'Cliente'}</span>
+            <span className="font-black text-lg sm:text-xl uppercase block text-slate-950 leading-snug tracking-tight">{pedido.usuario?.nombre_completo || 'Cliente'}</span>
           </div>
 
-          {/* DNI GIGANTE Y DESTACADO (REQ: DNI MAS GRANDE) */}
-          <div className={`${eco.dniBox} rounded-xl flex items-center justify-between shadow-xs`}>
-            <div>
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none">
+          {/* DNI GIGANTE Y DESTACADO (REQ: DNI MAS GRANDE EN ROTULADO Y SIN TELÉFONO EN SHALOM) */}
+          <div className={`${eco.dniBox} rounded-xl flex items-center ${isShalom ? 'justify-center py-2' : 'justify-between'} shadow-xs`}>
+            <div className={isShalom ? 'text-center w-full' : ''}>
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none mb-0.5">
                 🪪 DNI / DOC RECOJO:
               </span>
               <span className={`${eco.dniText} block leading-tight mt-0.5`}>
                 {clientDni}
               </span>
             </div>
-            <div className="text-right">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none">
-                TELÉFONO:
-              </span>
-              <span className="text-sm sm:text-base font-mono font-bold text-slate-900 block leading-tight mt-0.5">
-                {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
-              </span>
-            </div>
+            {!isShalom && (
+              <div className="text-right">
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none">
+                  TELÉFONO:
+                </span>
+                <span className="text-sm sm:text-base font-mono font-bold text-slate-900 block leading-tight mt-0.5">
+                  {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+                </span>
+              </div>
+            )}
           </div>
 
-          {(pedido.usuario?.email || pedido.usuario?.email_default) && (
+          {!isShalom && (pedido.usuario?.email || pedido.usuario?.email_default) && (
             <p className="pt-0.5 text-[10.5px]">
               <span className={eco.subtleText}>Correo:</span>{' '}
               <span className="font-mono font-bold text-slate-800">{pedido.usuario.email || pedido.usuario.email_default}</span>

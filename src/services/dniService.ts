@@ -20,6 +20,37 @@ export interface DniLookupResult {
 const dniMemoryCache = new Map<string, DniLookupResult>();
 
 /**
+ * Reordena nombres de SUNAT (APELLIDOS NOMBRES) a formato estándar de cliente (NOMBRES APELLIDOS)
+ */
+export function formatSunatNameToGivenFirst(rawName: string): string {
+  if (!rawName) return '';
+  const parts = rawName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return rawName.trim();
+
+  if (parts.length === 2) {
+    return `${parts[1]} ${parts[0]}`;
+  }
+
+  if (parts.length === 3) {
+    if (['DE', 'DEL', 'SAN', 'SANTA'].includes(parts[0].toUpperCase())) {
+      return `${parts[2]} ${parts[0]} ${parts[1]}`;
+    }
+    return `${parts[2]} ${parts[0]} ${parts[1]}`;
+  }
+
+  if (parts.length === 4) {
+    if (['DE', 'DEL', 'SAN', 'SANTA'].includes(parts[0].toUpperCase())) {
+      return `${parts[3]} ${parts[0]} ${parts[1]} ${parts[2]}`;
+    }
+    return `${parts[2]} ${parts[3]} ${parts[0]} ${parts[1]}`;
+  }
+
+  const surnames = parts.slice(0, 2);
+  const givenNames = parts.slice(2);
+  return `${givenNames.join(' ')} ${surnames.join(' ')}`;
+}
+
+/**
  * Servicio de autocompletado de nombre legal por DNI (< 1ms en backend)
  */
 export class DniService {
@@ -78,6 +109,7 @@ export class DniService {
       result.latencyMs = Number((endTime - startTime).toFixed(1));
 
       if (result.success && result.data?.nombreCompleto) {
+        result.data.nombreCompleto = formatSunatNameToGivenFirst(result.data.nombreCompleto);
         console.log(`[DNI SERVICE RESOLVED] ${cleanDni} -> ${result.data.nombreCompleto} (${result.latencyMs}ms)`);
         // Guardar en caché local
         dniMemoryCache.set(cleanDni, result);

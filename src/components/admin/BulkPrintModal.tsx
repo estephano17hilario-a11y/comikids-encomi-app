@@ -269,33 +269,35 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                           <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
                             DESTINATARIO:
                           </span>
-                          <strong className="text-sm font-black text-black block leading-tight pt-0.5 line-clamp-1 uppercase">
+                          <strong className="text-base sm:text-lg font-black text-black block leading-tight pt-0.5 line-clamp-1 uppercase tracking-tight">
                             {pedido.usuario?.nombre_completo || 'Cliente'}
                           </strong>
                         </div>
 
-                        {/* DNI GIGANTE (REQ: DNI MAS GRANDE EN EL ROTULADO) */}
-                        <div className={`p-1.5 rounded border flex items-center justify-between ${
+                        {/* DNI GIGANTE (REQ: DNI MAS GRANDE EN EL ROTULADO Y SIN TELÉFONO EN SHALOM) */}
+                        <div className={`p-1.5 rounded border flex items-center ${isShalom ? 'justify-center py-2' : 'justify-between'} ${
                           inkSavingLevel >= 75
                             ? 'bg-white border-black'
                             : 'bg-slate-100 border-slate-400'
                         }`}>
-                          <div>
-                            <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block leading-none">
+                          <div className={isShalom ? 'text-center w-full' : ''}>
+                            <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block leading-none mb-0.5">
                               🪪 DNI RECOJO:
                             </span>
-                            <span className="text-base sm:text-lg font-mono font-black text-black tracking-wider block leading-tight">
+                            <span className="text-xl sm:text-2xl font-mono font-black text-black tracking-widest block leading-tight">
                               {clientDni}
                             </span>
                           </div>
-                          <div className="text-right">
-                            <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block leading-none">
-                              TELÉFONO:
-                            </span>
-                            <span className="text-xs font-mono font-bold text-slate-900 block leading-tight">
-                              {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default || '-')}
-                            </span>
-                          </div>
+                          {!isShalom && (
+                            <div className="text-right">
+                              <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block leading-none">
+                                TELÉFONO:
+                              </span>
+                              <span className="text-xs font-mono font-bold text-slate-900 block leading-tight">
+                                {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default || '-')}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Agencia o Dirección Completa */}

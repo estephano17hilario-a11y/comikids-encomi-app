@@ -1493,9 +1493,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           DNI
                         </div>
                       )}
-                      {dniShalom.length >= 9 && (
+                      {dniShalom.length === 9 && (
                         <div className="absolute right-3 px-3 py-1 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black text-xs tracking-wider shadow-sm animate-fadeIn pointer-events-none">
                           CE
+                        </div>
+                      )}
+                      {dniShalom.length > 9 && (
+                        <div className="absolute right-3 px-2.5 py-1 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-300 font-bold text-xs tracking-wider shadow-sm animate-fadeIn pointer-events-none">
+                          Número inválido
                         </div>
                       )}
                     </div>
@@ -2001,9 +2006,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               DNI
                             </div>
                           )}
-                          {dniShalom.length >= 9 && (
+                          {dniShalom.length === 9 && (
                             <div className="absolute right-2.5 px-2 py-0.5 rounded-lg bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-black text-[11px] tracking-wider pointer-events-none animate-fadeIn">
                               CE
+                            </div>
+                          )}
+                          {dniShalom.length > 9 && (
+                            <div className="absolute right-2 px-2 py-0.5 rounded-lg bg-rose-500/20 border border-rose-500/50 text-rose-300 font-bold text-[10px] tracking-wider pointer-events-none animate-fadeIn">
+                              Número inválido
                             </div>
                           )}
                         </div>
@@ -2076,7 +2086,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       )}
                       {dniSource && !isResolvingDni && (
                         <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-fadeIn">
-                          ✨ Autorellenado
+                          Autorellenado
                         </span>
                       )}
                     </div>

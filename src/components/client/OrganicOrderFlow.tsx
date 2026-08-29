@@ -136,15 +136,19 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     const savedDoc = localStorage.getItem('incomi_saved_doc');
     if (savedDoc && savedDoc.trim().length >= 8) return savedDoc.trim();
     if (currentUser?.dni_default && currentUser.dni_default.trim().length >= 8) return currentUser.dni_default.trim();
-    if (currentUser?.dni && !currentUser.dni.startsWith('usr-') && currentUser.dni !== '061625' && currentUser.dni.trim().length >= 8) {
+    if (currentUser?.dni && !currentUser.dni.startsWith('usr-') && currentUser.dni !== '061625' && currentUser.dni.trim().length === 8) {
       return currentUser.dni.trim();
     }
-    return (savedDoc || '').trim();
+    if (savedDoc && savedDoc.trim().length < 8) {
+      localStorage.removeItem('incomi_saved_doc');
+    }
+    return '';
   });
 
   const [isResolvingDni, setIsResolvingDni] = useState(false);
   const [dniSource, setDniSource] = useState<'sunat_padron_local' | 'database_history' | 'cache' | null>(null);
   const lastResolvedDniRef = React.useRef<string>('');
+  const initialResolvedRef = React.useRef<boolean>(false);
 
   const handleDniChange = async (val: string) => {
     const rawVal = val.replace(/\D/g, '').slice(0, 12);
@@ -155,6 +159,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
     // Si tiene exactamente 8 dígitos, consultar en SUNAT / BD
     if (rawVal.length === 8) {
+      if (lastResolvedDniRef.current === rawVal) return;
       setIsResolvingDni(true);
       try {
         const res = await DniService.lookupByDni(rawVal);
@@ -163,34 +168,30 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           setDniSource('sunat_padron_local');
           lastResolvedDniRef.current = rawVal;
         } else {
-          // Si es un DNI que no existe en SUNAT o no tiene RUC, vaciar casilla
-          setNombreCompleto('');
           setDniSource(null);
-          lastResolvedDniRef.current = '';
+          lastResolvedDniRef.current = rawVal;
         }
       } catch (err) {
         console.warn('[DNI LOOKUP ERROR]', err);
-        setNombreCompleto('');
         setDniSource(null);
-        lastResolvedDniRef.current = '';
+        lastResolvedDniRef.current = rawVal;
       } finally {
         setIsResolvingDni(false);
       }
     } else {
-      // Si tiene menos de 8 dígitos (ej: 7 al borrar) o 9+ dígitos (CE), vaciar casilla de nombre
-      setNombreCompleto('');
-      setDniSource(null);
       lastResolvedDniRef.current = '';
     }
   };
 
-  // Autoresolver DNI si ya venía precargado con 8 dígitos y el nombre está vacío
+  // Autoresolver DNI una sola vez al inicio si ya venía precargado con 8 dígitos y el nombre está vacío
   useEffect(() => {
+    if (initialResolvedRef.current) return;
     const clean = String(dniShalom || '').replace(/\D/g, '');
     if (clean.length === 8 && !nombreCompleto) {
+      initialResolvedRef.current = true;
       handleDniChange(clean);
     }
-  }, [dniShalom]);
+  }, []);
 
   const [correoCliente, setCorreoCliente] = useState<string>(() => {
     return currentUser?.email_default || currentUser?.email || localStorage.getItem('incomi_saved_email') || '';

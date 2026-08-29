@@ -29,9 +29,15 @@ export const EditProfileModal: React.FC<Props> = ({ onClose }) => {
   const [telefonoDefault, setTelefonoDefault] = useState(
     currentUser?.telefono_default || localStorage.getItem('incomi_saved_phone') || currentUser?.dni || ''
   );
-  const [dniDefault, setDniDefault] = useState(
-    currentUser?.dni_default || localStorage.getItem('incomi_saved_doc') || currentUser?.dni || ''
-  );
+  const [dniDefault, setDniDefault] = useState(() => {
+    const savedDoc = localStorage.getItem('incomi_saved_doc');
+    if (savedDoc && savedDoc.trim().length >= 8) return savedDoc.trim();
+    if (currentUser?.dni_default && currentUser.dni_default.trim().length >= 8) return currentUser.dni_default.trim();
+    if (currentUser?.dni && !currentUser.dni.startsWith('usr-') && currentUser.dni !== '061625' && currentUser.dni.trim().length === 8) {
+      return currentUser.dni.trim();
+    }
+    return '';
+  });
   const [distritoDefault, setDistritoDefault] = useState(
     currentUser?.distrito_default || localStorage.getItem('incomi_saved_district') || ''
   );

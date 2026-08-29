@@ -41,7 +41,7 @@ export const ClientPortal: React.FC = () => {
       {currentUser ? (
         <ClientHUD />
       ) : (
-        <header className="glass-panel border-b border-cyan-500/20 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-6 sticky top-0 z-10 backdrop-blur-xl shadow-lg transition-all">
+        <header className="glass-panel border-b border-cyan-500/20 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-6 relative z-0 backdrop-blur-md shadow-lg transition-all">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               {/* Ícono de Encomi: Redirige al Funnel de Encomi */}
@@ -83,7 +83,7 @@ export const ClientPortal: React.FC = () => {
       )}
 
       {/* Main Container con Espacios Optimizados */}
-      <main className="flex-1 w-full max-w-4xl mx-auto px-3 sm:px-6 py-2 sm:py-3 pb-20 sm:pb-10 space-y-3.5">
+      <main className="relative z-20 flex-1 w-full max-w-4xl mx-auto px-3 sm:px-6 py-2 sm:py-3 pb-20 sm:pb-10 space-y-3.5">
         
         {/* Desktop Section Switcher Tabs */}
         {currentUser && (

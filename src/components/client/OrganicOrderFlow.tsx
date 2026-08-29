@@ -1368,8 +1368,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </div>
                     )}
 
-                    {/* Buscador & Lista Flotante de Agencias (Por defecto el recuadro flotante está MINIMIZADO) */}
-                    {(isAgencyListOpen || !selectedAgencyObject) && (
+                    {/* Botón para abrir buscador cuando no hay agencia seleccionada */}
+                    {!selectedAgencyObject && !isAgencyListOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAgencyListOpen(true)}
+                        className="w-full py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/15 hover:border-cyan-400/50 text-sm font-bold text-slate-300 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                      >
+                        <Search className="w-4 h-4 text-cyan-400" />
+                        <span>Seleccionar Agencia Shalom de Destino</span>
+                        <ChevronDown className="w-4 h-4 text-slate-400" />
+                      </button>
+                    )}
+
+                    {/* Buscador & Lista Flotante de Agencias (Solo visible cuando isAgencyListOpen=true) */}
+                    {isAgencyListOpen && (
                       <div className="relative space-y-2 animate-fadeIn z-50">
                         
                         {/* Panel Flotante de Resultados: Solo aparece cuando isAgencyListOpen es TRUE */}
@@ -1443,7 +1456,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         <div className="relative flex items-center">
                           <input
                             type="text"
-                            autoFocus
+
                             value={agencySearchQuery}
                             onFocus={() => setIsAgencyListOpen(true)}
                             onClick={() => setIsAgencyListOpen(true)}
@@ -1831,8 +1844,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </div>
                       )}
 
-                      {/* Buscador & Lista Flotante de Agencias Olva (Por defecto el recuadro flotante está MINIMIZADO) */}
-                      {(isOlvaAgencyListOpen || !selectedOlvaAgencyObject) && (
+                      {/* Botón para abrir buscador Olva cuando no hay agencia seleccionada */}
+                      {!selectedOlvaAgencyObject && !isOlvaAgencyListOpen && (
+                        <button
+                          type="button"
+                          onClick={() => setIsOlvaAgencyListOpen(true)}
+                          className="w-full py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/15 hover:border-amber-400/50 text-sm font-bold text-slate-300 hover:text-white transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                        >
+                          <Search className="w-4 h-4 text-amber-400" />
+                          <span>Seleccionar Agencia Olva de Destino</span>
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        </button>
+                      )}
+
+                      {/* Buscador & Lista Flotante de Agencias Olva (Solo visible cuando isOlvaAgencyListOpen=true) */}
+                      {isOlvaAgencyListOpen && (
                         <div className="relative space-y-2 animate-fadeIn z-50">
                           
                           {/* Panel Flotante de Resultados: Solo aparece cuando isOlvaAgencyListOpen es TRUE */}

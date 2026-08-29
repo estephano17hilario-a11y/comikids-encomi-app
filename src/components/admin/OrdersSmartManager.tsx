@@ -34,8 +34,12 @@ import {
   X,
   FileSpreadsheet,
   Tag,
-  Building2
+  Building2,
+  RefreshCw,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
+import { getApiBaseUrl } from '../../config/api';
 import { resolveShalomAgencyDetails, extractShalomDestino } from '../../utils/shalomAgencyResolver';
 
 
@@ -53,8 +57,10 @@ export const OrdersSmartManager: React.FC = () => {
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'almacen' | 'alistando' | 'dejando_shalom' | 'entregado'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'almacen' | 'alistando' | 'dejando_shalom' | 'listo_para_recojo' | 'entregado'>('all');
   const [transportFilter, setTransportFilter] = useState<'all' | 'shalom' | 'motorizado' | 'olva'>('all');
+  const [isRecogidosSubfolderOpen, setIsRecogidosSubfolderOpen] = useState(true);
+  const [isTrackingSyncing, setIsTrackingSyncing] = useState(false);
 
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -77,6 +83,7 @@ export const OrdersSmartManager: React.FC = () => {
   // Helper para nombre legible del estado
   const getStatusLabel = (envio: EstadoEnvio, prod?: EstadoProduccion): string => {
     if (envio === 'entregado') return 'Entregado';
+    if (envio === 'listo_para_recojo') return 'Listo para Recoger en Agencia';
     if (envio === 'en_camino' || (prod === 'completado' && envio === 'pendiente')) return 'Dejando en Shalom / En Ruta';
     if (prod === 'bordando') return 'Alistándolo';
     return 'En Almacén';
@@ -182,6 +189,7 @@ export const OrdersSmartManager: React.FC = () => {
       if (statusFilter === 'almacen') return order.estado_produccion === 'en_cola' && order.estado_envio === 'pendiente';
       if (statusFilter === 'alistando') return order.estado_produccion === 'bordando' && order.estado_envio === 'pendiente';
       if (statusFilter === 'dejando_shalom') return order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente');
+      if (statusFilter === 'listo_para_recojo') return order.estado_envio === 'listo_para_recojo';
       if (statusFilter === 'entregado') return order.estado_envio === 'entregado';
 
       // Vista "Todos": Todos los pedidos vigentes EXCEPTO los que ya fueron entregados
@@ -359,6 +367,29 @@ export const OrdersSmartManager: React.FC = () => {
     }
   };
 
+  // Handler para forzar sincronización del Listener de Tracking de Shalom
+  const handleSyncShalomTracking = async () => {
+    setIsTrackingSyncing(true);
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/shalom/listener/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceFirstRun: false }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (data?.success) {
+        alert(`Sincronización Shalom 24/7 completada:\n• ${data.report?.totalShippedOrdersChecked || 0} paquetes verificados\n• ${data.report?.newlyArrivedCount || 0} nuevos en destino\n• ${data.report?.notifiedCount || 0} avisos enviados por WhatsApp`);
+      } else {
+        alert(data?.error || 'Sincronización completada.');
+      }
+    } catch (err: any) {
+      console.error('Error sincronizando tracking:', err);
+      alert('Error consultando el listener de Shalom.');
+    } finally {
+      setIsTrackingSyncing(false);
+    }
+  };
+
   // Contadores dinámicos calculados en tiempo real
   const counts = useMemo(() => {
     return {
@@ -366,12 +397,388 @@ export const OrdersSmartManager: React.FC = () => {
       almacen: pedidos.filter(p => p.estado_produccion === 'en_cola' && p.estado_envio === 'pendiente').length,
       alistando: pedidos.filter(p => p.estado_produccion === 'bordando' && p.estado_envio === 'pendiente').length,
       dejando_shalom: pedidos.filter(p => p.estado_envio === 'en_camino' || (p.estado_produccion === 'completado' && p.estado_envio === 'pendiente')).length,
+      listo_para_recojo: pedidos.filter(p => p.estado_envio === 'listo_para_recojo').length,
       entregado: pedidos.filter(p => p.estado_envio === 'entregado').length,
       shalom: pedidos.filter(p => (p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom')) && p.estado_envio !== 'entregado').length,
       olva: pedidos.filter(p => (p.metodo_envio_codigo === 'olva' || p.destino_detalle?.toLowerCase().includes('olva')) && p.estado_envio !== 'entregado').length,
       motorizado: pedidos.filter(p => (p.metodo_envio_codigo === 'motorizado' || p.destino_detalle?.toLowerCase().includes('motorizado')) && p.estado_envio !== 'entregado').length,
     };
   }, [pedidos]);
+
+  // Subgrupos de pedidos para las 2 Subcarpetas
+  const inTransitOrders = useMemo(() => {
+    return filteredOrders.filter(
+      o => o.estado_envio === 'en_camino' || (o.estado_produccion === 'completado' && o.estado_envio === 'pendiente')
+    );
+  }, [filteredOrders]);
+
+  const readyOrders = useMemo(() => {
+    return filteredOrders.filter(o => o.estado_envio === 'listo_para_recojo');
+  }, [filteredOrders]);
+
+  const otherOrders = useMemo(() => {
+    return filteredOrders.filter(
+      o => o.estado_envio !== 'listo_para_recojo' && o.estado_envio !== 'en_camino' && !(o.estado_produccion === 'completado' && o.estado_envio === 'pendiente')
+    );
+  }, [filteredOrders]);
+
+  const renderOrderCard = (order: Pedido) => {
+    const isSelected = selectedIds.includes(order.id);
+    let dni = order.usuario?.dni || order.usuario?.dni_default || '';
+
+    if (dni.startsWith('usr-') || dni === '00000000') {
+      const matchDoc = String(order.destino_detalle || '').match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
+      dni = (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) ? matchDoc[1].trim() : '';
+    }
+    const rawKey = (
+      (dni && !dni.startsWith('usr-') ? dni.trim() : '') ||
+      order.usuario?.telefono_default?.trim() ||
+      order.usuario?.nombre_completo?.trim().toLowerCase() ||
+      ''
+    );
+
+    const dupInfo = rawKey ? duplicateOrdersMap.get(rawKey) : null;
+    const isDuplicateOrSimultaneous = Boolean(dupInfo && dupInfo.count >= 2);
+    const isReadyForPickup = order.estado_envio === 'listo_para_recojo';
+
+    return (
+      <div
+        key={order.id}
+        onClick={() => handleCardTap(order.id)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={() => handleTouchEnd(order)}
+        className={`p-4 sm:p-5 rounded-3xl border transition-all space-y-3 cursor-pointer select-none relative ${
+          isSelected
+            ? 'bg-cyan-950/40 border-cyan-400/80 shadow-lg shadow-cyan-500/10'
+            : isReadyForPickup
+            ? 'bg-linear-to-b from-teal-950/40 via-slate-900/90 to-slate-900 border-teal-500/50 hover:border-teal-400 shadow-md shadow-teal-500/10'
+            : isDuplicateOrSimultaneous
+            ? 'bg-slate-900/90 border-amber-500/50 hover:border-amber-400 shadow-md shadow-amber-500/5'
+            : 'bg-slate-900/80 border-white/10 hover:border-white/20 hover:bg-slate-900/95 shadow-md'
+        }`}
+      >
+        
+        {/* Top Row: Checkbox, Code & Method Badge */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSelect(order.id);
+              }}
+              className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
+                isSelected ? 'bg-cyan-500 text-slate-950 font-black' : 'bg-slate-800 border border-slate-700 text-transparent'
+              }`}
+            >
+              ✓
+            </button>
+            
+            <span className="font-mono text-xs font-black text-white tracking-wider">
+              #{order.codigo_seguimiento}
+            </span>
+          </div>
+
+          {(() => {
+            const isOlva = order.metodo_envio_codigo === 'olva' || order.destino_detalle?.toLowerCase().includes('olva');
+            const isShalom = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');
+            return (
+              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                isOlva
+                  ? 'bg-yellow-400/20 text-yellow-300 border border-yellow-400/30'
+                  : isShalom
+                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                  : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+              }`}>
+                {isOlva ? '🏢 Olva' : isShalom ? '📦 Shalom' : '🛵 Motorizado'}
+              </span>
+            );
+          })()}
+        </div>
+
+        {/* Insignia de Pedido Duplicado / Simultáneo */}
+        {isDuplicateOrSimultaneous && (
+          <div className="p-2 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-2 shadow-sm animate-pulse">
+            <div className="flex items-center gap-1.5 font-bold truncate">
+              <span>⚠️</span>
+              <span className="truncate">¡{dupInfo?.count} pedidos simultáneos activos!</span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSearchTerm(order.usuario?.nombre_completo || order.usuario?.dni || '');
+              }}
+              className="px-2 py-0.5 rounded-lg bg-amber-500/40 hover:bg-amber-500/60 text-white font-black text-[10px] transition-colors shrink-0"
+            >
+              Ver
+            </button>
+          </div>
+        )}
+
+        {/* Client Info */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-black text-white tracking-tight truncate">
+              {order.usuario?.nombre_completo || 'Cliente'}
+            </h4>
+            {dni && !dni.startsWith('usr-') && (
+              <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+                {dni}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-start gap-1.5 text-xs text-slate-300">
+            <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+            <p className="leading-snug text-[11px] text-slate-300 break-words">
+              {order.destino_detalle}
+            </p>
+          </div>
+
+          {/* Insignia Canónica Oficial de la Agencia de Destino */}
+          {(() => {
+            const isShalomOrder = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');
+            if (isShalomOrder) {
+              const agencyInfo = resolveShalomAgencyDetails(order.destino_detalle);
+              return (
+                <div className="space-y-1 pt-1">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-xl border border-rose-500/30 shadow-xs">
+                    <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span className="truncate">Agencia Destino: <strong className="text-white font-black">{agencyInfo.officialDestination}</strong></span>
+                    {agencyInfo.code && (
+                      <span className="text-[10px] font-mono text-rose-200 bg-rose-900/70 px-1.5 py-0.2 rounded-md border border-rose-500/40 font-black shrink-0">
+                        {agencyInfo.code}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Confirmación de registro vía API con guía y botón para desvincular */}
+                  {order.registrado_shalom && (
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/50 px-2.5 py-1 rounded-xl border border-emerald-500/40">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="truncate">Despachado API: <strong>{order.shalom_numero_guia || `OSE #${order.shalom_ose_id || ''}`}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {order.shalom_clave_recojo && (
+                          <span className="text-[9px] font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded-md border border-amber-500/30 shrink-0">
+                            PIN: {order.shalom_clave_recojo}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (confirm('¿Desvincular despacho de Shalom de este pedido para volver a registrarlo o ingresar otra guía?')) {
+                              await updatePedido(order.id, {
+                                registrado_shalom: false,
+                                shalom_ose_id: null,
+                                shalom_numero_guia: null,
+                                shalom_clave_recojo: null,
+                              });
+                            }
+                          }}
+                          className="text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 p-0.5 rounded transition-colors text-[9px] cursor-pointer"
+                          title="Desvincular guía para registrar de nuevo"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return null;
+          })()}
+
+          {/* Insignia de Arribo a Agencia Destino */}
+          {isReadyForPickup && (
+            <div className="p-2.5 rounded-2xl bg-teal-950/60 border border-teal-500/40 text-teal-200 text-xs flex items-center justify-between gap-2 shadow-sm">
+              <div className="flex items-center gap-2 truncate">
+                <span className="text-sm">🏢</span>
+                <div className="truncate">
+                  <span className="text-[11px] font-black text-teal-300 block">¡Arribó a Agencia Destino!</span>
+                  <span className="text-[10px] text-teal-200/80 font-mono">
+                    N° Envío: {order.shalom_numero_guia?.replace(/\D/g, '') || order.codigo_seguimiento} {order.shalom_clave_recojo ? `| Clave: ${order.shalom_clave_recojo}` : ''}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[9px] bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-lg font-black border border-teal-500/30 shrink-0">
+                En Agencia ✓
+              </span>
+            </div>
+          )}
+
+          {order.observaciones_cliente && (
+            <p className="text-[10px] text-slate-400 italic bg-white/5 p-1.5 rounded-lg break-words">
+              Ref: {order.observaciones_cliente}
+            </p>
+          )}
+        </div>
+
+        {/* Google Maps External URL (if Motorizado coordinates available) */}
+        {order.latitud && order.longitud && (
+          <div className="pt-1">
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${order.latitud},${order.longitud}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors"
+            >
+              <span>📍 Ver ubicación exacta en Google Maps</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        )}
+
+        {/* Timestamps: Creación y Última Edición */}
+        <div className="pt-1.5 border-t border-white/6 flex flex-wrap items-center justify-between gap-1 text-[10px] font-mono text-slate-400">
+          <div className="flex items-center gap-1 text-slate-300">
+            <span>🕒</span>
+            <span>Creado: <strong>{formatOrderTime(order.created_at)}</strong></span>
+          </div>
+          {wasEdited(order.created_at, order.updated_at) && (
+            <div className="flex items-center gap-1 text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded-md border border-cyan-500/30" title={`Última edición: ${formatOrderTime(order.updated_at)}`}>
+              <span>✏️</span>
+              <span>Editado: <strong>{formatOrderTime(order.updated_at)}</strong></span>
+            </div>
+          )}
+        </div>
+
+        {/* Status Badges & Quick Action Pills */}
+        <div className="pt-2 border-t border-white/8 flex flex-wrap items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+          
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Status Indicator & Swipe Hint */}
+            <button
+              type="button"
+              onClick={() => setSwipeTargetOrder(order)}
+              className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+              title="Clic o desliza para cambiar estado"
+            >
+              {(() => {
+                const isOlva = order.metodo_envio_codigo === 'olva' || order.destino_detalle?.toLowerCase().includes('olva');
+                if (order.estado_envio === 'entregado') {
+                  return (
+                    <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      {isOlva ? '✓ Entregado a Olva' : order.metodo_envio_codigo === 'motorizado' ? '✓ Entregado' : '✓ Entregado a Shalom'}
+                    </span>
+                  );
+                }
+                if (order.estado_envio === 'listo_para_recojo') {
+                  return (
+                    <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-teal-500/25 text-teal-200 border border-teal-500/40 flex items-center gap-1 shadow-sm">
+                      <span>🏢</span>
+                      <span>Listo para Recoger</span>
+                    </span>
+                  );
+                }
+                if (order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente')) {
+                  return (
+                    <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      {isOlva ? '🚚 Dejando en Olva' : order.metodo_envio_codigo === 'motorizado' ? '🛵 En Ruta' : '🚚 Dejando en Shalom'}
+                    </span>
+                  );
+                }
+                if (order.estado_produccion === 'bordando') {
+                  return (
+                    <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      🪡 Alistándolo
+                    </span>
+                  );
+                }
+                return (
+                  <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    🏬 En Almacén
+                  </span>
+                );
+              })()}
+            </button>
+
+            {/* Botón Ver/Imprimir Rótulo Individual */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedLabelOrder(order);
+              }}
+              className="px-2.5 py-1 rounded-xl bg-purple-500/20 hover:bg-purple-500/35 text-purple-200 border border-purple-500/35 text-[11px] font-black transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+              title="Ver e imprimir rótulo individual"
+            >
+              <Printer className="w-3 h-3 text-cyan-300" />
+              <span>Rótulo</span>
+            </button>
+
+            {/* Checkbox / Estado Rotulado */}
+            <button
+              type="button"
+              onClick={async (e) => {
+                e.stopPropagation();
+                await updatePedido(order.id, { rotulado: !order.rotulado });
+              }}
+              className={`px-2 py-1 rounded-xl text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
+                order.rotulado
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/30 shadow-sm'
+                  : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300 hover:bg-white/10'
+              }`}
+              title={order.rotulado ? 'Marcado como Rotulado (Clic para quitar)' : 'Clic para marcar como Rotulado'}
+            >
+              <span>{order.rotulado ? '✓ Rotulado' : '+ Marcar'}</span>
+            </button>
+
+            {/* Etiqueta Registrado en Shalom (Toggleable) */}
+            {(order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom')) && (
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await updatePedido(order.id, { registrado_shalom: !order.registrado_shalom });
+                }}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
+                  order.registrado_shalom
+                    ? 'bg-indigo-500/25 text-indigo-300 border-indigo-500/40 hover:bg-indigo-500/35 shadow-sm'
+                    : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300 hover:bg-white/10'
+                }`}
+                title={order.registrado_shalom ? 'Registrado en Shalom (Clic para quitar)' : 'Clic para marcar como Registrado en Shalom'}
+              >
+                <span>📑</span>
+                <span>{order.registrado_shalom ? 'Shalom Reg. ✓' : '+ Reg. Shalom'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setEditingPedido(order)}
+              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+              title="Editar datos del pedido"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Editar</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                if (confirm(`¿Eliminar el pedido ${order.codigo_seguimiento}?`)) {
+                  await deletePedido(order.id);
+                }
+              }}
+              className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition-colors cursor-pointer"
+              title="Eliminar pedido"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn pb-32">
@@ -496,6 +903,16 @@ export const OrdersSmartManager: React.FC = () => {
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
+              onClick={handleSyncShalomTracking}
+              disabled={isTrackingSyncing}
+              className="py-2 px-3.5 rounded-2xl bg-teal-600/30 hover:bg-teal-600/50 active:scale-95 text-teal-200 hover:text-white border border-teal-500/40 text-xs font-black flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all cursor-pointer"
+              title="Consultar en vivo a la API de Shalom si algún paquete ya desembarcó en destino"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-teal-300 ${isTrackingSyncing ? 'animate-spin' : ''}`} />
+              <span>{isTrackingSyncing ? 'Verificando Shalom...' : 'Sincronizar Shalom 24/7'}</span>
+            </button>
+
+            <button
               onClick={() => setShowBulkPrint(true)}
               className="py-2 px-3.5 rounded-2xl bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
               title="Imprimir o descargar todos los rótulos A4"
@@ -556,13 +973,19 @@ export const OrdersSmartManager: React.FC = () => {
               onClick={() => setStatusFilter('dejando_shalom')}
               className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'dejando_shalom' ? 'bg-blue-500 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              Dejando en Shalom ({counts.dejando_shalom})
+              En Ruta ({counts.dejando_shalom})
+            </button>
+            <button
+              onClick={() => setStatusFilter('listo_para_recojo')}
+              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'listo_para_recojo' ? 'bg-teal-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-teal-300'}`}
+            >
+              Listo Recojo ({counts.listo_para_recojo})
             </button>
             <button
               onClick={() => setStatusFilter('entregado')}
               className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'entregado' ? 'bg-emerald-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              Entregado a Shalom ({counts.entregado})
+              Entregado ({counts.entregado})
             </button>
           </div>
 
@@ -633,7 +1056,7 @@ export const OrdersSmartManager: React.FC = () => {
         </div>
       )}
 
-      {/* --- CARDS LIST VIEW --- */}
+      {/* --- CARDS LIST VIEW WITH 2 SUBFOLDERS --- */}
       {filteredOrders.length === 0 ? (
         <div className="glass-panel p-12 text-center rounded-3xl border border-white/10 space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-slate-400 mx-auto text-xl">
@@ -647,338 +1070,97 @@ export const OrdersSmartManager: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredOrders.map(order => {
-            const isSelected = selectedIds.includes(order.id);
-            let dni = order.usuario?.dni || order.usuario?.dni_default || '';
+        <div className="space-y-6">
 
-            if (dni.startsWith('usr-') || dni === '00000000') {
-              const matchDoc = String(order.destino_detalle || '').match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
-              dni = (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) ? matchDoc[1].trim() : '';
-            }
-            const rawKey = (
-              (dni && !dni.startsWith('usr-') ? dni.trim() : '') ||
-              order.usuario?.telefono_default?.trim() ||
-              order.usuario?.nombre_completo?.trim().toLowerCase() ||
-              ''
-            );
-
-            const dupInfo = rawKey ? duplicateOrdersMap.get(rawKey) : null;
-            const isDuplicateOrSimultaneous = Boolean(dupInfo && dupInfo.count >= 2);
-
-            return (
-              <div
-                key={order.id}
-                onClick={() => handleCardTap(order.id)}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={() => handleTouchEnd(order)}
-                className={`p-4 sm:p-5 rounded-3xl border transition-all space-y-3 cursor-pointer select-none relative ${
-                  isSelected
-                    ? 'bg-cyan-950/40 border-cyan-400/80 shadow-lg shadow-cyan-500/10'
-                    : isDuplicateOrSimultaneous
-                    ? 'bg-slate-900/90 border-amber-500/50 hover:border-amber-400 shadow-md shadow-amber-500/5'
-                    : 'bg-slate-900/80 border-white/10 hover:border-white/20 hover:bg-slate-900/95 shadow-md'
-                }`}
-              >
-                
-                {/* Top Row: Checkbox, Code & Method Badge */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSelect(order.id);
-                      }}
-                      className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
-                        isSelected ? 'bg-cyan-500 text-slate-950 font-black' : 'bg-slate-800 border border-slate-700 text-transparent'
-                      }`}
-                    >
-                      ✓
-                    </button>
-                    
-                    <span className="font-mono text-xs font-black text-white tracking-wider">
-                      #{order.codigo_seguimiento}
-                    </span>
+          {/* ========================================================================= */}
+          {/* SUBCARPETA 2: LISTOS PARA RECOGER EN AGENCIA (NO OBSTRUCTIVA / PLEGABLE) */}
+          {/* ========================================================================= */}
+          {readyOrders.length > 0 && (statusFilter === 'all' || statusFilter === 'listo_para_recojo' || statusFilter === 'dejando_shalom' || statusFilter === 'entregado') && (
+            <div className="rounded-3xl bg-linear-to-b from-teal-950/30 via-slate-900/60 to-slate-900/90 border-2 border-teal-500/40 p-4 sm:p-5 space-y-4 shadow-xl shadow-teal-950/20 animate-fadeIn">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-teal-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-500/40 text-teal-300 flex items-center justify-center text-xl font-bold">
+                    🏢
                   </div>
-
-                  {(() => {
-                    const isOlva = order.metodo_envio_codigo === 'olva' || order.destino_detalle?.toLowerCase().includes('olva');
-                    const isShalom = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');
-                    return (
-                      <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                        isOlva
-                          ? 'bg-yellow-400/20 text-yellow-300 border border-yellow-400/30'
-                          : isShalom
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                          : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                      }`}>
-                        {isOlva ? '🏢 Olva' : isShalom ? '📦 Shalom' : '🛵 Motorizado'}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm sm:text-base font-black text-white">
+                        Subcarpeta: Listos para Recoger en Shalom ({readyOrders.length})
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-teal-500/20 text-teal-300 border border-teal-500/40">
+                        Desembarcados ✓
                       </span>
-                    );
-                  })()}
-                </div>
-
-                {/* Insignia de Pedido Duplicado / Simultáneo */}
-                {isDuplicateOrSimultaneous && (
-                  <div className="p-2 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-2 shadow-sm animate-pulse">
-                    <div className="flex items-center gap-1.5 font-bold truncate">
-                      <span>⚠️</span>
-                      <span className="truncate">¡{dupInfo?.count} pedidos simultáneos activos!</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSearchTerm(order.usuario?.nombre_completo || order.usuario?.dni || '');
-                      }}
-                      className="px-2 py-0.5 rounded-lg bg-amber-500/40 hover:bg-amber-500/60 text-white font-black text-[10px] transition-colors shrink-0"
-                    >
-                      Ver
-                    </button>
-                  </div>
-                )}
-
-                {/* Client Info */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-black text-white tracking-tight truncate">
-                      {order.usuario?.nombre_completo || 'Cliente'}
-                    </h4>
-                    {dni && !dni.startsWith('usr-') && (
-                      <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
-                        {dni}
-                      </span>
-                    )}
-
-                  </div>
-
-                  <div className="flex items-start gap-1.5 text-xs text-slate-300">
-                    <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
-                    <p className="leading-snug text-[11px] text-slate-300 break-words">
-                      {order.destino_detalle}
+                    <p className="text-[11px] text-teal-200/70">
+                      Paquetes confirmados por Shalom Pro en agencia destino para entrega inmediata.
                     </p>
                   </div>
-
-                  {/* Insignia Canónica Oficial de la Agencia de Destino */}
-                  {(() => {
-                    const isShalomOrder = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');
-                    if (isShalomOrder) {
-                      const agencyInfo = resolveShalomAgencyDetails(order.destino_detalle);
-                      return (
-                        <div className="space-y-1 pt-1">
-                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-xl border border-rose-500/30 shadow-xs">
-                            <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                            <span className="truncate">Agencia Destino: <strong className="text-white font-black">{agencyInfo.officialDestination}</strong></span>
-                            {agencyInfo.code && (
-                              <span className="text-[10px] font-mono text-rose-200 bg-rose-900/70 px-1.5 py-0.2 rounded-md border border-rose-500/40 font-black shrink-0">
-                                {agencyInfo.code}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Confirmación de registro vía API con guía y botón para desvincular */}
-                          {order.registrado_shalom && (
-                            <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/50 px-2.5 py-1 rounded-xl border border-emerald-500/40">
-                              <div className="flex items-center gap-1.5 truncate">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                <span className="truncate">Despachado API: <strong>{order.shalom_numero_guia || `OSE #${order.shalom_ose_id || ''}`}</strong></span>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                {order.shalom_clave_recojo && (
-                                  <span className="text-[9px] font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded-md border border-amber-500/30 shrink-0">
-                                    PIN: {order.shalom_clave_recojo}
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    if (confirm('¿Desvincular despacho de Shalom de este pedido para volver a registrarlo o ingresar otra guía?')) {
-                                      await updatePedido(order.id, {
-                                        registrado_shalom: false,
-                                        shalom_ose_id: null,
-                                        shalom_numero_guia: null,
-                                        shalom_clave_recojo: null,
-                                      });
-                                    }
-                                  }}
-                                  className="text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 p-0.5 rounded transition-colors text-[9px] cursor-pointer"
-                                  title="Desvincular guía para registrar de nuevo"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-
-
-                  {order.observaciones_cliente && (
-                    <p className="text-[10px] text-slate-400 italic bg-white/5 p-1.5 rounded-lg break-words">
-                      Ref: {order.observaciones_cliente}
-                    </p>
-                  )}
                 </div>
 
-                {/* Google Maps External URL (if Motorizado coordinates available) */}
-                {order.latitud && order.longitud && (
-                  <div className="pt-1">
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${order.latitud},${order.longitud}`}
-
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors"
-                    >
-                      <span>📍 Ver ubicación exacta en Google Maps</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                )}
-
-                {/* Timestamps: Creación y Última Edición */}
-                <div className="pt-1.5 border-t border-white/6 flex flex-wrap items-center justify-between gap-1 text-[10px] font-mono text-slate-400">
-                  <div className="flex items-center gap-1 text-slate-300">
-                    <span>🕒</span>
-                    <span>Creado: <strong>{formatOrderTime(order.created_at)}</strong></span>
-                  </div>
-                  {wasEdited(order.created_at, order.updated_at) && (
-                    <div className="flex items-center gap-1 text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded-md border border-cyan-500/30" title={`Última edición: ${formatOrderTime(order.updated_at)}`}>
-                      <span>✏️</span>
-                      <span>Editado: <strong>{formatOrderTime(order.updated_at)}</strong></span>
-                    </div>
-                  )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsRecogidosSubfolderOpen(!isRecogidosSubfolderOpen)}
+                    className="py-1.5 px-3 rounded-xl bg-teal-500/20 hover:bg-teal-500/35 active:scale-95 text-teal-200 font-bold text-xs border border-teal-500/30 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    {isRecogidosSubfolderOpen ? <ChevronDown className="w-4 h-4 text-teal-300" /> : <ChevronRight className="w-4 h-4 text-teal-300" />}
+                    <span>{isRecogidosSubfolderOpen ? 'Ocultar Subcarpeta' : 'Mostrar Subcarpeta'}</span>
+                    <span className="font-mono bg-teal-950 px-1.5 py-0.2 rounded text-[10px] text-teal-300 font-black">({readyOrders.length})</span>
+                  </button>
                 </div>
-
-                {/* Status Badges & Quick Action Pills */}
-                <div className="pt-2 border-t border-white/8 flex flex-wrap items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
-                  
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {/* Status Indicator & Swipe Hint */}
-                    <button
-                      type="button"
-                      onClick={() => setSwipeTargetOrder(order)}
-                      className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-                      title="Clic o desliza para cambiar estado"
-                    >
-                      {(() => {
-                        const isOlva = order.metodo_envio_codigo === 'olva' || order.destino_detalle?.toLowerCase().includes('olva');
-                        if (order.estado_envio === 'entregado') {
-                          return (
-                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              {isOlva ? '✓ Entregado a Olva' : order.metodo_envio_codigo === 'motorizado' ? '✓ Entregado' : '✓ Entregado a Shalom'}
-                            </span>
-                          );
-                        }
-                        if (order.estado_envio === 'en_camino' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente')) {
-                          return (
-                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                              {isOlva ? '🚚 Dejando en Olva' : order.metodo_envio_codigo === 'motorizado' ? '🛵 En Ruta' : '🚚 Dejando en Shalom'}
-                            </span>
-                          );
-                        }
-                        if (order.estado_produccion === 'bordando') {
-                          return (
-                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                              🪡 Alistándolo
-                            </span>
-                          );
-                        }
-                        return (
-                          <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                            🏬 En Almacén
-                          </span>
-                        );
-                      })()}
-                    </button>
-
-                    {/* Botón Ver/Imprimir Rótulo Individual */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLabelOrder(order);
-                      }}
-                      className="px-2.5 py-1 rounded-xl bg-purple-500/20 hover:bg-purple-500/35 text-purple-200 border border-purple-500/35 text-[11px] font-black transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
-                      title="Ver e imprimir rótulo individual"
-                    >
-                      <Printer className="w-3 h-3 text-cyan-300" />
-                      <span>Rótulo</span>
-                    </button>
-
-                    {/* Checkbox / Estado Rotulado */}
-                    <button
-                      type="button"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        await updatePedido(order.id, { rotulado: !order.rotulado });
-                      }}
-                      className={`px-2 py-1 rounded-xl text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
-                        order.rotulado
-                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/30 shadow-sm'
-                          : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300 hover:bg-white/10'
-                      }`}
-                      title={order.rotulado ? 'Marcado como Rotulado (Clic para quitar)' : 'Clic para marcar como Rotulado'}
-                    >
-                      <span>{order.rotulado ? '✓ Rotulado' : '+ Marcar'}</span>
-                    </button>
-
-                    {/* Etiqueta Registrado en Shalom (Toggleable) */}
-                    {(order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom')) && (
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          await updatePedido(order.id, { registrado_shalom: !order.registrado_shalom });
-                        }}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
-                          order.registrado_shalom
-                            ? 'bg-indigo-500/25 text-indigo-300 border-indigo-500/40 hover:bg-indigo-500/35 shadow-sm'
-                            : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300 hover:bg-white/10'
-                        }`}
-                        title={order.registrado_shalom ? 'Registrado en Shalom (Clic para quitar)' : 'Clic para marcar como Registrado en Shalom'}
-                      >
-                        <span>📑</span>
-                        <span>{order.registrado_shalom ? 'Shalom Reg. ✓' : '+ Reg. Shalom'}</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setEditingPedido(order)}
-                      className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Editar datos del pedido"
-                    >
-                      <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="hidden sm:inline">Editar</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (confirm(`¿Eliminar el pedido ${order.codigo_seguimiento}?`)) {
-                          await deletePedido(order.id);
-                        }
-                      }}
-                      className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-bold transition-colors cursor-pointer"
-                      title="Eliminar pedido"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                </div>
-
               </div>
-            );
-          })}
+
+              {isRecogidosSubfolderOpen && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1 animate-fadeIn">
+                  {readyOrders.map(order => renderOrderCard(order))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* SUBCARPETA 1: PEDIDOS EN TRÁNSITO ACTIVO / EN RUTA (AÚN EN VIAJE)       */}
+          {/* ========================================================================= */}
+          {inTransitOrders.length > 0 && statusFilter !== 'listo_para_recojo' && (
+            <div className="space-y-3">
+              {(statusFilter === 'all' || statusFilter === 'dejando_shalom') && (
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-ping" />
+                    <h3 className="text-xs sm:text-sm font-black text-blue-200 uppercase tracking-wider">
+                      🚚 Subcarpeta: En Ruta / En Tránsito Activo ({inTransitOrders.length})
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    Monitoreado cada 35 min por Listener 24/7
+                  </span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {inTransitOrders.map(order => renderOrderCard(order))}
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* OTROS PEDIDOS (EN ALMACÉN / ALISTÁNDOLO / ENTREGADOS)                   */}
+          {/* ========================================================================= */}
+          {otherOrders.length > 0 && statusFilter !== 'listo_para_recojo' && statusFilter !== 'dejando_shalom' && (
+            <div className="space-y-3">
+              {statusFilter === 'all' && (
+                <div className="flex items-center gap-2 px-1 pt-2">
+                  <h3 className="text-xs sm:text-sm font-black text-slate-300 uppercase tracking-wider">
+                    📦 Almacén y Producción ({otherOrders.length})
+                  </h3>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {otherOrders.map(order => renderOrderCard(order))}
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 

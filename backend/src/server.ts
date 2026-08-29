@@ -11,6 +11,7 @@ import { copilotWorker } from './workers/copilot.worker.js';
 import { redisClient } from './config/redis.js';
 import { EvolutionService } from './services/evolution.service.js';
 import { ShalomSyncService } from './services/shalomSync.service.js';
+import { ShalomTrackingListenerService } from './services/shalomTrackingListener.service.js';
 
 
 const app = Fastify({
@@ -56,6 +57,9 @@ async function start() {
 
     // Iniciar Cron Job Diario de Shalom (23:59 todos los días con propagación a pedidos)
     ShalomSyncService.initDailyCron();
+
+    // Iniciar Listener 24/7 de Tracking Shalom (cada 35 minutos con aviso WhatsApp)
+    ShalomTrackingListenerService.startListenerScheduler();
 
     // 4. Manejo de Cierre Elegante (Graceful Shutdown)
 

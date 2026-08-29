@@ -11,6 +11,8 @@ export async function shalomRoutes(fastify: FastifyInstance) {
   fastify.get('/api/shalom/orders/:oseId/voucher', ShalomController.getOrderVoucher);
   fastify.post('/api/shalom/sync-agencies', ShalomController.syncAgencies);
   fastify.get('/api/shalom/sync-status', ShalomController.getSyncStatus);
+  fastify.post('/api/shalom/listener/run', ShalomController.runTrackingListener);
+  fastify.get('/api/shalom/listener/status', ShalomController.getTrackingListenerStatus);
 }
 
 

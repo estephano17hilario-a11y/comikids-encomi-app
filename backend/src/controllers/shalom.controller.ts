@@ -3,6 +3,7 @@ import axios from 'axios';
 import { supabaseAdmin } from '../config/supabase.js';
 import { resolveShalomAgencyDetails, extractShalomDestino } from '../services/shalomAgencyResolver.js';
 import { ShalomSyncService } from '../services/shalomSync.service.js';
+import { ShalomTrackingListenerService } from '../services/shalomTrackingListener.service.js';
 
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
@@ -766,6 +767,41 @@ export class ShalomController {
       lastReport,
       nextScheduledCron: nextCronDate.toISOString(),
       msUntilNext,
+    });
+  }
+
+  /**
+   * Ejecuta bajo demanda el ciclo del Listener de Tracking de Shalom
+   */
+  public static async runTrackingListener(
+    request: FastifyRequest<{
+      Body?: { forceFirstRun?: boolean };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const forceFirstRun = Boolean(request.body?.forceFirstRun);
+      const report = await ShalomTrackingListenerService.executeListenerCycle(forceFirstRun);
+      return reply.code(200).send({
+        success: true,
+        report,
+      });
+    } catch (err: any) {
+      return reply.code(500).send({
+        success: false,
+        error: err?.message || 'Error ejecutando ciclo del listener de Shalom',
+      });
+    }
+  }
+
+  /**
+   * Consulta el último reporte del Listener de Tracking de Shalom
+   */
+  public static async getTrackingListenerStatus(request: FastifyRequest, reply: FastifyReply) {
+    const report = ShalomTrackingListenerService.getLastReport();
+    return reply.code(200).send({
+      success: true,
+      lastReport: report,
     });
   }
 }

@@ -1,6 +1,6 @@
 export type UserRole = 'client' | 'empresa';
 export type EstadoProduccion = 'en_cola' | 'bordando' | 'completado';
-export type EstadoEnvio = 'pendiente' | 'en_camino' | 'entregado';
+export type EstadoEnvio = 'pendiente' | 'en_camino' | 'listo_para_recojo' | 'entregado';
 export type TipoFormularioEnvio = 'shalom' | 'mapa_direccion' | 'texto_simple' | 'olva';
 
 export interface Usuario {

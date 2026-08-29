@@ -2,6 +2,7 @@ import axios from 'axios';
 import { supabaseAdmin } from '../config/supabase.js';
 import { queryCopilotWithUsage, extractClientFromMedia } from './ai.service.js';
 import { EvolutionService } from './evolution.service.js';
+import { ShalomMatcherService } from './shalomMatcher.service.js';
 import { env } from '../config/env.js';
 import { redisClient } from '../config/redis.js';
 import { EvolutionMessageData } from '../types/evolution.types.js';
@@ -227,122 +228,30 @@ export class CopilotService {
   }
 
   /**
-   * Busca todas las agencias Shalom que coinciden con los términos de búsqueda
+   * Busca todas las agencias Shalom que coinciden con los términos de búsqueda utilizando ShalomMatcherService
    */
   private static async findMatchingShalomAgencies(destinationInput: string): Promise<ShalomAgencyMatch[]> {
     const rawDest = (destinationInput || '').trim();
     if (!rawDest) return [];
 
-    // Si ya contiene el formato completo "Agencia Shalom: ... (DNI/CE Recojo: ...)"
-    if (rawDest.toUpperCase().includes('AGENCIA SHALOM:') && rawDest.includes('DNI/CE Recojo:')) {
-      return [];
-    }
-
-    try {
-      const cleanTerms = rawDest
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-zA-Z0-9\s]/g, ' ')
-        .split(/\s+/)
-        .map(w => w.trim().toUpperCase())
-        .filter(w => w.length >= 3 && !['AGENCIA', 'SHALOM', 'PARA', 'DESTINO', 'RECOJO', 'EN', 'EL', 'LA', 'DE', 'AV', 'AVENIDA', 'JR', 'JIRON', 'CALLE'].includes(w));
-
-      if (cleanTerms.length === 0) return [];
-
-      const agencyMap = new Map<number, ShalomAgencyMatch>();
-
-      // 1. Búsqueda por cada término relevante en shalom_agencies
-      for (const term of cleanTerms) {
-        const { data: agencies } = await supabaseAdmin
-          .from('shalom_agencies')
-          .select('id, name, department, province, district, address, full_name')
-          .or(`name.ilike.%${term}%,province.ilike.%${term}%,district.ilike.%${term}%,department.ilike.%${term}%,address.ilike.%${term}%,full_name.ilike.%${term}%`)
-          .limit(8);
-
-        if (agencies) {
-          for (const a of agencies) {
-            if (!agencyMap.has(a.id)) {
-              agencyMap.set(a.id, {
-                id: a.id,
-                department: (a.department || 'LIMA').toUpperCase().trim(),
-                province: (a.province || a.district || 'LIMA').toUpperCase().trim(),
-                district: (a.district || a.name || 'CENTRO').toUpperCase().trim(),
-                name: a.name || '',
-                address: a.address ? a.address.trim() : '',
-                fullName: a.full_name || '',
-              });
-            }
-          }
-        }
-      }
-
-      // 2. Si no hubo resultados, intentar con prefijos de 4 letras
-      if (agencyMap.size === 0) {
-        for (const term of cleanTerms) {
-          const prefix = term.slice(0, 4);
-          if (prefix.length >= 3) {
-            const { data: fuzzyAgencies } = await supabaseAdmin
-              .from('shalom_agencies')
-              .select('id, name, department, province, district, address, full_name')
-              .or(`name.ilike.%${prefix}%,address.ilike.%${prefix}%,district.ilike.%${prefix}%,province.ilike.%${prefix}%,full_name.ilike.%${prefix}%`)
-              .limit(8);
-
-            if (fuzzyAgencies) {
-              for (const a of fuzzyAgencies) {
-                if (!agencyMap.has(a.id)) {
-                  agencyMap.set(a.id, {
-                    id: a.id,
-                    department: (a.department || 'LIMA').toUpperCase().trim(),
-                    province: (a.province || a.district || 'LIMA').toUpperCase().trim(),
-                    district: (a.district || a.name || 'CENTRO').toUpperCase().trim(),
-                    name: a.name || '',
-                    address: a.address ? a.address.trim() : '',
-                    fullName: a.full_name || '',
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-
-      return Array.from(agencyMap.values());
-    } catch (err) {
-      console.warn('[FIND SHALOM AGENCIES WARN]', err);
-      return [];
-    }
+    const matches = ShalomMatcherService.findMatchingAgencies(rawDest, 8);
+    return matches.map(m => ({
+      id: typeof m.agency.id === 'number' ? m.agency.id : parseInt(String(m.agency.id), 10) || 0,
+      department: (m.agency.department || m.agency.departamento || 'LIMA').toUpperCase().trim(),
+      province: (m.agency.province || m.agency.provincia || 'LIMA').toUpperCase().trim(),
+      district: (m.agency.district || m.agency.distrito || m.agency.nombre || 'CENTRO').toUpperCase().trim(),
+      name: m.agency.name || m.agency.nombre || '',
+      address: m.displayAddress || '',
+      fullName: m.agency.full_name || '',
+    }));
   }
 
   /**
    * Resuelve de forma inteligente y exhaustiva la Agencia Oficial de Shalom buscando en la tabla shalom_agencies
    */
   private static async resolveOfficialShalomAgency(destinationInput: string, dni: string): Promise<string> {
-    const cleanDni = dni.replace(/[^0-9A-Za-z]/g, '').trim();
-    const rawDest = (destinationInput || '').trim();
-
-    if (!rawDest) {
-      return `Agencia Shalom (DNI/CE Recojo: ${cleanDni})`;
-    }
-
-    // Si ya contiene el formato completo de Agencia Shalom
-    if (rawDest.toUpperCase().includes('AGENCIA SHALOM:') && rawDest.includes('DNI/CE Recojo:')) {
-      return rawDest;
-    }
-
-    try {
-      const matches = await this.findMatchingShalomAgencies(destinationInput);
-      if (matches.length > 0) {
-        const best = matches[0];
-        const addr = best.address ? ` – ${best.address}` : '';
-        return `Agencia Shalom: ${best.department} / ${best.province} / ${best.district}${addr} (DNI/CE Recojo: ${cleanDni})`;
-      }
-    } catch (err) {
-      console.warn('[RESOLVE SHALOM AGENCY WARN]', err);
-    }
-
-    // Fallback limpio
-    const cleanDestUpper = rawDest.replace(/^Agencia\s*Shalom\s*:?\s*/i, '').trim().toUpperCase();
-    return `Agencia Shalom: ${cleanDestUpper} (DNI/CE Recojo: ${cleanDni})`;
+    const res = ShalomMatcherService.resolveDestination(destinationInput, dni);
+    return res.resolvedDestination;
   }
 
   /**
@@ -712,7 +621,20 @@ export class CopilotService {
 
         // Comprobar si el texto ingresado es un número de opción (1, 2, 3, etc.)
         const matchNum = textTrimmed.match(/^(?:opcion|opción|la|el|nro|n°|#)?\s*([1-9])\b/i);
-        const selectedNum = matchNum ? parseInt(matchNum[1], 10) : null;
+        let selectedNum = matchNum ? parseInt(matchNum[1], 10) : null;
+
+        // O si el usuario escribió directamente una palabra clave de la agencia (ej. "Pangoa", "Mazamari", "Pastor")
+        if (!selectedNum && options.length > 0) {
+          const normInput = ShalomMatcherService.normalize(textTrimmed);
+          const foundIdx = options.findIndex(opt => {
+            const normTitle = ShalomMatcherService.normalize(opt.title);
+            const normAddr = ShalomMatcherService.normalize(opt.address);
+            return normTitle.includes(normInput) || normAddr.includes(normInput);
+          });
+          if (foundIdx !== -1) {
+            selectedNum = foundIdx + 1;
+          }
+        }
 
         if (selectedNum && selectedNum >= 1 && selectedNum <= options.length) {
           const chosenOption = options[selectedNum - 1];
@@ -740,7 +662,7 @@ export class CopilotService {
             }).eq('id', targetUserId);
           } else {
             targetUserId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
-            await supabaseAdmin.from('usuarios').insert({
+            await supabaseAdmin.from('usuarios').upsert({
               id: targetUserId,
               dni: clienteDni,
               nombre_completo: clienteNombre.trim(),
@@ -754,13 +676,14 @@ export class CopilotService {
               puntos_xp: 0,
               nivel: 1,
               created_at: new Date().toISOString(),
-            });
+            }, { onConflict: 'dni' });
           }
 
-          // 2. Insertar Pedido
+          // 2. Insertar Pedido con Fecha Límite calculada
           const randomCode = Math.floor(1000 + Math.random() * 9000);
           const trackingCode = `COM-2026-${randomCode}`;
           const orderId = `ped-${Date.now()}`;
+          const targetFechaLimite = await this.getCutoffShippingDate();
 
           await supabaseAdmin.from('pedidos').insert({
             id: orderId,
@@ -772,6 +695,7 @@ export class CopilotService {
             destino_detalle: resolvedDestination,
             estado_produccion: 'en_cola',
             estado_envio: 'pendiente',
+            fecha_limite: targetFechaLimite,
             shalom_clave_recojo: '0808',
             observaciones_cliente: referencia ? `Ref: ${referencia}` : null,
             created_at: new Date().toISOString(),
@@ -786,6 +710,7 @@ export class CopilotService {
             clienteDni,
             destino: resolvedDestination,
             metodoEnvio: 'Agencia Shalom Nacional',
+            fechaLimite: targetFechaLimite,
           });
 
           // 4. Limpiar estado de elección
@@ -793,12 +718,12 @@ export class CopilotService {
 
           // 5. Emitir Comprobante Oficial
           const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
-          const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* Agencia Shalom Nacional\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
+          const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* Agencia Shalom Nacional\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
 
           await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, receiptMsg);
           return receiptMsg;
         } else {
-          // Si el usuario envió otra cosa (no un número de opción), cancelar la desambiguación previa y procesar su nuevo mensaje
+          // Si el usuario envió otra cosa (no un número de opción ni coincidencia), cancelar la desambiguación previa y procesar su nuevo mensaje
           await redisClient.del(pendingAgencyKey);
         }
       }
@@ -1108,23 +1033,24 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
             const cleanPhoneDisplay = clienteTelefono.length === 9 ? clienteTelefono : clienteTelefono.slice(-9);
             const cleanPhoneFull = clienteTelefono.length === 9 ? `51${clienteTelefono}` : clienteTelefono;
 
-            // 4. DESAMBIGUACIÓN INTERACTIVA DE AGENCIAS SHALOM
+            // 4. DESAMBIGUACIÓN INTERACTIVA DE AGENCIAS SHALOM CON SHALOM MATCHER
             let resolvedDestination = '';
             if (isMotorizado) {
               resolvedDestination = destino.replace(/^motorizado\s*:?\s*/i, '').trim();
             } else {
-              // Buscar coincidencias en shalom_agencies
-              const matches = await this.findMatchingShalomAgencies(destino);
+              const matchResult = ShalomMatcherService.resolveDestination(destino, clienteDni);
 
-              // Si hay MÁS DE 1 coincidencia (ej: "Huaral" -> Chancay y Huaral Centro), preguntar antes de registrar
-              if (matches.length > 1) {
+              // Si es una coincidencia inambigua (exacta o dominante como "satipo pangoa", "av pastor"), usarla directamente
+              if (matchResult.isUnambiguousMatch) {
+                resolvedDestination = matchResult.resolvedDestination;
+              } else if (matchResult.matches.length > 1) {
                 const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣'];
-                const options = matches.slice(0, 6).map((m, idx) => ({
+                const options = matchResult.matches.slice(0, 6).map((m, idx) => ({
                   index: idx + 1,
-                  id: m.id,
-                  formatted: `Agencia Shalom: ${m.department} / ${m.province} / ${m.district}${m.address ? ` – ${m.address}` : ''} (DNI/CE Recojo: ${clienteDni})`,
-                  title: `${m.department} / ${m.province} / ${m.district}`,
-                  address: m.address,
+                  id: m.agency.id,
+                  formatted: ShalomMatcherService.formatAgencyDestination(m.agency, clienteDni),
+                  title: m.displayTitle,
+                  address: m.displayAddress,
                 }));
 
                 const pendingOrderData = {
@@ -1147,16 +1073,12 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
                   })
                   .join('\n\n');
 
-                const disambiguationMsg = `🏢 *He encontrado ${options.length} agencias Shalom para "${destino}":*\n\n¿A cuál de ellas te refieres?\n\n${optionsListText}\n\n💬 *Por favor responde con el número de la opción (ej: 1 o 2):*`;
+                const disambiguationMsg = `🏢 *He encontrado ${options.length} agencias Shalom para "${destino}":*\n\n¿A cuál de ellas te refieres?\n\n${optionsListText}\n\n💬 *Por favor responde con el número de la opción (ej: 1 o 2) o el nombre de la sede:*`;
 
                 await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, disambiguationMsg);
                 return disambiguationMsg;
-              } else if (matches.length === 1) {
-                const m = matches[0];
-                const addr = m.address ? ` – ${m.address}` : '';
-                resolvedDestination = `Agencia Shalom: ${m.department} / ${m.province} / ${m.district}${addr} (DNI/CE Recojo: ${clienteDni})`;
               } else {
-                resolvedDestination = await this.resolveOfficialShalomAgency(destino, clienteDni);
+                resolvedDestination = matchResult.resolvedDestination;
               }
             }
 

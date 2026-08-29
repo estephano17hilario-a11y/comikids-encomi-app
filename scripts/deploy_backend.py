@@ -1,54 +1,61 @@
-import paramiko, os, sys, time
+import os
+import paramiko
+import time
 
-sys.stdout.reconfigure(encoding='utf-8')
+VPS_HOST = '89.117.73.97'
+VPS_USER = 'root'
+VPS_PASS = 'estephano10FM20home'
 
-ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+def deploy():
+    print("[DEPLOY] Conectando a VPS por SSH/SFTP...")
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(VPS_HOST, 22, VPS_USER, VPS_PASS, timeout=30)
+    sftp = ssh.open_sftp()
 
-for attempt in range(5):
-    try:
-        ssh.connect('89.117.73.97', username='root', password='estephano10FM20home', timeout=10)
-        break
-    except Exception as e:
-        print(f"Intento {attempt+1} falló: {e}. Reintentando en 2s...")
-        time.sleep(2)
+    def upload_dir(local_path, remote_path):
+        try:
+            sftp.mkdir(remote_path)
+        except Exception:
+            pass
+        for item in os.listdir(local_path):
+            l_item = os.path.join(local_path, item)
+            r_item = f"{remote_path}/{item}"
+            if os.path.isdir(l_item):
+                upload_dir(l_item, r_item)
+            else:
+                sftp.put(l_item, r_item)
 
-sftp = ssh.open_sftp()
+    print("[DEPLOY] Subiendo archivos compilados de /dist a /opt/app/dist...")
+    upload_dir('backend/dist', '/opt/app/dist')
 
-def run(cmd):
-    print(f"\n{'='*20} {cmd} {'='*20}")
-    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=30)
-    out = stdout.read().decode('utf-8', errors='ignore')
-    err = stderr.read().decode('utf-8', errors='ignore')
-    if out: print(out)
-    if err: print('ERR:', err)
-    return out
+    print("[DEPLOY] Subiendo codigo fuente de /src a /opt/app/src...")
+    upload_dir('backend/src', '/opt/app/src')
 
-local_backend_dir = r"c:\Users\estep\.gemini\antigravity-ide\scratch\incomi-app\backend"
-remote_app_dir = "/opt/app"
+    print("[DEPLOY] Subiendo package.json...")
+    sftp.put('backend/package.json', '/opt/app/package.json')
+    sftp.close()
 
-print("Subiendo archivos de código fuente directamente a /opt/app en el VPS...")
-for root, dirs, files in os.walk(local_backend_dir):
-    if "node_modules" in root or ".git" in root:
-        continue
-    rel_path = os.path.relpath(root, local_backend_dir)
-    if rel_path == ".":
-        remote_path = remote_app_dir
-    else:
-        remote_path = os.path.join(remote_app_dir, rel_path).replace("\\", "/")
-    try:
-        sftp.mkdir(remote_path)
-    except Exception:
-        pass
-    for f in files:
-        local_file = os.path.join(root, f)
-        remote_file = os.path.join(remote_path, f).replace("\\", "/")
-        sftp.put(local_file, remote_file)
+    print("[DEPLOY] Verificando .env en VPS...")
+    env_update_cmd = "sed -i 's|http://api.89.117.73.97.sslip.io|https://api.89.117.73.97.sslip.io|g' /opt/app/.env"
+    ssh.exec_command(env_update_cmd)
 
-sftp.close()
-print("✓ Archivos subidos con éxito a /opt/app.")
+    print("[DEPLOY] Reconstruyendo y reiniciando contenedor backend_api con docker compose...")
+    stdin, stdout, stderr = ssh.exec_command("cd /opt/app && docker compose build backend_api && docker compose up -d backend_api")
+    out = stdout.read().decode('utf-8', errors='replace')
+    err = stderr.read().decode('utf-8', errors='replace')
+    print("[DEPLOY] Docker Compose terminado.")
 
-# Reconstruir contenedor backend_api y reiniciar
-run("cd /opt/app && docker compose build --no-cache backend_api && docker compose up -d backend_api")
-run("sleep 3")
-run("docker logs --tail 30 backend_api")
+    time.sleep(3)
+    print("[DEPLOY] Verificando logs del backend:")
+    stdin, stdout, stderr = ssh.exec_command("docker logs --tail 25 backend_api")
+    log_out = stdout.read().decode('utf-8', errors='replace')
+    with open('scripts/deploy_log.txt', 'w', encoding='utf-8') as f:
+        f.write(log_out)
+    print("[DEPLOY] Logs guardados en scripts/deploy_log.txt")
+
+    ssh.close()
+    print("[DEPLOY] Despliegue completado con exito!")
+
+if __name__ == '__main__':
+    deploy()

@@ -25,12 +25,27 @@ allprojects {
     tasks.withType(JavaCompile).configureEach {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        options.compilerArgs += ['-source', '17', '-target', '17']
     }
+    tasks.configureEach { task ->
+        if (task.name.startsWith("compile") && task.name.endsWith("Kotlin")) {
+            try {
+                task.kotlinOptions.jvmTarget = "17"
+            } catch (Exception ignored) {}
+            try {
+                task.compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            } catch (Exception ignored) {}
+        }
+    }
+}
+
+subprojects {
     afterEvaluate { project ->
-        if (project.plugins.hasPlugin('java') || project.plugins.hasPlugin('java-library') || project.plugins.hasPlugin('com.android.application') || project.plugins.hasPlugin('com.android.library')) {
-            java {
-                toolchain {
-                    languageVersion = JavaLanguageVersion.of(17)
+        if (project.extensions.findByName("android") != null) {
+            project.android {
+                compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_17
+                    targetCompatibility JavaVersion.VERSION_17
                 }
             }
         }

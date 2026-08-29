@@ -375,69 +375,40 @@ export class ShalomController {
   private static pdfMemoryCache = new Map<string, { buffer: Buffer; headers: Record<string, string>; timestamp: number }>();
 
   /**
-   * Sincroniza órdenes de Shalom Pro en memoria ultra-rápida (Page 1 primero en ~200ms)
+   * Sincroniza todas las órdenes de Shalom Pro en memoria ultra-rápida (1 sola petición rápida)
+   * y las ordena de más recientes a más antiguas (ID descendente)
    */
   private static async getAllShalomOrders(
     headers: Record<string, string>,
-    forceRefresh: boolean = false,
-    fetchAllPages: boolean = false
+    forceRefresh: boolean = false
   ): Promise<any[]> {
     const now = Date.now();
-    // Reutilizar caché en memoria si tiene menos de 20 segundos
-    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 20000)) {
+    // Reutilizar caché en memoria si tiene menos de 10 segundos
+    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 10000)) {
       return ShalomController.cachedAllOrders;
     }
 
     try {
-      // 1. Obtener primera página (100 órdenes más recientes de hoy y ayer) en un único roundtrip ultra-rápido
-      const firstRes = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
-        params: { per_page: 100, page: 1 },
+      const res = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
         headers,
-        timeout: 8000,
+        timeout: 12000,
       });
 
       let all: any[] = [];
-      const firstPageData = Array.isArray(firstRes.data?.data)
-        ? firstRes.data.data
-        : Array.isArray(firstRes.data?.orders)
-        ? firstRes.data.orders
-        : Array.isArray(firstRes.data)
-        ? firstRes.data
-        : [];
-
-      all.push(...firstPageData);
-
-      const lastPage = Number(firstRes.data?.meta?.last_page || 1);
-
-      // 2. Solo si se solicita explícitamente fetchAllPages (fallback profundo), descargar páginas anteriores
-      if (fetchAllPages && lastPage > 1) {
-        const maxPagesToFetch = Math.min(lastPage, 5); // Hasta 500 órdenes
-        const pagePromises = [];
-        for (let p = 2; p <= maxPagesToFetch; p++) {
-          pagePromises.push(
-            axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
-              params: { per_page: 100, page: p },
-              headers,
-              timeout: 8000,
-            }).then((res) => {
-              return Array.isArray(res.data?.data)
-                ? res.data.data
-                : Array.isArray(res.data?.orders)
-                ? res.data.orders
-                : [];
-            }).catch(() => [])
-          );
-        }
-
-        const remainingPages = await Promise.all(pagePromises);
-        remainingPages.forEach((pg) => all.push(...pg));
+      if (Array.isArray(res.data?.orders)) {
+        all = res.data.orders;
+      } else if (Array.isArray(res.data?.data)) {
+        all = res.data.data;
+      } else if (Array.isArray(res.data)) {
+        all = res.data;
       }
 
-      // 3. Ordenar TODAS las órdenes por ID descendente (las más recientes de hoy al inicio)
+      // Ordenar TODAS las órdenes por ID descendente (las más recientes de hoy al inicio)
       all.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 
       ShalomController.cachedAllOrders = all;
       ShalomController.lastAllOrdersFetch = now;
+      console.log(`[SHALOM PROXY ORDERS SYNC] ✓ ${all.length} órdenes sincronizadas de Shalom Pro.`);
       return all;
     } catch (err: any) {
       console.warn('[SHALOM PROXY GET ALL ORDERS WARN]', err?.message);
@@ -651,9 +622,9 @@ export class ShalomController {
 
       let matchedOrder = findMatchingOrder(ordersList);
 
-      // Si no se encontró en Page 1, hacer búsqueda profunda descargando páginas anteriores
+      // Si no se encontró en caché, forzar refresco fresco desde Shalom Pro
       if (!matchedOrder) {
-        ordersList = await ShalomController.getAllShalomOrders(headers, true, true);
+        ordersList = await ShalomController.getAllShalomOrders(headers, true);
         matchedOrder = findMatchingOrder(ordersList);
       }
 

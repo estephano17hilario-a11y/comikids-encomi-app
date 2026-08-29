@@ -143,7 +143,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     setDniShalom(rawVal);
 
     if (rawVal.length === 8) {
-      if (lastResolvedDniRef.current === rawVal) return;
       setIsResolvingDni(true);
       try {
         const res = await DniService.lookupByDni(rawVal);
@@ -163,6 +162,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       setDniSource(null);
     }
   };
+
+  // Autoresolver DNI si ya venía precargado con 8 dígitos y el nombre está vacío
+  useEffect(() => {
+    const clean = String(dniShalom || '').replace(/\D/g, '');
+    if (clean.length === 8 && (!nombreCompleto || lastResolvedDniRef.current !== clean)) {
+      handleDniChange(clean);
+    }
+  }, [dniShalom]);
 
   const [correoCliente, setCorreoCliente] = useState<string>(() => {
     return currentUser?.email_default || currentUser?.email || localStorage.getItem('incomi_saved_email') || '';

@@ -2,8 +2,10 @@ import { FastifyPluginAsync } from 'fastify';
 import { DniController } from '../controllers/dni.controller.js';
 
 export const dniRoutes: FastifyPluginAsync = async (fastify) => {
-  // GET /api/dni/:dni
+  // Rutas estándar y con prefijo de proxies inversos
   fastify.get('/api/dni/:dni', DniController.resolveDni);
-  // GET /dni/:dni (compatibilidad)
   fastify.get('/dni/:dni', DniController.resolveDni);
+  fastify.get('/api/api/dni/:dni', DniController.resolveDni);
+  fastify.get('/api/proxy/dni/:dni', DniController.resolveDni);
+  fastify.get('/api/proxy/api/dni/:dni', DniController.resolveDni);
 };

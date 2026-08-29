@@ -47,23 +47,38 @@ export class DniService {
 
     try {
       const startTime = performance.now();
-      const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
-      const url = baseUrl.endsWith('/api')
-        ? `${baseUrl}/dni/${cleanDni}`
-        : `${baseUrl}/api/dni/${cleanDni}`;
+      let baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+      
+      // Manejar correctamente proxy Vercel (/api/proxy) y backend directo (.../api)
+      let url: string;
+      if (baseUrl.includes('/api/proxy') || baseUrl.endsWith('/api')) {
+        url = `${baseUrl}/dni/${cleanDni}`;
+      } else {
+        url = `${baseUrl}/api/dni/${cleanDni}`;
+      }
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      console.log(`[DNI SERVICE] Consultando DNI: ${cleanDni} en: ${url}`);
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (fetchErr) {
+        // Si el proxy falla en HTTPS, intentar llamada directa como fallback
+        console.warn('[DNI SERVICE PROXY FAIL, TRYING DIRECT]', fetchErr);
+        response = await fetch(`http://89.117.73.97:3000/api/dni/${cleanDni}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
 
       const result: DniLookupResult = await response.json();
       const endTime = performance.now();
       result.latencyMs = Number((endTime - startTime).toFixed(1));
 
       if (result.success && result.data?.nombreCompleto) {
+        console.log(`[DNI SERVICE RESOLVED] ${cleanDni} -> ${result.data.nombreCompleto} (${result.latencyMs}ms)`);
         // Guardar en caché local
         dniMemoryCache.set(cleanDni, result);
       }

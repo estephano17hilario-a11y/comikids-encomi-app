@@ -124,14 +124,14 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       password: tallerConfig?.shalom_password || '986398Mi$',
     };
 
-    // Ejecutar búsqueda profunda en Shalom Pro API para TODOS los pedidos
+    // Ejecutar búsqueda y verificación rápida concurrente en Shalom Pro API
     const runAudit = async () => {
       const updatedList = [...initial];
+      const CONCURRENCY = 4;
+      let completedCount = 0;
 
-      for (let i = 0; i < updatedList.length; i++) {
-        const item = updatedList[i];
+      const auditSingleItem = async (item: DeliveryOrderProgress) => {
         const originalOrder = orders.find((o) => o.id === item.orderId);
-
         const cleanItemDni = (item.dni || '').replace(/\D/g, '');
         const clientCtx = {
           dni: cleanItemDni,
@@ -143,7 +143,6 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         };
 
         let pdfData: string | null = null;
-
         const handleMeta = (meta: { pickupCode?: string; guia?: string }) => {
           if (meta.pickupCode) {
             console.log(`[SHALOM AUDIT] ✓ Actualizado PIN de recojo real de Shalom Pro para #${item.trackingCode}: ${meta.pickupCode}`);
@@ -174,7 +173,15 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           item.auditStatus = 'not_found';
         }
 
+        completedCount++;
         setProgressList([...updatedList]);
+        setCurrentStepText(`Verificando tickets en Shalom Pro API (${completedCount}/${updatedList.length})...`);
+      };
+
+      // Ejecutar en lotes concurrentes de 4 para máxima velocidad
+      for (let i = 0; i < updatedList.length; i += CONCURRENCY) {
+        const chunk = updatedList.slice(i, i + CONCURRENCY);
+        await Promise.all(chunk.map(auditSingleItem));
       }
 
       setIsAuditing(false);

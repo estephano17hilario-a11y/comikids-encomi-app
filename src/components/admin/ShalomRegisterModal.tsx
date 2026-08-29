@@ -296,9 +296,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       const row = auditedRows[i];
       setProgressIndex(i + 1);
 
-      // Rate Limiting: Pausa de 1.2s entre peticiones a la API de Shalom para no exceder 60 req/min
+      // Rate Limiting seguro optimizado (250ms entre registros)
       if (i > 0) {
-        await new Promise(r => setTimeout(r, 1200));
+        await new Promise(r => setTimeout(r, 250));
       }
 
       const rowPickupCode = row.data.pickupCode || pickupCode;

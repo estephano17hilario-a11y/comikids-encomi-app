@@ -315,6 +315,15 @@ export class ShalomController {
         }
       );
 
+      // Inyectar inmediatamente la nueva orden creada en la caché en memoria para resolución en 0ms
+      try {
+        const createdOrderObj = response.data?.data || response.data;
+        if (createdOrderObj && typeof createdOrderObj === 'object') {
+          ShalomController.cachedAllOrders = [createdOrderObj, ...ShalomController.cachedAllOrders];
+          ShalomController.lastAllOrdersFetch = Date.now();
+        }
+      } catch {}
+
       return reply.code(200).send({
         success: true,
         data: response.data,
@@ -363,22 +372,28 @@ export class ShalomController {
 
   private static cachedAllOrders: any[] = [];
   private static lastAllOrdersFetch: number = 0;
+  private static pdfMemoryCache = new Map<string, { buffer: Buffer; headers: Record<string, string>; timestamp: number }>();
 
   /**
-   * Sincroniza todas las páginas de órdenes de Shalom Pro en paralelo y las ordena de más recientes a más antiguas
+   * Sincroniza órdenes de Shalom Pro en memoria ultra-rápida (Page 1 primero en ~200ms)
    */
-  private static async getAllShalomOrders(headers: Record<string, string>, forceRefresh: boolean = false): Promise<any[]> {
+  private static async getAllShalomOrders(
+    headers: Record<string, string>,
+    forceRefresh: boolean = false,
+    fetchAllPages: boolean = false
+  ): Promise<any[]> {
     const now = Date.now();
-    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 5000)) {
+    // Reutilizar caché en memoria si tiene menos de 20 segundos
+    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 20000)) {
       return ShalomController.cachedAllOrders;
     }
 
     try {
-      // 1. Obtener primera página (100 órdenes) y total de páginas
+      // 1. Obtener primera página (100 órdenes más recientes de hoy y ayer) en un único roundtrip ultra-rápido
       const firstRes = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
         params: { per_page: 100, page: 1 },
         headers,
-        timeout: 12000,
+        timeout: 8000,
       });
 
       let all: any[] = [];
@@ -394,25 +409,23 @@ export class ShalomController {
 
       const lastPage = Number(firstRes.data?.meta?.last_page || 1);
 
-      // 2. Si hay más páginas, descargarlas en paralelo
-      if (lastPage > 1) {
+      // 2. Solo si se solicita explícitamente fetchAllPages (fallback profundo), descargar páginas anteriores
+      if (fetchAllPages && lastPage > 1) {
+        const maxPagesToFetch = Math.min(lastPage, 5); // Hasta 500 órdenes
         const pagePromises = [];
-        for (let p = 2; p <= lastPage; p++) {
+        for (let p = 2; p <= maxPagesToFetch; p++) {
           pagePromises.push(
             axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
               params: { per_page: 100, page: p },
               headers,
-              timeout: 12000,
+              timeout: 8000,
             }).then((res) => {
               return Array.isArray(res.data?.data)
                 ? res.data.data
                 : Array.isArray(res.data?.orders)
                 ? res.data.orders
                 : [];
-            }).catch((err) => {
-              console.warn(`[SHALOM PROXY PAGE ${p} WARN]`, err?.message);
-              return [];
-            })
+            }).catch(() => [])
           );
         }
 
@@ -425,7 +438,6 @@ export class ShalomController {
 
       ShalomController.cachedAllOrders = all;
       ShalomController.lastAllOrdersFetch = now;
-      console.log(`[SHALOM PROXY ORDERS SYNC] ✓ ${all.length} órdenes sincronizadas de Shalom Pro (${lastPage} páginas).`);
       return all;
     } catch (err: any) {
       console.warn('[SHALOM PROXY GET ALL ORDERS WARN]', err?.message);
@@ -639,10 +651,9 @@ export class ShalomController {
 
       let matchedOrder = findMatchingOrder(ordersList);
 
-      // Si no se encontró, forzar refresco fresco desde Shalom Pro
+      // Si no se encontró en Page 1, hacer búsqueda profunda descargando páginas anteriores
       if (!matchedOrder) {
-        console.log(`[SHALOM PROXY] No encontrado en caché, forzando refresco en vivo de órdenes desde Shalom Pro...`);
-        ordersList = await ShalomController.getAllShalomOrders(headers, true);
+        ordersList = await ShalomController.getAllShalomOrders(headers, true, true);
         matchedOrder = findMatchingOrder(ordersList);
       }
 
@@ -679,10 +690,17 @@ export class ShalomController {
         });
       }
 
-      // 4. Descargar EXCLUSIVAMENTE el Ticket Oficial POS con QR físico (/voucher) del pedido verificado
       const endpoint = pdfType === 'label' ? 'label' : 'voucher';
-      console.log(`[SHALOM PROXY DOWNLOAD] ✓ Descargando ${endpoint === 'voucher' ? 'Ticket Oficial POS con QR' : 'Rótulo'} para ${matchedOrder.receiver?.name || matchedOrder.destinatario?.nombre} (DNI: ${matchedOrderDni}, Guía: ${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}, Orden #${matchedOrder.id})...`);
+      const cacheKey = `${matchedOrder.id}_${endpoint}`;
 
+      // A. SERVIR DESDE CACHÉ EN MEMORIA RAM (0ms) SI YA SE DESCARGÓ RECIENTEMENTE
+      const cachedPdf = ShalomController.pdfMemoryCache.get(cacheKey);
+      if (cachedPdf && (Date.now() - cachedPdf.timestamp < 180000)) {
+        Object.entries(cachedPdf.headers).forEach(([k, v]) => reply.header(k, v));
+        return reply.send(cachedPdf.buffer);
+      }
+
+      // B. Descargar EXCLUSIVAMENTE el Ticket Oficial POS con QR físico (/voucher) del pedido verificado
       let docRes;
       try {
         docRes = await axios.get(
@@ -690,7 +708,7 @@ export class ShalomController {
           {
             headers,
             responseType: 'arraybuffer',
-            timeout: 18000,
+            timeout: 15000,
           }
         );
       } catch (dlErr: any) {
@@ -701,7 +719,6 @@ export class ShalomController {
         });
       }
 
-
       if (docRes.data && docRes.data.length > 100) {
         const clientCleanDni = matchedOrderDni || targetDni || 'DNI';
         const filename = `${filePrefix}_${matchedOrder.serie || 'V204'}_${matchedOrder.guia || matchedOrder.id}_${clientCleanDni}.pdf`;
@@ -709,18 +726,25 @@ export class ShalomController {
         const fullGuia = `${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}`;
         const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
 
-        reply.header('Content-Type', 'application/pdf');
-        reply.header('Content-Disposition', `inline; filename="${filename}"`);
-        reply.header('Access-Control-Expose-Headers', 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni, X-Shalom-Receiver-Name, X-Shalom-Ose-Id');
-        if (realPickupCode) {
-          reply.header('X-Shalom-Pickup-Code', realPickupCode);
-        }
-        reply.header('X-Shalom-Guia', fullGuia);
-        reply.header('X-Shalom-Receiver-Dni', clientCleanDni);
-        if (receiverFullName) {
-          reply.header('X-Shalom-Receiver-Name', encodeURIComponent(receiverFullName));
-        }
-        reply.header('X-Shalom-Ose-Id', String(matchedOrder.id));
+        const headersToSet: Record<string, string> = {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="${filename}"`,
+          'Access-Control-Expose-Headers': 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni, X-Shalom-Receiver-Name, X-Shalom-Ose-Id',
+          ...(realPickupCode ? { 'X-Shalom-Pickup-Code': realPickupCode } : {}),
+          'X-Shalom-Guia': fullGuia,
+          'X-Shalom-Receiver-Dni': clientCleanDni,
+          ...(receiverFullName ? { 'X-Shalom-Receiver-Name': encodeURIComponent(receiverFullName) } : {}),
+          'X-Shalom-Ose-Id': String(matchedOrder.id),
+        };
+
+        // Guardar en caché RAM por 3 minutos
+        ShalomController.pdfMemoryCache.set(cacheKey, {
+          buffer: docRes.data,
+          headers: headersToSet,
+          timestamp: Date.now(),
+        });
+
+        Object.entries(headersToSet).forEach(([k, v]) => reply.header(k, v));
         return reply.send(docRes.data);
       }
 

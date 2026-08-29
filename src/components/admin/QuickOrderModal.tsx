@@ -4,6 +4,7 @@ import { ordersService } from '../../services/ordersService';
 import { useShalomAgencies, formatFullAgencyName } from '../../hooks/useShalomAgencies';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyTime } from '../../utils/shippingCutoff';
+import { DniService } from '../../services/dniService';
 import {
   X,
   PlusCircle,
@@ -12,7 +13,10 @@ import {
   MapPin,
   Search,
   Building2,
-  Clock
+  Clock,
+  Sparkles,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 
 
@@ -28,8 +32,48 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
   const [nombre, setNombre] = useState('');
   const [tiktokUsuario, setTiktokUsuario] = useState('');
   const [dni, setDni] = useState('');
+  const [isLookingUpDni, setIsLookingUpDni] = useState(false);
+  const [dniStatus, setDniStatus] = useState<{ type: 'success' | 'not_found' | 'error'; msg: string } | null>(null);
   const [detallesBordado, setDetallesBordado] = useState('');
   const [selectedMethodId, setSelectedMethodId] = useState(activeShippingMethods[0]?.id || 'met-shalom');
+
+  // Autocompletado reactivo de DNI (< 1ms en VPS)
+  useEffect(() => {
+    const clean = dni.replace(/\D/g, '').trim();
+    if (clean.length === 8) {
+      let isCancelled = false;
+      setIsLookingUpDni(true);
+      setDniStatus(null);
+
+      DniService.lookupByDni(clean).then((res) => {
+        if (isCancelled) return;
+        setIsLookingUpDni(false);
+        if (res.success && res.data?.nombreCompleto) {
+          setNombre(res.data.nombreCompleto);
+          setDniStatus({
+            type: 'success',
+            msg: `✓ ${res.data.nombreCompleto} (${res.latencyMs ? res.latencyMs + 'ms' : 'SUNAT'})`,
+          });
+        } else {
+          setDniStatus({
+            type: 'not_found',
+            msg: 'DNI no registrado en SUNAT. Ingrese el nombre manualmente.',
+          });
+        }
+      }).catch(() => {
+        if (!isCancelled) {
+          setIsLookingUpDni(false);
+        }
+      });
+
+      return () => {
+        isCancelled = true;
+      };
+    } else {
+      setDniStatus(null);
+      setIsLookingUpDni(false);
+    }
+  }, [dni]);
 
   // Shalom Hook & Search
   const {
@@ -147,28 +191,58 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
           
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Nombres y Apellidos *</label>
+              <label className="flex items-center justify-between text-xs font-semibold text-slate-300 mb-1">
+                <span>DNI Clienta *</span>
+                {isLookingUpDni && (
+                  <span className="flex items-center gap-1 text-[10px] text-cyan-400">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Buscando SUNAT...
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  maxLength={8}
+                  value={dni}
+                  onChange={e => setDni(e.target.value.replace(/\D/g, ''))}
+                  placeholder="76543210"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 font-mono tracking-wider"
+                />
+                {dniStatus?.type === 'success' && (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute right-2.5 top-2.5" />
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="flex items-center justify-between text-xs font-semibold text-slate-300 mb-1">
+                <span>Nombres y Apellidos *</span>
+                {dniStatus?.type === 'success' && (
+                  <span className="flex items-center gap-0.5 text-[10px] text-emerald-400 font-normal">
+                    <Sparkles className="w-2.5 h-2.5" /> SUNAT
+                  </span>
+                )}
+              </label>
               <input
                 type="text"
                 required
                 value={nombre}
                 onChange={e => setNombre(e.target.value)}
-                placeholder="Ej. Sofía Benavides"
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">DNI Clienta *</label>
-              <input
-                type="text"
-                required
-                value={dni}
-                onChange={e => setDni(e.target.value)}
-                placeholder="76543210"
-                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-pink-500 font-mono"
+                placeholder="Se autocompletará con el DNI"
+                className={`w-full px-3 py-2 bg-slate-900 border rounded-xl text-xs text-white focus:outline-none transition-colors ${
+                  dniStatus?.type === 'success'
+                    ? 'border-emerald-500/50 bg-emerald-950/10'
+                    : 'border-slate-700 focus:border-pink-500'
+                }`}
               />
             </div>
           </div>
+          {dniStatus?.type === 'not_found' && (
+            <p className="text-[11px] text-amber-400/90 -mt-2">
+              ⚠️ DNI no registrado en SUNAT. Ingrese el nombre manualmente.
+            </p>
+          )}
 
           {/* TikTok username */}
           <div>

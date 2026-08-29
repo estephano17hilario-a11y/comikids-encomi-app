@@ -17,8 +17,12 @@ dist-ssr
 .env.*
 !.env.example
 scripts/*.py
+scripts/*.txt
 __pycache__/
 *.pyc
+backend/data/
+*.db
+*.zip
 
 
 

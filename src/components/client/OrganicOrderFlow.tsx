@@ -320,7 +320,23 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [shalomDropdownRect, setShalomDropdownRect] = useState<DOMRect | null>(null);
   const [olvaDropdownRect, setOlvaDropdownRect] = useState<DOMRect | null>(null);
 
-  // Recalculate dropdown position when opening
+  // Helper: update rect from current input position (call before any open)
+  const updateShalomRect = useCallback(() => {
+    if (shalomSearchInputRef.current) {
+      setShalomDropdownRect(shalomSearchInputRef.current.getBoundingClientRect());
+      return true;
+    }
+    return false;
+  }, []);
+  const updateOlvaRect = useCallback(() => {
+    if (olvaSearchInputRef.current) {
+      setOlvaDropdownRect(olvaSearchInputRef.current.getBoundingClientRect());
+      return true;
+    }
+    return false;
+  }, []);
+
+  // Open dropdown — always recalculates rect first
   const openShalomDropdown = useCallback(() => {
     if (shalomSearchInputRef.current) {
       setShalomDropdownRect(shalomSearchInputRef.current.getBoundingClientRect());
@@ -414,7 +430,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         if (res.nearest) {
           setSelectedAgencyObject(res.nearest);
         }
-        setIsAgencyListOpen(true);
+        // Update rect and open dropdown
+        openShalomDropdown();
       }
     } else {
       setShowOnlyNearest5(true);
@@ -422,7 +439,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       if (top5.length > 0) {
         setSelectedAgencyObject(top5[0]);
       }
-      setIsAgencyListOpen(true);
+      // Update rect and open dropdown
+      openShalomDropdown();
     }
   };
 
@@ -1397,7 +1415,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           <div
                             style={{
                               position: 'fixed',
-                              bottom: `${window.innerHeight - shalomDropdownRect.top + 8}px`,
+                              top: `${shalomDropdownRect.top}px`,
+                              transform: 'translateY(calc(-100% - 8px))',
                               left: `${shalomDropdownRect.left}px`,
                               width: `${shalomDropdownRect.width}px`,
                               zIndex: 99999,
@@ -1473,17 +1492,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           <input
                             ref={shalomSearchInputRef}
                             type="text"
-                            autoFocus
                             value={agencySearchQuery}
-                            onFocus={() => {
-                              if (shalomSearchInputRef.current) {
-                                setShalomDropdownRect(shalomSearchInputRef.current.getBoundingClientRect());
-                              }
-                              setIsAgencyListOpen(true);
-                            }}
+                            onFocus={() => openShalomDropdown()}
                             onChange={e => {
                               setAgencySearchQuery(e.target.value);
                               if (!isAgencyListOpen) openShalomDropdown();
+                              else updateShalomRect();
                               if (showOnlyNearest5) setShowOnlyNearest5(false);
                             }}
                             placeholder="Buscar por distrito o provincia (ej. Pangoa co, Gamarra, Trujillo)..."
@@ -1874,7 +1888,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             <div
                               style={{
                                 position: 'fixed',
-                                bottom: `${window.innerHeight - olvaDropdownRect.top + 8}px`,
+                                top: `${olvaDropdownRect.top}px`,
+                                transform: 'translateY(calc(-100% - 8px))',
                                 left: `${olvaDropdownRect.left}px`,
                                 width: `${olvaDropdownRect.width}px`,
                                 zIndex: 99999,
@@ -1959,15 +1974,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               ref={olvaSearchInputRef}
                               type="text"
                               value={olvaAgencySearchQuery}
-                              onFocus={() => {
-                                if (olvaSearchInputRef.current) {
-                                  setOlvaDropdownRect(olvaSearchInputRef.current.getBoundingClientRect());
-                                }
-                                setIsOlvaAgencyListOpen(true);
-                              }}
+                              onFocus={() => openOlvaDropdown()}
                               onChange={e => {
                                 setOlvaAgencySearchQuery(e.target.value);
                                 if (!isOlvaAgencyListOpen) openOlvaDropdown();
+                                else updateOlvaRect();
                                 if (showOnlyNearest5Olva) setShowOnlyNearest5Olva(false);
                               }}
                               placeholder="Buscar sede Olva por distrito, calle o nombre (ej. Pangoa, Miraflores, Cusco)..."

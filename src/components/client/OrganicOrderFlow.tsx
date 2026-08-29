@@ -142,31 +142,41 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     const rawVal = val.replace(/\D/g, '').slice(0, 12);
     setDniShalom(rawVal);
 
+    // Si tiene exactamente 8 dígitos, consultar en SUNAT / BD
     if (rawVal.length === 8) {
       setIsResolvingDni(true);
       try {
         const res = await DniService.lookupByDni(rawVal);
         if (res.success && res.data?.nombreCompleto) {
           setNombreCompleto(res.data.nombreCompleto);
-          setDniSource(res.source || 'sunat_padron_local');
+          setDniSource('sunat_padron_local');
           lastResolvedDniRef.current = rawVal;
         } else {
+          // Si es un DNI que no existe en SUNAT o no tiene RUC, vaciar casilla
+          setNombreCompleto('');
           setDniSource(null);
+          lastResolvedDniRef.current = '';
         }
       } catch (err) {
         console.warn('[DNI LOOKUP ERROR]', err);
+        setNombreCompleto('');
+        setDniSource(null);
+        lastResolvedDniRef.current = '';
       } finally {
         setIsResolvingDni(false);
       }
     } else {
+      // Si tiene menos de 8 dígitos (ej: 7 al borrar) o 9+ dígitos (CE), vaciar casilla de nombre
+      setNombreCompleto('');
       setDniSource(null);
+      lastResolvedDniRef.current = '';
     }
   };
 
   // Autoresolver DNI si ya venía precargado con 8 dígitos y el nombre está vacío
   useEffect(() => {
     const clean = String(dniShalom || '').replace(/\D/g, '');
-    if (clean.length === 8 && (!nombreCompleto || lastResolvedDniRef.current !== clean)) {
+    if (clean.length === 8 && !nombreCompleto) {
       handleDniChange(clean);
     }
   }, [dniShalom]);
@@ -1253,33 +1263,33 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 <div className="space-y-3.5">
                   
                   {/* Botones Compactos de Acción Superior */}
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={handleQuickNearest5}
                       disabled={isLocating}
-                      className="p-3 rounded-2xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
+                      className="py-2 px-3 rounded-xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2 group cursor-pointer shadow-xs"
                     >
-                      <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
-                        <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
+                      <div className="w-7 h-7 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
+                        <Navigation className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
                       </div>
-                      <div>
-                        <span className="block text-[10px] text-slate-400">GPS</span>
-                        <span className="block text-xs font-bold text-white">Sedes Cercanas</span>
+                      <div className="min-w-0">
+                        <span className="block text-[9px] text-slate-400 leading-none">GPS</span>
+                        <span className="block text-xs font-bold text-white leading-tight truncate">Sedes Cercanas</span>
                       </div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setShowMapModal(true)}
-                      className="p-3 rounded-2xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2.5 group cursor-pointer shadow-sm"
+                      className="py-2 px-3 rounded-xl bg-white/4 hover:bg-white/8 active:scale-[0.98] border border-white/10 text-left transition-all flex items-center gap-2 group cursor-pointer shadow-xs"
                     >
-                      <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
-                        <MapPin className="w-4 h-4" />
+                      <div className="w-7 h-7 rounded-lg bg-cyan-500/15 text-cyan-400 flex items-center justify-center shrink-0">
+                        <MapPin className="w-3.5 h-3.5" />
                       </div>
-                      <div>
-                        <span className="block text-[10px] text-slate-400">Visual</span>
-                        <span className="block text-xs font-bold text-white">Ver en Mapa</span>
+                      <div className="min-w-0">
+                        <span className="block text-[9px] text-slate-400 leading-none">Visual</span>
+                        <span className="block text-xs font-bold text-white leading-tight truncate">Ver en Mapa</span>
                       </div>
                     </button>
                   </div>
@@ -1452,30 +1462,37 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   </div>
 
                   {/* DNI o CE con Emoji */}
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
                         🪪 DNI o Carnet de Extranjería (CE) de quien recibirá *
                       </label>
                       {isResolvingDni && (
                         <span className="text-[11px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando en SUNAT...
-                        </span>
-                      )}
-                      {dniSource && !isResolvingDni && (
-                        <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                          ✨ {dniSource === 'sunat_padron_local' ? 'SUNAT Oficial' : 'Verificado'}
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando...
                         </span>
                       )}
                     </div>
-                    <input
-                      type="text"
-                      required
-                      value={dniShalom}
-                      onChange={e => handleDniChange(e.target.value)}
-                      placeholder="Número de DNI o Carnet de Extranjería"
-                      className="w-full px-5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
-                    />
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        required
+                        value={dniShalom}
+                        onChange={e => handleDniChange(e.target.value)}
+                        placeholder="Número de DNI (8 dígitos) o CE"
+                        className="w-full pl-5 pr-20 py-3.5 sm:py-4 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
+                      />
+                      {dniShalom.length === 8 && (
+                        <div className="absolute right-3 px-3 py-1 rounded-xl bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-black text-xs tracking-wider shadow-sm animate-fadeIn pointer-events-none">
+                          DNI
+                        </div>
+                      )}
+                      {dniShalom.length >= 9 && (
+                        <div className="absolute right-3 px-3 py-1 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black text-xs tracking-wider shadow-sm animate-fadeIn pointer-events-none">
+                          CE
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                 </div>
@@ -1703,10 +1720,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         <button
                           type="button"
                           onClick={() => setShowOlvaMapModal(true)}
-                          className="w-full py-2.5 px-3.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-bold border border-amber-500/40 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md active:scale-98"
+                          className="w-full py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-bold border border-amber-500/40 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98"
                         >
-                          <MapPin className="w-4 h-4 text-amber-400" />
-                          <span>🗺️ Ver Mapa Interactivo de Agencias Olva</span>
+                          <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                          <span>🗺️ Ver Mapa de Agencias Olva</span>
                         </button>
 
                         <button
@@ -1716,10 +1733,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             setIsOlvaAgencyListOpen(true);
                           }}
                           disabled={isLocatingOlva}
-                          className="w-full py-2.5 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold border border-amber-500/30 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
+                          className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold border border-amber-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98"
                         >
                           <Navigation className={`w-3.5 h-3.5 text-amber-400 ${isLocatingOlva ? 'animate-spin' : ''}`} />
-                          <span>{isLocatingOlva ? 'Localizando por GPS...' : '📍 5 Sedes Olva Más Cercanas a Mí'}</span>
+                          <span>{isLocatingOlva ? 'Localizando...' : '📍 5 Sedes Más Cercanas a Mí'}</span>
                         </button>
                       </div>
 
@@ -1955,23 +1972,30 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           </label>
                           {isResolvingDni && (
                             <span className="text-[10px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">
-                              <Loader2 className="w-3 h-3 animate-spin" /> SUNAT...
-                            </span>
-                          )}
-                          {dniSource && !isResolvingDni && (
-                            <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                              ✨ {dniSource === 'sunat_padron_local' ? 'SUNAT Oficial' : 'Verificado'}
+                              <Loader2 className="w-3 h-3 animate-spin" /> Buscando...
                             </span>
                           )}
                         </div>
-                        <input
-                          type="text"
-                          required
-                          value={dniShalom}
-                          onChange={e => handleDniChange(e.target.value)}
-                          placeholder="Ej. 72345678"
-                          className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                        />
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+                            required
+                            value={dniShalom}
+                            onChange={e => handleDniChange(e.target.value)}
+                            placeholder="Ej. 72345678 o CE"
+                            className="w-full pl-4 pr-16 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                          />
+                          {dniShalom.length === 8 && (
+                            <div className="absolute right-2.5 px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black text-[11px] tracking-wider pointer-events-none animate-fadeIn">
+                              DNI
+                            </div>
+                          )}
+                          {dniShalom.length >= 9 && (
+                            <div className="absolute right-2.5 px-2 py-0.5 rounded-lg bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-black text-[11px] tracking-wider pointer-events-none animate-fadeIn">
+                              CE
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* CELULAR (cliente) */}
@@ -2040,8 +2064,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </span>
                       )}
                       {dniSource && !isResolvingDni && (
-                        <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                          ✨ Nombre Legal SUNAT
+                        <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-fadeIn">
+                          ✨ Autorellenado
                         </span>
                       )}
                     </div>

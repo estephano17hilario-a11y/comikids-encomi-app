@@ -220,7 +220,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
                 <span>Nombres y Apellidos *</span>
                 {dniStatus?.type === 'success' && (
                   <span className="flex items-center gap-0.5 text-[10px] text-emerald-400 font-normal">
-                    <Sparkles className="w-2.5 h-2.5" /> SUNAT
+                    <Sparkles className="w-2.5 h-2.5" /> Autorellenado
                   </span>
                 )}
               </label>

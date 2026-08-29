@@ -431,7 +431,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                 )}
                 {dniSource && !isResolvingDni && (
                   <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
-                    ✨ SUNAT
+                    ✨ Autorellenado
                   </span>
                 )}
               </div>

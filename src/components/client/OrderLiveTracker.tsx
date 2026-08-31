@@ -32,7 +32,7 @@ export const OrderLiveTracker: React.FC = () => {
     : clientOrders;
 
   const getStepProgress = (pedido: Pedido) => {
-    if (pedido.estado_envio === 'entregado') return 4;
+    if (pedido.estado_envio === 'entregado' || pedido.estado_envio === 'listo_para_recojo') return 4;
     if (pedido.estado_envio === 'en_camino' || (pedido.estado_produccion === 'completado' && pedido.estado_envio === 'pendiente')) return 3;
     if (pedido.estado_produccion === 'bordando') return 2;
     return 1;
@@ -54,14 +54,14 @@ export const OrderLiveTracker: React.FC = () => {
         { num: 1, title: 'En Almacén', icon: Clock },
         { num: 2, title: 'Alistándolo', icon: Boxes },
         { num: 3, title: 'Dejando en Olva', icon: Truck },
-        { num: 4, title: 'Entregado a Olva', icon: PackageCheck },
+        { num: 4, title: pedido.estado_envio === 'listo_para_recojo' ? 'Listo para Recojo' : 'Entregado a Olva', icon: PackageCheck },
       ];
     }
     return [
       { num: 1, title: 'En Almacén', icon: Clock },
       { num: 2, title: 'Alistándolo', icon: Boxes },
       { num: 3, title: 'Dejando en Shalom', icon: Truck },
-      { num: 4, title: 'Entregado a Shalom', icon: PackageCheck },
+      { num: 4, title: pedido.estado_envio === 'listo_para_recojo' ? 'Listo en Agencia' : 'Entregado a Shalom', icon: PackageCheck },
     ];
   };
 
@@ -283,6 +283,41 @@ export const OrderLiveTracker: React.FC = () => {
                     })}
                   </div>
                 </div>
+
+                {/* Banner de Recojo en Agencia cuando está Listo para Recoger */}
+                {pedido.estado_envio === 'listo_para_recojo' && (
+                  <div className="rounded-2xl p-4 bg-teal-500/15 border-2 border-teal-500/40 text-teal-200 space-y-2 animate-fadeIn shadow-lg shadow-teal-950/30">
+                    <div className="flex items-center gap-2 text-teal-300 font-black text-sm">
+                      <span className="text-lg">🏢</span>
+                      <span>¡Tu paquete ya está listo para recoger en Shalom!</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 font-mono">
+                      {pedido.shalom_numero_guia && (
+                        <div className="bg-slate-900/60 p-2 rounded-xl border border-teal-500/20">
+                          <span className="text-slate-400 block text-[10px] uppercase font-sans">N° de Envío / Guía:</span>
+                          <span className="font-bold text-white text-sm">{pedido.shalom_numero_guia}</span>
+                        </div>
+                      )}
+                      {pedido.shalom_clave_recojo && (
+                        <div className="bg-slate-900/60 p-2 rounded-xl border border-teal-500/20">
+                          <span className="text-slate-400 block text-[10px] uppercase font-sans">Clave de Seguridad (PIN):</span>
+                          <span className="font-black text-yellow-300 text-sm tracking-wider">{pedido.shalom_clave_recojo}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="pt-1 flex items-center justify-between text-[11px] text-teal-300/80">
+                      <span>Presenta tu DNI físico en ventanilla</span>
+                      <a
+                        href="https://rastrea.shalom.pe"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-white font-bold"
+                      >
+                        🌐 Rastreo Oficial Shalom ↗
+                      </a>
+                    </div>
+                  </div>
+                )}
 
                 {/* WhatsApp Action Button */}
                 <a

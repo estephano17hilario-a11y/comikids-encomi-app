@@ -383,33 +383,57 @@ export class ShalomController {
     forceRefresh: boolean = false
   ): Promise<any[]> {
     const now = Date.now();
-    // Reutilizar caché en memoria si tiene menos de 10 segundos
-    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 10000)) {
+    // Reutilizar caché en memoria si tiene menos de 15 segundos
+    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 15000)) {
       return ShalomController.cachedAllOrders;
     }
 
     try {
-      const res = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
-        headers,
-        timeout: 12000,
-      });
+      const allOrders: any[] = [];
+      let page = 1;
+      const perPage = 100;
+      let hasMore = true;
 
-      let all: any[] = [];
-      if (Array.isArray(res.data?.orders)) {
-        all = res.data.orders;
-      } else if (Array.isArray(res.data?.data)) {
-        all = res.data.data;
-      } else if (Array.isArray(res.data)) {
-        all = res.data;
+      while (hasMore && page <= 10) {
+        try {
+          const res = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
+            params: { per_page: perPage, page },
+            headers,
+            timeout: 12000,
+          });
+
+          const list = res.data?.orders || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+          if (!list || list.length === 0) {
+            hasMore = false;
+          } else {
+            allOrders.push(...list);
+            const totalFromMeta = res.data?.meta?.total;
+            const lastPageFromMeta = res.data?.meta?.last_page;
+            if (lastPageFromMeta && page >= lastPageFromMeta) {
+              hasMore = false;
+            } else if (totalFromMeta && allOrders.length >= totalFromMeta) {
+              hasMore = false;
+            } else if (list.length < perPage) {
+              hasMore = false;
+            } else {
+              page++;
+            }
+          }
+        } catch (pageErr: any) {
+          console.warn(`[SHALOM PROXY ORDERS SYNC] Error en página ${page}:`, pageErr?.message);
+          hasMore = false;
+        }
       }
 
       // Ordenar TODAS las órdenes por ID descendente (las más recientes de hoy al inicio)
-      all.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+      allOrders.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 
-      ShalomController.cachedAllOrders = all;
-      ShalomController.lastAllOrdersFetch = now;
-      console.log(`[SHALOM PROXY ORDERS SYNC] ✓ ${all.length} órdenes sincronizadas de Shalom Pro.`);
-      return all;
+      if (allOrders.length > 0) {
+        ShalomController.cachedAllOrders = allOrders;
+        ShalomController.lastAllOrdersFetch = now;
+      }
+      console.log(`[SHALOM PROXY ORDERS SYNC] ✓ ${allOrders.length} órdenes sincronizadas de Shalom Pro.`);
+      return ShalomController.cachedAllOrders;
     } catch (err: any) {
       console.warn('[SHALOM PROXY GET ALL ORDERS WARN]', err?.message);
       return ShalomController.cachedAllOrders;

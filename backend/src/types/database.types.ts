@@ -60,6 +60,7 @@ export interface Pedido {
   shalom_ose_id?: string | null;
   shalom_numero_guia?: string | null;
   shalom_clave_recojo?: string | null;
+  registrado_shalom?: boolean | null;
   created_at: string;
   updated_at?: string;
 }

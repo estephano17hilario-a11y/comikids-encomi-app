@@ -59,9 +59,9 @@ export const OrdersSmartManager: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'almacen' | 'alistando' | 'dejando_shalom' | 'entregado'>('all');
   const [transportFilter, setTransportFilter] = useState<'all' | 'shalom' | 'motorizado' | 'olva'>('all');
-  const [isEnRutaOpen, setIsEnRutaOpen] = useState(true);
-  const [isListoRecojoOpen, setIsListoRecojoOpen] = useState(true);
-  const [isYaRecogidosOpen, setIsYaRecogidosOpen] = useState(true);
+  const [isEnRutaOpen, setIsEnRutaOpen] = useState(false);
+  const [isListoRecojoOpen, setIsListoRecojoOpen] = useState(false);
+  const [isYaRecogidosOpen, setIsYaRecogidosOpen] = useState(false);
   const [isTrackingSyncing, setIsTrackingSyncing] = useState(false);
 
   // Multi-select State
@@ -1069,96 +1069,101 @@ export const OrdersSmartManager: React.FC = () => {
         /* ========================================================================= */
         <div className="space-y-6">
 
-          {/* SUBCARPETA 1: EN RUTA / EN TRÁNSITO */}
-          <div className="rounded-3xl bg-linear-to-b from-blue-950/30 via-slate-900/60 to-slate-900/90 border-2 border-blue-500/40 p-4 sm:p-5 space-y-4 shadow-xl shadow-blue-950/20 animate-fadeIn">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-blue-500/20">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/40 text-blue-300 flex items-center justify-center text-xl font-bold">
-                  🚚
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm sm:text-base font-black text-white">
-                      Subcarpeta: En Ruta / En Tránsito ({enRutaOrders.length})
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/40">
-                      Viajando a Destino
-                    </span>
+          {/* GRID DE 2 COLUMNAS PARA: 1. EN RUTA y 2. LISTOS PARA RECOGER EN SHALOM */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+
+            {/* SUBCARPETA 1: EN RUTA / EN TRÁNSITO */}
+            <div className="rounded-3xl bg-linear-to-b from-blue-950/30 via-slate-900/60 to-slate-900/90 border-2 border-blue-500/40 p-4 sm:p-5 space-y-4 shadow-xl shadow-blue-950/20 animate-fadeIn">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-blue-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/40 text-blue-300 flex items-center justify-center text-xl font-bold">
+                    🚚
                   </div>
-                  <p className="text-[11px] text-blue-200/70">
-                    Paquetes despachados que están en trayecto y aún no llegan a la agencia de destino.
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-black text-white">
+                        En Ruta / En Tránsito
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                        Viajando ({enRutaOrders.length})
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-blue-200/70">
+                      Paquetes despachados que aún no llegan a destino.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEnRutaOpen(!isEnRutaOpen)}
+                    className="py-1.5 px-3 rounded-xl bg-blue-500/20 hover:bg-blue-500/35 active:scale-95 text-blue-200 font-bold text-xs border border-blue-500/30 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    {isEnRutaOpen ? <ChevronDown className="w-4 h-4 text-blue-300" /> : <ChevronRight className="w-4 h-4 text-blue-300" />}
+                    <span>{isEnRutaOpen ? 'Ocultar' : 'Mostrar'}</span>
+                    <span className="font-mono bg-blue-950 px-1.5 py-0.2 rounded text-[10px] text-blue-300 font-black">({enRutaOrders.length})</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEnRutaOpen(!isEnRutaOpen)}
-                  className="py-1.5 px-3 rounded-xl bg-blue-500/20 hover:bg-blue-500/35 active:scale-95 text-blue-200 font-bold text-xs border border-blue-500/30 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
-                >
-                  {isEnRutaOpen ? <ChevronDown className="w-4 h-4 text-blue-300" /> : <ChevronRight className="w-4 h-4 text-blue-300" />}
-                  <span>{isEnRutaOpen ? 'Ocultar Subcarpeta' : 'Mostrar Subcarpeta'}</span>
-                  <span className="font-mono bg-blue-950 px-1.5 py-0.2 rounded text-[10px] text-blue-300 font-black">({enRutaOrders.length})</span>
-                </button>
-              </div>
+              {isEnRutaOpen && (
+                enRutaOrders.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-3 italic text-center">No hay paquetes en ruta actualmente.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 animate-fadeIn">
+                    {enRutaOrders.map(order => renderOrderCard(order))}
+                  </div>
+                )
+              )}
             </div>
 
-            {isEnRutaOpen && (
-              enRutaOrders.length === 0 ? (
-                <p className="text-xs text-slate-500 py-3 italic text-center">No hay paquetes en ruta actualmente.</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1 animate-fadeIn">
-                  {enRutaOrders.map(order => renderOrderCard(order))}
-                </div>
-              )
-            )}
-          </div>
-
-          {/* SUBCARPETA 2: LISTOS PARA RECOGER EN SHALOM */}
-          <div className="rounded-3xl bg-linear-to-b from-teal-950/30 via-slate-900/60 to-slate-900/90 border-2 border-teal-500/40 p-4 sm:p-5 space-y-4 shadow-xl shadow-teal-950/20 animate-fadeIn">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-teal-500/20">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-500/40 text-teal-300 flex items-center justify-center text-xl font-bold">
-                  🏢
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm sm:text-base font-black text-white">
-                      Subcarpeta: Listos para Recoger en Shalom ({listosParaRecogerOrders.length})
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-teal-500/20 text-teal-300 border border-teal-500/40">
-                      Desembarcados ✓
-                    </span>
+            {/* SUBCARPETA 2: LISTOS PARA RECOGER EN SHALOM */}
+            <div className="rounded-3xl bg-linear-to-b from-teal-950/30 via-slate-900/60 to-slate-900/90 border-2 border-teal-500/40 p-4 sm:p-5 space-y-4 shadow-xl shadow-teal-950/20 animate-fadeIn">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-teal-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-teal-500/20 border border-teal-500/40 text-teal-300 flex items-center justify-center text-xl font-bold">
+                    🏢
                   </div>
-                  <p className="text-[11px] text-teal-200/70">
-                    Paquetes confirmados por Shalom en agencia destino. Clienta notificada por WhatsApp con PIN.
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-black text-white">
+                        Listos para Recoger en Shalom
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-teal-500/20 text-teal-300 border border-teal-500/40">
+                        Desembarcados ({listosParaRecogerOrders.length})
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-teal-200/70">
+                      Confirmados en agencia destino. Con clave de recojo.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsListoRecojoOpen(!isListoRecojoOpen)}
+                    className="py-1.5 px-3 rounded-xl bg-teal-500/20 hover:bg-teal-500/35 active:scale-95 text-teal-200 font-bold text-xs border border-teal-500/30 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    {isListoRecojoOpen ? <ChevronDown className="w-4 h-4 text-teal-300" /> : <ChevronRight className="w-4 h-4 text-teal-300" />}
+                    <span>{isListoRecojoOpen ? 'Ocultar' : 'Mostrar'}</span>
+                    <span className="font-mono bg-teal-950 px-1.5 py-0.2 rounded text-[10px] text-teal-300 font-black">({listosParaRecogerOrders.length})</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsListoRecojoOpen(!isListoRecojoOpen)}
-                  className="py-1.5 px-3 rounded-xl bg-teal-500/20 hover:bg-teal-500/35 active:scale-95 text-teal-200 font-bold text-xs border border-teal-500/30 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
-                >
-                  {isListoRecojoOpen ? <ChevronDown className="w-4 h-4 text-teal-300" /> : <ChevronRight className="w-4 h-4 text-teal-300" />}
-                  <span>{isListoRecojoOpen ? 'Ocultar Subcarpeta' : 'Mostrar Subcarpeta'}</span>
-                  <span className="font-mono bg-teal-950 px-1.5 py-0.2 rounded text-[10px] text-teal-300 font-black">({listosParaRecogerOrders.length})</span>
-                </button>
-              </div>
+              {isListoRecojoOpen && (
+                listosParaRecogerOrders.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-3 italic text-center">No hay paquetes pendientes de retiro en agencia.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 animate-fadeIn">
+                    {listosParaRecogerOrders.map(order => renderOrderCard(order))}
+                  </div>
+                )
+              )}
             </div>
 
-            {isListoRecojoOpen && (
-              listosParaRecogerOrders.length === 0 ? (
-                <p className="text-xs text-slate-500 py-3 italic text-center">No hay paquetes pendientes de retiro en agencia.</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1 animate-fadeIn">
-                  {listosParaRecogerOrders.map(order => renderOrderCard(order))}
-                </div>
-              )
-            )}
           </div>
 
           {/* SUBCARPETA 3: PEDIDOS YA RECOGIDOS */}

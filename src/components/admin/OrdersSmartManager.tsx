@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
 import { useOrders } from '../../context/OrderContext';
@@ -780,12 +780,36 @@ export const OrdersSmartManager: React.FC = () => {
     );
   };
 
+  const isAnyModalOpen = Boolean(
+    showShalomRegister ||
+    showBulkPrint ||
+    selectedLabelOrder ||
+    editingPedido ||
+    showDeleteConfirm ||
+    notifyModalData ||
+    deliveryTargetOrders ||
+    swipeTargetOrder ||
+    isProcessing
+  );
+
+  // Sincronizar clase global en el body para ocultar el dock inferior del AdminPortal al abrir modales
+  useEffect(() => {
+    if (isAnyModalOpen) {
+      document.body.classList.add('has-active-modal');
+    } else {
+      document.body.classList.remove('has-active-modal');
+    }
+    return () => {
+      document.body.classList.remove('has-active-modal');
+    };
+  }, [isAnyModalOpen]);
+
   return (
     <div className="space-y-6 animate-fadeIn pb-32">
       
-      {/* --- TOP FLOATING ACTION BAR FOR MASS ACTIONS (ITEM 7: FOLLOWS SCROLL AT TOP) --- */}
-      {selectedIds.length > 0 && createPortal(
-        <div className="fixed top-4 sm:top-5 left-1/2 -translate-x-1/2 z-9990 w-11/12 max-w-3xl animate-slideDown print:hidden" data-no-print="true">
+      {/* --- TOP FLOATING ACTION BAR FOR MASS ACTIONS (ITEM 7: OCULTO CUANDO HAY MODALES ACTIVOS) --- */}
+      {selectedIds.length > 0 && !isAnyModalOpen && createPortal(
+        <div className="fixed top-4 sm:top-5 left-1/2 -translate-x-1/2 z-9990 w-11/12 max-w-3xl animate-slideDown print:hidden admin-mass-action-bar" data-no-print="true">
           <div className="p-3.5 sm:p-4 rounded-3xl bg-slate-900/95 border-2 border-cyan-500/70 backdrop-blur-3xl shadow-2xl shadow-cyan-500/30 flex flex-wrap items-center justify-between gap-3">
             
             {/* Counter */}
@@ -799,9 +823,10 @@ export const OrdersSmartManager: React.FC = () => {
                 </strong>
                 <button
                   onClick={clearSelection}
-                  className="text-[10px] text-cyan-400 hover:text-white underline cursor-pointer"
+                  className="mt-0.5 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-rose-500/25 hover:bg-rose-500 active:scale-95 text-rose-200 hover:text-white border border-rose-500/40 text-[11px] font-black cursor-pointer transition-all shadow-sm"
                 >
-                  Deseleccionar
+                  <X className="w-3 h-3 stroke-[3]" />
+                  <span>Deseleccionar Todo</span>
                 </button>
               </div>
             </div>
@@ -916,22 +941,26 @@ export const OrdersSmartManager: React.FC = () => {
               </button>
             )}
 
-            {/* Botón Inteligente de Selección en Masa */}
+            {/* Botón Inteligente y Ultra-Notorio de Selección en Masa */}
             <button
               onClick={selectAll}
-              className={`py-1.5 px-3 rounded-xl text-xs font-black flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm active:scale-95 ${
+              className={`py-1.5 px-3 rounded-xl text-xs font-black flex items-center gap-1.5 border transition-all cursor-pointer shadow-md active:scale-95 ${
                 selectedIds.length > 0
-                  ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-cyan-500/20'
+                  ? 'bg-linear-to-r from-amber-400 via-amber-500 to-orange-500 text-slate-950 border-amber-300 ring-2 ring-amber-400/50 shadow-amber-500/30'
                   : 'bg-white/5 hover:bg-white/10 text-cyan-400 border-cyan-500/30'
               }`}
               title="Seleccionar o deseleccionar pedidos"
             >
-              <CheckSquare className="w-3.5 h-3.5" />
+              {selectedIds.length > 0 ? (
+                <X className="w-3.5 h-3.5 stroke-[3]" />
+              ) : (
+                <CheckSquare className="w-3.5 h-3.5" />
+              )}
               <span>
                 {selectedIds.length === filteredOrders.length && filteredOrders.length > 0
-                  ? `Deseleccionar (${selectedIds.length})`
+                  ? `✕ Deseleccionar (${selectedIds.length})`
                   : selectedIds.length > 0
-                  ? `Seleccionados (${selectedIds.length}/${filteredOrders.length})`
+                  ? `✕ Deseleccionar (${selectedIds.length}/${filteredOrders.length})`
                   : `Seleccionar Todo (${filteredOrders.length})`}
               </span>
             </button>

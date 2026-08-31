@@ -163,22 +163,22 @@ export const AdminPortal: React.FC = () => {
       </main>
 
       {/* --- FLOATING APPLE VISION BOTTOM DOCK --- */}
-      <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-11/12 max-w-2xl animate-slideUp print:hidden" data-no-print="true">
-        <div className="p-2 rounded-3xl bg-slate-900/90 border-2 border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-around gap-1 sm:gap-2">
+      <div className="fixed bottom-3 sm:bottom-6 left-0 right-0 mx-auto z-40 w-[calc(100%-1.25rem)] sm:w-11/12 max-w-xl animate-slideUp print:hidden admin-floating-dock" data-no-print="true">
+        <div className="p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl bg-slate-900/95 border border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-between gap-1 overflow-hidden">
           
           {/* 1. Pedidos To-Do */}
           <button
             onClick={() => setActiveTab('pedidos')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'pedidos'
-                ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/30 scale-105'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <ClipboardList className="w-4 h-4 shrink-0" />
-            <span className="truncate">Pedidos</span>
+            <span className="truncate max-w-full">Pedidos</span>
             {pendingOrdersCount > 0 && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${
+              <span className={`px-1 py-0.2 rounded-full text-[9px] font-black shrink-0 ${
                 activeTab === 'pedidos' ? 'bg-slate-950 text-cyan-300' : 'bg-cyan-500/30 text-cyan-300'
               }`}>
                 {pendingOrdersCount}
@@ -189,45 +189,45 @@ export const AdminPortal: React.FC = () => {
           {/* 2. Agendas CRM */}
           <button
             onClick={() => setActiveTab('agendas')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'agendas'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30 scale-105'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <Users className="w-4 h-4 shrink-0" />
-            <span className="truncate">Agendas</span>
+            <span className="truncate max-w-full">Agendas</span>
           </button>
 
           {/* 3. Estadísticas Vision */}
           <button
             onClick={() => setActiveTab('estadisticas')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'estadisticas'
-                ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 scale-105'
+                ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <BarChart3 className="w-4 h-4 shrink-0" />
-            <span className="truncate">Métricas</span>
+            <span className="truncate max-w-full">Métricas</span>
           </button>
 
           {/* 4. Sección ComiKids / Comic Inventory - EXCLUSIVO cuenta empresa */}
           {isComikids && (
             <button
               onClick={() => setActiveTab('comikids')}
-              className={`relative flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+              className={`relative flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
                 activeTab === 'comikids'
-                  ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-lg shadow-pink-600/30 scale-105'
+                  ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-md shadow-pink-600/30'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <Store className="w-4 h-4 shrink-0" />
-              <span className="truncate">Comic Inv</span>
+              <span className="truncate max-w-full">Comic Inv</span>
               {liveState.isLive && (
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 border-2 border-slate-900"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border border-slate-900"></span>
                 </span>
               )}
             </button>
@@ -236,14 +236,14 @@ export const AdminPortal: React.FC = () => {
           {/* 5. Encomi AI (Admin Ilimitado) */}
           <button
             onClick={() => setActiveTab('encomi_ai')}
-            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-2xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+            className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
               activeTab === 'encomi_ai'
-                ? 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-lg shadow-cyan-500/30 scale-105'
+                ? 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30'
                 : 'text-cyan-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <Sparkles className="w-4 h-4 shrink-0 animate-pulse" />
-            <span className="truncate">Encomi AI</span>
+            <span className="truncate max-w-full">Encomi AI</span>
           </button>
 
         </div>

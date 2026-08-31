@@ -230,4 +230,12 @@
   }
 }
 
+/* Ocultar docks flotantes cuando haya un modal activo */
+body.has-active-modal .admin-floating-dock,
+body.has-active-modal .admin-mass-action-bar {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 

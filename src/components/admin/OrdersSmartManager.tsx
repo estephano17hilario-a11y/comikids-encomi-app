@@ -887,56 +887,59 @@ export const OrdersSmartManager: React.FC = () => {
         document.body
       )}
 
-      {/* Header & Search Bar */}
-      <div className="glass-panel p-5 sm:p-6 rounded-3xl border border-white/10 space-y-4 shadow-xl">
+      {/* Header & Search Bar Compacto */}
+      <div className="glass-panel p-3.5 sm:p-4 rounded-3xl border border-white/10 space-y-3 shadow-xl">
         
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
-              <span>📋</span>
-              <span>Gestor Inteligente de Pedidos & Envíos</span>
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-lg sm:text-xl">📋</span>
+            <h2 className="text-base sm:text-lg font-black text-white truncate">
+              Gestor Inteligente de Pedidos & Envíos
             </h2>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Control To-Do de alistado, despacho en Shalom y Motorizado con selección en masa
-            </p>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shrink-0">
+              {filteredOrders.length}
+            </span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={handleSyncShalomTracking}
-              disabled={isTrackingSyncing}
-              className="py-2 px-3.5 rounded-2xl bg-teal-600/30 hover:bg-teal-600/50 active:scale-95 text-teal-200 hover:text-white border border-teal-500/40 text-xs font-black flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all cursor-pointer"
-              title="Consultar en vivo a la API de Shalom si algún paquete ya desembarcó en destino"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-teal-300 ${isTrackingSyncing ? 'animate-spin' : ''}`} />
-              <span>{isTrackingSyncing ? 'Verificando Shalom...' : 'Sincronizar Shalom 24/7'}</span>
-            </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Botón Sincronizar Shalom 24/7: solo visible en la pestaña Enviado */}
+            {statusFilter === 'entregado' && (
+              <button
+                onClick={handleSyncShalomTracking}
+                disabled={isTrackingSyncing}
+                className="py-1.5 px-3 rounded-xl bg-teal-600/30 hover:bg-teal-600/50 active:scale-95 text-teal-200 hover:text-white border border-teal-500/40 text-xs font-black flex items-center gap-1.5 shadow-md shadow-teal-600/20 transition-all cursor-pointer"
+                title="Consultar en vivo a la API de Shalom si algún paquete ya desembarcó en destino"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-teal-300 ${isTrackingSyncing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{isTrackingSyncing ? 'Verificando Shalom...' : 'Sincronizar Shalom 24/7'}</span>
+                <span className="sm:hidden">{isTrackingSyncing ? '...' : 'Shalom 24/7'}</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setShowBulkPrint(true)}
-              className="py-2 px-3.5 rounded-2xl bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
-              title="Imprimir o descargar todos los rótulos A4"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Imprimir Rótulos A4 ({selectedIds.length > 0 ? selectedIds.length : filteredOrders.length})</span>
-            </button>
-
+            {/* Botón Inteligente de Selección en Masa */}
             <button
               onClick={selectAll}
-              className="py-2 px-3 rounded-2xl bg-white/5 hover:bg-white/10 text-cyan-400 font-bold text-xs flex items-center gap-1.5 border border-cyan-500/20 transition-all cursor-pointer"
+              className={`py-1.5 px-3 rounded-xl text-xs font-black flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                selectedIds.length > 0
+                  ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-cyan-500/20'
+                  : 'bg-white/5 hover:bg-white/10 text-cyan-400 border-cyan-500/30'
+              }`}
+              title="Seleccionar o deseleccionar pedidos"
             >
-              <CheckSquare className="w-4 h-4" />
+              <CheckSquare className="w-3.5 h-3.5" />
               <span>
                 {selectedIds.length === filteredOrders.length && filteredOrders.length > 0
-                  ? 'Deseleccionar Todo'
-                  : 'Seleccionar Todo'}
+                  ? `Deseleccionar (${selectedIds.length})`
+                  : selectedIds.length > 0
+                  ? `Seleccionados (${selectedIds.length}/${filteredOrders.length})`
+                  : `Seleccionar Todo (${filteredOrders.length})`}
               </span>
             </button>
           </div>
         </div>
 
-        {/* Search Bar & Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+        {/* Search Bar & Filters Compactos */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
           
           <div className="relative col-span-1 sm:col-span-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -945,69 +948,69 @@ export const OrdersSmartManager: React.FC = () => {
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder="Buscar por código, cliente, DNI o agencia..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-800 rounded-2xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full pl-9 pr-3 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
             />
           </div>
 
-          {/* Status Tabs con conteos entre paréntesis */}
-          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 overflow-x-auto text-[11px] font-bold">
+          {/* Status Tabs con nombre Enviado */}
+          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 overflow-x-auto text-[11px] font-bold">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'all' ? 'bg-cyan-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'all' ? 'bg-cyan-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               Todos ({counts.all})
             </button>
             <button
               onClick={() => setStatusFilter('almacen')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'almacen' ? 'bg-amber-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'almacen' ? 'bg-amber-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               En Almacén ({counts.almacen})
             </button>
             <button
               onClick={() => setStatusFilter('alistando')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'alistando' ? 'bg-purple-600 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'alistando' ? 'bg-purple-600 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               Alistándolo ({counts.alistando})
             </button>
             <button
               onClick={() => setStatusFilter('dejando_shalom')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'dejando_shalom' ? 'bg-blue-500 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'dejando_shalom' ? 'bg-blue-500 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               Despachando ({counts.dejando_shalom})
             </button>
             <button
               onClick={() => setStatusFilter('entregado')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'entregado' ? 'bg-emerald-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'entregado' ? 'bg-emerald-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
-              Entregado ({counts.entregado})
+              Enviado ({counts.entregado})
             </button>
           </div>
 
           {/* Transport Method Filter con conteos entre paréntesis */}
-          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 text-[11px] font-bold overflow-x-auto">
+          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-[11px] font-bold overflow-x-auto">
             <button
               onClick={() => setTransportFilter('all')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${transportFilter === 'all' ? 'bg-white/15 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all cursor-pointer whitespace-nowrap ${transportFilter === 'all' ? 'bg-white/15 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               Todos ({counts.all})
             </button>
             <button
               onClick={() => setTransportFilter('shalom')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'shalom' ? 'bg-rose-500/25 border border-rose-500/40 text-rose-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'shalom' ? 'bg-rose-500/25 border border-rose-500/40 text-rose-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               <span>📦</span>
               <span>Shalom ({counts.shalom})</span>
             </button>
             <button
               onClick={() => setTransportFilter('olva')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'olva' ? 'bg-yellow-500/25 border border-yellow-500/40 text-yellow-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'olva' ? 'bg-yellow-500/25 border border-yellow-500/40 text-yellow-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               <span>🏢</span>
               <span>Olva ({counts.olva})</span>
             </button>
             <button
               onClick={() => setTransportFilter('motorizado')}
-              className={`flex-1 py-1.5 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'motorizado' ? 'bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'motorizado' ? 'bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
             >
               <span>🛵</span>
               <span>Motorizado ({counts.motorizado})</span>

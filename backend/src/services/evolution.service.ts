@@ -327,14 +327,14 @@ export class EvolutionService {
   }
 
   /**
-   * Envía un mensaje de texto por WhatsApp a través de la instancia de una tienda específica.
+   * Envía un mensaje de texto por WhatsApp a través de la instancia de una tienda específica (por defecto ComiKids Tienda +51 927 781 412).
    */
   public static async sendWhatsAppMessage(
     instanceName: string,
     to: string,
     text: string
   ): Promise<any> {
-    const targetInstance = instanceName || env.EVOLUTION_INSTANCE_NAME || 'tenant_Comikids';
+    const targetInstance = instanceName || 'tenant_Comikids_tienda';
     let phoneClean = to.replace(/[^0-9]/g, '');
     if (phoneClean.length === 9) {
       phoneClean = `51${phoneClean}`;
@@ -355,18 +355,16 @@ export class EvolutionService {
 
       return response.data;
     } catch (error: any) {
-      console.warn(`[EVOLUTION SEND WARN en ${targetInstance}] Intentando fallback a instancias abiertas...`);
-      const fallbackCandidates = ['tenant_Comikids', 'tenant_matrix', 'comikids_whatsapp'].filter(
-        (i) => i !== targetInstance
-      );
-      for (const altInstance of fallbackCandidates) {
+      console.warn(`[EVOLUTION SEND WARN en ${targetInstance}] Error enviando mensaje a ${phoneClean}:`, error?.response?.data || error?.message);
+      // Solo reintentar con tenant_Comikids_tienda si se llamó con otro nombre no-bot
+      if (targetInstance !== 'tenant_Comikids_tienda' && targetInstance !== 'comikids_whatsapp') {
         try {
           const altResponse = await axios.post(
-            `${env.EVOLUTION_API_URL}/message/sendText/${altInstance}`,
+            `${env.EVOLUTION_API_URL}/message/sendText/tenant_Comikids_tienda`,
             { number: phoneClean, text },
             { headers: this.getHeaders(), timeout: 15000 }
           );
-          console.log(`[EVOLUTION SEND SUCCESS via fallback "${altInstance}"]`);
+          console.log(`[EVOLUTION SEND SUCCESS via fallback "tenant_Comikids_tienda"]`);
           return altResponse.data;
         } catch {}
       }
@@ -376,7 +374,7 @@ export class EvolutionService {
   }
 
   /**
-   * Envía un archivo multimedia (imagen, PDF, documento, audio) por WhatsApp.
+   * Envía un archivo multimedia (imagen, PDF, documento, audio) por WhatsApp (por defecto ComiKids Tienda +51 927 781 412).
    */
   public static async sendWhatsAppMedia(
     instanceName: string,
@@ -389,7 +387,7 @@ export class EvolutionService {
       mimeType?: string;
     }
   ): Promise<any> {
-    const targetInstance = instanceName || env.EVOLUTION_INSTANCE_NAME;
+    const targetInstance = instanceName || 'tenant_Comikids_tienda';
     let phoneClean = to.replace(/[^0-9]/g, '');
     if (phoneClean.length === 9) {
       phoneClean = `51${phoneClean}`;

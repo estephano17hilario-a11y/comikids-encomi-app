@@ -329,7 +329,7 @@ export class ShalomController {
             orderToCreate,
             {
               headers,
-              timeout: 15000,
+              timeout: 25000,
             }
           );
           if (response?.status === 200 || response?.status === 201) {
@@ -338,14 +338,15 @@ export class ShalomController {
         } catch (postErr: any) {
           lastAxiosError = postErr;
           const status = postErr.response?.status;
-          console.warn(`[SHALOM PROXY CREATE ORDER ATTRIBUTE ${attempt}/${maxAttempts}]`, postErr?.response?.data || postErr.message);
+          const errCode = postErr.response?.data?.error?.code || postErr.response?.data?.code;
+          console.warn(`[SHALOM PROXY CREATE ORDER ATTEMPT ${attempt}/${maxAttempts}]`, postErr?.response?.data || postErr.message);
           
-          // No reintentar si el error es de validación del cliente (400 o 422)
-          if (status === 400 || status === 422) {
+          // No reintentar si el error es de validación del cliente (400, 422) o bloqueo de login (shalom_login_unavailable)
+          if (status === 400 || status === 422 || errCode === 'shalom_login_unavailable') {
             break;
           }
           if (attempt < maxAttempts) {
-            await new Promise(r => setTimeout(r, attempt * 600));
+            await new Promise(r => setTimeout(r, attempt * 1000));
           }
         }
       }
@@ -393,7 +394,13 @@ export class ShalomController {
       });
     } catch (error: any) {
       console.error('[SHALOM PROXY CREATE ORDER ERROR]', error?.response?.data || error?.message);
-      const errMsg = error?.response?.data?.message || error?.response?.data?.error || error?.message || 'Error en Shalom Pro';
+      const errData = error?.response?.data;
+      let errMsg = errData?.message || errData?.error?.message || errData?.error || error?.message || 'Error en Shalom Pro';
+      if (errData?.error?.code === 'shalom_login_unavailable' || errMsg.includes('autenticar') || errMsg.includes('login')) {
+        errMsg = 'No se pudo autenticar la cuenta contra Shalom Pro en este momento. El servidor de Shalom está ocupado o con verificación de seguridad. Reintenta en unos minutos.';
+      } else if (error.code === 'ECONNABORTED' || errMsg.includes('timeout')) {
+        errMsg = 'Tiempo de espera agotado al conectar con Shalom Pro (el servidor de Shalom tardó más de 25s en responder).';
+      }
       return reply.code(200).send({
         success: false,
         error: errMsg,

@@ -308,12 +308,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
       // Rate Limiting dinámico y adaptativo:
       // - Si son más de 15 paquetes: intervalo aleatorio entre 1.1s y 2.1s (1100ms a 2100ms) para evitar detección por ráfagas y bloqueos WAF
-      // - Si son 15 o menos: intervalo fijo seguro de 1.1s (1100ms = ~54 req/min)
+      // - Si son 15 o menos paquetes: intervalo aleatorio entre 1.1s y 1.8s (1100ms a 1800ms)
       if (i > 0) {
         const isLargeBatch = auditedRows.length > 15;
         const delayMs = isLargeBatch
-          ? Math.floor(1100 + Math.random() * 1000)
-          : 1100;
+          ? Math.floor(1100 + Math.random() * 1000) // 1.1s a 2.1s
+          : Math.floor(1100 + Math.random() * 700);  // 1.1s a 1.8s
         await new Promise(r => setTimeout(r, delayMs));
       }
 
@@ -809,13 +809,11 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               <p className="text-xs text-cyan-300">
                 Procesando orden {progressIndex} de {totalCount}
               </p>
-              {totalCount > 15 && (
-                <div className="pt-1">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-emerald-300 bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-500/40 font-semibold shadow-inner">
-                    🛡️ Intervalo dinámico antibloqueo activo (1.1s – 2.1s por paquete)
-                  </span>
-                </div>
-              )}
+              <div className="pt-1">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-emerald-300 bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-500/40 font-semibold shadow-inner">
+                  🛡️ Intervalo dinámico antibloqueo activo ({totalCount > 15 ? '1.1s – 2.1s' : '1.1s – 1.8s'} por paquete)
+                </span>
+              </div>
             </div>
 
             <div className="w-full max-w-md bg-slate-800 h-2 rounded-full overflow-hidden">

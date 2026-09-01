@@ -34,7 +34,7 @@ export function validateShalomPdfContent(
 
     const SENDER_DOCS = ['42020312', '20512528458', '20000000001', '00000000'];
 
-    const dniMatches = Array.from(textSample.matchAll(/(?:DNI\/RUC|DNI\/CE|DNI|RUC|DOC|DOCUMENTO)[\s:]*([0-9A-Za-z]{6,12})/gi));
+    const dniMatches = Array.from(textSample.matchAll(/\b(?:DNI\/RUC|DNI\/CE|DNI|RUC|DOC(?:UMENTO)?|CE)\b[\s:#]*([0-9A-Za-z]{6,12})/gi));
     let receiverDni = '';
     if (dniMatches.length > 0) {
       for (const m of dniMatches) {

@@ -147,9 +147,12 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
 
   // Extracción de DNI de recojo Shalom
   const initialShalomDni = useMemo(() => {
-    const match = (pedido.destino_detalle || '').match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
-    if (match && match[1]) return match[1].trim();
-    return pedido.usuario?.dni || '';
+    const match = (pedido.destino_detalle || '').match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);
+    const candidate = match && match[1] ? match[1].trim() : '';
+    if (candidate && candidate.toUpperCase() !== 'NCIADOS' && candidate.replace(/\D/g, '').length >= 6) {
+      return candidate;
+    }
+    return (pedido.usuario?.dni && pedido.usuario.dni !== 'NCIADOS') ? pedido.usuario.dni : '';
   }, [pedido]);
 
   const [dniRecojoShalom, setDniRecojoShalom] = useState(initialShalomDni);

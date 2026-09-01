@@ -67,21 +67,29 @@ export const extractShalomDni = (pedido: Pedido): string => {
 
   const isValidDoc = (doc: string): boolean => {
     if (!doc) return false;
-    const clean = doc.trim();
-    if (clean.startsWith('usr-') || SENDER_DOCS.has(clean)) return false;
+    const clean = doc.trim().toUpperCase();
+    if (clean.startsWith('USR-') || SENDER_DOCS.has(clean)) return false;
+    
+    // Palabras prohibidas que corresponden a nombres de agencias
+    const FORBIDDEN_WORDS = ['NCIADOS', 'LICENCIADOS', 'VENTANILLA', 'TERMINAL', 'AGENCIA', 'RECOJO', 'DESTINO', 'CENTRAL'];
+    if (FORBIDDEN_WORDS.includes(clean)) return false;
+
     const digits = clean.replace(/\D/g, '');
+    // Un documento peruano válido (DNI, RUC o CE) DEBE contener al menos 6 dígitos numéricos
+    if (digits.length < 6) return false;
+
     // Un celular de 9 dígitos que empieza con 9 NO es un DNI
     if (digits.length === 9 && digits.startsWith('9')) return false;
     if (digits === phone) return false;
-    // DNI válido (8 dígitos), RUC (11 dígitos) o CE (6 a 12 caracteres alfanuméricos)
+    // DNI válido (8 dígitos), RUC (11 dígitos) o CE (6 a 12 caracteres alfanuméricos con dígitos)
     if (digits.length === 8 || digits.length === 11) return true;
-    if (clean.length >= 6 && clean.length <= 12) return true;
+    if (clean.length >= 6 && clean.length <= 12 && digits.length >= 6) return true;
     return false;
   };
 
   // 1. Extraer desde destino_detalle explícito (ej: "DNI: 78005117", "(DNI 78005117)", "Doc: 78005117", "CE: 00123456")
   if (pedido.destino_detalle) {
-    const match = pedido.destino_detalle.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento|RUC)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
+    const match = pedido.destino_detalle.match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);
     if (match && match[1] && match[1].toLowerCase() !== 'recojo') {
       const doc = match[1].trim();
       if (isValidDoc(doc)) {

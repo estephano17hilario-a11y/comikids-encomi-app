@@ -130,7 +130,7 @@ export class ShalomTrackingListenerService {
   public static extractRecipientDni(destinoDetalle?: string, userDni?: string): string {
     // 1. Intentar de destino_detalle con etiqueta específica
     if (destinoDetalle) {
-      const matchLabel = destinoDetalle.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
+      const matchLabel = destinoDetalle.match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);
       if (matchLabel && matchLabel[1] && !matchLabel[1].startsWith('usr-')) {
         const clean = matchLabel[1].replace(/\D/g, '').trim();
         if (clean.length >= 8 && !SHOP_DNIS.includes(clean)) return clean;
@@ -345,7 +345,8 @@ export class ShalomTrackingListenerService {
           updated_at
         `)
         .eq('metodo_envio_codigo', 'shalom')
-        .in('estado_envio', ['en_camino', 'despachado', 'en_ruta', 'pendiente', 'listo_para_recojo']);
+        .eq('registrado_shalom', true)
+        .in('estado_envio', ['en_camino', 'despachado', 'en_ruta', 'listo_para_recojo']);
 
       if (pErr) {
         throw new Error(`Error consultando pedidos en Supabase: ${pErr.message}`);
@@ -391,10 +392,11 @@ export class ShalomTrackingListenerService {
         const cleanGuia = (p.shalom_numero_guia || '').replace(/[^A-Z0-9]/g, '').toUpperCase();
         const numericGuia = this.extractNumericShipmentCode(cleanGuia);
         const oseIdStr = String(p.shalom_ose_id || '');
+        const pTracking = (p.codigo_seguimiento || '').trim().toUpperCase();
 
-        // 1. Coincidencia por OSE ID
-        if (oseIdStr && oseIdStr !== 'null') {
-          const byOse = shalomApiOrders.find(o => String(o.id) === oseIdStr);
+        // 1. Coincidencia por OSE ID (máxima precisión)
+        if (oseIdStr && oseIdStr !== 'null' && oseIdStr !== 'undefined') {
+          const byOse = shalomApiOrders.find(o => String(o.id) === oseIdStr || String(o.ose_id) === oseIdStr);
           if (byOse) return byOse;
         }
 
@@ -408,16 +410,13 @@ export class ShalomTrackingListenerService {
           if (byGuia) return byGuia;
         }
 
-        // 3. Coincidencia por DNI del Destinatario (Toma el despacho activo más reciente)
-        if (recipientDni && recipientDni.length >= 8) {
-          const byDni = shalomApiOrders.filter(o => {
-            const oDni = String(o.receiver?.document || o.receiver?.document_number || '').replace(/\D/g, '');
-            return oDni === recipientDni;
+        // 3. Coincidencia por Código Interno de Seguimiento (ej: COM-2026-XXXX)
+        if (pTracking && pTracking.length >= 6) {
+          const byInternal = shalomApiOrders.find(o => {
+            const intCode = String(o.package?.internal_code || o.internal_code || o.referencia || o.codigo_interno || '').toUpperCase();
+            return intCode === pTracking;
           });
-          if (byDni.length > 0) {
-            // Ya están ordenados por ID desc, tomar el primero (más reciente)
-            return byDni[0];
-          }
+          if (byInternal) return byInternal;
         }
 
         // 4. Fallback directo a endpoint individual si tiene guía numérica

@@ -188,13 +188,13 @@ export const OrdersSmartManager: React.FC = () => {
       }
 
       // Status
-      if (statusFilter === 'almacen') return order.estado_produccion === 'en_cola' && order.estado_envio === 'pendiente';
-      if (statusFilter === 'alistando') return order.estado_produccion === 'bordando' && order.estado_envio === 'pendiente';
-      if (statusFilter === 'dejando_shalom') return (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente') || order.estado_envio === 'en_camino';
+      if (statusFilter === 'almacen') return (order.estado_produccion === 'en_cola' || (!order.estado_produccion && order.estado_envio === 'pendiente')) && (order.estado_envio as string) !== 'entregado';
+      if (statusFilter === 'alistando') return order.estado_produccion === 'bordando' && (order.estado_envio as string) !== 'entregado';
+      if (statusFilter === 'dejando_shalom') return ((order.estado_produccion === 'completado' && (order.estado_envio as string) !== 'entregado') || order.estado_envio === 'en_camino') && (order.estado_envio as string) !== 'entregado';
       if (statusFilter === 'entregado') return order.estado_envio === 'entregado' || order.estado_envio === 'listo_para_recojo' || order.estado_envio === 'en_camino';
 
       // Vista "Todos": Todos los pedidos vigentes EXCEPTO los que ya fueron entregados
-      return order.estado_envio !== 'entregado';
+      return (order.estado_envio as string) !== 'entregado';
     });
   }, [pedidos, searchTerm, statusFilter, transportFilter]);
 
@@ -395,9 +395,9 @@ export const OrdersSmartManager: React.FC = () => {
   const counts = useMemo(() => {
     return {
       all: pedidos.filter(p => p.estado_envio !== 'entregado').length,
-      almacen: pedidos.filter(p => p.estado_produccion === 'en_cola' && p.estado_envio === 'pendiente').length,
-      alistando: pedidos.filter(p => p.estado_produccion === 'bordando' && p.estado_envio === 'pendiente').length,
-      dejando_shalom: pedidos.filter(p => (p.estado_produccion === 'completado' && p.estado_envio === 'pendiente') || p.estado_envio === 'en_camino').length,
+      almacen: pedidos.filter(p => (p.estado_produccion === 'en_cola' || (!p.estado_produccion && p.estado_envio === 'pendiente')) && p.estado_envio !== 'entregado').length,
+      alistando: pedidos.filter(p => p.estado_produccion === 'bordando' && p.estado_envio !== 'entregado').length,
+      dejando_shalom: pedidos.filter(p => ((p.estado_produccion === 'completado' && (p.estado_envio as string) !== 'entregado') || p.estado_envio === 'en_camino') && (p.estado_envio as string) !== 'entregado').length,
       entregado: pedidos.filter(p => p.estado_envio === 'entregado' || p.estado_envio === 'listo_para_recojo' || p.estado_envio === 'en_camino').length,
       shalom: pedidos.filter(p => (p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom')) && p.estado_envio !== 'entregado').length,
       olva: pedidos.filter(p => (p.metodo_envio_codigo === 'olva' || p.destino_detalle?.toLowerCase().includes('olva')) && p.estado_envio !== 'entregado').length,
@@ -426,10 +426,12 @@ export const OrdersSmartManager: React.FC = () => {
     const isSelected = selectedIds.includes(order.id);
     let dni = order.usuario?.dni || order.usuario?.dni_default || '';
 
-    if (dni.startsWith('usr-') || dni === '00000000') {
-      const matchDoc = String(order.destino_detalle || '').match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
-      dni = (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) ? matchDoc[1].trim() : '';
+    if (!dni || dni.startsWith('usr-') || dni === '00000000' || dni === 'NCIADOS') {
+      const matchDoc = String(order.destino_detalle || '').match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);
+      const docCandidate = matchDoc && matchDoc[1] ? matchDoc[1].trim() : '';
+      dni = (docCandidate && !docCandidate.startsWith('usr-') && docCandidate.toUpperCase() !== 'NCIADOS' && docCandidate.replace(/\D/g, '').length >= 6) ? docCandidate : '';
     }
+
     const rawKey = (
       (dni && !dni.startsWith('usr-') ? dni.trim() : '') ||
       order.usuario?.telefono_default?.trim() ||
@@ -559,7 +561,7 @@ export const OrdersSmartManager: React.FC = () => {
                     <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/50 px-2.5 py-1 rounded-xl border border-emerald-500/40">
                       <div className="flex items-center gap-1.5 truncate">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span className="truncate">Despachado API: <strong>{order.shalom_numero_guia || `OSE #${order.shalom_ose_id || ''}`}</strong></span>
+                        <span className="truncate">Despachado API: <strong>{order.shalom_numero_guia || (order.shalom_ose_id ? `OSE #${order.shalom_ose_id}` : 'Registrado')}</strong></span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         {order.shalom_clave_recojo && (
@@ -1363,7 +1365,7 @@ export const OrdersSmartManager: React.FC = () => {
             for (const r of results) {
               const currentOrder = pedidos.find(p => p.id === r.pedidoId);
               let newDestino = currentOrder?.destino_detalle || '';
-              if (r.dni && !newDestino.includes(r.dni)) {
+              if (r.dni && r.dni.toUpperCase() !== 'NCIADOS' && r.dni.replace(/\D/g, '').length >= 6 && !newDestino.includes(r.dni)) {
                 if (newDestino.includes('(DNI')) {
                   newDestino = newDestino.replace(/\(DNI[^)]*\)/gi, `(DNI: ${r.dni})`);
                 } else {
@@ -1371,17 +1373,20 @@ export const OrdersSmartManager: React.FC = () => {
                 }
               }
 
+              // Si ya estaba completado en producción pasa a en_camino, sino mantiene su estado de producción actual
+              const nextEnvio = currentOrder?.estado_produccion === 'completado' ? 'en_camino' : (currentOrder?.estado_envio || 'pendiente');
+
               await updatePedido(r.pedidoId, {
                 registrado_shalom: true,
                 rotulado: true,
-                estado_envio: 'en_camino',
+                estado_envio: nextEnvio,
                 shalom_ose_id: r.oseId || null,
                 shalom_numero_guia: r.guideNumber || null,
                 shalom_clave_recojo: r.pickupCode || null,
                 destino_detalle: newDestino || undefined,
                 usuario: currentOrder?.usuario ? {
                   ...currentOrder.usuario,
-                  dni: r.dni || currentOrder.usuario.dni || '',
+                  dni: (r.dni && r.dni !== 'NCIADOS') ? r.dni : (currentOrder.usuario.dni || ''),
                   telefono_default: r.phone || currentOrder.usuario.telefono_default || '',
                   nombre_completo: r.name || currentOrder.usuario.nombre_completo || '',
                 } : undefined,

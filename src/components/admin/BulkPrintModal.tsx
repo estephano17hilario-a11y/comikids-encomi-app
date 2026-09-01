@@ -4,6 +4,7 @@ import { Pedido, TallerConfig } from '../../types/database.types';
 import { X, Printer, Layers, Droplet } from 'lucide-react';
 import { printMultipleElements } from '../../utils/nativePrintService';
 import { InkSavingLevel, INK_SAVING_LEVELS, getInkSavingStyles } from '../../utils/inkSavingService';
+import { extractShalomDni } from '../../utils/shalomExcelExporter';
 
 interface Props {
   pedidos: Pedido[];
@@ -67,17 +68,15 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
   };
 
   const getClientDni = (pedido: Pedido) => {
+    const extracted = extractShalomDni(pedido);
+    if (extracted && extracted !== 'NCIADOS' && extracted.length >= 6) {
+      return extracted;
+    }
     if (pedido.usuario?.dni && pedido.usuario.dni.length >= 8 && !pedido.usuario.dni.startsWith('9')) {
       return pedido.usuario.dni;
     }
     if (pedido.usuario?.dni_default) {
       return pedido.usuario.dni_default;
-    }
-    if (pedido.destino_detalle) {
-      const match = pedido.destino_detalle.match(/(?:DNI|CE|Doc)[\s:]*([0-9A-Za-z]{7,12})/i);
-      if (match && match[1]) {
-        return match[1];
-      }
     }
     return pedido.usuario?.dni || 'No registrado';
   };

@@ -2,6 +2,7 @@ import React from 'react';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
 import { InkSavingLevel, getInkSavingStyles } from '../../utils/inkSavingService';
+import { extractShalomDni } from '../../utils/shalomExcelExporter';
 
 interface Props {
   pedido: Pedido;
@@ -15,19 +16,17 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
   const getClientDni = () => {
+    const extracted = extractShalomDni(pedido);
+    if (extracted && extracted !== 'NCIADOS' && extracted.length >= 6) {
+      return extracted;
+    }
     if (pedido.usuario?.dni && pedido.usuario.dni.length >= 8 && !pedido.usuario.dni.startsWith('9')) {
       return pedido.usuario.dni;
     }
     if (pedido.usuario?.dni_default) {
       return pedido.usuario.dni_default;
     }
-    if (pedido.destino_detalle) {
-      const match = pedido.destino_detalle.match(/(?:DNI|CE|Doc)[\s:]*([0-9A-Za-z]{7,12})/i);
-      if (match && match[1]) {
-        return match[1];
-      }
-    }
-    return pedido.usuario?.dni || 'No registrado';
+    return 'No registrado';
   };
 
   const clientDni = getClientDni();

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
 import { extractShalomDni, extractShalomPhone } from '../../utils/shalomExcelExporter';
+import { validateShalomPin, formatShalomPin } from '../../utils/formatters';
 import {
   FileText,
   Send,
@@ -38,15 +39,19 @@ interface DeliveryOrderProgress {
   phone: string;
   dni: string;
   trackingCode: string;
-  guideNumber: string;
-  manualGuideInput: string;
-  agencyName: string;
-  fileName: string;
-  pdfBase64?: string;
+  guideNumber?: string;
   pickupCode?: string;
-  auditStatus: 'auditing' | 'verified_pdf' | 'not_found';
-  sendStatus: 'idle' | 'sending' | 'completed' | 'error';
+  manualGuideInput?: string;
+  agencyName?: string;
+  fileName?: string;
+  auditStatus?: 'auditing' | 'found' | 'ready' | 'verified_pdf' | 'manual_required' | 'not_found' | 'error';
+  sendStatus?: 'idle' | 'sending' | 'sent' | 'completed' | 'error';
+  isCustomManual?: boolean;
+  status?: 'pending' | 'checking' | 'ready' | 'not_found' | 'sending' | 'sent' | 'error';
+  errorMessage?: string;
   errorMsg?: string;
+  pdfBase64?: string;
+  officialShalomData?: any;
 }
 
 export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
@@ -80,16 +85,17 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const clientName = o.usuario?.nombre_completo || (o as any).nombre_cliente || 'Clienta';
       const cleanPhone = extractShalomPhone(o) || (o.usuario?.telefono_default || (o as any).telefono_contacto || (o.usuario as any)?.telefono || '').replace(/[^0-9]/g, '');
       let dni = extractShalomDni(o) || o.usuario?.dni || o.usuario?.dni_default || (o as any).dni_contacto || '';
-      if (!dni || dni.startsWith('usr-') || dni === '00000000') {
-        const matchDoc = String(o.destino_detalle || '').match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
-        dni = (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) ? matchDoc[1].trim() : '';
+      if (!dni || dni.startsWith('usr-') || dni === '00000000' || dni === 'NCIADOS') {
+        const matchDoc = String(o.destino_detalle || '').match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);
+        const docCandidate = matchDoc && matchDoc[1] ? matchDoc[1].trim() : '';
+        dni = (docCandidate && !docCandidate.startsWith('usr-') && docCandidate.toUpperCase() !== 'NCIADOS' && docCandidate.replace(/\D/g, '').length >= 6) ? docCandidate : '';
       }
       const safeName = clientName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
       const fileName = `Guia_Shalom_${safeName}_${cleanPhone.slice(-9)}.pdf`;
       const isRealShalomGuide = Boolean(o.shalom_numero_guia && o.shalom_numero_guia !== 'S/G' && !o.shalom_numero_guia.startsWith('SH-'));
       const guideNumber = isRealShalomGuide ? o.shalom_numero_guia! : (o.codigo_seguimiento || 'S/G');
       const manualGuideInput = isRealShalomGuide ? o.shalom_numero_guia! : '';
-      const orderPickupCode = o.shalom_clave_recojo || (o as any).clave_recojo || pickupCode;
+      const orderPickupCode = o.shalom_clave_recojo || (o as any).clave_recojo || formatShalomPin(pickupCode);
       
       const hasPriorRegistration = Boolean(
         isRealShalomGuide ||
@@ -201,7 +207,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   // Búsqueda manual personalizada por Guía o DNI ingresado por el usuario
   const handleManualSearch = async (item: DeliveryOrderProgress) => {
     const cleanDni = (item.dni || '').replace(/\D/g, '').trim();
-    const cleanGuide = item.manualGuideInput.trim();
+    const cleanGuide = (item.manualGuideInput || '').trim();
     const keyToSearch = cleanGuide || cleanDni || item.trackingCode;
     if (!keyToSearch) return;
 
@@ -267,7 +273,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       if (!win) {
         const a = document.createElement('a');
         a.href = blobUrl;
-        a.download = item.fileName;
+        a.download = item.fileName || 'guia_shalom.pdf';
         a.click();
       }
     } catch (err) {
@@ -308,11 +314,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         customerName: item.customerName,
         dni: item.dni,
         trackingCode: numbersOnly,
-        guideNumber: item.manualGuideInput || item.guideNumber,
-        agencyName: item.agencyName,
+        guideNumber: item.manualGuideInput || item.guideNumber || item.trackingCode || '',
+        agencyName: item.agencyName || 'Agencia Shalom',
         orderCode: numbersOnly,
         pdfBase64: item.pdfBase64 || undefined,
-        fileName: item.pdfBase64 ? item.fileName : undefined,
+        fileName: item.pdfBase64 ? (item.fileName || 'guia_shalom.pdf') : undefined,
         pickupCode: itemPickupCode,
       });
     }
@@ -435,16 +441,27 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-              <label className="text-[11px] font-bold text-slate-300">Clave:</label>
-              <input
-                type="text"
-                maxLength={6}
-                value={pickupCode}
-                onChange={(e) => setPickupCode(e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
-                placeholder="0808"
-                className="w-24 px-2.5 py-1.5 rounded-xl bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all shadow-inner"
-              />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 self-end sm:self-center">
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-bold text-slate-300">Clave:</label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  value={pickupCode}
+                  onChange={(e) => setPickupCode(formatShalomPin(e.target.value))}
+                  placeholder="0808"
+                  className={`w-20 px-2.5 py-1.5 rounded-xl bg-slate-950 border font-mono font-bold text-center text-sm focus:outline-none transition-all shadow-inner ${
+                    validateShalomPin(pickupCode).isValid
+                      ? 'border-amber-500/50 text-amber-300 focus:border-amber-400 focus:ring-1 focus:ring-amber-400'
+                      : 'border-rose-500 text-rose-400 focus:border-rose-400 focus:ring-1 focus:ring-rose-400 bg-rose-950/20'
+                  }`}
+                />
+              </div>
+              {!validateShalomPin(pickupCode).isValid && (
+                <span className="text-[10px] text-rose-400 font-bold">
+                  {validateShalomPin(pickupCode).error}
+                </span>
+              )}
             </div>
           </div>
 
@@ -554,15 +571,15 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                           <span className="text-[10px] text-slate-400 font-medium">PIN:</span>
                           <input
                             type="text"
-                            maxLength={6}
+                            maxLength={4}
                             value={item.pickupCode || pickupCode}
                             onChange={(e) => {
-                              const val = e.target.value.replace(/[^0-9A-Za-z]/g, '');
+                              const val = formatShalomPin(e.target.value);
                               item.pickupCode = val;
                               setProgressList([...progressList]);
                             }}
                             className="w-14 px-1 py-0.5 rounded bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-xs focus:outline-none focus:border-amber-400"
-                            title="Clave individual de recojo de este paquete"
+                            title="Clave individual de recojo de este paquete (4 dígitos)"
                           />
                         </span>
                       </div>

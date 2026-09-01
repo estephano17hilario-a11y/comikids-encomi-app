@@ -5,6 +5,7 @@ import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalo
 import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
 import { ShalomApiService, ShalomDispatchResult } from '../../services/shalomApiService';
 import { getApiBaseUrl } from '../../config/api';
+import { validateShalomPin, formatShalomPin } from '../../utils/formatters';
 
 import {
   X,
@@ -275,9 +276,16 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   };
 
 
-  // 1. DESPACHO AUTOMÁTICO VÍA API CON RATE LIMITING (Máximo 50 req/min)
+  // 1. DESPACHO AUTOMÁTICO VÍA API CON RATE LIMITING (Máximo ~54 req/min para respetar los 60 req/min)
   const handleStartApiDispatch = async () => {
     if (isDispatching) return;
+
+    const pinCheck = validateShalomPin(pickupCode);
+    if (!pinCheck.isValid) {
+      alert(`Clave de recojo inválida: ${pinCheck.error}`);
+      return;
+    }
+
     setIsDispatching(true);
     setActiveTab('dispatching');
     setProgressIndex(0);
@@ -287,8 +295,6 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       password: tallerConfig.shalom_password || '986398Mi$',
     };
 
-
-
     const resultsMap: Record<string, ShalomDispatchResult> = {};
     const successfulIds: string[] = [];
 
@@ -296,12 +302,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       const row = auditedRows[i];
       setProgressIndex(i + 1);
 
-      // Rate Limiting seguro optimizado (250ms entre registros)
+      // Rate Limiting seguro optimizado (1100ms entre registros = ~54 req/min)
       if (i > 0) {
-        await new Promise(r => setTimeout(r, 250));
+        await new Promise(r => setTimeout(r, 1100));
       }
 
-      const rowPickupCode = row.data.pickupCode || pickupCode;
+      const rowPickupCode = formatShalomPin(row.data.pickupCode || pickupCode);
 
       const payload = {
         pedidoId: row.pedido.id,
@@ -332,31 +338,13 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         },
       };
 
-
       try {
         const res = await ShalomApiService.registerOrder(payload, auth);
         res.pickupCode = rowPickupCode;
         
-        // Descargar inmediatamente el Ticket Shalom Oficial (formato físico POS con QR) con verificación de DNI
         if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
           successfulIds.push(row.pedido.id);
-          try {
-            const clientCtx = {
-              dni: row.data.dni,
-              phone: row.data.phone,
-              name: row.data.name,
-              guia: res.guideNumber,
-            };
-            const pdfKey = String(res.oseId || res.guideNumber || res.trackingCode || row.data.phone);
-            const pdfBase64 = await ShalomApiService.fetchVoucherPdfBase64(pdfKey, auth, clientCtx);
-            if (pdfBase64 && pdfBase64.length > 100) {
-              res.pdfBase64 = pdfBase64;
-            }
-          } catch (pdfErr) {
-            console.warn('[FETCH SHALOM VOUCHER PDF AFTER REGISTRATION WARN]', pdfErr);
-          }
         }
-
 
         resultsMap[row.pedido.id] = res;
       } catch (err: any) {
@@ -516,16 +504,27 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                <label className="text-[11px] font-bold text-slate-300">Clave:</label>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={pickupCode}
-                  onChange={(e) => setPickupCode(e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
-                  placeholder="0808"
-                  className="w-24 px-2.5 py-1.5 rounded-xl bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all shadow-inner"
-                />
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0 self-end sm:self-center">
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] font-bold text-slate-300">Clave:</label>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={pickupCode}
+                    onChange={(e) => setPickupCode(formatShalomPin(e.target.value))}
+                    placeholder="0808"
+                    className={`w-20 px-2.5 py-1.5 rounded-xl bg-slate-950 border font-mono font-bold text-center text-sm focus:outline-none transition-all shadow-inner ${
+                      validateShalomPin(pickupCode).isValid
+                        ? 'border-amber-500/50 text-amber-300 focus:border-amber-400 focus:ring-1 focus:ring-amber-400'
+                        : 'border-rose-500 text-rose-400 focus:border-rose-400 focus:ring-1 focus:ring-rose-400 bg-rose-950/20'
+                    }`}
+                  />
+                </div>
+                {!validateShalomPin(pickupCode).isValid && (
+                  <span className="text-[10px] text-rose-400 font-bold">
+                    {validateShalomPin(pickupCode).error}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -949,7 +948,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               {/* Botón Principal API Dispatch */}
               <button
                 onClick={handleStartApiDispatch}
-                disabled={isDispatching}
+                disabled={isDispatching || !allValid || !validateShalomPin(pickupCode).isValid}
                 className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer active:scale-98"
               >
                 {isDispatching ? (

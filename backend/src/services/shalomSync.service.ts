@@ -297,8 +297,11 @@ export class ShalomSyncService {
               const newOfficialDest = extractShalomDestino(newAgency.full_name, newAgency.code);
 
               // Preservar DNI de recojo del cliente
-              const dniMatch = rawDest.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i);
-              const clientDni = dniMatch ? dniMatch[1].trim() : '';
+              const dniMatch = rawDest.match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);
+              let clientDni = dniMatch ? dniMatch[1].trim() : '';
+              if (clientDni && (clientDni.toUpperCase() === 'NCIADOS' || clientDni.replace(/\D/g, '').length < 6)) {
+                clientDni = '';
+              }
               const dniTag = clientDni ? ` (DNI/CE Recojo: ${clientDni})` : '';
 
               const updatedDestinoDetalle = `Agencia Shalom: ${newAgency.full_name}${dniTag}`;

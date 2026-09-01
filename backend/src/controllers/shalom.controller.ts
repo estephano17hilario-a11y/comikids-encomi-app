@@ -282,12 +282,23 @@ export class ShalomController {
       const lastName = nameParts.slice(1).join(' ') || 'General';
 
       const rawDoc = String(order.receiver?.document || order.receiver?.document_number || order.destinatario?.documento || order.destinatario?.document_number || '00000000').replace(/\D/g, '');
-      const docType = rawDoc.length === 11 ? 'RUC' : (rawDoc.length === 8 ? 'DNI' : 'CE');
+      let cleanDoc = rawDoc;
+      if (cleanDoc.length < 6 || cleanDoc === '00000000' || isNaN(Number(cleanDoc))) {
+        // Intentar rescatar DNI del destinatario si vino texto sucio
+        const matchDigits = String(order.receiver?.document || order.destinatario?.documento || '').match(/\b\d{8}\b/);
+        if (matchDigits) {
+          cleanDoc = matchDigits[0];
+        }
+      }
+      const docType = cleanDoc.length === 11 ? 'RUC' : (cleanDoc.length === 8 ? 'DNI' : 'CE');
 
       const rawPhone = String(order.receiver?.phone || order.destinatario?.telefono || '999999999').replace(/\D/g, '');
       const phoneInt = parseInt(rawPhone.slice(-9), 10) || 900000000;
 
-      const pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '0808').trim();
+      let pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '0808').trim().replace(/\D/g, '').slice(0, 4);
+      if (pickupCode.length !== 4 || pickupCode === '1234' || (Number(pickupCode) >= 2010 && Number(pickupCode) <= 2026)) {
+        pickupCode = '0808';
+      }
 
       const orderToCreate = {
         origin_terminal_id: originTerminalId,
@@ -296,7 +307,7 @@ export class ShalomController {
         pickup_code: pickupCode,
         declaracion_jurada: 'ropa',
         receiver: {
-          document: rawDoc,
+          document: cleanDoc,
           document_type: docType,
           name: firstName,
           last_name: lastName,
@@ -304,29 +315,77 @@ export class ShalomController {
         }
       };
 
-      console.log(`[SHALOM PROXY CREATE ORDER] Despachando a terminal ${destinyTerminalId} ("${officialAgencyName}") para ${firstName} ${lastName} (${rawDoc})...`);
+      console.log(`[SHALOM PROXY CREATE ORDER] Despachando a terminal ${destinyTerminalId} ("${officialAgencyName}") para ${firstName} ${lastName} (${cleanDoc}) con PIN ${pickupCode}...`);
 
-      const response = await axios.post(
-        `${SHALOM_BASE_URL}/v1/orders`,
-        orderToCreate,
-        {
-          headers,
-          timeout: 15000,
+      // Reintentos automáticos con backoff exponencial (hasta 3 intentos) para máxima resiliencia
+      let response: any = null;
+      let lastAxiosError: any = null;
+      const maxAttempts = 3;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          response = await axios.post(
+            `${SHALOM_BASE_URL}/v1/orders`,
+            orderToCreate,
+            {
+              headers,
+              timeout: 15000,
+            }
+          );
+          if (response?.status === 200 || response?.status === 201) {
+            break;
+          }
+        } catch (postErr: any) {
+          lastAxiosError = postErr;
+          const status = postErr.response?.status;
+          console.warn(`[SHALOM PROXY CREATE ORDER ATTRIBUTE ${attempt}/${maxAttempts}]`, postErr?.response?.data || postErr.message);
+          
+          // No reintentar si el error es de validación del cliente (400 o 422)
+          if (status === 400 || status === 422) {
+            break;
+          }
+          if (attempt < maxAttempts) {
+            await new Promise(r => setTimeout(r, attempt * 600));
+          }
         }
-      );
+      }
+
+      if (!response && lastAxiosError) {
+        throw lastAxiosError;
+      }
+
+      // Desempaquetar exhaustivamente los datos retornados por Shalom Pro
+      const rawResData = response?.data?.data || response?.data?.order || response?.data || {};
+      const oseId = rawResData.ose_id || rawResData.id || rawResData.order_id || (response?.data?.id ? response.data.id : null);
+      const serie = rawResData.serie || response?.data?.serie || 'V204';
+      const rawGuia = rawResData.guia || rawResData.guide_number || rawResData.numero_guia || response?.data?.guia;
+      const fullGuia = rawGuia ? (serie && !String(rawGuia).includes('-') ? `${serie}-${rawGuia}` : String(rawGuia)) : (oseId ? `${serie}-${oseId}` : `SH-${oseId || 'OK'}`);
+      const trackingCode = rawResData.codigo || rawResData.tracking_code || rawResData.pickup_code || String(oseId || '');
+      const confirmedPin = rawResData.pickup_code || rawResData.codigo || pickupCode;
+
+      const normalizedData = {
+        ...rawResData,
+        id: oseId,
+        ose_id: oseId,
+        guia: rawGuia || oseId,
+        serie,
+        guide_number: fullGuia,
+        numero_guia: fullGuia,
+        tracking_code: trackingCode,
+        pickup_code: confirmedPin,
+      };
 
       // Inyectar inmediatamente la nueva orden creada en la caché en memoria para resolución en 0ms
       try {
-        const createdOrderObj = response.data?.data || response.data;
-        if (createdOrderObj && typeof createdOrderObj === 'object') {
-          ShalomController.cachedAllOrders = [createdOrderObj, ...ShalomController.cachedAllOrders];
+        if (normalizedData && oseId) {
+          ShalomController.cachedAllOrders = [normalizedData, ...ShalomController.cachedAllOrders];
           ShalomController.lastAllOrdersFetch = Date.now();
         }
       } catch {}
 
       return reply.code(200).send({
         success: true,
-        data: response.data,
+        data: normalizedData,
         agency_name: officialAgencyName,
         agency_official: officialAgencyName,
         agency_full_name: agencyFullName,

@@ -430,9 +430,9 @@ export class TenantController {
           await new Promise(r => setTimeout(r, randomDelay));
         }
 
-        const clientDni = String((order as any).dni || (order as any).customerDni || '').replace(/\D/g, '').trim() ||
-          (order.agencyName?.match(/(?:DNI[\s\/]*CE|DNI|CE|Doc|Documento)[\s:]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})/i)?.[1]) ||
-          '';
+        const rawExtractedDni = (order.agencyName?.match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i)?.[1]) || '';
+        const safeExtractedDni = (rawExtractedDni.toUpperCase() !== 'NCIADOS' && rawExtractedDni.replace(/\D/g, '').length >= 6) ? rawExtractedDni : '';
+        const clientDni = String((order as any).dni || (order as any).customerDni || '').replace(/\D/g, '').trim() || safeExtractedDni || '';
 
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
         const formattedFileName = order.fileName || `Ticket_Shalom_${safeClientName}_${clientDni || phoneClean.slice(-9)}.pdf`;

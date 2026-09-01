@@ -51,3 +51,36 @@ export function cleanPhoneNumber(phone: string): string {
   }
   return digits;
 }
+
+/**
+ * Valida de forma estricta un PIN / Clave de recojo para Shalom:
+ * - Debe tener exactamente 4 dígitos numéricos
+ * - No puede ser '1234'
+ * - No puede ser un año entre 2010 y 2026
+ */
+export function validateShalomPin(pin?: string): { isValid: boolean; error?: string } {
+  if (!pin) {
+    return { isValid: false, error: 'El PIN es obligatorio' };
+  }
+  const clean = String(pin).trim().replace(/\D/g, '');
+  if (clean.length !== 4) {
+    return { isValid: false, error: 'El PIN debe tener exactamente 4 dígitos numéricos' };
+  }
+  if (clean === '1234') {
+    return { isValid: false, error: 'La clave 1234 está prohibida por seguridad' };
+  }
+  const numVal = parseInt(clean, 10);
+  if (numVal >= 2010 && numVal <= 2026) {
+    return { isValid: false, error: `No se permiten años entre 2010 y 2026 como PIN (${clean})` };
+  }
+  return { isValid: true };
+}
+
+/**
+ * Limpia y recorta un PIN a 4 dígitos numéricos
+ */
+export function formatShalomPin(pin?: string): string {
+  if (!pin) return '';
+  return String(pin).replace(/\D/g, '').slice(0, 4);
+}
+

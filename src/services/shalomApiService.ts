@@ -213,10 +213,13 @@ export class ShalomApiService {
       const resJson = await response.json().catch(() => ({}));
 
       if (response.ok && resJson.success && resJson.data) {
-        const data = resJson.data;
-        const oseId = data.ose_id || data.id;
-        const guideNumber = data.guia ? `${data.serie ? data.serie + '-' : ''}${data.guia}` : (data.guide_number || data.numero_guia || `SH-${oseId}`);
-        const trackingCode = data.codigo || data.tracking_code || data.codigo_rastreo || String(oseId);
+        const rawData = resJson.data || {};
+        const data = rawData.data || rawData.order || rawData;
+        const oseId = data.ose_id || data.id || rawData.ose_id || rawData.id;
+        const serie = data.serie || rawData.serie || 'V204';
+        const rawGuia = data.guia || data.guide_number || data.numero_guia || rawData.guia;
+        const guideNumber = rawGuia ? (serie && !String(rawGuia).includes('-') ? `${serie}-${rawGuia}` : String(rawGuia)) : (oseId ? `${serie}-${oseId}` : (data.guide_number || data.numero_guia || ''));
+        const trackingCode = data.codigo || data.tracking_code || data.codigo_rastreo || (oseId ? String(oseId) : payload.codigoSeguimiento);
         const confirmedAgency = resJson.agency_official || resJson.agency_name || agencyDetails.officialDestination;
         const confirmedFullName = resJson.agency_full_name || agencyDetails.agencyName;
 
@@ -224,9 +227,10 @@ export class ShalomApiService {
           pedidoId: payload.pedidoId,
           codigoSeguimiento: payload.codigoSeguimiento,
           success: true,
-          oseId,
-          guideNumber,
+          oseId: oseId ? String(oseId) : undefined,
+          guideNumber: guideNumber || undefined,
           trackingCode,
+          pickupCode: data.pickup_code || payload.pickup_code,
           customerPhone: payload.destinatario.telefono,
           customerName: payload.destinatario.nombre,
           agencyName: confirmedAgency,

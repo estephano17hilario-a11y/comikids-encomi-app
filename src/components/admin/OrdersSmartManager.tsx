@@ -345,14 +345,14 @@ export const OrdersSmartManager: React.FC = () => {
     );
   }, [selectedOrders]);
 
-  // Handler para exportar Excel oficial masivo de Shalom y marcar como registrados
+  // Handler para exportar Excel oficial masivo de Shalom (exportación manual / física)
   const handleRegisterShalomExcel = async () => {
     if (selectedShalomOrders.length === 0) return;
     setIsProcessing(true);
     try {
       downloadShalomExcel(selectedShalomOrders, tallerConfig);
       for (const order of selectedShalomOrders) {
-        await updatePedido(order.id, { registrado_shalom: true });
+        await updatePedido(order.id, { rotulado: true });
       }
     } catch (err) {
       console.error('Error al exportar plantilla masiva de Shalom:', err);
@@ -1363,6 +1363,12 @@ export const OrdersSmartManager: React.FC = () => {
           onClose={() => setShowShalomRegister(false)}
           onRegistered={async (results) => {
             for (const r of results) {
+              // SEGURIDAD CRÍTICA: SOLO actualizar pedidos que realmente tengan OSE ID o Guía emitida por Shalom
+              if (!r.oseId && !r.guideNumber) {
+                console.warn(`[ON REGISTERED SKIP] Pedido ${r.pedidoId} no fue emitido en Shalom (sin OSE ID/Guía). No se modifica en base de datos.`);
+                continue;
+              }
+
               const currentOrder = pedidos.find(p => p.id === r.pedidoId);
               let newDestino = currentOrder?.destino_detalle || '';
               if (r.dni && r.dni.toUpperCase() !== 'NCIADOS' && r.dni.replace(/\D/g, '').length >= 6 && !newDestino.includes(r.dni)) {
@@ -1380,7 +1386,7 @@ export const OrdersSmartManager: React.FC = () => {
                 registrado_shalom: true,
                 rotulado: true,
                 estado_envio: nextEnvio,
-                shalom_ose_id: r.oseId || null,
+                shalom_ose_id: r.oseId ? String(r.oseId) : null,
                 shalom_numero_guia: r.guideNumber || null,
                 shalom_clave_recojo: r.pickupCode || null,
                 destino_detalle: newDestino || undefined,

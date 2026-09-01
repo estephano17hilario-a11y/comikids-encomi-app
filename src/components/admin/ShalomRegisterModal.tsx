@@ -351,6 +351,28 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         }
 
         resultsMap[row.pedido.id] = res;
+
+        // Si Shalom Pro reporta indisponibilidad de autenticación o bloqueo de sesión, detener el lote inmediatamente
+        if (!res.success) {
+          const errStr = String(typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || '')).toLowerCase();
+          if (errStr.includes('autenticar') || errStr.includes('shalom_login_unavailable') || errStr.includes('credenciales') || errStr.includes('unauthorized')) {
+            console.warn('[SHALOM DISPATCH STOP] Deteniendo lote por fallo de autenticación en Shalom Pro.');
+            for (let j = i + 1; j < auditedRows.length; j++) {
+              const remRow = auditedRows[j];
+              resultsMap[remRow.pedido.id] = {
+                pedidoId: remRow.pedido.id,
+                codigoSeguimiento: remRow.pedido.codigo_seguimiento,
+                success: false,
+                errorMessage: 'Despacho detenido para proteger la cuenta: El servicio de inicio de sesión de Shalom Pro no está disponible o requiere reintentar en unos minutos.',
+                customerPhone: remRow.data.phone,
+                customerName: remRow.data.name,
+                agencyName: remRow.destino,
+                pickupCode: remRow.data.pickupCode || pickupCode,
+              };
+            }
+            break;
+          }
+        }
       } catch (err: any) {
         resultsMap[row.pedido.id] = {
           pedidoId: row.pedido.id,
@@ -425,13 +447,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
 
 
-  // 3. DESCARGA TRADICIONAL EXCEL (FALLBACK)
+  // 4. MODO TRADICIONAL: EXPORTACIÓN A EXCEL OFICIAL SHALOM MASIVO
   const handleExportExcelFallback = async () => {
     if (isExportingExcel) return;
     setIsExportingExcel(true);
     try {
       await downloadShalomExcel(pedidos, tallerConfig);
-      await onRegistered(pedidos.map(p => ({ pedidoId: p.id })));
       onClose();
     } catch (err) {
       console.error('[EXCEL FALLBACK ERROR]', err);

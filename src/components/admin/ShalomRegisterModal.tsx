@@ -193,6 +193,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
     const rowPickupCode = row.data.pickupCode || pickupCode;
 
+    const remitenteDoc = (tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312').replace(/\D/g, '') || '42020312';
+    const remitenteTel = (tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412').replace(/\D/g, '') || '927781412';
+
     const payload = {
       pedidoId: row.pedido.id,
       codigoSeguimiento: row.pedido.codigo_seguimiento,
@@ -202,8 +205,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       agencyOfficialName: row.agencyDetails.officialDestination,
       remitente: {
         nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
-        documento: tallerConfig.ruc_dni || '20000000001',
-        telefono: tallerConfig.celular_taller || '999999999',
+        documento: remitenteDoc,
+        telefono: remitenteTel,
         agenciaOrigen: origen,
       },
       destinatario: {
@@ -319,6 +322,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
       const rowPickupCode = formatShalomPin(row.data.pickupCode || pickupCode);
 
+      const remitenteDoc = (tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312').replace(/\D/g, '') || '42020312';
+      const remitenteTel = (tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412').replace(/\D/g, '') || '927781412';
+
       const payload = {
         pedidoId: row.pedido.id,
         codigoSeguimiento: row.pedido.codigo_seguimiento,
@@ -328,8 +334,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         agencyOfficialName: row.agencyDetails.officialDestination,
         remitente: {
           nombre: tallerConfig.nombre_taller || 'ENCOMI TALLER',
-          documento: tallerConfig.ruc_dni || '20000000001',
-          telefono: tallerConfig.celular_taller || '999999999',
+          documento: remitenteDoc,
+          telefono: remitenteTel,
           agenciaOrigen: origen,
         },
         destinatario: {

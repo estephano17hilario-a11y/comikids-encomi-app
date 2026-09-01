@@ -61,6 +61,10 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const [whatsAppSyncDone, setWhatsAppSyncDone] = useState(false);
   const [whatsAppSyncCount, setWhatsAppSyncCount] = useState(0);
 
+  // Estados de Descarga de PDFs
+  const [downloadingPdfIds, setDownloadingPdfIds] = useState<Record<string, boolean>>({});
+  const [downloadingAll, setDownloadingAll] = useState(false);
+
   // Clave de recojo temporal para Shalom
   const [pickupCode, setPickupCode] = useState('0808');
 
@@ -437,6 +441,72 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     }
   };
 
+  // Descarga directa individual de Ticket Oficial POS de Shalom con QR
+  const handleDownloadSingleTicket = async (res: ShalomDispatchResult) => {
+    if (downloadingPdfIds[res.pedidoId]) return;
+    setDownloadingPdfIds(prev => ({ ...prev, [res.pedidoId]: true }));
+    try {
+      const auth = {
+        email: tallerConfig.shalom_email || 'milagrosjanetamis@gmail.com',
+        password: tallerConfig.shalom_password || '986398Mi$',
+      };
+
+      const row = auditedRows.find(r => r.pedido.id === res.pedidoId);
+      const clientCtx = {
+        dni: row?.data.dni,
+        phone: res.customerPhone || row?.data.phone,
+        name: res.customerName || row?.data.name,
+        guia: res.guideNumber,
+      };
+
+      const safeName = (res.customerName || 'Cliente').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
+      const fileName = `Ticket_Shalom_${safeName}_${res.guideNumber || res.oseId || res.codigoSeguimiento}.pdf`;
+
+      if (res.pdfBase64) {
+        const byteChars = atob(res.pdfBase64);
+        const byteNumbers = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) {
+          byteNumbers[i] = byteChars.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+        return;
+      }
+
+      const targetKey = String(res.oseId || res.guideNumber || res.trackingCode || res.pedidoId);
+      await ShalomApiService.downloadVoucherPdf(targetKey, auth, fileName, clientCtx);
+    } catch (err: any) {
+      console.error('Error descargando ticket Shalom:', err);
+      alert(`No se pudo descargar el ticket de Shalom: ${err.message || 'Error de conexión'}`);
+    } finally {
+      setDownloadingPdfIds(prev => ({ ...prev, [res.pedidoId]: false }));
+    }
+  };
+
+  // Descarga masiva de todos los tickets generados
+  const handleDownloadAllTickets = async () => {
+    if (downloadingAll) return;
+    setDownloadingAll(true);
+    try {
+      const successfulList = Object.values(dispatchResults).filter(r => r.success);
+      for (const res of successfulList) {
+        await handleDownloadSingleTicket(res);
+        await new Promise(r => setTimeout(r, 400));
+      }
+    } finally {
+      setDownloadingAll(false);
+    }
+  };
+
   const successfulList = Object.values(dispatchResults).filter(r => r.success);
   const failedList = Object.values(dispatchResults).filter(r => !r.success);
 
@@ -752,6 +822,27 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                   </p>
                 </div>
               </div>
+
+              {successfulList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDownloadAllTickets}
+                  disabled={downloadingAll}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 shrink-0"
+                >
+                  {downloadingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Descargando todos...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      <span>Descargar Todos los Tickets ({successfulList.length})</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
             {/* Listado de Resultados y Descarga de Rótulos / Reintentos */}
@@ -795,7 +886,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                             </span>
                             {res.pdfBase64 && (
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                📎 Ticket Shalom con QR Listo
+                                📎 Ticket con QR Listo
                               </span>
                             )}
                           </div>
@@ -807,24 +898,24 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                       </div>
                     </div>
 
-                    {res.success && (res.pdfBase64 || res.oseId) && (
+                    {res.success && (res.pdfBase64 || res.oseId || res.guideNumber) && (
                       <button
-                        onClick={() => {
-                          if (res.pdfBase64) {
-                            const blob = new Blob([Uint8Array.from(atob(res.pdfBase64), c => c.charCodeAt(0))], { type: 'application/pdf' });
-                            const blobUrl = URL.createObjectURL(blob);
-                            window.open(blobUrl, '_blank');
-                          } else if (res.oseId) {
-                            ShalomApiService.downloadVoucherPdf(
-                              res.oseId!,
-                              { email: tallerConfig.shalom_email || '', password: tallerConfig.shalom_password || '' }
-                            );
-                          }
-                        }}
-                        className="px-2.5 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 self-end sm:self-center"
+                        type="button"
+                        onClick={() => handleDownloadSingleTicket(res)}
+                        disabled={downloadingPdfIds[res.pedidoId]}
+                        className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-cyan-950/30 cursor-pointer disabled:opacity-50 active:scale-95 shrink-0 self-end sm:self-center"
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Ticket Shalom (QR) PDF</span>
+                        {downloadingPdfIds[res.pedidoId] ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                            <span>Descargando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Ticket Shalom (QR) PDF</span>
+                          </>
+                        )}
                       </button>
                     )}
                   </div>

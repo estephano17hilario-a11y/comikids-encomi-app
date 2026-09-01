@@ -534,10 +534,33 @@ export class ShalomController {
         headers['X-Shalom-Password'] = credentials.password;
       }
 
+      const endpoint = pdfType === 'label' ? 'label' : 'voucher';
       const filePrefix = 'Ticket_Shalom';
 
       const SHOP_PHONES = ['927781412', '987654321', '986398000', '989834969', '51927781412', '51987654321'];
       const SHOP_DNIS = ['42020312', '00000000', '20512528458', '20000000001'];
+
+      // 0. INTENTO DIRECTO RÁPIDO (50ms): Si el parámetro es un ID numérico de Shalom (ej: 97593650), descargarlo directamente
+      if (/^\d{5,12}$/.test(cleanSearch)) {
+        try {
+          const directRes = await axios.get(
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/${endpoint}`,
+            {
+              headers,
+              responseType: 'arraybuffer',
+              timeout: 12000,
+            }
+          );
+          if (directRes.status === 200 && directRes.data && directRes.data.length > 100) {
+            console.log(`[SHALOM PROXY DIRECT PDF SUCCESS] Ticket descargado directamente para OSE ID #${cleanSearch} (${directRes.data.length} bytes)`);
+            reply.header('Content-Type', 'application/pdf');
+            reply.header('Content-Disposition', `inline; filename="${filePrefix}_${cleanSearch}.pdf"`);
+            return reply.send(directRes.data);
+          }
+        } catch (directErr: any) {
+          console.log(`[SHALOM PROXY DIRECT PDF NOTICE] ID ${cleanSearch} no respondió directo (${directErr?.message}), buscando en catálogo inteligente...`);
+        }
+      }
 
       // 1. Extraer identificadores limpios del cliente (Sin falsos positivos)
       const is8DigitDni = /^\d{8}$/.test(cleanSearch);
@@ -545,9 +568,9 @@ export class ShalomController {
       const is9DigitPhone = /^9\d{8}$/.test(cleanSearch);
       const isShalomGuide = /^(V\d{3}|[A-Z]\d{3})[- ]?\d{4,8}$/i.test(cleanSearch);
       const isInternalCode = cleanSearch.startsWith('CMD-') || cleanSearch.startsWith('SH-') || (/^\d{1,6}$/.test(cleanSearch) && !is8DigitDni);
-      const isNumericOseId = /^\d{7,10}$/.test(cleanSearch) && !is8DigitDni && !is9DigitPhone;
+      const isNumericOseId = /^\d{5,12}$/.test(cleanSearch);
 
-      let rawDni = (qDni || (is8DigitDni || is11DigitRuc ? cleanSearch : '')).replace(/\D/g, '').trim();
+      let rawDni = (qDni || (!isNumericOseId && (is8DigitDni || is11DigitRuc) ? cleanSearch : '')).replace(/\D/g, '').trim();
       let rawPhone = (qPhone || (is9DigitPhone ? cleanSearch : '')).replace(/\D/g, '').trim();
       let rawName = (qName || '').toLowerCase().trim();
       const targetGuia = (qGuia || (isShalomGuide ? cleanSearch : '')).toUpperCase().trim();
@@ -744,7 +767,6 @@ export class ShalomController {
         });
       }
 
-      const endpoint = pdfType === 'label' ? 'label' : 'voucher';
       const cacheKey = `${matchedOrder.id}_${endpoint}`;
 
       // A. SERVIR DESDE CACHÉ EN MEMORIA RAM (0ms) SI YA SE DESCARGÓ RECIENTEMENTE

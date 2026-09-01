@@ -579,17 +579,38 @@ export class ShalomApiService {
 
       const blob = await response.blob();
       if (!blob || blob.size < 100) {
-        throw new Error('El PDF recibido está vacío');
+        throw new Error('El PDF recibido desde Shalom está vacío o no se generó aún.');
       }
 
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
+      if (Capacitor.isNativePlatform()) {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64Data = (reader.result as string).split(',')[1];
+          const savedFile = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache,
+          });
+
+          await Share.share({
+            title: 'Ticket Oficial Shalom con QR',
+            text: `Ticket de Envío Shalom`,
+            url: savedFile.uri,
+            dialogTitle: 'Compartir o Imprimir Ticket Shalom',
+          });
+        };
+      } else {
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+      }
     } catch (err) {
       console.error('[SHALOM DOWNLOAD VOUCHER ERROR]', err);
       throw err;

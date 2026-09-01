@@ -395,6 +395,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       setDispatchResults({ ...resultsMap });
     }
 
+    // Asegurar que dispatchResults tenga el estado completo final
+    setDispatchResults({ ...resultsMap });
     setIsDispatching(false);
     setActiveTab('finished');
 
@@ -536,6 +538,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
   const successfulList = Object.values(dispatchResults).filter(r => r.success);
   const failedList = Object.values(dispatchResults).filter(r => !r.success);
+  const isAllDispatchedSuccess = totalCount > 0 && successfulList.length === totalCount;
 
   return createPortal(
     <div className="fixed inset-0 z-9999 flex items-center justify-center p-3 sm:p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn" data-no-print="true">
@@ -833,12 +836,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
             
             {/* Banner Resumen */}
             <div className={`p-4 rounded-2xl border flex items-center justify-between ${
-              failedList.length === 0
+              isAllDispatchedSuccess
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                 : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
             }`}>
               <div className="flex items-center gap-3">
-                {failedList.length === 0 ? (
+                {isAllDispatchedSuccess ? (
                   <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
                 ) : (
                   <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0" />
@@ -848,9 +851,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                     {successfulList.length} de {totalCount} pedidos despachados con éxito
                   </h4>
                   <p className="text-xs text-slate-300">
-                    {failedList.length === 0
+                    {isAllDispatchedSuccess
                       ? 'Todas las órdenes fueron registradas en la plataforma de Shalom Pro.'
-                      : `${failedList.length} pedidos tuvieron error. Puedes cambiar su clave individualmente abajo y reintentar.`}
+                      : `${totalCount - successfulList.length} ${totalCount - successfulList.length === 1 ? 'pedido tuvo error o no pudo emitirse' : 'pedidos tuvieron error o no pudieron emitirse'}. Revisa el motivo abajo y puedes reintentar individualmente.`}
                   </p>
                 </div>
               </div>
@@ -879,61 +882,72 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
             {/* Listado de Resultados y Descarga de Rótulos / Reintentos */}
             <div className="space-y-2.5">
-              {Object.values(dispatchResults).map(res => (
-                <div
-                  key={res.pedidoId}
-                  className={`p-3.5 rounded-xl border flex flex-col gap-2.5 ${
-                    res.success
-                      ? 'bg-slate-950/70 border-emerald-500/30'
-                      : 'bg-rose-950/20 border-rose-500/40'
-                  }`}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    <div className="flex items-center gap-2.5">
-                      {res.success ? (
-                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                      ) : (
-                        <X className="w-4 h-4 text-rose-400 shrink-0" />
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-white">
-                            #{res.codigoSeguimiento}
-                          </span>
-                          <span className="text-xs text-slate-300">
-                            {res.customerName} (+{res.customerPhone})
-                          </span>
-                          <span className="text-[10px] text-amber-300 font-mono bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 font-bold">
-                            PIN: {res.pickupCode || editedData[res.pedidoId]?.pickupCode || pickupCode}
-                          </span>
-                        </div>
+              {auditedRows.map(row => {
+                const res = dispatchResults[row.pedido.id] || {
+                  pedidoId: row.pedido.id,
+                  codigoSeguimiento: row.pedido.codigo_seguimiento,
+                  success: false,
+                  errorMessage: 'El despacho se detuvo o no se pudo autenticar con Shalom Pro API. Revisa el estado de la cuenta.',
+                  customerPhone: row.data.phone,
+                  customerName: row.data.name,
+                  agencyName: row.destino,
+                  pickupCode: row.data.pickupCode || pickupCode,
+                };
+                return (
+                  <div
+                    key={row.pedido.id}
+                    className={`p-3.5 rounded-xl border flex flex-col gap-2.5 ${
+                      res.success
+                        ? 'bg-slate-950/70 border-emerald-500/30'
+                        : 'bg-rose-950/20 border-rose-500/40'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5">
                         {res.success ? (
-                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                            <p className="text-[11px] text-cyan-300">
-                              Guía Oficial: <strong>{String(res.guideNumber || 'Generada')}</strong> • OSE #{String(res.oseId || '')}
-                            </p>
-                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-cyan-950/80 text-cyan-200 border border-cyan-500/40 flex items-center gap-1">
-                              <Building2 className="w-3 h-3 text-cyan-400 shrink-0" />
-                              <span>Enviado a: <strong className="text-white">{res.agencyName || 'Agencia Shalom'}</strong></span>
-                            </span>
-                            {res.pdfBase64 && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                📎 Ticket con QR Listo
-                              </span>
-                            )}
-                          </div>
+                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                         ) : (
-                          <p className="text-[11px] text-rose-300 mt-0.5">
-                            <strong>Motivo:</strong> {typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || 'Error en registro')}
-                          </p>
+                          <X className="w-4 h-4 text-rose-400 shrink-0" />
                         )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-white">
+                              #{res.codigoSeguimiento}
+                            </span>
+                            <span className="text-xs text-slate-300">
+                              {res.customerName} (+{res.customerPhone})
+                            </span>
+                            <span className="text-[10px] text-amber-300 font-mono bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 font-bold">
+                              PIN: {res.pickupCode || editedData[row.pedido.id]?.pickupCode || pickupCode}
+                            </span>
+                          </div>
+                          {res.success ? (
+                            <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                              <p className="text-[11px] text-cyan-300">
+                                Guía Oficial: <strong>{String(res.guideNumber || 'Generada')}</strong> • OSE #{String(res.oseId || '')}
+                              </p>
+                              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-cyan-950/80 text-cyan-200 border border-cyan-500/40 flex items-center gap-1">
+                                <Building2 className="w-3 h-3 text-cyan-400 shrink-0" />
+                                <span>Enviado a: <strong className="text-white">{res.agencyName || 'Agencia Shalom'}</strong></span>
+                              </span>
+                              {res.pdfBase64 && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  📎 Ticket con QR Listo
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-rose-300 mt-0.5">
+                              <strong>Motivo:</strong> {typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || 'Error en registro')}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    {res.success && (res.pdfBase64 || res.oseId || res.guideNumber) && (
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadSingleTicket(res)}
+                      {res.success && (res.pdfBase64 || res.oseId || res.guideNumber) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadSingleTicket(res)}
                         disabled={downloadingPdfIds[res.pedidoId]}
                         className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-cyan-950/30 cursor-pointer disabled:opacity-50 active:scale-95 shrink-0 self-end sm:self-center"
                       >
@@ -991,8 +1005,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
 
             {/* Sincronización con WhatsApp Business */}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Comikids Incomi Autonomous Backend (Fastify)
+After=network.target redis-server.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/incomi-app/backend
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOST=0.0.0.0
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

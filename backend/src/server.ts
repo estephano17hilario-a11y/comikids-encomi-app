@@ -15,6 +15,9 @@ import { ShalomSyncService } from './services/shalomSync.service.js';
 import { ShalomTrackingListenerService } from './services/shalomTrackingListener.service.js';
 
 
+import { unifiedErrorHandler } from './plugins/error-handler.js';
+import { ConfigService } from './modules/config/config.service.js';
+
 const app = Fastify({
   bodyLimit: 50 * 1024 * 1024, // 50MB para soportar sincronización de mensajes e imágenes
   logger: {
@@ -44,6 +47,8 @@ async function start() {
       origin: '*',
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     });
+
+    app.setErrorHandler(unifiedErrorHandler);
 
     // 2. Registrar Rutas
     await app.register(healthRoutes);
@@ -78,6 +83,15 @@ async function start() {
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+    // 5. Manejadores de Excepciones No Controladas (Anti-Crash)
+    process.on('uncaughtException', (err) => {
+      console.error('🔥 [FATAL UNCAUGHT EXCEPTION]', err);
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('⚠️ [UNHANDLED REJECTION]', reason);
+    });
   } catch (error) {
     app.log.error(error);
     process.exit(1);

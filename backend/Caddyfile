@@ -1,0 +1,24 @@
+# ==============================================================================
+# Caddyfile - Reverse Proxy con SSL Automático (Let's Encrypt / ZeroSSL)
+# Evita bloqueos de Cleartext Traffic en Android/iOS y Mixed Content en la Web.
+# ==============================================================================
+
+# 1. Opción Subdominio sslip.io (Listo sin configurar DNS adicional)
+backend.89.117.73.97.sslip.io, api-backend.89.117.73.97.sslip.io {
+    reverse_proxy localhost:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Límites y timeouts optimizados para PDFs y buffers grandes
+    request_body {
+        max_size 50MB
+    }
+}
+
+# 2. Opción Dominio Personalizado (ej: api.encomi.pe)
+# api.tudominio.com {
+#     reverse_proxy localhost:3000
+# }

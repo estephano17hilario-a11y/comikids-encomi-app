@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { resolveShalomAgencyDetails, extractShalomDestino } from '../services/shalomAgencyResolver.js';
 import { ShalomSyncService } from '../services/shalomSync.service.js';
 import { ShalomTrackingListenerService } from '../services/shalomTrackingListener.service.js';
+import { ShalomQueueService } from '../services/shalomQueue.service.js';
 
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
@@ -317,43 +318,40 @@ export class ShalomController {
 
       console.log(`[SHALOM PROXY CREATE ORDER] Despachando a terminal ${destinyTerminalId} ("${officialAgencyName}") para ${firstName} ${lastName} (${cleanDoc}) con PIN ${pickupCode}...`);
 
-      // Reintentos automáticos con backoff exponencial (hasta 3 intentos) para máxima resiliencia
-      let response: any = null;
-      let lastAxiosError: any = null;
+      // Despacho serializado y rate-limited a través de ShalomQueueService
       const maxAttempts = 3;
-
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          response = await axios.post(
-            `${SHALOM_BASE_URL}/v1/orders`,
-            orderToCreate,
-            {
-              headers,
-              timeout: 25000,
+      const response: any = await ShalomQueueService.enqueue(async () => {
+        let lastError: any = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            const res = await axios.post(
+              `${SHALOM_BASE_URL}/v1/orders`,
+              orderToCreate,
+              {
+                headers,
+                timeout: 25000,
+              }
+            );
+            if (res?.status === 200 || res?.status === 201) {
+              return res;
             }
-          );
-          if (response?.status === 200 || response?.status === 201) {
-            break;
-          }
-        } catch (postErr: any) {
-          lastAxiosError = postErr;
-          const status = postErr.response?.status;
-          const errCode = postErr.response?.data?.error?.code || postErr.response?.data?.code;
-          console.warn(`[SHALOM PROXY CREATE ORDER ATTEMPT ${attempt}/${maxAttempts}]`, postErr?.response?.data || postErr.message);
-          
-          // No reintentar si el error es de validación del cliente (400, 422) o bloqueo de login (shalom_login_unavailable)
-          if (status === 400 || status === 422 || errCode === 'shalom_login_unavailable') {
-            break;
-          }
-          if (attempt < maxAttempts) {
-            await new Promise(r => setTimeout(r, attempt * 1000));
+          } catch (postErr: any) {
+            lastError = postErr;
+            const status = postErr.response?.status;
+            const errCode = postErr.response?.data?.error?.code || postErr.response?.data?.code;
+            console.warn(`[SHALOM PROXY CREATE ORDER ATTEMPT ${attempt}/${maxAttempts}]`, postErr?.response?.data || postErr.message);
+            
+            // No reintentar si el error es de validación del cliente (400, 422) o bloqueo de login (shalom_login_unavailable)
+            if (status === 400 || status === 422 || errCode === 'shalom_login_unavailable') {
+              throw postErr;
+            }
+            if (attempt < maxAttempts) {
+              await new Promise(r => setTimeout(r, attempt * 1000));
+            }
           }
         }
-      }
-
-      if (!response && lastAxiosError) {
-        throw lastAxiosError;
-      }
+        throw lastError;
+      });
 
       // Desempaquetar exhaustivamente los datos retornados por Shalom Pro
       const rawResData = response?.data?.data || response?.data?.order || response?.data || {};

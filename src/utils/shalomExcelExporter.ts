@@ -87,6 +87,27 @@ export const extractShalomDni = (pedido: Pedido): string => {
     return false;
   };
 
+  // 0. Extraer desde campos_personalizados del pedido si fueron capturados
+  if (pedido.campos_personalizados) {
+    for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+      if (!val) continue;
+      const lowerKey = key.toLowerCase();
+      if (
+        lowerKey === 'c-shalom-dni' ||
+        lowerKey === 'c-olva-dni' ||
+        lowerKey.includes('dni') ||
+        lowerKey.includes('documento') ||
+        lowerKey.includes('carnet') ||
+        lowerKey.includes('ce')
+      ) {
+        const rawStr = String(val).trim();
+        if (isValidDoc(rawStr)) {
+          return rawStr.replace(/\D/g, '') || rawStr;
+        }
+      }
+    }
+  }
+
   // 1. Extraer desde destino_detalle explícito (ej: "DNI: 78005117", "(DNI 78005117)", "Doc: 78005117", "CE: 00123456")
   if (pedido.destino_detalle) {
     const match = pedido.destino_detalle.match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);

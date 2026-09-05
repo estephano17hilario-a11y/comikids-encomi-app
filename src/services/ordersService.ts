@@ -889,6 +889,9 @@ class OrdersService {
 
   saveShippingMethods(methods: MetodoEnvio[]) {
     localStorage.setItem(STORAGE_KEYS.SHIPPING_METHODS, JSON.stringify(methods));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('incomi_shipping_methods_updated', { detail: methods }));
+    }
   }
 
   addShippingMethod(method: Omit<MetodoEnvio, 'id'>): MetodoEnvio {

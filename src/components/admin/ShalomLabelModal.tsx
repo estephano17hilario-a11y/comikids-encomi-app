@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Pedido, TallerConfig } from '../../types/database.types';
+import { Pedido, TallerConfig, MetodoEnvio } from '../../types/database.types';
 import { ShalomLabelPrint } from './ShalomLabelPrint';
 import { X, Printer, FileText, Droplet } from 'lucide-react';
 import { printElement } from '../../utils/nativePrintService';
 import { InkSavingLevel, INK_SAVING_LEVELS } from '../../utils/inkSavingService';
-
 import { ordersService } from '../../services/ordersService';
+import { resolveOrderShippingMethod } from '../../utils/shippingMethodMatcher';
 
 interface Props {
   pedido: Pedido;
@@ -17,13 +17,33 @@ interface Props {
 export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClose }) => {
   const [printing, setPrinting] = useState(false);
   const [inkSavingLevel, setInkSavingLevel] = useState<InkSavingLevel>(0);
+  const [methods, setMethods] = useState<MetodoEnvio[]>(() => ordersService.getShippingMethods());
 
-  const agencyMethod = ordersService.getShippingMethods().find(
-    m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo
-  );
+  useEffect(() => {
+    const handleUpdate = () => {
+      setMethods(ordersService.getShippingMethods());
+    };
+    window.addEventListener('incomi_shipping_methods_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('incomi_shipping_methods_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  const agencyMethod = useMemo(() => {
+    return resolveOrderShippingMethod(pedido, methods);
+  }, [pedido, methods]);
+
   const [orientacion, setOrientacion] = useState<'horizontal' | 'vertical'>(
     () => agencyMethod?.config_rotulado?.orientacion || 'horizontal'
   );
+
+  useEffect(() => {
+    if (agencyMethod?.config_rotulado?.orientacion) {
+      setOrientacion(agencyMethod.config_rotulado.orientacion);
+    }
+  }, [agencyMethod?.id, agencyMethod?.config_rotulado?.orientacion]);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -59,7 +79,7 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-bold text-white">
-                {isShalom ? 'Rótulo Oficial de Envío Shalom' : 'Rótulo Oficial de Despacho Motorizado'}
+                {agencyMethod?.nombre ? `Rótulo: ${agencyMethod.nombre}` : (isShalom ? 'Rótulo Oficial Shalom' : 'Rótulo Oficial de Despacho')}
               </h3>
               <p className="text-xs text-slate-400 font-mono">
                 Pedido: #{pedido.codigo_seguimiento} • {clientName}
@@ -155,6 +175,8 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
             tallerConfig={tallerConfig}
             inkSavingLevel={inkSavingLevel}
             orientacionOverride={orientacion}
+            customMethodOverride={agencyMethod}
+            estiloRotuloOverride={agencyMethod?.config_rotulado?.estilo_rotulo}
           />
         </div>
 

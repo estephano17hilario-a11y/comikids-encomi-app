@@ -4,6 +4,7 @@ import { formatDate } from '../../utils/formatters';
 import { InkSavingLevel, getInkSavingStyles } from '../../utils/inkSavingService';
 import { extractShalomDni } from '../../utils/shalomExcelExporter';
 import { ordersService } from '../../services/ordersService';
+import { resolveOrderShippingMethod } from '../../utils/shippingMethodMatcher';
 
 interface Props {
   pedido: Pedido;
@@ -24,16 +25,88 @@ export const ShalomLabelPrint: React.FC<Props> = ({
 }) => {
   const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
   const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
-  const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
-  // Rotulado inteligente: Configuración del método y campos personalizados
+  // Rotulado inteligente: Resolución infalible del método de la agencia
   const currentMethod = useMemo(() => {
     if (customMethodOverride) return customMethodOverride;
     const methods = ordersService.getShippingMethods();
-    return methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
-  }, [customMethodOverride, pedido.metodo_envio_codigo]);
+    return resolveOrderShippingMethod(pedido, methods);
+  }, [customMethodOverride, pedido]);
 
   const cfgRotulado = currentMethod?.config_rotulado;
+
+  // Extracción inteligente y exhaustiva de datos de Quién Recibe (Destinatario)
+  const clientRecipientName = useMemo(() => {
+    if (pedido.campos_personalizados) {
+      for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+        if (!val || typeof val !== 'string' || !val.trim()) continue;
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey === 'c-mot-nombre' ||
+          lowerKey.includes('recibe') ||
+          lowerKey.includes('destinatario') ||
+          lowerKey.includes('consignatario')
+        ) {
+          return val.trim();
+        }
+      }
+    }
+    return pedido.usuario?.nombre_completo || 'Cliente';
+  }, [pedido]);
+
+  const clientDni = useMemo(() => {
+    if (pedido.campos_personalizados) {
+      for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+        if (!val) continue;
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey === 'c-shalom-dni' ||
+          lowerKey === 'c-olva-dni' ||
+          lowerKey.includes('dni') ||
+          lowerKey.includes('documento') ||
+          lowerKey.includes('carnet') ||
+          lowerKey.includes('ce')
+        ) {
+          const rawStr = String(val).trim();
+          if (rawStr.length >= 6) return rawStr;
+        }
+      }
+    }
+    const extracted = extractShalomDni(pedido);
+    if (extracted && extracted !== 'NCIADOS' && extracted.length >= 6) {
+      return extracted;
+    }
+    if (pedido.usuario?.dni && pedido.usuario.dni.length >= 6 && !pedido.usuario.dni.startsWith('USR-') && !pedido.usuario.dni.startsWith('9')) {
+      return pedido.usuario.dni;
+    }
+    if (pedido.usuario?.dni_default && pedido.usuario.dni_default.length >= 6) {
+      return pedido.usuario.dni_default;
+    }
+    return 'No registrado';
+  }, [pedido]);
+
+  const clientPhone = useMemo(() => {
+    if (pedido.campos_personalizados) {
+      for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+        if (!val) continue;
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey === 'c-mot-tel' ||
+          lowerKey === 'c-shalom-tel' ||
+          lowerKey === 'c-olva-tel' ||
+          lowerKey.includes('tel') ||
+          lowerKey.includes('cel') ||
+          lowerKey.includes('whatsapp')
+        ) {
+          const rawStr = String(val).trim();
+          if (rawStr.length >= 7) return rawStr;
+        }
+      }
+    }
+    if (pedido.usuario?.telefono_default) return pedido.usuario.telefono_default;
+    if (pedido.usuario?.dni?.length === 9 && pedido.usuario.dni.startsWith('9')) return pedido.usuario.dni;
+    return '';
+  }, [pedido]);
 
   // Orientación efectiva: 'horizontal' (Echado - Primera Imagen) | 'vertical' (Parado - Segunda Imagen)
   const effectiveOrientation: 'horizontal' | 'vertical' =
@@ -59,53 +132,85 @@ export const ShalomLabelPrint: React.FC<Props> = ({
   const senderOrigen = senderCustom?.direccion || tallerConfig.remitente_default?.direccion || tallerConfig.direccion_taller || 'Av. Gamarra 1234, La Victoria, Lima';
   const senderObservaciones = senderCustom?.observaciones || tallerConfig.remitente_default?.observaciones || '';
 
+  // Datos seleccionados del formulario para mostrar en el rótulo con etiquetas personalizadas
   const rotuladoFields = useMemo(() => {
     if (cfgRotulado?.incluir_campos_personalizados === false) return [];
-    if (!pedido.campos_personalizados) return [];
 
     const visibleList: { label: string; valor: string }[] = [];
-    for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
-      if (val === undefined || val === null || String(val).trim() === '') continue;
-      const fieldCfg = currentMethod?.campos_personalizados?.find(
-        c => c.id === key || c.label.toLowerCase() === key.toLowerCase()
-      );
+    const seenFieldIds = new Set<string>();
 
+    // 1. Mapeo de campos configurados en la agencia
+    const configuredFields = currentMethod?.campos_personalizados || [];
+    for (const field of configuredFields) {
       const isExplicitVisible = cfgRotulado?.campos_visibles
-        ? cfgRotulado.campos_visibles.includes(fieldCfg?.id || key)
-        : undefined;
+        ? cfgRotulado.campos_visibles.includes(field.id)
+        : Boolean(field.mostrar_en_rotulado);
 
-      const shouldShow = isExplicitVisible !== undefined
-        ? isExplicitVisible
-        : (fieldCfg !== undefined ? Boolean(fieldCfg.mostrar_en_rotulado) : true);
+      if (!isExplicitVisible) continue;
 
-      if (shouldShow) {
-        const customLabel = (fieldCfg && cfgRotulado?.etiquetas_campos?.[fieldCfg.id]) ||
-          cfgRotulado?.etiquetas_campos?.[key];
+      let val: string | undefined = undefined;
+      if (pedido.campos_personalizados) {
+        val = pedido.campos_personalizados[field.id] || pedido.campos_personalizados[field.label];
+      }
+
+      // Si no estaba en campos_personalizados pero corresponde a un dato nativo capturado
+      if (!val || !String(val).trim()) {
+        const fId = field.id.toLowerCase();
+        const fLbl = field.label.toLowerCase();
+        if (fId === 'c-mot-nombre' || fLbl.includes('recibe') || fLbl.includes('destinatario')) {
+          val = clientRecipientName !== 'Cliente' ? clientRecipientName : undefined;
+        } else if (fId === 'c-shalom-dni' || fId === 'c-olva-dni' || fLbl.includes('dni') || fLbl.includes('documento')) {
+          val = clientDni !== 'No registrado' ? clientDni : undefined;
+        } else if (fId === 'c-mot-tel' || fLbl.includes('tel') || fLbl.includes('cel')) {
+          val = clientPhone || undefined;
+        } else if (fLbl.includes('referencia')) {
+          val = pedido.observaciones_cliente || undefined;
+        } else if (fLbl.includes('bordado') || fLbl.includes('prenda')) {
+          val = pedido.detalles_bordado || undefined;
+        }
+      }
+
+      // Evitar duplicar DNI si ya tiene su bloque prominente especial, salvo que tenga etiqueta personalizada
+      const isDniField = field.id === 'c-shalom-dni' || field.id === 'c-olva-dni' || field.label.toLowerCase().includes('dni');
+      const hasCustomDniLabel = Boolean(cfgRotulado?.etiquetas_campos?.[field.id]);
+
+      if (val && String(val).trim() && (!isDniField || hasCustomDniLabel || cfgRotulado?.mostrar_cliente_dni === false)) {
+        seenFieldIds.add(field.id);
+        const customLabel = cfgRotulado?.etiquetas_campos?.[field.id] ||
+          cfgRotulado?.etiquetas_campos?.[field.label] ||
+          field.label;
 
         visibleList.push({
-          label: customLabel || fieldCfg?.label || key,
-          valor: String(val)
+          label: customLabel,
+          valor: String(val).trim(),
         });
       }
     }
+
+    // 2. Mapeo de cualquier otro dato en campos_personalizados del pedido
+    if (pedido.campos_personalizados) {
+      for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+        if (!val || String(val).trim() === '') continue;
+        if (seenFieldIds.has(key)) continue;
+
+        const lowerK = key.toLowerCase();
+        if (['c-shalom-dni', 'c-olva-dni', 'c-mot-tel', 'c-mot-nombre'].includes(lowerK)) continue;
+
+        if (cfgRotulado?.campos_visibles && !cfgRotulado.campos_visibles.includes(key)) {
+          continue;
+        }
+
+        const customLabel = cfgRotulado?.etiquetas_campos?.[key] || key;
+        visibleList.push({
+          label: customLabel,
+          valor: String(val).trim(),
+        });
+      }
+    }
+
     return visibleList;
-  }, [pedido, currentMethod, cfgRotulado]);
+  }, [pedido, currentMethod, cfgRotulado, clientRecipientName, clientDni, clientPhone]);
 
-  const getClientDni = () => {
-    const extracted = extractShalomDni(pedido);
-    if (extracted && extracted !== 'NCIADOS' && extracted.length >= 6) {
-      return extracted;
-    }
-    if (pedido.usuario?.dni && pedido.usuario.dni.length >= 8 && !pedido.usuario.dni.startsWith('9')) {
-      return pedido.usuario.dni;
-    }
-    if (pedido.usuario?.dni_default) {
-      return pedido.usuario.dni_default;
-    }
-    return 'No registrado';
-  };
-
-  const clientDni = getClientDni();
   const eco = getInkSavingStyles(inkSavingLevel);
 
   // Helper para renderizar bloques libres / notas especiales
@@ -232,8 +337,8 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         {/* Bloques Libres Arriba */}
         {renderBloquesPersonalizados('arriba')}
 
-        {/* Barcode opcional en horizontal si el usuario lo activó */}
-        {cfgRotulado?.mostrar_barcode && (
+        {/* Barcode opcional en horizontal si está habilitado */}
+        {cfgRotulado?.mostrar_barcode !== false && (
           <div className="mb-2 p-1.5 border border-slate-300 rounded-lg text-center bg-slate-50/50">
             <div className="flex justify-center items-center gap-0.5 h-6 mb-0.5">
               {[3, 1, 5, 2, 6, 2, 1, 4, 2, 5, 2, 1, 3, 5, 2, 4, 2, 6, 1, 3, 2, 5, 2, 3, 1, 5, 2, 2, 4, 1, 3].map((w, i) => (
@@ -252,7 +357,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
             </span>
             {cfgRotulado?.mostrar_cliente_nombre !== false && (
               <h3 className="text-lg sm:text-xl font-black text-black block leading-tight pt-0.5 uppercase tracking-tight break-words">
-                {pedido.usuario?.nombre_completo || 'Cliente'}
+                {clientRecipientName}
               </h3>
             )}
           </div>
@@ -318,10 +423,10 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         )}
 
         {/* Remitente opcional en modo horizontal */}
-        {cfgRotulado?.incluir_remitente && (
+        {cfgRotulado?.incluir_remitente !== false && (
           <div className="mb-2 p-2 rounded-xl bg-slate-50 border border-slate-200 text-[9.5px] text-slate-700">
             <span className="font-black text-black uppercase block">
-              {cfgRotulado?.titulo_remitente || 'REMITENTE:'} {senderNombre}
+              {cfgRotulado?.titulo_remitente || 'REMITENTE:'} {cfgRotulado?.mostrar_remitente_nombre !== false ? senderNombre : ''}
             </span>
             <div className="flex items-center justify-between mt-0.5 text-[9px]">
               {cfgRotulado?.mostrar_remitente_ruc_dni !== false && (
@@ -464,7 +569,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
                   {cfgRotulado?.titulo_cliente_nombre || 'Cliente:'}
                 </span>
                 <span className="text-base sm:text-lg font-black uppercase text-slate-950 leading-snug block">
-                  {pedido.usuario?.nombre_completo || 'Cliente'}
+                  {clientRecipientName}
                 </span>
               </div>
             )}
@@ -637,7 +742,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
             {cfgRotulado?.mostrar_cliente_nombre !== false && (
               <div>
                 <span className="text-base font-black uppercase text-black leading-tight block">
-                  {pedido.usuario?.nombre_completo || 'Cliente'}
+                  {clientRecipientName}
                 </span>
               </div>
             )}
@@ -846,7 +951,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
                   {cfgRotulado?.titulo_cliente_nombre || 'Nombre del Cliente:'}
                 </span>{' '}
                 <span className="font-black text-lg sm:text-xl uppercase block text-slate-950 leading-snug tracking-tight">
-                  {pedido.usuario?.nombre_completo || 'Cliente'}
+                  {clientRecipientName}
                 </span>
               </div>
             )}

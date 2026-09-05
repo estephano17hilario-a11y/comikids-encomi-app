@@ -6,6 +6,7 @@ import { printMultipleElements } from '../../utils/nativePrintService';
 import { InkSavingLevel, INK_SAVING_LEVELS, getInkSavingStyles } from '../../utils/inkSavingService';
 import { extractShalomDni } from '../../utils/shalomExcelExporter';
 import { ordersService } from '../../services/ordersService';
+import { resolveOrderShippingMethod } from '../../utils/shippingMethodMatcher';
 
 interface Props {
   pedidos: Pedido[];
@@ -25,12 +26,9 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
     };
   }, []);
 
-  // Deduplicación estricta por ID y código de seguimiento para evitar cualquier repetición
-  const uniquePedidos = Array.from(
-    new Map(pedidos.map(p => [p.id || p.codigo_seguimiento, p])).values()
-  );
+  // Filtrar pedidos duplicados por id
+  const uniquePedidos = Array.from(new Map(pedidos.map(p => [p.id, p])).values());
 
-  // Imprimir Rótulos
   const handlePrintDirect = async () => {
     setPrinting(true);
     try {
@@ -38,12 +36,11 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
         '.a4-print-page',
         `Rotulos_ComiKids_${uniquePedidos.length}pedidos_Eco${inkSavingLevel}`
       );
-
       if (onPrintComplete) {
         onPrintComplete(uniquePedidos.map(p => p.id));
       }
     } catch (err) {
-      console.error('Error al imprimir rótulos:', err);
+      console.error('Error al imprimir por lotes:', err);
       window.print();
     } finally {
       setPrinting(false);
@@ -69,17 +66,34 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
   };
 
   const getClientDni = (pedido: Pedido) => {
+    if (pedido.campos_personalizados) {
+      for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+        if (!val) continue;
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey === 'c-shalom-dni' ||
+          lowerKey === 'c-olva-dni' ||
+          lowerKey.includes('dni') ||
+          lowerKey.includes('documento') ||
+          lowerKey.includes('carnet') ||
+          lowerKey.includes('ce')
+        ) {
+          const rawStr = String(val).trim();
+          if (rawStr.length >= 6) return rawStr;
+        }
+      }
+    }
     const extracted = extractShalomDni(pedido);
     if (extracted && extracted !== 'NCIADOS' && extracted.length >= 6) {
       return extracted;
     }
-    if (pedido.usuario?.dni && pedido.usuario.dni.length >= 8 && !pedido.usuario.dni.startsWith('9')) {
+    if (pedido.usuario?.dni && pedido.usuario.dni.length >= 6 && !pedido.usuario.dni.startsWith('USR-') && !pedido.usuario.dni.startsWith('9')) {
       return pedido.usuario.dni;
     }
-    if (pedido.usuario?.dni_default) {
+    if (pedido.usuario?.dni_default && pedido.usuario.dni_default.length >= 6) {
       return pedido.usuario.dni_default;
     }
-    return pedido.usuario?.dni || 'No registrado';
+    return 'No registrado';
   };
 
   const eco = getInkSavingStyles(inkSavingLevel);
@@ -185,40 +199,122 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
             >
               <div className="grid grid-cols-2 grid-rows-3 gap-2.5 w-full h-full">
                 {pageOrders.map((pedido) => {
+                  const methods = ordersService.getShippingMethods();
+                  const currentMethod = resolveOrderShippingMethod(pedido, methods);
+                  const cfgRotulado = currentMethod?.config_rotulado;
+
                   const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
                   const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
                   const clientDni = getClientDni(pedido);
                   const shalomAgency = getShalomAgencyOnly(pedido.destino_detalle);
-                  const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
-                  const methods = ordersService.getShippingMethods();
-                  const currentMethod = methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
-                  const cfgRotulado = currentMethod?.config_rotulado;
+                  const recipientName = (() => {
+                    if (pedido.campos_personalizados) {
+                      for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+                        if (!val || typeof val !== 'string' || !val.trim()) continue;
+                        const lowerKey = key.toLowerCase();
+                        if (
+                          lowerKey === 'c-mot-nombre' ||
+                          lowerKey.includes('recibe') ||
+                          lowerKey.includes('destinatario') ||
+                          lowerKey.includes('consignatario')
+                        ) {
+                          return val.trim();
+                        }
+                      }
+                    }
+                    return pedido.usuario?.nombre_completo || 'Cliente';
+                  })();
+
+                  const clientPhone = (() => {
+                    if (pedido.campos_personalizados) {
+                      for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+                        if (!val) continue;
+                        const lowerKey = key.toLowerCase();
+                        if (
+                          lowerKey === 'c-mot-tel' ||
+                          lowerKey === 'c-shalom-tel' ||
+                          lowerKey === 'c-olva-tel' ||
+                          lowerKey.includes('tel') ||
+                          lowerKey.includes('cel') ||
+                          lowerKey.includes('whatsapp')
+                        ) {
+                          const rawStr = String(val).trim();
+                          if (rawStr.length >= 7) return rawStr;
+                        }
+                      }
+                    }
+                    return pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
+                  })();
 
                   const rotuladoFields = (() => {
                     if (cfgRotulado?.incluir_campos_personalizados === false) return [];
-                    if (!pedido.campos_personalizados) return [];
-
                     const visibleList: { label: string; valor: string }[] = [];
-                    for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
-                      if (val === undefined || val === null || String(val).trim() === '') continue;
-                      const fieldCfg = currentMethod?.campos_personalizados?.find(c => c.id === key || c.label.toLowerCase() === key.toLowerCase());
-                      const isExplicitVisible = cfgRotulado?.campos_visibles
-                        ? cfgRotulado.campos_visibles.includes(fieldCfg?.id || key)
-                        : undefined;
-                      const shouldShow = isExplicitVisible !== undefined
-                        ? isExplicitVisible
-                        : (fieldCfg !== undefined ? Boolean(fieldCfg.mostrar_en_rotulado) : true);
+                    const seenFieldIds = new Set<string>();
 
-                      if (shouldShow) {
-                        const customLabel = (fieldCfg && cfgRotulado?.etiquetas_campos?.[fieldCfg.id]) ||
-                          cfgRotulado?.etiquetas_campos?.[key];
+                    const configuredFields = currentMethod?.campos_personalizados || [];
+                    for (const field of configuredFields) {
+                      const isExplicitVisible = cfgRotulado?.campos_visibles
+                        ? cfgRotulado.campos_visibles.includes(field.id)
+                        : Boolean(field.mostrar_en_rotulado);
+
+                      if (!isExplicitVisible) continue;
+
+                      let val: string | undefined = undefined;
+                      if (pedido.campos_personalizados) {
+                        val = pedido.campos_personalizados[field.id] || pedido.campos_personalizados[field.label];
+                      }
+
+                      if (!val || !String(val).trim()) {
+                        const fId = field.id.toLowerCase();
+                        const fLbl = field.label.toLowerCase();
+                        if (fId === 'c-mot-nombre' || fLbl.includes('recibe') || fLbl.includes('destinatario')) {
+                          val = recipientName !== 'Cliente' ? recipientName : undefined;
+                        } else if (fId === 'c-shalom-dni' || fId === 'c-olva-dni' || fLbl.includes('dni')) {
+                          val = clientDni !== 'No registrado' ? clientDni : undefined;
+                        } else if (fId === 'c-mot-tel' || fLbl.includes('tel') || fLbl.includes('cel')) {
+                          val = clientPhone || undefined;
+                        } else if (fLbl.includes('referencia')) {
+                          val = pedido.observaciones_cliente || undefined;
+                        }
+                      }
+
+                      const isDniField = field.id === 'c-shalom-dni' || field.id === 'c-olva-dni' || field.label.toLowerCase().includes('dni');
+                      const hasCustomDniLabel = Boolean(cfgRotulado?.etiquetas_campos?.[field.id]);
+
+                      if (val && String(val).trim() && (!isDniField || hasCustomDniLabel || cfgRotulado?.mostrar_cliente_dni === false)) {
+                        seenFieldIds.add(field.id);
+                        const customLabel = cfgRotulado?.etiquetas_campos?.[field.id] ||
+                          cfgRotulado?.etiquetas_campos?.[field.label] ||
+                          field.label;
+
                         visibleList.push({
-                          label: customLabel || fieldCfg?.label || key,
-                          valor: String(val)
+                          label: customLabel,
+                          valor: String(val).trim(),
                         });
                       }
                     }
+
+                    if (pedido.campos_personalizados) {
+                      for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+                        if (!val || String(val).trim() === '') continue;
+                        if (seenFieldIds.has(key)) continue;
+
+                        const lowerK = key.toLowerCase();
+                        if (['c-shalom-dni', 'c-olva-dni', 'c-mot-tel', 'c-mot-nombre'].includes(lowerK)) continue;
+
+                        if (cfgRotulado?.campos_visibles && !cfgRotulado.campos_visibles.includes(key)) {
+                          continue;
+                        }
+
+                        const customLabel = cfgRotulado?.etiquetas_campos?.[key] || key;
+                        visibleList.push({
+                          label: customLabel,
+                          valor: String(val).trim(),
+                        });
+                      }
+                    }
+
                     return visibleList;
                   })();
 
@@ -327,7 +423,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                             </span>
                             {cfgRotulado?.mostrar_cliente_nombre !== false && (
                               <strong className="text-base sm:text-lg font-black text-black block leading-tight pt-0.5 line-clamp-1 uppercase tracking-tight">
-                                {pedido.usuario?.nombre_completo || 'Cliente'}
+                                {recipientName}
                               </strong>
                             )}
                           </div>

@@ -69,7 +69,7 @@ export function evaluateShippingCutoff(config?: Partial<TallerConfig>): CutoffSt
   const todayYMD = formatDateToYMD(peruDate);
 
   // Configuración con defaults
-  const cutoffTime = config?.hora_corte_envio_hoy || '18:00';
+  const defaultCutoff = config?.hora_corte_envio_hoy || '18:00';
   const rawActiveDays = config?.dias_despacho_activos || [
     'lunes',
     'martes',
@@ -88,7 +88,12 @@ export function evaluateShippingCutoff(config?: Partial<TallerConfig>): CutoffSt
   // Día de la semana actual (0 = domingo, 1 = lunes, ..., 6 = sábado)
   const currentDayOfWeekNum = peruDate.getDay();
   const currentDayName = DIAS_SEMANA_MAP[currentDayOfWeekNum] || 'lunes';
-  const isDispatchDayToday = activeDays.includes(currentDayName);
+
+  // Configuración específica por día si está configurada
+  const daySchedule = config?.horarios_por_dia?.[currentDayName];
+  const isDispatchDayToday = daySchedule !== undefined ? Boolean(daySchedule.activo) : activeDays.includes(currentDayName);
+  const cutoffTime = (daySchedule && daySchedule.hora_corte) ? daySchedule.hora_corte : defaultCutoff;
+  const customDayMessage = daySchedule?.mensaje_personalizado?.trim() || config?.mensaje_corte_personalizado?.trim() || '';
 
   // Hora actual en Perú (HH:MM)
   const currentHours = String(peruDate.getHours()).padStart(2, '0');
@@ -111,7 +116,9 @@ export function evaluateShippingCutoff(config?: Partial<TallerConfig>): CutoffSt
     for (let i = 1; i <= 14; i++) {
       const nextDate = new Date(peruDate.getTime() + i * 24 * 60 * 60 * 1000);
       const nextDayName = DIAS_SEMANA_MAP[nextDate.getDay()];
-      if (activeDays.includes(nextDayName)) {
+      const nextSchedule = config?.horarios_por_dia?.[nextDayName];
+      const isNextActive = nextSchedule !== undefined ? Boolean(nextSchedule.activo) : activeDays.includes(nextDayName);
+      if (isNextActive) {
         minDate = nextDate;
         found = true;
         break;
@@ -129,8 +136,10 @@ export function evaluateShippingCutoff(config?: Partial<TallerConfig>): CutoffSt
   const friendlyNextDate = formatFriendlyDate(minAvailableDateYMD);
 
   let noticeText = '';
-  if (config?.mensaje_corte_personalizado && isPastCutoff) {
-    noticeText = config.mensaje_corte_personalizado;
+  if (customDayMessage) {
+    noticeText = isPastCutoff
+      ? `⏰ ${customDayMessage} (Corte de hoy finalizó a las ${friendlyCutoff}. Despacho para el ${friendlyNextDate})`
+      : `⚡ ${customDayMessage} (Envío hoy antes de las ${friendlyCutoff})`;
   } else if (!isDispatchDayToday) {
     noticeText = `Hoy ${DIAS_SEMANA_NOMBRES[currentDayName] || currentDayName} no se realizan despachos. Tu pedido se programará a partir del ${friendlyNextDate}.`;
   } else if (isPastCutoff) {

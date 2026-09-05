@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
 import { InkSavingLevel, getInkSavingStyles } from '../../utils/inkSavingService';
 import { extractShalomDni } from '../../utils/shalomExcelExporter';
+import { ordersService } from '../../services/ordersService';
 
 interface Props {
   pedido: Pedido;
@@ -14,6 +15,27 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
   const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
   const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
+
+  // Rotulado inteligente: Campos personalizados seleccionados para mostrar en rotulado
+  const rotuladoFields = useMemo(() => {
+    if (!pedido.campos_personalizados) return [];
+    const methods = ordersService.getShippingMethods();
+    const currentMethod = methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
+
+    const visibleList: { label: string; valor: string }[] = [];
+    for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+      if (val === undefined || val === null || String(val).trim() === '') continue;
+      const fieldCfg = currentMethod?.campos_personalizados?.find(c => c.id === key || c.label.toLowerCase() === key.toLowerCase());
+      const shouldShow = fieldCfg !== undefined ? Boolean(fieldCfg.mostrar_en_rotulado) : true;
+      if (shouldShow) {
+        visibleList.push({
+          label: fieldCfg?.label || key,
+          valor: String(val)
+        });
+      }
+    }
+    return visibleList;
+  }, [pedido]);
 
   const getClientDni = () => {
     const extracted = extractShalomDni(pedido);
@@ -159,6 +181,22 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
               <span className={eco.subtleText}>Correo:</span>{' '}
               <span className="font-mono font-bold text-slate-800">{pedido.usuario.email || pedido.usuario.email_default}</span>
             </p>
+          )}
+
+          {/* CAMPOS PERSONALIZADOS - ROTULADO INTELIGENTE */}
+          {rotuladoFields.length > 0 && (
+            <div className="mt-2 pt-1.5 border-t border-slate-300 grid grid-cols-2 gap-1.5">
+              {rotuladoFields.map(f => (
+                <div key={f.label} className="p-1.5 rounded-lg bg-white border border-slate-300">
+                  <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 block leading-none">
+                    {f.label}:
+                  </span>
+                  <span className="text-xs font-bold text-slate-900 block truncate leading-tight mt-0.5">
+                    {f.valor}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

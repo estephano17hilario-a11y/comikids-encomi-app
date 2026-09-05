@@ -166,16 +166,17 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         const res = await DniService.lookupByDni(rawVal);
         if (res.success && res.data?.nombreCompleto) {
           setNombreCompleto(res.data.nombreCompleto);
-          setDniSource('sunat_padron_local');
+          try { localStorage.setItem('incomi_saved_fullname', res.data.nombreCompleto); } catch {}
+          setDniSource(res.source || 'sunat_padron_local');
           lastResolvedDniRef.current = rawVal;
         } else {
           setDniSource(null);
-          lastResolvedDniRef.current = rawVal;
+          lastResolvedDniRef.current = '';
         }
       } catch (err) {
         console.warn('[DNI LOOKUP ERROR]', err);
         setDniSource(null);
-        lastResolvedDniRef.current = rawVal;
+        lastResolvedDniRef.current = '';
       } finally {
         setIsResolvingDni(false);
       }
@@ -384,6 +385,31 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
   // Custom Method Text
   const [customDestinoText, setCustomDestinoText] = useState('');
+
+  // Campos personalizados dinámicos por agencia / motorizado
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>(() => {
+    try {
+      const saved = localStorage.getItem('incomi_saved_custom_fields');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleCustomFieldChange = (fieldId: string, value: any) => {
+    setCustomFieldValues(prev => {
+      const updated = { ...prev, [fieldId]: value };
+      localStorage.setItem('incomi_saved_custom_fields', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Si este campo es un DNI o número de 8 dígitos, intentar resolver el nombre automáticamente
+    const strVal = String(value || '').replace(/\D/g, '');
+    const isDniField = fieldId.toLowerCase().includes('dni') || fieldId.toLowerCase().includes('documento');
+    if (isDniField && strVal.length === 8) {
+      handleDniChange(strVal);
+    }
+  };
 
   // Secret Empresa Prompt
   const [isEmpresaUnlock, setIsEmpresaUnlock] = useState(false);
@@ -616,6 +642,19 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       }
     }
 
+    // Validación de campos personalizados obligatorios de la agencia
+    if (selectedMethod?.campos_personalizados && selectedMethod.campos_personalizados.length > 0) {
+      for (const campo of selectedMethod.campos_personalizados) {
+        if (campo.requerido) {
+          const val = customFieldValues[campo.id] ?? customFieldValues[campo.label];
+          if (!val || String(val).trim() === '') {
+            setErrorMsg(`Por favor completa el campo requerido: ${campo.label}`);
+            return;
+          }
+        }
+      }
+    }
+
       // Persistir todos los datos
       localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
       if (dniShalom.trim().length >= 8) {
@@ -722,6 +761,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
           observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
           fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
+          campos_personalizados: customFieldValues,
         };
 
         // Creación del pedido con timeout de rescate para asegurar que NUNCA se quede colgado
@@ -784,6 +824,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       remitenteDni: tallerConfig?.remitente_dni || tallerConfig?.ruc_dni,
       remitenteEmail: tallerConfig?.remitente_email,
       remitenteCelular: tallerConfig?.remitente_celular || tallerConfig?.celular_taller,
+      camposPersonalizados: order?.campos_personalizados || customFieldValues,
+      plantillaMensajeAgencia: selectedMethod?.mensaje_comprobacion,
     };
   };
 
@@ -1099,6 +1141,29 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 )}
               </div>
             )}
+
+            {/* CAMPOS PERSONALIZADOS / INFORMACIÓN ADICIONAL EN COMPROBANTE */}
+            {(() => {
+              const campos = createdOrder?.campos_personalizados || customFieldValues;
+              if (!campos || Object.keys(campos).length === 0) return null;
+              const entries = Object.entries(campos).filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== '');
+              if (entries.length === 0) return null;
+              return (
+                <div className="pt-2.5 mt-2.5 border-t border-white/10 space-y-1.5 text-xs">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-300 block">
+                    📋 Información Adicional Registrada:
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {entries.map(([k, v]) => (
+                      <div key={k} className="p-2 rounded-xl bg-white/5 border border-white/10">
+                        <span className="text-[10px] text-slate-400 block font-medium">{k}:</span>
+                        <span className="text-white font-bold text-xs">{String(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* 1. Botón Principal de WhatsApp */}
@@ -2263,6 +2328,50 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     placeholder="Indica las instrucciones de entrega..."
                     className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-base text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
                   />
+                </div>
+              )}
+
+              {/* CAMPOS PERSONALIZADOS DINÁMICOS DE LA AGENCIA / MOTORIZADO */}
+              {(selectedMethod?.tipo_formulario !== 'mapa_direccion' || motorizadoSubStep === 'form') &&
+                selectedMethod?.campos_personalizados && selectedMethod.campos_personalizados.length > 0 && (
+                <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/90 border-2 border-indigo-500/30 space-y-3.5 shadow-xl animate-fadeIn">
+                  <div className="flex items-center gap-2 pb-2 border-b border-white/8 text-xs font-black text-indigo-300 uppercase tracking-wider">
+                    <span>📋</span>
+                    <span>Información Requerida para {selectedMethod.nombre}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {selectedMethod.campos_personalizados.map(campo => {
+                      const val = customFieldValues[campo.id] ?? customFieldValues[campo.label] ?? '';
+                      return (
+                        <div key={campo.id} className={campo.tipo === 'textarea' ? 'sm:col-span-2 space-y-1.5' : 'space-y-1.5'}>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                            {campo.label} {campo.requerido && <span className="text-rose-400">*</span>}
+                          </label>
+
+                          {campo.tipo === 'textarea' ? (
+                            <textarea
+                              rows={2}
+                              required={campo.requerido}
+                              value={val}
+                              onChange={e => handleCustomFieldChange(campo.id, e.target.value)}
+                              placeholder={campo.placeholder || `Ingresa ${campo.label}...`}
+                              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 shadow-inner"
+                            />
+                          ) : (
+                            <input
+                              type={campo.tipo === 'telefono' ? 'tel' : campo.tipo === 'numero' ? 'number' : 'text'}
+                              required={campo.requerido}
+                              value={val}
+                              onChange={e => handleCustomFieldChange(campo.id, e.target.value)}
+                              placeholder={campo.placeholder || `Ingresa ${campo.label}...`}
+                              className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 shadow-inner font-medium"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

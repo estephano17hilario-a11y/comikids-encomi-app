@@ -630,6 +630,23 @@ export const OrdersSmartManager: React.FC = () => {
             </p>
           </div>
 
+          {/* Datos personalizados adicionales de la agencia */}
+          {order.campos_personalizados && Object.keys(order.campos_personalizados).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {Object.entries(order.campos_personalizados)
+                .filter(([_, val]) => val !== undefined && val !== null && String(val).trim() !== '')
+                .map(([label, val]) => (
+                  <span
+                    key={label}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-950/80 border border-indigo-500/40 text-indigo-200 text-[10.5px] font-medium shadow-xs"
+                  >
+                    <span className="text-slate-400 font-bold">{label}:</span>
+                    <strong className="text-white font-bold">{String(val)}</strong>
+                  </span>
+                ))}
+            </div>
+          )}
+
           {/* Insignia Canónica Oficial de la Agencia de Destino */}
           {(() => {
             const isShalomOrder = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');

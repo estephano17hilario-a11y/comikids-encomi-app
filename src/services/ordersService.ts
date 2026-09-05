@@ -110,6 +110,33 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     tipo_formulario: 'shalom',
     activo: true,
     orden: 1,
+    es_sistema: true,
+    campos_personalizados: [
+      {
+        id: 'c-shalom-dni',
+        label: 'DNI / CE de quien recibe',
+        placeholder: '8 dígitos numéricos',
+        tipo: 'numero',
+        requerido: true,
+        mostrar_en_rotulado: true,
+        mostrar_en_comprobante: true,
+        sistema: true,
+      },
+      {
+        id: 'c-shalom-tel',
+        label: 'Teléfono / WhatsApp',
+        placeholder: '9 dígitos',
+        tipo: 'telefono',
+        requerido: true,
+        mostrar_en_rotulado: false,
+        mostrar_en_comprobante: true,
+        sistema: true,
+      }
+    ],
+    config_rotulado: {
+      incluir_campos_personalizados: true,
+      campos_visibles: ['c-shalom-dni']
+    }
   },
   {
     id: 'met-motorizado',
@@ -120,6 +147,53 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     tipo_formulario: 'mapa_direccion',
     activo: true,
     orden: 2,
+    es_sistema: false,
+    campos_personalizados: [
+      {
+        id: 'c-mot-nombre',
+        label: 'Nombres y Apellidos de quien recibe',
+        placeholder: 'Ej: María López',
+        tipo: 'texto',
+        requerido: true,
+        mostrar_en_rotulado: true,
+        mostrar_en_comprobante: true,
+        sistema: false,
+      },
+      {
+        id: 'c-mot-tel',
+        label: 'Número de Teléfono / WhatsApp',
+        placeholder: 'Ej: 987654321',
+        tipo: 'telefono',
+        requerido: true,
+        mostrar_en_rotulado: true,
+        mostrar_en_comprobante: true,
+        sistema: false,
+      },
+      {
+        id: 'c-mot-ref',
+        label: 'Referencia de la Ubicación',
+        placeholder: 'Ej: Frente al parque, reja negra',
+        tipo: 'texto',
+        requerido: false,
+        mostrar_en_rotulado: true,
+        mostrar_en_comprobante: true,
+        sistema: false,
+      },
+      {
+        id: 'c-mot-tiktok',
+        label: 'Usuario de TikTok (Opcional)',
+        placeholder: 'Ej: @marialopez',
+        tipo: 'texto',
+        requerido: false,
+        mostrar_en_rotulado: true,
+        mostrar_en_comprobante: true,
+        sistema: false,
+      }
+    ],
+    config_rotulado: {
+      incluir_campos_personalizados: true,
+      campos_visibles: ['c-mot-nombre', 'c-mot-tel', 'c-mot-ref', 'c-mot-tiktok']
+    }
   },
   {
     id: 'met-olva',
@@ -130,6 +204,43 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     tipo_formulario: 'olva',
     activo: true,
     orden: 3,
+    es_sistema: true,
+    campos_personalizados: [
+      {
+        id: 'c-olva-dni',
+        label: 'DNI / CE',
+        placeholder: '8 dígitos',
+        tipo: 'numero',
+        requerido: true,
+        mostrar_en_rotulado: true,
+        mostrar_en_comprobante: true,
+        sistema: true,
+      },
+      {
+        id: 'c-olva-tel',
+        label: 'Teléfono de contacto',
+        placeholder: '9 dígitos',
+        tipo: 'telefono',
+        requerido: true,
+        mostrar_en_rotulado: true,
+        mostrar_en_comprobante: true,
+        sistema: true,
+      },
+      {
+        id: 'c-olva-dir',
+        label: 'Dirección o Agencia Olva',
+        placeholder: 'Dirección completa',
+        tipo: 'texto',
+        requerido: true,
+        mostrar_en_rotulado: true,
+        mostrar_en_comprobante: true,
+        sistema: true,
+      }
+    ],
+    config_rotulado: {
+      incluir_campos_personalizados: true,
+      campos_visibles: ['c-olva-dni', 'c-olva-tel', 'c-olva-dir']
+    }
   },
 ];
 
@@ -669,13 +780,30 @@ class OrdersService {
     const idx = methods.findIndex(m => m.id === id);
     if (idx === -1) return null;
 
-    methods[idx] = { ...methods[idx], ...updates };
+    const existing = methods[idx];
+    // Protección de Shalom y Olva: No se puede cambiar su código base ni su tipo de formulario
+    if (existing.es_sistema || existing.codigo === 'shalom' || existing.codigo === 'olva') {
+      delete updates.codigo;
+      delete updates.tipo_formulario;
+      updates.es_sistema = true;
+    }
+
+    methods[idx] = { ...existing, ...updates };
     this.saveShippingMethods(methods);
     return methods[idx];
   }
 
   deleteShippingMethod(id: string): boolean {
     let methods = this.getShippingMethods();
+    const target = methods.find(m => m.id === id);
+    if (!target) return false;
+
+    // Protección estricta: Shalom y Olva NO se pueden borrar
+    if (target.es_sistema || target.codigo === 'shalom' || target.codigo === 'olva' || target.id === 'met-shalom' || target.id === 'met-olva') {
+      console.warn('[SEGURIDAD] No se puede eliminar una agencia oficial del sistema (Shalom / Olva).');
+      return false;
+    }
+
     methods = methods.filter(m => m.id !== id);
     this.saveShippingMethods(methods);
     return true;

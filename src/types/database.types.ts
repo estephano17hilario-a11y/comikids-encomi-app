@@ -74,15 +74,33 @@ export interface Usuario {
   created_at: string;
 }
 
+export interface CampoPersonalizadoAgencia {
+  id: string;
+  label: string;
+  placeholder?: string;
+  tipo: 'texto' | 'telefono' | 'numero' | 'textarea';
+  requerido: boolean;
+  mostrar_en_rotulado: boolean;
+  mostrar_en_comprobante: boolean;
+  sistema?: boolean; // Protegido contra eliminación (ej. DNI, teléfono en agencias base)
+}
+
 export interface MetodoEnvio {
   id: string;
   codigo: string;
   nombre: string;
   descripcion: string;
   icono: string;
-  tipo_formulario: TipoFormularioEnvio;
+  tipo_formulario: TipoFormularioEnvio | 'personalizado';
   activo: boolean;
   orden: number;
+  es_sistema?: boolean; // TRUE para Shalom y Olva (no se pueden borrar ni alterar campos base)
+  campos_personalizados?: CampoPersonalizadoAgencia[];
+  mensaje_comprobacion?: string; // Plantilla editable por agencia sin el pie de Encomi
+  config_rotulado?: {
+    incluir_campos_personalizados: boolean;
+    campos_visibles?: string[]; // IDs de los campos que irán en el rótulo
+  };
 }
 
 export interface Pedido {
@@ -106,10 +124,10 @@ export interface Pedido {
   shalom_ose_id?: string | null;
   shalom_numero_guia?: string | null;
   shalom_clave_recojo?: string | null;
+  campos_personalizados?: Record<string, any>;
   created_at: string;
   updated_at?: string;
 }
-
 
 export interface LogroUsuario {
   id: string;
@@ -120,6 +138,13 @@ export interface LogroUsuario {
   icono: string;
   puntos_xp_ganados: number;
   unlocked_at: string;
+}
+
+export interface HorarioDiaDespacho {
+  dia: 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado' | 'domingo';
+  activo: boolean;
+  hora_corte: string;
+  mensaje_personalizado?: string;
 }
 
 export interface TallerConfig {
@@ -143,6 +168,7 @@ export interface TallerConfig {
   dias_despacho_activos?: string[];
   despacho_domingo_habilitado?: boolean;
   mensaje_corte_personalizado?: string;
+  horarios_por_dia?: Record<string, HorarioDiaDespacho>;
 }
 
 

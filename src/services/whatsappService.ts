@@ -20,6 +20,8 @@ export interface DatosComprobante {
   remitenteDni?: string;
   remitenteEmail?: string;
   remitenteCelular?: string;
+  camposPersonalizados?: Record<string, any>;
+  plantillaMensajeAgencia?: string;
 }
 
 // URL oficial del Funnel Interactivo Encomi
@@ -58,6 +60,7 @@ export const formatFechaConDia = (dateStr?: string): string => {
 
 /**
  * Genera el texto formateado del Comprobante de Envío Oficial
+ * Permite plantillas personalizadas por agencia (sin el bloque Encomi en edición, pero siempre presente en el mensaje final).
  */
 export const buildWhatsAppComprobanteMessage = (datos: DatosComprobante): string => {
   const nombre = (datos.destinatario || "Cliente").trim();
@@ -75,7 +78,44 @@ export const buildWhatsAppComprobanteMessage = (datos: DatosComprobante): string
   const lineaMaps = datos.coordenadasMapsUrl ? `🗺️ *Ubicación GPS:*\n${datos.coordenadasMapsUrl}\n` : "";
   const lineaCorreo = datos.correoCliente ? `📧 *Correo:* ${datos.correoCliente.trim()}\n` : "";
 
-  return `✨ *COMPROBANTE OFICIAL DE ENVÍO - COMIKIDS* 📦
+  // Campos adicionales dinámicos configurados para la agencia
+  let lineasCamposExtra = '';
+  if (datos.camposPersonalizados && Object.keys(datos.camposPersonalizados).length > 0) {
+    lineasCamposExtra = Object.entries(datos.camposPersonalizados)
+      .filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+      .map(([k, v]) => `📌 *${k}:* ${v}`)
+      .join('\n') + '\n';
+  }
+
+  const bloqueEncomi = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n¿Buscas que tu negocio sea 10x más rápido al entregar pedidos? Entonces buscas a Encomi 🚀\n👉 ${funnelShortUrl}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n¡Muchas gracias por tu preferencia! 💖✨🙏`;
+
+  // Si la agencia tiene una plantilla personalizada configurada (sin el bloque Encomi):
+  if (datos.plantillaMensajeAgencia && datos.plantillaMensajeAgencia.trim().length > 10) {
+    let customBody = datos.plantillaMensajeAgencia
+      .replace(/{cliente}/gi, nombre)
+      .replace(/{nombre}/gi, nombre)
+      .replace(/{telefono}/gi, `+51 ${telefono}`)
+      .replace(/{celular}/gi, `+51 ${telefono}`)
+      .replace(/{dni}/gi, documento)
+      .replace(/{documento}/gi, documento)
+      .replace(/{modalidad}/gi, metodo)
+      .replace(/{metodo}/gi, metodo)
+      .replace(/{destino}/gi, destino)
+      .replace(/{orden}/gi, `#${codigo}`)
+      .replace(/{codigo}/gi, codigo)
+      .replace(/{fecha}/gi, fechaFormateada)
+      .replace(/{correo}/gi, datos.correoCliente || '')
+      .replace(/{campos_adicionales}/gi, lineasCamposExtra.trim());
+
+    if (!datos.plantillaMensajeAgencia.includes('{campos_adicionales}') && lineasCamposExtra) {
+      customBody += `\n${lineasCamposExtra}`;
+    }
+
+    return `${customBody.trim()}\n\n${bloqueEncomi}`;
+  }
+
+  // Plantilla estándar oficial
+  return `✨ *COMPROBANTE OFICIAL DE ENVÍO* 📦
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🏷️ *Orden:* #${codigo}
 👤 *Cliente:* ${nombre}
@@ -86,11 +126,7 @@ ${lineaCorreo}🚚 *Modalidad:* ${metodo}
 
 📍 *Agencia / Destino Oficial:*
 ${destino}
-${lineaRef}${lineaMaps}━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-¿Buscas que tu negocio sea 10x más rápido al entregar pedidos? Entonces buscas a Encomi 🚀
-👉 ${funnelShortUrl}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-¡Muchas gracias por tu preferencia! 💖✨🙏`;
+${lineaRef}${lineaMaps}${lineasCamposExtra}${bloqueEncomi}`;
 };
 
 /**

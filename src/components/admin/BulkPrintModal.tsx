@@ -5,6 +5,7 @@ import { X, Printer, Layers, Droplet } from 'lucide-react';
 import { printMultipleElements } from '../../utils/nativePrintService';
 import { InkSavingLevel, INK_SAVING_LEVELS, getInkSavingStyles } from '../../utils/inkSavingService';
 import { extractShalomDni } from '../../utils/shalomExcelExporter';
+import { ordersService } from '../../services/ordersService';
 
 interface Props {
   pedidos: Pedido[];
@@ -190,6 +191,26 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                   const shalomAgency = getShalomAgencyOnly(pedido.destino_detalle);
                   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
+                  const rotuladoFields = (() => {
+                    if (!pedido.campos_personalizados) return [];
+                    const methods = ordersService.getShippingMethods();
+                    const currentMethod = methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
+
+                    const visibleList: { label: string; valor: string }[] = [];
+                    for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
+                      if (val === undefined || val === null || String(val).trim() === '') continue;
+                      const fieldCfg = currentMethod?.campos_personalizados?.find(c => c.id === key || c.label.toLowerCase() === key.toLowerCase());
+                      const shouldShow = fieldCfg !== undefined ? Boolean(fieldCfg.mostrar_en_rotulado) : true;
+                      if (shouldShow) {
+                        visibleList.push({
+                          label: fieldCfg?.label || key,
+                          valor: String(val)
+                        });
+                      }
+                    }
+                    return visibleList;
+                  })();
+
                   return (
                     <div
                       key={pedido.id}
@@ -308,6 +329,18 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                             {isShalom ? shalomAgency : pedido.destino_detalle}
                           </p>
                         </div>
+
+                        {/* Campos Personalizados de Rotulado Inteligente */}
+                        {rotuladoFields.length > 0 && (
+                          <div className="pt-0.5 border-t border-dashed border-slate-300 grid grid-cols-2 gap-1 text-[8px]">
+                            {rotuladoFields.map(f => (
+                              <div key={f.label} className="p-0.5 rounded bg-slate-50 border border-slate-300">
+                                <span className="font-bold text-slate-500 uppercase">{f.label}: </span>
+                                <strong className="font-black text-black">{f.valor}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
                       </div>
 

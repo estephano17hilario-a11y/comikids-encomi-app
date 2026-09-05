@@ -149,8 +149,8 @@ export class DniController {
       try {
         const { data: userRow } = await supabaseAdmin
           .from('usuarios')
-          .select('nombre_completo, numero_documento')
-          .or(`numero_documento.eq.${cleanDni},numero_documento.eq.${ruc}`)
+          .select('nombre_completo, dni, dni_default')
+          .or(`dni.eq.${cleanDni},dni.eq.${ruc},dni_default.eq.${cleanDni},dni_default.eq.${ruc}`)
           .limit(1)
           .maybeSingle();
 
@@ -165,13 +165,59 @@ export class DniController {
             data: {
               dni: cleanDni,
               ruc,
-              nombreCompleto: userRow.nombre_completo.trim(),
+              nombreCompleto: formatSunatNameToGivenFirst(userRow.nombre_completo.trim()),
               estado: 'ACTIVO',
               condicion: 'HABIDO',
             },
           });
         }
-      } catch {}
+      } catch (sbErr: any) {
+        console.warn('[DNI RESOLVER SUPABASE FALLBACK ERROR]', sbErr?.message);
+      }
+
+      // 4. Fallback RENIEC / Padrón Nacional en Vivo (apis.net.pe)
+      try {
+        const reniecRes = await fetch(`https://api.apis.net.pe/v1/dni?numero=${cleanDni}`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (reniecRes.ok) {
+          const reniecData: any = await reniecRes.json();
+          if (reniecData && (reniecData.nombre || reniecData.nombres)) {
+            const given = (reniecData.nombres || '').trim();
+            const pat = (reniecData.apellidoPaterno || '').trim();
+            const mat = (reniecData.apellidoMaterno || '').trim();
+            const fullName = given ? `${given} ${pat} ${mat}`.trim() : formatSunatNameToGivenFirst(reniecData.nombre);
+
+            const endTime = process.hrtime.bigint();
+            const latencyMs = Number(endTime - startTime) / 1_000_000;
+
+            // Guardar en Supabase usuarios para que las siguientes consultas sean instantáneas
+            supabaseAdmin.from('usuarios').upsert({
+              id: `usr-dni-${cleanDni}`,
+              dni: cleanDni,
+              dni_default: cleanDni,
+              nombre_completo: fullName,
+              rol: 'client',
+              created_at: new Date().toISOString(),
+            }).then(() => {}, () => {});
+
+            return reply.code(200).send({
+              success: true,
+              source: 'reniec_padron_nacional',
+              latencyMs: Number(latencyMs.toFixed(3)),
+              data: {
+                dni: cleanDni,
+                ruc,
+                nombreCompleto: fullName,
+                estado: 'ACTIVO',
+                condicion: 'HABIDO',
+              },
+            });
+          }
+        }
+      } catch (reniecErr: any) {
+        console.warn('[DNI RESOLVER RENIEC FALLBACK WARN]', reniecErr?.message);
+      }
 
       const endTime = process.hrtime.bigint();
       const latencyMs = Number(endTime - startTime) / 1_000_000;
@@ -179,7 +225,7 @@ export class DniController {
       return reply.code(404).send({
         success: false,
         latencyMs: Number(latencyMs.toFixed(3)),
-        message: 'DNI no encontrado en el padrón oficial de SUNAT.',
+        message: 'DNI no encontrado en el padrón oficial de SUNAT ni RENIEC.',
         data: {
           dni: cleanDni,
           ruc,

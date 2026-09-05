@@ -1,7 +1,29 @@
-export type UserRole = 'client' | 'empresa';
+export type UserRole = 'client' | 'empresa' | 'matrix';
 export type EstadoProduccion = 'en_cola' | 'bordando' | 'completado';
 export type EstadoEnvio = 'pendiente' | 'en_camino' | 'listo_para_recojo' | 'entregado';
 export type TipoFormularioEnvio = 'shalom' | 'mapa_direccion' | 'texto_simple' | 'olva';
+
+export interface AccesoHistorialItem {
+  id: string;
+  fecha: string;
+  userAgent?: string;
+  ip?: string;
+  exitoso: boolean;
+}
+
+export interface EmpresaAccount {
+  id: string;
+  nombre: string;
+  numero_entrada: string;
+  password_hash: string;
+  activo: boolean;
+  telefono_contacto?: string;
+  sub_instance?: string;
+  created_at: string;
+  ultimo_acceso?: string;
+  total_ingresos: number;
+  historial_accesos: AccesoHistorialItem[];
+}
 
 export interface Usuario {
   id: string;

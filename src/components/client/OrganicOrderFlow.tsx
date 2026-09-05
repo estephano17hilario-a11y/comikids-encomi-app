@@ -46,7 +46,8 @@ import {
   RotateCcw,
   Maximize2,
   Calendar,
-  Loader2
+  Loader2,
+  ShieldCheck
 } from 'lucide-react';
 
 
@@ -387,6 +388,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   // Secret Empresa Prompt
   const [isEmpresaUnlock, setIsEmpresaUnlock] = useState(false);
   const [empresaPassword, setEmpresaPassword] = useState('');
+  const [unlockTarget, setUnlockTarget] = useState<{
+    type: 'matrix' | 'empresa';
+    identifier: string;
+    nombre: string;
+  } | null>(null);
 
   // Status & Resumen de Pedido Creado (Con Persistencia Inmune a Recargas y Login en Móviles)
   const [errorMsg, setErrorMsg] = useState('');
@@ -482,8 +488,36 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       return;
     }
 
-    if (clean === '061625' || clean.toUpperCase() === '42020312COMIKIDS') {
-      await login('061625', '989834969MI');
+    // 1. Acceso Master Matrix (963097777 / matrix4012)
+    if (clean === '963097777') {
+      setUnlockTarget({
+        type: 'matrix',
+        identifier: '963097777',
+        nombre: 'Control Central Matrix'
+      });
+      setIsEmpresaUnlock(true);
+      setEmpresaPassword('');
+      setErrorMsg('');
+      return;
+    }
+
+    // 2. Acceso Cuentas de Empresa (ComiKids u otras empresas creadas)
+    const empresas = ordersService.getEmpresas();
+    const matchedEmp = empresas.find(
+      emp => emp.numero_entrada.toUpperCase() === clean.toUpperCase() ||
+      (clean === '061625' && emp.id === 'empresa-master-comikids') ||
+      (clean.toUpperCase() === '42020312COMIKIDS' && emp.id === 'empresa-master-comikids')
+    );
+
+    if (matchedEmp) {
+      setUnlockTarget({
+        type: 'empresa',
+        identifier: matchedEmp.numero_entrada,
+        nombre: matchedEmp.nombre
+      });
+      setIsEmpresaUnlock(true);
+      setEmpresaPassword('');
+      setErrorMsg('');
       return;
     }
 
@@ -497,20 +531,23 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     setOrganicStep(2);
   };
 
-  // Secret Empresa Login
+  // Empresa & Matrix Login Submit
   const handleEmpresaLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    if (!unlockTarget) return;
+
     try {
-      const res = await ordersService.loginUser('admin', empresaPassword);
-      if (res.user && res.user.rol === 'empresa') {
-        await login('admin', empresaPassword);
-        window.location.reload();
+      const res = await login(unlockTarget.identifier, empresaPassword);
+      if (res.success) {
+        setIsEmpresaUnlock(false);
+        setUnlockTarget(null);
+        setEmpresaPassword('');
       } else {
-        setErrorMsg('Contraseña de administrador incorrecta.');
+        setErrorMsg(res.error || 'Contraseña incorrecta.');
       }
     } catch {
-      setErrorMsg('Error al autenticar acceso administrativo.');
+      setErrorMsg('Error al autenticar credenciales de acceso.');
     }
   };
 
@@ -1120,15 +1157,24 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
         </div>
       ) : isEmpresaUnlock ? (
-        /* Admin Login */
-        <div className="minimal-card p-6 sm:p-8 animate-fadeIn space-y-5">
+        /* Empresa & Matrix Access Verification */
+        <div className="minimal-card p-6 sm:p-8 animate-fadeIn space-y-5 rounded-3xl bg-slate-900/95 border-2 border-emerald-500/35 backdrop-blur-2xl shadow-2xl shadow-emerald-500/10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 flex items-center justify-center text-cyan-400">
-              <Sparkles className="w-6 h-6" />
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+              unlockTarget?.type === 'matrix' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-cyan-500/20 text-cyan-400'
+            }`}>
+              {unlockTarget?.type === 'matrix' ? <ShieldCheck className="w-7 h-7" /> : <Sparkles className="w-6 h-6" />}
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white">Panel de Administración</h3>
-              <p className="text-xs text-slate-400">Ingresa la clave de acceso</p>
+              <h3 className="text-xl font-bold text-white">
+                {unlockTarget?.type === 'matrix' ? 'Control Central Matrix' : `Acceso Empresa: ${unlockTarget?.nombre}`}
+              </h3>
+              <p className="text-xs text-slate-400">
+                {unlockTarget?.type === 'matrix' 
+                  ? 'Ingresa la clave maestra (matrix4012)'
+                  : `Ingresa la contraseña para ${unlockTarget?.nombre}`
+                }
+              </p>
             </div>
           </div>
 
@@ -1139,7 +1185,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               required
               value={empresaPassword}
               onChange={e => setEmpresaPassword(e.target.value)}
-              placeholder="Contraseña..."
+              placeholder="Contraseña de acceso..."
               className="big-input text-center text-lg"
             />
             {errorMsg && (
@@ -1150,12 +1196,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setIsEmpresaUnlock(false)}
+                onClick={() => {
+                  setIsEmpresaUnlock(false);
+                  setUnlockTarget(null);
+                  setEmpresaPassword('');
+                  setErrorMsg('');
+                }}
                 className="big-btn-secondary w-1/3"
               >
                 Cancelar
               </button>
-              <button type="submit" className="big-btn-primary w-2/3">
+              <button
+                type="submit"
+                className={`big-btn-primary w-2/3 ${
+                  unlockTarget?.type === 'matrix' ? '!bg-gradient-to-r !from-emerald-500 !to-teal-600 !text-slate-950 font-black' : ''
+                }`}
+              >
                 Ingresar
               </button>
             </div>

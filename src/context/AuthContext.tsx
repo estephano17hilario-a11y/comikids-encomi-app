@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Usuario, UserRole } from '../types/database.types';
+import { Usuario, UserRole, EmpresaAccount } from '../types/database.types';
 import { ordersService } from '../services/ordersService';
 import confetti from 'canvas-confetti';
 
@@ -7,6 +7,10 @@ interface AuthContextType {
   currentUser: Usuario | null;
   role: UserRole | null;
   isAuthenticated: boolean;
+  impersonatedEmpresa: EmpresaAccount | null;
+  impersonateEmpresa: (empresa: EmpresaAccount) => void;
+  stopImpersonation: () => void;
+  isMatrixMaster: boolean;
   login: (dni: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   register: (nombre: string, dni: string, edad: number, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
@@ -20,6 +24,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AUTH_STORAGE_KEY = 'incomi_auth_user_v2';
+const IMPERSONATE_STORAGE_KEY = 'incomi_impersonated_empresa_v1';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<Usuario | null>(() => {
@@ -33,6 +38,33 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     return null;
   });
+
+  const [impersonatedEmpresa, setImpersonatedEmpresa] = useState<EmpresaAccount | null>(() => {
+    const raw = localStorage.getItem(IMPERSONATE_STORAGE_KEY);
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+
+  const impersonateEmpresa = (empresa: EmpresaAccount) => {
+    setImpersonatedEmpresa(empresa);
+    localStorage.setItem(IMPERSONATE_STORAGE_KEY, JSON.stringify(empresa));
+  };
+
+  const stopImpersonation = () => {
+    setImpersonatedEmpresa(null);
+    localStorage.removeItem(IMPERSONATE_STORAGE_KEY);
+  };
+
+  const isMatrixMaster = currentUser?.rol === 'matrix';
+  const effectiveRole: UserRole | null = impersonatedEmpresa
+    ? 'empresa'
+    : (currentUser?.rol || null);
 
   useEffect(() => {
     if (currentUser) {
@@ -63,6 +95,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = () => {
     setCurrentUser(null);
+    setImpersonatedEmpresa(null);
+    localStorage.removeItem(IMPERSONATE_STORAGE_KEY);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem('incomi_current_receipt_order');
     localStorage.removeItem('incomi_saved_phone');
@@ -97,10 +131,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (updates.distrito_default) localStorage.setItem('incomi_saved_district', updates.distrito_default);
       if (updates.direccion_default) localStorage.setItem('incomi_saved_address', updates.direccion_default);
       if (updates.referencia_default) localStorage.setItem('incomi_saved_reference', updates.referencia_default);
-      triggerConfetti();
-      return true;
     }
-    return false;
+    return Boolean(updated);
   };
 
   const updateAdditionalData = async (data: {
@@ -144,8 +176,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider
       value={{
         currentUser,
-        role: currentUser?.rol || null,
+        role: effectiveRole,
         isAuthenticated: Boolean(currentUser),
+        impersonatedEmpresa,
+        impersonateEmpresa,
+        stopImpersonation,
+        isMatrixMaster,
         login,
         register,
         logout,

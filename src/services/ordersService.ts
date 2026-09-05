@@ -9,14 +9,16 @@ import {
   Colaborador,
   CompanyAchievement,
   MotorizadoDistrictConfig,
-  ShalomAgency
+  ShalomAgency,
+  EmpresaAccount,
+  AccesoHistorialItem
 } from '../types/database.types';
 import { getRandomAvatar } from '../data/avatarsData';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { generateOrderTrackingCode } from '../utils/formatters';
 import { calculateLevel } from '../data/achievementsList';
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   USERS: 'incomi_users_v2',
   SHIPPING_METHODS: 'incomi_shipping_methods_v2',
   ORDERS: 'incomi_orders_v2',
@@ -27,6 +29,40 @@ const STORAGE_KEYS = {
   MASTER_CODE: 'incomi_master_code_v2',
   CUSTOM_SHALOM_AGENCIES: 'incomi_custom_shalom_v2',
   MOTORIZADO_CONFIG: 'incomi_motorizado_districts_v2',
+  EMPRESAS: 'incomi_empresas_accounts_v1',
+};
+
+export const MATRIX_MASTER_USER: Usuario = {
+  id: 'usr-matrix-master',
+  dni: '963097777',
+  nombre_completo: 'Control Central Matrix',
+  password_hash: 'matrix4012',
+  rol: 'matrix',
+  avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=MatrixMaster&backgroundColor=10b981,059669',
+  puntos_xp: 99999,
+  nivel: 99,
+  created_at: new Date().toISOString()
+};
+
+export const DEFAULT_EMPRESA_ACCOUNT: EmpresaAccount = {
+  id: 'empresa-master-comikids',
+  nombre: 'ComiKids',
+  numero_entrada: '061625',
+  password_hash: '989834969MI',
+  activo: true,
+  telefono_contacto: '51963097546',
+  sub_instance: 'tenant_Comikids',
+  created_at: '2026-01-01T00:00:00.000Z',
+  ultimo_acceso: new Date().toISOString(),
+  total_ingresos: 1,
+  historial_accesos: [
+    {
+      id: 'acc-init-1',
+      fecha: new Date().toISOString(),
+      userAgent: 'Sistema Inicial ComiKids',
+      exitoso: true
+    }
+  ]
 };
 
 export const DEFAULT_EMPRESA_USER: Usuario = {
@@ -193,20 +229,243 @@ class OrdersService {
     return { user: newUser };
   }
 
-  async loginUser(dni: string, password?: string): Promise<{ user: Usuario | null; error?: string }> {
-    const cleanDni = dni.trim().toUpperCase();
-    const cleanPass = (password || '').trim();
-    const users = this.getUsers();
+  // --- GESTIÓN DE EMPRESAS (MATRIX MASTER CONTROL) ---
+  getEmpresas(): EmpresaAccount[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.EMPRESAS);
+    if (!raw) {
+      const initial = [DEFAULT_EMPRESA_ACCOUNT];
+      localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(initial));
+      return initial;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return [DEFAULT_EMPRESA_ACCOUNT];
+      }
+      // Garantizar que la cuenta histórica de ComiKids siempre esté presente
+      if (!parsed.some((e: any) => e.id === 'empresa-master-comikids' || e.numero_entrada === '061625')) {
+        parsed.unshift(DEFAULT_EMPRESA_ACCOUNT);
+        localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(parsed));
+      }
+      return parsed;
+    } catch {
+      return [DEFAULT_EMPRESA_ACCOUNT];
+    }
+  }
 
-    // Check special empresa account: 061625
-    if (cleanDni === '061625' || cleanDni === '42020312COMIKIDS') {
-      const empresaUser = users.find(u => u.rol === 'empresa' || u.dni.toUpperCase() === '061625' || u.dni.toUpperCase() === '42020312COMIKIDS') || DEFAULT_EMPRESA_USER;
+  saveEmpresas(empresas: EmpresaAccount[]): void {
+    localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(empresas));
+  }
+
+  createEmpresa(data: {
+    nombre: string;
+    numero_entrada: string;
+    password_hash: string;
+    telefono_contacto?: string;
+    sub_instance?: string;
+    activo?: boolean;
+  }): EmpresaAccount {
+    const empresas = this.getEmpresas();
+    const cleanNum = data.numero_entrada.trim().replace(/\s+/g, '');
+    const cleanPass = data.password_hash.trim();
+    const cleanNombre = data.nombre.trim();
+
+    if (!cleanNombre) {
+      throw new Error('El nombre de la empresa es obligatorio.');
+    }
+    if (!cleanNum) {
+      throw new Error('El número o usuario de entrada es obligatorio.');
+    }
+    if (!cleanPass) {
+      throw new Error('La contraseña es obligatoria.');
+    }
+    if (cleanNum === '963097777') {
+      throw new Error('El número 963097777 está reservado exclusivamente para la Cuenta Principal Matrix.');
+    }
+    if (empresas.some(e => e.numero_entrada.toUpperCase() === cleanNum.toUpperCase())) {
+      throw new Error(`Ya existe una empresa registrada con el número de entrada ${cleanNum}.`);
+    }
+
+    const newEmpresa: EmpresaAccount = {
+      id: 'emp-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+      nombre: cleanNombre,
+      numero_entrada: cleanNum,
+      password_hash: cleanPass,
+      activo: data.activo !== false,
+      telefono_contacto: data.telefono_contacto?.trim() || undefined,
+      sub_instance: data.sub_instance?.trim() || `tenant_${cleanNombre.replace(/\s+/g, '')}`,
+      created_at: new Date().toISOString(),
+      total_ingresos: 0,
+      historial_accesos: []
+    };
+
+    empresas.push(newEmpresa);
+    this.saveEmpresas(empresas);
+
+    // Guardar también en la lista de usuarios para compatibilidad total
+    const users = this.getUsers();
+    if (!users.some(u => u.dni.toUpperCase() === cleanNum.toUpperCase())) {
+      const uEmp: Usuario = {
+        id: newEmpresa.id,
+        dni: newEmpresa.numero_entrada,
+        nombre_completo: newEmpresa.nombre,
+        password_hash: newEmpresa.password_hash,
+        rol: 'empresa',
+        avatar_url: `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(newEmpresa.nombre)}&backgroundColor=06b6d4,3b82f6`,
+        puntos_xp: 5000,
+        nivel: 10,
+        created_at: newEmpresa.created_at
+      };
+      users.push(uEmp);
+      this.saveUsers(users);
+
+      if (isSupabaseConfigured && supabase) {
+        (async () => {
+          try {
+            await supabase.from('usuarios').upsert(uEmp);
+          } catch (e) {
+            console.warn(e);
+          }
+        })();
+      }
+    }
+
+    return newEmpresa;
+  }
+
+  updateEmpresa(id: string, updates: Partial<EmpresaAccount>): EmpresaAccount | null {
+    const empresas = this.getEmpresas();
+    const idx = empresas.findIndex(e => e.id === id);
+    if (idx === -1) return null;
+
+    empresas[idx] = { ...empresas[idx], ...updates };
+    this.saveEmpresas(empresas);
+
+    // Sincronizar en users list si cambió contraseña, nombre o número de entrada
+    const users = this.getUsers();
+    const uIdx = users.findIndex(u => u.id === id || u.dni === empresas[idx].numero_entrada);
+    if (uIdx !== -1) {
+      users[uIdx] = {
+        ...users[uIdx],
+        nombre_completo: empresas[idx].nombre,
+        password_hash: empresas[idx].password_hash,
+        dni: empresas[idx].numero_entrada
+      };
+      this.saveUsers(users);
+
+      if (isSupabaseConfigured && supabase) {
+        (async () => {
+          try {
+            await supabase.from('usuarios').update({
+              nombre_completo: empresas[idx].nombre,
+              password_hash: empresas[idx].password_hash,
+              dni: empresas[idx].numero_entrada
+            }).eq('id', users[uIdx].id);
+          } catch (e) {
+            console.warn(e);
+          }
+        })();
+      }
+    }
+
+    return empresas[idx];
+  }
+
+  deleteEmpresa(id: string): boolean {
+    if (id === 'empresa-master-comikids') {
+      throw new Error('No se puede eliminar la cuenta base de ComiKids.');
+    }
+    const empresas = this.getEmpresas();
+    const filtered = empresas.filter(e => e.id !== id);
+    if (filtered.length === empresas.length) return false;
+    this.saveEmpresas(filtered);
+    return true;
+  }
+
+  async loginUser(dni: string, password?: string): Promise<{ user: Usuario | null; error?: string }> {
+    const cleanDni = dni.trim().toUpperCase().replace(/\s+/g, '');
+    const cleanPass = (password || '').trim();
+    const nowIso = new Date().toISOString();
+    const clientUserAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'Navegador Web';
+
+    // 1. Verificación de Cuenta Principal Matrix (963097777 / matrix4012)
+    if (cleanDni === '963097777') {
+      if (!cleanPass) {
+        return { user: null, error: 'Por favor ingresa la contraseña de Matrix.' };
+      }
+      if (cleanPass !== 'matrix4012') {
+        return { user: null, error: 'Contraseña Matrix incorrecta. Acceso denegado.' };
+      }
+      return { user: MATRIX_MASTER_USER };
+    }
+
+    // 2. Verificación de Cuentas de Empresas (ComiKids y empresas registradas en Matrix)
+    const empresas = this.getEmpresas();
+    const matchedEmpresa = empresas.find(e => 
+      e.numero_entrada.toUpperCase() === cleanDni || 
+      (cleanDni === '061625' && e.numero_entrada === '061625') ||
+      (cleanDni === '42020312COMIKIDS' && e.numero_entrada === '061625') ||
+      (cleanDni === 'ADMIN' && e.id === 'empresa-master-comikids')
+    );
+
+    if (matchedEmpresa) {
+      if (!matchedEmpresa.activo) {
+        return { user: null, error: `La cuenta de empresa "${matchedEmpresa.nombre}" se encuentra inactiva. Contacta al administrador Matrix.` };
+      }
+
+      // Validar contraseña de la empresa
+      if (matchedEmpresa.password_hash) {
+        if (!cleanPass) {
+          return { user: null, error: `Ingresa la contraseña para acceder a ${matchedEmpresa.nombre}.` };
+        }
+        if (cleanPass !== matchedEmpresa.password_hash) {
+          // Registrar intento fallido
+          matchedEmpresa.historial_accesos = matchedEmpresa.historial_accesos || [];
+          matchedEmpresa.historial_accesos.unshift({
+            id: 'acc-' + Date.now().toString(36),
+            fecha: nowIso,
+            userAgent: clientUserAgent,
+            exitoso: false
+          });
+          if (matchedEmpresa.historial_accesos.length > 50) matchedEmpresa.historial_accesos = matchedEmpresa.historial_accesos.slice(0, 50);
+          this.saveEmpresas(empresas);
+          return { user: null, error: `Contraseña incorrecta para ${matchedEmpresa.nombre}.` };
+        }
+      }
+
+      // Registrar acceso exitoso (Auditoría: cuándo se entra)
+      matchedEmpresa.ultimo_acceso = nowIso;
+      matchedEmpresa.total_ingresos = (matchedEmpresa.total_ingresos || 0) + 1;
+      matchedEmpresa.historial_accesos = matchedEmpresa.historial_accesos || [];
+      matchedEmpresa.historial_accesos.unshift({
+        id: 'acc-' + Date.now().toString(36),
+        fecha: nowIso,
+        userAgent: clientUserAgent,
+        exitoso: true
+      });
+      if (matchedEmpresa.historial_accesos.length > 50) matchedEmpresa.historial_accesos = matchedEmpresa.historial_accesos.slice(0, 50);
+      this.saveEmpresas(empresas);
+
+      const empresaUser: Usuario = {
+        id: matchedEmpresa.id,
+        dni: matchedEmpresa.numero_entrada,
+        nombre_completo: matchedEmpresa.nombre,
+        password_hash: matchedEmpresa.password_hash,
+        rol: 'empresa',
+        avatar_url: `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(matchedEmpresa.nombre)}&backgroundColor=06b6d4,3b82f6`,
+        puntos_xp: 5000,
+        nivel: 10,
+        created_at: matchedEmpresa.created_at,
+      };
+
       return { user: empresaUser };
     }
 
+    // 3. Clientes y usuarios regulares
+    const users = this.getUsers();
     const user = users.find(u => u.dni.toUpperCase() === cleanDni);
     if (!user) {
-      return { user: null, error: 'No se encontró ninguna cuenta con este DNI. Por favor regístrate.' };
+      return { user: null, error: 'No se encontró ninguna cuenta con este número o DNI.' };
     }
 
     if (cleanPass && user.password_hash && user.password_hash !== cleanPass) {

@@ -15,6 +15,7 @@ import { TallerConfigModal } from '../components/admin/TallerConfigModal';
 import { ExecutiveBriefingModal } from '../components/admin/ExecutiveBriefingModal';
 import { LogoutConfirmModal } from '../components/common/LogoutConfirmModal';
 import { Pedido } from '../types/database.types';
+import { applyFuturisticTheme } from '../data/futuristicThemes';
 import {
   ClipboardList,
   Users,
@@ -36,6 +37,12 @@ export const AdminPortal: React.FC = () => {
   const { pedidos, masterCode, tallerConfig, refreshData } = useOrders();
   const { currentUser, currentEmpresa, empresaConfig, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
+
+  // Aplicar tema futurista guardado para la empresa
+  useEffect(() => {
+    const savedTheme = currentEmpresa?.tema_fondo || tallerConfig.tema_fondo || localStorage.getItem('incomi_futuristic_theme') || 'vision-obsidian';
+    applyFuturisticTheme(savedTheme);
+  }, [currentEmpresa?.tema_fondo, tallerConfig.tema_fondo]);
 
   const companyName = currentEmpresa?.nombre || tallerConfig.nombre_taller || 'ComiKids';
   const sec = empresaConfig?.secciones_activas || {
@@ -254,20 +261,7 @@ export const AdminPortal: React.FC = () => {
             </button>
           )}
 
-          {/* 5. Hitos y Logros de Empresa (Pestaña propia) */}
-          {sec.hitos !== false && (
-            <button
-              onClick={() => setActiveTab('hitos')}
-              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'hitos'
-                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-md shadow-amber-500/30'
-                  : 'text-amber-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Trophy className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">Hitos</span>
-            </button>
-          )}
+
 
           {/* 6. Ajustes de la Empresa (Reformulada) */}
           {sec.ajustes !== false && (

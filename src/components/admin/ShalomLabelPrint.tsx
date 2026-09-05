@@ -16,11 +16,16 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
   const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
-  // Rotulado inteligente: Campos personalizados seleccionados para mostrar en rotulado
+  // Rotulado inteligente: Configuración del método y campos personalizados
+  const methods = useMemo(() => ordersService.getShippingMethods(), []);
+  const currentMethod = useMemo(() => {
+    return methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
+  }, [methods, pedido.metodo_envio_codigo]);
+
+  const cfgRotulado = currentMethod?.config_rotulado;
+
   const rotuladoFields = useMemo(() => {
     if (!pedido.campos_personalizados) return [];
-    const methods = ordersService.getShippingMethods();
-    const currentMethod = methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
 
     const visibleList: { label: string; valor: string }[] = [];
     for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
@@ -35,7 +40,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
       }
     }
     return visibleList;
-  }, [pedido]);
+  }, [pedido, currentMethod]);
 
   const getClientDni = () => {
     const extracted = extractShalomDni(pedido);
@@ -64,21 +69,31 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
       <div className={`flex items-center justify-between border-b-2 border-dashed ${inkSavingLevel >= 50 ? 'border-slate-400' : 'border-pink-500'} pb-2.5 mb-2.5`}>
         <div className="flex items-center gap-2">
           <img
-            src="/Comikids.png"
-            alt="ComiKids"
+            src={tallerConfig.logo_url || '/Comikids.png'}
+            alt={tallerConfig.nombre_taller || 'Empresa'}
             className={`w-10 h-10 object-contain rounded-xl shadow ${inkSavingLevel >= 75 ? 'grayscale contrast-125' : ''}`}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
           />
           <div>
             <h2 className="text-base font-black uppercase tracking-tight text-slate-900 leading-none">
-              ComiKids
+              {tallerConfig.nombre_taller || 'ComiKids'}
             </h2>
             <span className="text-[10px] text-slate-500 font-bold">Envíos Seguros</span>
           </div>
         </div>
 
-        <div className="text-right flex flex-col items-end">
+        <div className="text-right">
           <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black text-[10px] uppercase mb-1 ${eco.badgeCarrier}`}>
-            {isOlva ? (
+            {currentMethod?.foto_url ? (
+              <>
+                <img
+                  src={currentMethod.foto_url}
+                  alt={currentMethod.nombre}
+                  className="h-4 w-auto max-w-16 object-contain"
+                />
+                <span>{currentMethod.nombre}</span>
+              </>
+            ) : isOlva ? (
               <>
                 <img
                   src="/Olva-Courier-Logo.svg"
@@ -99,7 +114,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
             ) : (
               <>
                 <span>🛵</span>
-                <span>MOTORIZADO</span>
+                <span>{currentMethod?.nombre || 'MOTORIZADO'}</span>
               </>
             )}
           </div>
@@ -110,20 +125,22 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
       </div>
 
       {/* Barcode Simulation with Eco-Print calculation */}
-      <div className={`my-2 p-2 rounded-2xl border ${inkSavingLevel >= 50 ? 'bg-white border-slate-400' : 'bg-cyan-50/70 border-cyan-300'} text-center`}>
-        <div className={`flex justify-center items-center gap-0.5 ${eco.barcodeHeight} mb-1`}>
-          {[4, 2, 6, 2, 8, 3, 2, 5, 2, 7, 3, 2, 4, 6, 2, 5, 3, 8, 2, 4, 3, 6, 2, 4, 2, 7, 2, 3, 5, 2, 4].map((w, i) => (
-            <div
-              key={i}
-              className={`${eco.barcodeBar} h-full`}
-              style={{ width: `${Math.max(1, Math.round(w * eco.barcodeMultiplier))}px` }}
-            />
-          ))}
+      {cfgRotulado?.mostrar_barcode !== false && (
+        <div className={`my-2 p-2 rounded-2xl border ${inkSavingLevel >= 50 ? 'bg-white border-slate-400' : 'bg-cyan-50/70 border-cyan-300'} text-center`}>
+          <div className={`flex justify-center items-center gap-0.5 ${eco.barcodeHeight} mb-1`}>
+            {[4, 2, 6, 2, 8, 3, 2, 5, 2, 7, 3, 2, 4, 6, 2, 5, 3, 8, 2, 4, 3, 6, 2, 4, 2, 7, 2, 3, 5, 2, 4].map((w, i) => (
+              <div
+                key={i}
+                className={`${eco.barcodeBar} h-full`}
+                style={{ width: `${Math.max(1, Math.round(w * eco.barcodeMultiplier))}px` }}
+              />
+            ))}
+          </div>
+          <span className="font-mono text-[11px] tracking-widest font-black text-slate-900">
+            ⭐ #{pedido.codigo_seguimiento} ⭐
+          </span>
         </div>
-        <span className="font-mono text-[11px] tracking-widest font-black text-slate-900">
-          ⭐ #{pedido.codigo_seguimiento} ⭐
-        </span>
-      </div>
+      )}
 
       {/* DESTINO DESTACADO */}
       <div className={`${eco.destinoBox} rounded-2xl mb-2.5 text-center`}>
@@ -202,28 +219,40 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
       </div>
 
       {/* SECCIÓN REMITENTE (ENCOMI ENVÍOS / COMIKIDS) */}
-      <div className={`rounded-xl p-2 mb-2 text-[10.5px] ${eco.sectionBg} space-y-0.5`}>
-        <div className="font-black uppercase text-slate-800 mb-0.5 flex items-center justify-between">
-          <span>REMITENTE OFICIAL:</span>
-          <span className="font-bold text-slate-900">{tallerConfig.nombre_taller || 'Comikids Envíos'}</span>
+      {cfgRotulado?.incluir_remitente !== false && (
+        <div className={`rounded-xl p-2 mb-2 text-[10.5px] ${eco.sectionBg} space-y-0.5`}>
+          <div className="font-black uppercase text-slate-800 mb-0.5 flex items-center justify-between">
+            <span>REMITENTE OFICIAL:</span>
+            {cfgRotulado?.mostrar_remitente_nombre !== false && (
+              <span className="font-bold text-slate-900">{tallerConfig.nombre_taller || 'Comikids Envíos'}</span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-1 text-slate-700">
+            {cfgRotulado?.mostrar_remitente_ruc_dni !== false && (
+              <p><span className="font-bold">DNI/RUC:</span> {tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312'}</p>
+            )}
+            {cfgRotulado?.mostrar_remitente_telefono !== false && (
+              <p><span className="font-bold">Celular:</span> {tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412'}</p>
+            )}
+          </div>
+          {cfgRotulado?.mostrar_remitente_origen !== false && (
+            <p className="text-slate-600 text-[10px]"><span className="font-bold">Origen:</span> {tallerConfig.direccion_taller}</p>
+          )}
         </div>
-        <div className="grid grid-cols-2 gap-1 text-slate-700">
-          <p><span className="font-bold">DNI/RUC:</span> {tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312'}</p>
-          <p><span className="font-bold">Celular:</span> {tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412'}</p>
-        </div>
-        <p className="text-slate-600 text-[10px]"><span className="font-bold">Origen:</span> {tallerConfig.direccion_taller}</p>
-      </div>
+      )}
 
       {/* DETALLES DE PAQUETE */}
-      <div className="border-t border-dashed border-slate-300 pt-1.5 flex items-center justify-between text-[10px] text-slate-600">
-        <div className="flex items-center gap-1 font-bold text-slate-800">
-          <span>📦</span>
-          <span>Paquete de Despacho Seguro</span>
+      {cfgRotulado?.mostrar_fecha_sello !== false && (
+        <div className="border-t border-dashed border-slate-300 pt-1.5 flex items-center justify-between text-[10px] text-slate-600">
+          <div className="flex items-center gap-1 font-bold text-slate-800">
+            <span>📦</span>
+            <span>Paquete de Despacho Seguro</span>
+          </div>
+          <div className="font-bold text-slate-700">
+            Impreso el {formatDate(new Date().toISOString())}
+          </div>
         </div>
-        <div className="font-bold text-slate-700">
-          Impreso el {formatDate(new Date().toISOString())}
-        </div>
-      </div>
+      )}
     </div>
   );
 };

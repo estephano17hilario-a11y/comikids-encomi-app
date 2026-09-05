@@ -366,20 +366,7 @@ export const ComicInventoryApp: React.FC = () => {
 
         {/* Action Buttons in HUD */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Yape Native Voice Status Pill */}
-          <button
-            type="button"
-            onClick={() => yapeReaderService.requestPermission()}
-            className={`px-3 py-1.5 rounded-full border text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              yapeGranted
-                ? 'bg-purple-600/20 border-purple-400/50 text-purple-300 hover:bg-purple-600/30'
-                : 'bg-amber-500/20 border-amber-400/50 text-amber-300 hover:bg-amber-500/30'
-            }`}
-            title="Lector nativo de pagos Yape por voz con WakeLock"
-          >
-            <Volume2 className="w-3.5 h-3.5" />
-            <span>{yapeGranted ? '🔊 Yape Voz Activo' : '⚠️ Activar Permiso Yape'}</span>
-          </button>
+
 
           {!isLiveMode && (
             <button

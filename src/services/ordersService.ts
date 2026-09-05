@@ -107,6 +107,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     nombre: 'Agencia Shalom Nacional',
     descripcion: 'Envíos rápidos a agencias oficiales de todo el Perú',
     icono: 'Package',
+    foto_url: '/Shalom-Courier-Logo.webp',
     tipo_formulario: 'shalom',
     activo: true,
     orden: 1,
@@ -135,7 +136,20 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     ],
     config_rotulado: {
       incluir_campos_personalizados: true,
-      campos_visibles: ['c-shalom-dni']
+      campos_visibles: ['c-shalom-dni'],
+      incluir_remitente: true,
+      mostrar_remitente_nombre: true,
+      mostrar_remitente_ruc_dni: true,
+      mostrar_remitente_telefono: true,
+      mostrar_remitente_origen: true,
+      incluir_destinatario: true,
+      mostrar_cliente_nombre: true,
+      mostrar_cliente_dni: true,
+      mostrar_cliente_telefono: false,
+      mostrar_cliente_destino: true,
+      mostrar_observaciones: true,
+      mostrar_barcode: true,
+      mostrar_fecha_sello: true,
     }
   },
   {
@@ -144,6 +158,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     nombre: 'Motorizado Local Lima',
     descripcion: 'Entrega directa a tu domicilio o trabajo con geolocalización',
     icono: 'Truck',
+    foto_url: '',
     tipo_formulario: 'mapa_direccion',
     activo: true,
     orden: 2,
@@ -192,7 +207,20 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     ],
     config_rotulado: {
       incluir_campos_personalizados: true,
-      campos_visibles: ['c-mot-nombre', 'c-mot-tel', 'c-mot-ref', 'c-mot-tiktok']
+      campos_visibles: ['c-mot-nombre', 'c-mot-tel', 'c-mot-ref', 'c-mot-tiktok'],
+      incluir_remitente: true,
+      mostrar_remitente_nombre: true,
+      mostrar_remitente_ruc_dni: true,
+      mostrar_remitente_telefono: true,
+      mostrar_remitente_origen: true,
+      incluir_destinatario: true,
+      mostrar_cliente_nombre: true,
+      mostrar_cliente_dni: true,
+      mostrar_cliente_telefono: true,
+      mostrar_cliente_destino: true,
+      mostrar_observaciones: true,
+      mostrar_barcode: true,
+      mostrar_fecha_sello: true,
     }
   },
   {
@@ -201,6 +229,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     nombre: 'Olva Courier Nacional',
     descripcion: 'Envíos a domicilio y agencias Olva en todo el Perú',
     icono: 'Truck',
+    foto_url: '/Olva-Courier-Logo.svg',
     tipo_formulario: 'olva',
     activo: true,
     orden: 3,
@@ -239,7 +268,20 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     ],
     config_rotulado: {
       incluir_campos_personalizados: true,
-      campos_visibles: ['c-olva-dni', 'c-olva-tel', 'c-olva-dir']
+      campos_visibles: ['c-olva-dni', 'c-olva-tel', 'c-olva-dir'],
+      incluir_remitente: true,
+      mostrar_remitente_nombre: true,
+      mostrar_remitente_ruc_dni: true,
+      mostrar_remitente_telefono: true,
+      mostrar_remitente_origen: true,
+      incluir_destinatario: true,
+      mostrar_cliente_nombre: true,
+      mostrar_cliente_dni: true,
+      mostrar_cliente_telefono: true,
+      mostrar_cliente_destino: true,
+      mostrar_observaciones: true,
+      mostrar_barcode: true,
+      mostrar_fecha_sello: true,
     }
   },
 ];
@@ -264,6 +306,8 @@ export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   dias_despacho_activos: ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'],
   despacho_domingo_habilitado: false,
   mensaje_corte_personalizado: '',
+  logo_url: '/Comikids.png',
+  tema_fondo: 'vision-obsidian',
 };
 
 

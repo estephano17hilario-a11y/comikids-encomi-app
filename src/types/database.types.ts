@@ -25,6 +25,7 @@ export interface EmpresaConfig {
   shalom_modo: 'api' | 'excel'; // 'api' (automático Pro) o 'excel' (solo exportar/cargar Excel)
   vps_whatsapp_entregado: boolean; // Enviar "entregado" mediante un click en el sistema de vps de whatsapp
   secciones_activas: EmpresaSeccionesActivas;
+  desactivar_yape?: boolean; // Desactivar interfaz y métricas de Yape para cuentas de empresa
   
   // Credenciales técnicas exclusivas que solo Matrix puede configurar
   shalom_email?: string;
@@ -42,6 +43,8 @@ export interface EmpresaAccount {
   activo: boolean;
   telefono_contacto?: string;
   sub_instance?: string;
+  logo_url?: string;
+  tema_fondo?: string;
   created_at: string;
   ultimo_acceso?: string;
   total_ingresos: number;
@@ -91,6 +94,7 @@ export interface MetodoEnvio {
   nombre: string;
   descripcion: string;
   icono: string;
+  foto_url?: string; // Logo / Foto de la agencia (preset o personalizada)
   tipo_formulario: TipoFormularioEnvio | 'personalizado';
   activo: boolean;
   orden: number;
@@ -98,8 +102,27 @@ export interface MetodoEnvio {
   campos_personalizados?: CampoPersonalizadoAgencia[];
   mensaje_comprobacion?: string; // Plantilla editable por agencia sin el pie de Encomi
   config_rotulado?: {
-    incluir_campos_personalizados: boolean;
-    campos_visibles?: string[]; // IDs de los campos que irán en el rótulo
+    incluir_campos_personalizados?: boolean;
+    campos_visibles?: string[]; // IDs de los campos personalizados que irán en el rótulo
+    
+    // Bloque Remitente (Quien envía)
+    incluir_remitente?: boolean;
+    mostrar_remitente_nombre?: boolean;
+    mostrar_remitente_ruc_dni?: boolean;
+    mostrar_remitente_telefono?: boolean;
+    mostrar_remitente_origen?: boolean;
+    
+    // Bloque Destinatario (Quien recibe)
+    incluir_destinatario?: boolean;
+    mostrar_cliente_nombre?: boolean;
+    mostrar_cliente_dni?: boolean;
+    mostrar_cliente_telefono?: boolean;
+    mostrar_cliente_destino?: boolean;
+    mostrar_observaciones?: boolean;
+    
+    // Extras de Rótulo
+    mostrar_barcode?: boolean;
+    mostrar_fecha_sello?: boolean;
   };
 }
 
@@ -169,6 +192,8 @@ export interface TallerConfig {
   despacho_domingo_habilitado?: boolean;
   mensaje_corte_personalizado?: string;
   horarios_por_dia?: Record<string, HorarioDiaDespacho>;
+  logo_url?: string; // Foto de perfil / Logo oficial de la empresa
+  tema_fondo?: string; // ID del tema futurista seleccionado
 }
 
 

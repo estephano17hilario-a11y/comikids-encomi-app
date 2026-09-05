@@ -11,6 +11,12 @@ import {
   formatFriendlyDate,
   DIAS_SEMANA_NOMBRES
 } from '../../utils/shippingCutoff';
+import {
+  FUTURISTIC_THEMES,
+  THEME_CATEGORIES,
+  applyFuturisticTheme,
+  getThemeById
+} from '../../data/futuristicThemes';
 
 import {
   Users,
@@ -30,7 +36,10 @@ import {
   CheckCircle2,
   Sparkles,
   Award,
-  Sliders
+  Sliders,
+  Image as ImageIcon,
+  Upload,
+  Palette
 } from 'lucide-react';
 
 const DIAS_SEMANA_ORDEN: HorarioDiaDespacho['dia'][] = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
@@ -112,6 +121,57 @@ export const CompanyAccountSettings: React.FC = () => {
   const [colabRol, setColabRol] = useState<Colaborador['rol']>('embalaje');
   const [colabTelefono, setColabTelefono] = useState('');
   const [colabEmail, setColabEmail] = useState('');
+
+  // 7. Estado de Foto de Perfil / Logo Oficial de la Empresa
+  const [companyLogoUrl, setCompanyLogoUrl] = useState(currentEmpresa?.logo_url || tallerConfig.logo_url || '/Comikids.png');
+  const [logoSuccessMsg, setLogoSuccessMsg] = useState('');
+  const logoFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // 8. Estado de Temas Futuristas Categorizados
+  const [currentThemeId, setCurrentThemeId] = useState<string>(() => {
+    return currentEmpresa?.tema_fondo || tallerConfig.tema_fondo || (typeof localStorage !== 'undefined' ? localStorage.getItem('incomi_futuristic_theme') : '') || 'vision-obsidian';
+  });
+  const [selectedThemeCategory, setSelectedThemeCategory] = useState<string>('all');
+  const [themeSuccessMsg, setThemeSuccessMsg] = useState('');
+
+  const handleSaveLogo = (newUrl: string) => {
+    const trimmed = newUrl.trim();
+    setCompanyLogoUrl(trimmed);
+    updateTallerConfig({ logo_url: trimmed });
+    if (currentEmpresa) {
+      currentEmpresa.logo_url = trimmed;
+    }
+    setLogoSuccessMsg('¡Foto de perfil / logo oficial actualizado con éxito!');
+    setTimeout(() => setLogoSuccessMsg(''), 4000);
+  };
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('La imagen no debe superar los 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      handleSaveLogo(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSelectTheme = (themeId: string) => {
+    setCurrentThemeId(themeId);
+    applyFuturisticTheme(themeId);
+    updateTallerConfig({ tema_fondo: themeId });
+    if (currentEmpresa) {
+      currentEmpresa.tema_fondo = themeId;
+    }
+    setThemeSuccessMsg('¡Tema futurista aplicado en tiempo real!');
+    setTimeout(() => setThemeSuccessMsg(''), 3500);
+  };
 
   const deliveredCount = pedidos.filter(p => p.estado_envio === 'entregado').length;
 
@@ -198,8 +258,17 @@ export const CompanyAccountSettings: React.FC = () => {
       {/* Header Perfil de la Empresa */}
       <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/15 backdrop-blur-2xl shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-3xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-3xl shadow-xl shadow-cyan-500/25">
-            🏢
+          <div className="w-16 h-16 rounded-3xl bg-slate-900 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-xl shadow-cyan-500/25 shrink-0">
+            {companyLogoUrl ? (
+              <img
+                src={companyLogoUrl}
+                alt={companyName}
+                className="w-full h-full object-contain p-1.5"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+              />
+            ) : (
+              <span className="text-3xl">🏢</span>
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2.5">
@@ -287,7 +356,233 @@ export const CompanyAccountSettings: React.FC = () => {
       {activeSubTab === 'ajustes' && (
         <div className="space-y-6 animate-fadeIn">
           
-          {/* 1. LINK OFICIAL PARA CLIENTES */}
+          {/* ALERTA DE ÉXITO GENERAL */}
+          {logoSuccessMsg && (
+            <div className="p-3.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{logoSuccessMsg}</span>
+            </div>
+          )}
+          {themeSuccessMsg && (
+            <div className="p-3.5 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span>{themeSuccessMsg}</span>
+            </div>
+          )}
+
+          {/* 1. FOTO DE PERFIL Y LOGO OFICIAL DE LA EMPRESA */}
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-pink-500/30 bg-pink-950/15 backdrop-blur-2xl space-y-5 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold text-xl shrink-0">
+                  <ImageIcon className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <span>Foto de Perfil y Logo Oficial de la Empresa</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                      Branding en Link
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Aparecerá en la esquina superior derecha del link personalizado de tus clientes y en tus rótulos de despacho.
+                  </p>
+                </div>
+              </div>
+
+              {/* Previsualización en vivo cómo lo ve el cliente */}
+              <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-slate-950/80 border border-pink-500/30 shadow-inner shrink-0">
+                <span className="text-[10px] text-slate-400 font-bold uppercase pl-2">Vista cliente:</span>
+                <span className="px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-pink-500/25 via-purple-500/25 to-cyan-500/25 text-pink-200 border border-pink-400/40 flex items-center gap-2 shadow-md">
+                  <img
+                    src={companyLogoUrl || '/Comikids.png'}
+                    alt={companyName}
+                    className="w-5 h-5 object-contain rounded"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+                  />
+                  <span>{companyName}</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Presets rápidos */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 mb-1.5">
+                Logos y emblemas recomendados:
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { label: 'ComiKids Oficial', url: '/Comikids.png' },
+                  { label: 'Encomi Express', url: 'https://cdn-icons-png.flaticon.com/512/2830/2830305.png' },
+                  { label: 'Emblema Dorado VIP', url: 'https://cdn-icons-png.flaticon.com/512/1040/1040230.png' },
+                  { label: 'Taller Confección', url: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png' },
+                  { label: 'Boutique Kids', url: 'https://cdn-icons-png.flaticon.com/512/10008/10008778.png' },
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => handleSaveLogo(preset.url)}
+                    className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                      companyLogoUrl === preset.url
+                        ? 'bg-pink-500/20 border-pink-400 text-pink-200 shadow-md'
+                        : 'bg-slate-900 border-white/10 text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <img src={preset.url} alt={preset.label} className="w-4 h-4 object-contain rounded" />
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Subir imagen propia o URL */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  Subir logo desde tu dispositivo:
+                </label>
+                <input
+                  type="file"
+                  ref={logoFileInputRef}
+                  accept="image/*"
+                  onChange={handleLogoFileUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => logoFileInputRef.current?.click()}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-900 border border-white/10 hover:border-pink-400 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 text-pink-400" />
+                  <span>Subir Foto de Perfil o Logo</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  O pegar enlace directo URL del logo:
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={companyLogoUrl}
+                    onChange={e => setCompanyLogoUrl(e.target.value)}
+                    placeholder="https://ejemplo.com/mi-logo.png"
+                    className="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-pink-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveLogo(companyLogoUrl)}
+                    className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer shrink-0"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. CATÁLOGO DE TEMAS DE FONDO FUTURISTAS (CATEGORIZADOS) */}
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-purple-500/30 bg-purple-950/15 backdrop-blur-2xl space-y-5 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xl shrink-0">
+                  <Palette className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <span>Temas de Fondo Futuristas para tu Empresa</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      En Vivo 60 FPS
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Elige el estilo visual moderno que más te guste. Se aplica inmediatamente a toda la aplicación.
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-xs font-bold text-purple-300 bg-purple-500/10 border border-purple-500/30 px-3 py-1.5 rounded-xl self-start sm:self-auto">
+                Tema Actual: <strong className="text-white">{getThemeById(currentThemeId).name}</strong>
+              </span>
+            </div>
+
+            {/* Filtro por Categorías */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              {THEME_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedThemeCategory(cat.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+                    selectedThemeCategory === cat.id
+                      ? 'bg-purple-600 text-white shadow-md font-black shadow-purple-950/50'
+                      : 'bg-slate-900 border border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Grid de Temas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+              {FUTURISTIC_THEMES
+                .filter(t => selectedThemeCategory === 'all' || t.category === selectedThemeCategory)
+                .map((theme) => {
+                  const isSelected = currentThemeId === theme.id;
+                  return (
+                    <div
+                      key={theme.id}
+                      onClick={() => handleSelectTheme(theme.id)}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 relative group overflow-hidden ${
+                        isSelected
+                          ? 'bg-slate-900 border-2 border-purple-400 shadow-xl shadow-purple-950/60 scale-[1.02]'
+                          : 'bg-slate-950/80 border-white/10 hover:border-white/20 hover:bg-slate-900/60'
+                      }`}
+                    >
+                      {/* Preview Swatch */}
+                      <div
+                        className="h-16 rounded-xl border border-white/10 relative overflow-hidden flex items-center justify-center shadow-inner"
+                        style={{ background: theme.previewGradient }}
+                      >
+                        {isSelected && (
+                          <span className="px-2.5 py-1 rounded-full bg-slate-950/90 text-purple-300 border border-purple-400 font-black text-[10px] uppercase flex items-center gap-1 shadow-lg">
+                            <Check className="w-3 h-3 text-purple-400" />
+                            <span>Tema Activo</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <h4 className="font-black text-white text-xs leading-tight group-hover:text-purple-300 transition-colors">
+                            {theme.name}
+                          </h4>
+                          {theme.badge && (
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
+                              {theme.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">
+                          {theme.description}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[9px] text-slate-500 font-mono">
+                        <span>{theme.categoryLabel}</span>
+                        <span className={`font-bold ${isSelected ? 'text-purple-400 font-sans' : 'text-slate-400 font-sans'}`}>
+                          {isSelected ? '✓ Aplicado' : 'Toca para aplicar'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* 3. LINK OFICIAL PARA CLIENTES */}
           <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-cyan-500/30 bg-cyan-950/20 backdrop-blur-2xl space-y-4 shadow-xl">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">

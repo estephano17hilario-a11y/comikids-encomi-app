@@ -230,9 +230,11 @@
   }
 }
 
-/* Ocultar docks flotantes cuando haya un modal activo */
+/* Ocultar docks flotantes cuando haya un modal activo o se esté editando/creando agencias */
 body.has-active-modal .admin-floating-dock,
-body.has-active-modal .admin-mass-action-bar {
+body.has-active-modal .admin-mass-action-bar,
+body.hide-admin-dock .admin-floating-dock,
+body.hide-admin-dock .admin-mass-action-bar {
   display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;

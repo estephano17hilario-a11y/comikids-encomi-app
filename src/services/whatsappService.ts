@@ -105,13 +105,34 @@ export const buildWhatsAppComprobanteMessage = (datos: DatosComprobante): string
       .replace(/{codigo}/gi, codigo)
       .replace(/{fecha}/gi, fechaFormateada)
       .replace(/{correo}/gi, datos.correoCliente || '')
+      .replace(/{referencia}/gi, datos.referencia || '')
       .replace(/{campos_adicionales}/gi, lineasCamposExtra.trim());
 
-    if (!datos.plantillaMensajeAgencia.includes('{campos_adicionales}') && lineasCamposExtra) {
-      customBody += `\n${lineasCamposExtra}`;
+    // Reemplazo automático de variables de campos personalizados dinámicos: {Nombre del campo}
+    const camposYaInsertados = new Set<string>();
+    if (datos.camposPersonalizados) {
+      Object.entries(datos.camposPersonalizados).forEach(([rawKey, val]) => {
+        const strVal = val !== undefined && val !== null ? String(val).trim() : '';
+        const escapedKey = rawKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const tokenRegex = new RegExp(`\\{${escapedKey}\\}`, 'gi');
+        if (tokenRegex.test(customBody)) {
+          customBody = customBody.replace(tokenRegex, strVal);
+          camposYaInsertados.add(rawKey);
+        }
+      });
     }
 
-    return `${customBody.trim()}\n\n${bloqueEncomi}`;
+    // Si hay campos que el usuario no colocó manualmente en el texto con llaves, se agregan limpiamente
+    let camposFaltantesTexto = '';
+    if (datos.camposPersonalizados) {
+      const faltantes = Object.entries(datos.camposPersonalizados)
+        .filter(([k, v]) => !camposYaInsertados.has(k) && v !== undefined && v !== null && String(v).trim() !== '');
+      if (faltantes.length > 0 && !datos.plantillaMensajeAgencia.includes('{campos_adicionales}')) {
+        camposFaltantesTexto = '\n' + faltantes.map(([k, v]) => `📌 *${k}:* ${v}`).join('\n');
+      }
+    }
+
+    return `${customBody.trim()}${camposFaltantesTexto}\n\n${bloqueEncomi}`;
   }
 
   // Plantilla estándar oficial

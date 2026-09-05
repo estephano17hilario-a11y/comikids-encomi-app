@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const ClientPortal: React.FC = () => {
-  const { pedidos } = useOrders();
+  const { pedidos, tallerConfig } = useOrders();
   const { currentUser } = useAuth();
   const [activeSection, setActiveSection] = useState<ClientSection>('crear_pedido');
 
@@ -73,9 +73,14 @@ export const ClientPortal: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="px-4 py-2 rounded-2xl text-sm sm:text-base font-black bg-linear-to-r from-pink-500/30 via-purple-500/30 to-cyan-500/30 text-pink-200 border-2 border-pink-400/50 flex items-center gap-2 shadow-xl shadow-pink-500/25 tracking-wide">
-                <img src="/Comikids.png" alt="ComiKids" className="w-6 h-6 object-contain" />
-                <span>ComiKids</span>
+              <span className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-2xl text-xs sm:text-sm font-black bg-gradient-to-r from-pink-500/25 via-purple-500/25 to-cyan-500/25 text-pink-200 border-2 border-pink-400/50 flex items-center gap-2 shadow-xl shadow-pink-500/25 tracking-wide">
+                <img
+                  src={tallerConfig?.logo_url || '/Comikids.png'}
+                  alt={tallerConfig?.nombre_taller || 'Empresa'}
+                  className="w-5 h-5 sm:w-6 sm:h-6 object-contain rounded"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+                />
+                <span className="truncate max-w-[150px] sm:max-w-xs">{tallerConfig?.nombre_taller || 'ComiKids'}</span>
               </span>
             </div>
           </div>

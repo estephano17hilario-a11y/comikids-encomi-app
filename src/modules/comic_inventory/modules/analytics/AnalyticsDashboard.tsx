@@ -164,39 +164,7 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history,
 
   return (
     <div className="space-y-4 animate-fadeIn text-left">
-      {/* Metric Mode Subtabs */}
-      <div className="flex p-1 bg-slate-900 rounded-2xl border border-white/10">
-        <button
-          type="button"
-          onClick={() => setMetricTab('prendas')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            metricTab === 'prendas'
-              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 scale-[1.02]'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          <ShoppingBag className="w-4 h-4" />
-          <span>Ventas de Prendas</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setMetricTab('yape')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-            metricTab === 'yape'
-              ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-md shadow-pink-600/30 scale-[1.02]'
-              : 'text-purple-300 hover:text-white'
-          }`}
-        >
-          <Smartphone className="w-4 h-4" />
-          <span>Inteligencia Yape 📱</span>
-        </button>
-      </div>
-
-      {metricTab === 'yape' ? (
-        <YapesAnalyticsView />
-      ) : (
-        <div className="space-y-4 animate-fadeIn">
+      <div className="space-y-4 animate-fadeIn">
           {/* ─── Period Selector ─── */}
           <div className="bg-slate-900/80 rounded-2xl border border-white/10 overflow-hidden">
             {/* Pill selector */}
@@ -337,7 +305,6 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ history,
             </div>
           </div>
         </div>
-      )}
-    </div>
+      </div>
   );
 };

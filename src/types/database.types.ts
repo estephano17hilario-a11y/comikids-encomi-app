@@ -11,6 +11,29 @@ export interface AccesoHistorialItem {
   exitoso: boolean;
 }
 
+export interface EmpresaSeccionesActivas {
+  pedidos: boolean;
+  agendas: boolean;
+  estadisticas: boolean;
+  inventario: boolean;
+  encomi_ai: boolean;
+  hitos: boolean;
+  ajustes: boolean;
+}
+
+export interface EmpresaConfig {
+  shalom_modo: 'api' | 'excel'; // 'api' (automático Pro) o 'excel' (solo exportar/cargar Excel)
+  vps_whatsapp_entregado: boolean; // Enviar "entregado" mediante un click en el sistema de vps de whatsapp
+  secciones_activas: EmpresaSeccionesActivas;
+  
+  // Credenciales técnicas exclusivas que solo Matrix puede configurar
+  shalom_email?: string;
+  shalom_password?: string;
+  vps_server_url?: string;
+  vps_instance_name?: string;
+  vps_api_key?: string;
+}
+
 export interface EmpresaAccount {
   id: string;
   nombre: string;
@@ -23,6 +46,7 @@ export interface EmpresaAccount {
   ultimo_acceso?: string;
   total_ingresos: number;
   historial_accesos: AccesoHistorialItem[];
+  config?: EmpresaConfig;
 }
 
 export interface Usuario {

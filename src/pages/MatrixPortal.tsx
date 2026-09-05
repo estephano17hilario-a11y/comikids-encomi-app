@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ordersService } from '../services/ordersService';
-import { EmpresaAccount } from '../types/database.types';
+import { EmpresaAccount, EmpresaConfig, EmpresaSeccionesActivas } from '../types/database.types';
 import {
   ShieldCheck,
   Building2,
@@ -21,7 +21,16 @@ import {
   Check,
   Smartphone,
   X,
-  RefreshCw
+  RefreshCw,
+  FileSpreadsheet,
+  Sliders,
+  Settings,
+  Send,
+  Layers,
+  Trophy,
+  Sparkles,
+  Package,
+  CheckSquare
 } from 'lucide-react';
 
 export const MatrixPortal: React.FC = () => {
@@ -35,6 +44,24 @@ export const MatrixPortal: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingEmpresa, setEditingEmpresa] = useState<EmpresaAccount | null>(null);
   const [auditEmpresa, setAuditEmpresa] = useState<EmpresaAccount | null>(null);
+
+  // Modal de Configuración de Funciones y Secciones
+  const [configEmpresa, setConfigEmpresa] = useState<EmpresaAccount | null>(null);
+  const [cfgShalomModo, setCfgShalomModo] = useState<'api' | 'excel'>('api');
+  const [cfgVpsEntregado, setCfgVpsEntregado] = useState(true);
+  const [cfgSecciones, setCfgSecciones] = useState<EmpresaSeccionesActivas>({
+    pedidos: true,
+    agendas: true,
+    estadisticas: true,
+    inventario: true,
+    encomi_ai: true,
+    hitos: true,
+    ajustes: true,
+  });
+  const [cfgShalomEmail, setCfgShalomEmail] = useState('');
+  const [cfgShalomPassword, setCfgShalomPassword] = useState('');
+  const [cfgVpsSubInstance, setCfgVpsSubInstance] = useState('');
+  const [cfgSuccessMsg, setCfgSuccessMsg] = useState('');
 
   // Formulario
   const [formNombre, setFormNombre] = useState('');
@@ -112,6 +139,62 @@ export const MatrixPortal: React.FC = () => {
     } catch (err: any) {
       setFormError(err.message || 'Error al guardar la empresa');
     }
+  };
+
+  const openConfigModal = (emp: EmpresaAccount) => {
+    setConfigEmpresa(emp);
+    const cfg = emp.config || {
+      shalom_modo: 'api',
+      vps_whatsapp_entregado: true,
+      secciones_activas: {
+        pedidos: true,
+        agendas: true,
+        estadisticas: true,
+        inventario: true,
+        encomi_ai: true,
+        hitos: true,
+        ajustes: true,
+      },
+      shalom_email: 'milagrosjanetamis@gmail.com',
+      shalom_password: '',
+      vps_instance_name: emp.sub_instance || '',
+    };
+    setCfgShalomModo(cfg.shalom_modo || 'api');
+    setCfgVpsEntregado(cfg.vps_whatsapp_entregado !== false);
+    setCfgSecciones(cfg.secciones_activas || {
+      pedidos: true,
+      agendas: true,
+      estadisticas: true,
+      inventario: true,
+      encomi_ai: true,
+      hitos: true,
+      ajustes: true,
+    });
+    setCfgShalomEmail(cfg.shalom_email || '');
+    setCfgShalomPassword(cfg.shalom_password || '');
+    setCfgVpsSubInstance(cfg.vps_instance_name || emp.sub_instance || '');
+    setCfgSuccessMsg('');
+  };
+
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!configEmpresa) return;
+
+    ordersService.updateEmpresaConfig(configEmpresa.id, {
+      shalom_modo: cfgShalomModo,
+      vps_whatsapp_entregado: cfgVpsEntregado,
+      secciones_activas: cfgSecciones,
+      shalom_email: cfgShalomEmail.trim() || undefined,
+      shalom_password: cfgShalomPassword.trim() || undefined,
+      vps_instance_name: cfgVpsSubInstance.trim() || undefined,
+    });
+
+    setCfgSuccessMsg('¡Configuración de funciones guardada con éxito!');
+    loadEmpresas();
+    setTimeout(() => {
+      setCfgSuccessMsg('');
+      setConfigEmpresa(null);
+    }, 1100);
   };
 
   const handleDeleteEmpresa = (emp: EmpresaAccount) => {
@@ -313,6 +396,11 @@ export const MatrixPortal: React.FC = () => {
             const isPasswordVisible = Boolean(visiblePasswords[emp.id]);
             const lastAccess = emp.ultimo_acceso;
             const historyCount = emp.historial_accesos?.length || 0;
+            const isExcelMode = emp.config?.shalom_modo === 'excel';
+            const isVpsOn = emp.config?.vps_whatsapp_entregado !== false;
+            const activeSecCount = emp.config?.secciones_activas
+              ? Object.values(emp.config.secciones_activas).filter(Boolean).length
+              : 7;
 
             return (
               <div
@@ -359,6 +447,31 @@ export const MatrixPortal: React.FC = () => {
                   >
                     {emp.activo ? 'Desactivar' : 'Activar'}
                   </button>
+                </div>
+
+                {/* Badges de Configuración y Funciones Activas */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black border ${
+                    isExcelMode 
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' 
+                      : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  }`}>
+                    {isExcelMode ? <FileSpreadsheet className="w-3 h-3" /> : <Send className="w-3 h-3" />}
+                    <span>{isExcelMode ? 'Solo EXCEL' : 'API Shalom'}</span>
+                  </span>
+
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black border ${
+                    isVpsOn
+                      ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}>
+                    <span>{isVpsOn ? '✓ VPS 1-Clic' : '✕ Sin VPS'}</span>
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black bg-purple-500/15 text-purple-300 border border-purple-500/30 ml-auto">
+                    <Layers className="w-3 h-3" />
+                    <span>{activeSecCount}/7 Módulos</span>
+                  </span>
                 </div>
 
                 {/* Credenciales de Acceso */}
@@ -445,6 +558,15 @@ export const MatrixPortal: React.FC = () => {
                     title={`Abrir panel operativo de ${emp.nombre}`}
                   >
                     <span>⚡ Entrar a esta Empresa</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openConfigModal(emp)}
+                    className="p-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors cursor-pointer"
+                    title="Configurar funciones, modo Shalom y módulos activos"
+                  >
+                    <Sliders className="w-4 h-4" />
                   </button>
 
                   <button
@@ -682,6 +804,281 @@ export const MatrixPortal: React.FC = () => {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURACIÓN DE FUNCIONES POR EMPRESA */}
+      {configEmpresa && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-2xl rounded-3xl bg-slate-900 border border-amber-500/40 p-6 sm:p-7 shadow-2xl shadow-amber-950/40 space-y-5 max-h-[92vh] flex flex-col">
+            
+            {/* Header Modal */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <span>Configuración de Funciones & Módulos</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Empresa: <strong className="text-amber-300 font-bold">{configEmpresa.nombre}</strong> ({configEmpresa.numero_entrada})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfigEmpresa(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body Scrollable */}
+            <form onSubmit={handleSaveConfig} className="flex-1 overflow-y-auto space-y-5 pr-1 text-xs">
+              
+              {/* SECCIÓN 1: MODO SHALOM (API vs SOLO EXCEL) */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Send className="w-4 h-4 text-emerald-400" />
+                    <span>Modo de Envío Shalom</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">Control de Integración</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Opción 1: API */}
+                  <div
+                    onClick={() => setCfgShalomModo('api')}
+                    className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                      cfgShalomModo === 'api'
+                        ? 'bg-emerald-950/30 border-emerald-500 shadow-lg shadow-emerald-950/30'
+                        : 'bg-slate-900 border-white/5 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-emerald-400 font-black text-sm">
+                        <span>⚡ Enviar por API Shalom</span>
+                      </div>
+                      <input
+                        type="radio"
+                        name="shalom_modo"
+                        checked={cfgShalomModo === 'api'}
+                        onChange={() => setCfgShalomModo('api')}
+                        className="w-4 h-4 text-emerald-500 cursor-pointer"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
+                      Permite registro directo en Shalom con 1 solo clic en 3-4 segundos mediante token oficial.
+                    </p>
+                  </div>
+
+                  {/* Opción 2: Solo EXCEL */}
+                  <div
+                    onClick={() => setCfgShalomModo('excel')}
+                    className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                      cfgShalomModo === 'excel'
+                        ? 'bg-amber-950/30 border-amber-500 shadow-lg shadow-amber-950/30'
+                        : 'bg-slate-900 border-white/5 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-amber-400 font-black text-sm">
+                        <FileSpreadsheet className="w-4 h-4" />
+                        <span>Solo EXCEL</span>
+                      </div>
+                      <input
+                        type="radio"
+                        name="shalom_modo"
+                        checked={cfgShalomModo === 'excel'}
+                        onChange={() => setCfgShalomModo('excel')}
+                        className="w-4 h-4 text-amber-500 cursor-pointer"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
+                      Desactiva llamadas API para esta empresa y le entrega la plantilla Excel oficial lista para ventanilla.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECCIÓN 2: VPS WHATSAPP ENTREGADO */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-cyan-400" />
+                    <span>Envío de "Entregado" por VPS de WhatsApp</span>
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    cfgVpsEntregado ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {cfgVpsEntregado ? 'Activado' : 'Desactivado'}
+                  </span>
+                </div>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={cfgVpsEntregado}
+                    onChange={e => setCfgVpsEntregado(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-500 mt-0.5 cursor-pointer"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-white text-xs block">
+                      Permitir enviar "Entregado" con 1 clic mediante el VPS de WhatsApp
+                    </span>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Al marcar un paquete como "Entregado" en ventanilla/reparto, el sistema despacha el mensaje y comprobante automático al WhatsApp de la clienta a través del VPS configurado.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* SECCIÓN 3: SECCIONES Y MÓDULOS ACTIVOS */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-purple-400" />
+                    <span>Módulos y Secciones Visibles para la Empresa</span>
+                  </span>
+                  <span className="text-[10px] text-purple-300 font-bold">
+                    {Object.values(cfgSecciones).filter(Boolean).length} de 7 activas
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Controla qué pestañas aparecen en la barra de navegación del panel de esta empresa:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    { key: 'pedidos', label: 'Pedidos / Envíos', icon: Package, desc: 'Gestión de paquetes y guías' },
+                    { key: 'agendas', label: 'Agendas & Entregas', icon: CheckSquare, desc: 'Calendario y programación' },
+                    { key: 'estadisticas', label: 'Estadísticas & Ventas', icon: Sliders, desc: 'Gráficas de volumen y ventas' },
+                    { key: 'inventario', label: 'Inventario / Almacén', icon: Layers, desc: 'Control de stock y prendas' },
+                    { key: 'hitos', label: 'Hitos 🏆', icon: Trophy, desc: 'Metas y logros de despachos' },
+                    { key: 'ajustes', label: 'Ajustes de Empresa ⚙️', icon: Settings, desc: 'Links, remitente, horarios y taller' },
+                    { key: 'encomi_ai', label: 'Encomi AI Asistente', icon: Sparkles, desc: 'Copiloto inteligente' },
+                  ].map(sec => {
+                    const IconComp = sec.icon;
+                    const isChecked = cfgSecciones[sec.key as keyof EmpresaSeccionesActivas] !== false;
+
+                    return (
+                      <label
+                        key={sec.key}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition-all ${
+                          isChecked
+                            ? 'bg-purple-950/20 border-purple-500/30 text-white'
+                            : 'bg-slate-900 border-white/5 text-slate-400 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <IconComp className={`w-4 h-4 ${isChecked ? 'text-purple-400' : 'text-slate-500'}`} />
+                          <div>
+                            <span className="font-bold text-xs block">{sec.label}</span>
+                            <span className="text-[10px] text-slate-400 block">{sec.desc}</span>
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            setCfgSecciones(prev => ({
+                              ...prev,
+                              [sec.key]: e.target.checked,
+                            }));
+                          }}
+                          className="w-4 h-4 rounded text-purple-500 cursor-pointer"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SECCIÓN 4: CREDENCIALES EXCLUSIVAS MATRIX */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                    <span>Infraestructura Exclusiva Matrix</span>
+                  </span>
+                  <span className="text-[9px] font-black uppercase text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                    Solo Matrix
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Estos parámetros técnicos solo pueden ser gestionados desde Matrix y nunca se muestran a la empresa:
+                </p>
+
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                      Email Remitente Shalom (API Oficial)
+                    </label>
+                    <input
+                      type="email"
+                      value={cfgShalomEmail}
+                      onChange={e => setCfgShalomEmail(e.target.value)}
+                      placeholder="milagrosjanetamis@gmail.com"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                      Contraseña / Token API Shalom
+                    </label>
+                    <input
+                      type="password"
+                      value={cfgShalomPassword}
+                      onChange={e => setCfgShalomPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                      Instancia VPS WhatsApp
+                    </label>
+                    <input
+                      type="text"
+                      value={cfgVpsSubInstance}
+                      onChange={e => setCfgVpsSubInstance(e.target.value)}
+                      placeholder="comikids-main o nombre de sub-instancia"
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {cfgSuccessMsg && (
+                <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{cfgSuccessMsg}</span>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2 border-t border-white/10 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setConfigEmpresa(null)}
+                  className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-950/50 cursor-pointer"
+                >
+                  Guardar Configuración
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

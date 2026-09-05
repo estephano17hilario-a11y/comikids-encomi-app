@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Usuario, UserRole, EmpresaAccount } from '../types/database.types';
-import { ordersService } from '../services/ordersService';
+import { Usuario, UserRole, EmpresaAccount, EmpresaConfig } from '../types/database.types';
+import { ordersService, DEFAULT_EMPRESA_CONFIG } from '../services/ordersService';
 import confetti from 'canvas-confetti';
 
 interface AuthContextType {
@@ -8,6 +8,9 @@ interface AuthContextType {
   role: UserRole | null;
   isAuthenticated: boolean;
   impersonatedEmpresa: EmpresaAccount | null;
+  currentEmpresa: EmpresaAccount | null;
+  empresaConfig: EmpresaConfig;
+  updateCurrentEmpresaConfig: (updates: Partial<EmpresaConfig>) => void;
   impersonateEmpresa: (empresa: EmpresaAccount) => void;
   stopImpersonation: () => void;
   isMatrixMaster: boolean;
@@ -65,6 +68,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const effectiveRole: UserRole | null = impersonatedEmpresa
     ? 'empresa'
     : (currentUser?.rol || null);
+
+  // Determinar la empresa activa (modo impersonación o login de empresa)
+  const currentEmpresa: EmpresaAccount | null = impersonatedEmpresa || (
+    effectiveRole === 'empresa' && currentUser
+      ? (ordersService.getEmpresaById(currentUser.id) || ordersService.getEmpresaByNumero(currentUser.dni) || ordersService.getEmpresas()[0] || null)
+      : null
+  );
+
+  const empresaConfig: EmpresaConfig = currentEmpresa?.config || ordersService.getEmpresas()[0]?.config || DEFAULT_EMPRESA_CONFIG;
+
+  const updateCurrentEmpresaConfig = (updates: Partial<EmpresaConfig>) => {
+    if (!currentEmpresa) return;
+    const updated = ordersService.updateEmpresaConfig(currentEmpresa.id, updates);
+    if (updated && impersonatedEmpresa) {
+      setImpersonatedEmpresa(updated);
+      localStorage.setItem(IMPERSONATE_STORAGE_KEY, JSON.stringify(updated));
+    }
+  };
 
   useEffect(() => {
     if (currentUser) {
@@ -179,6 +200,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         role: effectiveRole,
         isAuthenticated: Boolean(currentUser),
         impersonatedEmpresa,
+        currentEmpresa,
+        empresaConfig,
+        updateCurrentEmpresaConfig,
         impersonateEmpresa,
         stopImpersonation,
         isMatrixMaster,

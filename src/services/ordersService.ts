@@ -11,7 +11,9 @@ import {
   MotorizadoDistrictConfig,
   ShalomAgency,
   EmpresaAccount,
-  AccesoHistorialItem
+  AccesoHistorialItem,
+  EmpresaConfig,
+  EmpresaSeccionesActivas
 } from '../types/database.types';
 import { getRandomAvatar } from '../data/avatarsData';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
@@ -30,6 +32,24 @@ export const STORAGE_KEYS = {
   CUSTOM_SHALOM_AGENCIES: 'incomi_custom_shalom_v2',
   MOTORIZADO_CONFIG: 'incomi_motorizado_districts_v2',
   EMPRESAS: 'incomi_empresas_accounts_v1',
+};
+
+export const DEFAULT_EMPRESA_CONFIG: EmpresaConfig = {
+  shalom_modo: 'api',
+  vps_whatsapp_entregado: true,
+  secciones_activas: {
+    pedidos: true,
+    agendas: true,
+    estadisticas: true,
+    inventario: true,
+    encomi_ai: true,
+    hitos: true,
+    ajustes: true,
+  },
+  shalom_email: 'milagrosjanetamis@gmail.com',
+  shalom_password: '986398Mi$',
+  vps_server_url: '',
+  vps_instance_name: 'tenant_Comikids',
 };
 
 export const MATRIX_MASTER_USER: Usuario = {
@@ -62,7 +82,8 @@ export const DEFAULT_EMPRESA_ACCOUNT: EmpresaAccount = {
       userAgent: 'Sistema Inicial ComiKids',
       exitoso: true
     }
-  ]
+  ],
+  config: { ...DEFAULT_EMPRESA_CONFIG }
 };
 
 export const DEFAULT_EMPRESA_USER: Usuario = {
@@ -238,16 +259,27 @@ class OrdersService {
       return initial;
     }
     try {
-      const parsed = JSON.parse(raw);
+      let parsed = JSON.parse(raw);
       if (!Array.isArray(parsed) || parsed.length === 0) {
         return [DEFAULT_EMPRESA_ACCOUNT];
       }
       // Garantizar que la cuenta histórica de ComiKids siempre esté presente
       if (!parsed.some((e: any) => e.id === 'empresa-master-comikids' || e.numero_entrada === '061625')) {
         parsed.unshift(DEFAULT_EMPRESA_ACCOUNT);
-        localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(parsed));
       }
-      return parsed;
+      // Normalizar configs para todas las cuentas
+      const normalized = parsed.map((e: EmpresaAccount) => ({
+        ...e,
+        config: {
+          ...DEFAULT_EMPRESA_CONFIG,
+          ...(e.config || {}),
+          secciones_activas: {
+            ...DEFAULT_EMPRESA_CONFIG.secciones_activas,
+            ...(e.config?.secciones_activas || {})
+          }
+        }
+      }));
+      return normalized;
     } catch {
       return [DEFAULT_EMPRESA_ACCOUNT];
     }
@@ -257,6 +289,21 @@ class OrdersService {
     localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(empresas));
   }
 
+  getEmpresaById(id: string): EmpresaAccount | null {
+    const empresas = this.getEmpresas();
+    return empresas.find(e => e.id === id) || null;
+  }
+
+  getEmpresaByNumero(numero: string): EmpresaAccount | null {
+    const clean = numero.trim().toUpperCase().replace(/\s+/g, '');
+    const empresas = this.getEmpresas();
+    return empresas.find(e => 
+      e.numero_entrada.toUpperCase() === clean || 
+      (clean === '061625' && e.id === 'empresa-master-comikids') ||
+      (clean === '42020312COMIKIDS' && e.id === 'empresa-master-comikids')
+    ) || null;
+  }
+
   createEmpresa(data: {
     nombre: string;
     numero_entrada: string;
@@ -264,6 +311,7 @@ class OrdersService {
     telefono_contacto?: string;
     sub_instance?: string;
     activo?: boolean;
+    config?: Partial<EmpresaConfig>;
   }): EmpresaAccount {
     const empresas = this.getEmpresas();
     const cleanNum = data.numero_entrada.trim().replace(/\s+/g, '');
@@ -286,6 +334,15 @@ class OrdersService {
       throw new Error(`Ya existe una empresa registrada con el número de entrada ${cleanNum}.`);
     }
 
+    const mergedConfig: EmpresaConfig = {
+      ...DEFAULT_EMPRESA_CONFIG,
+      ...(data.config || {}),
+      secciones_activas: {
+        ...DEFAULT_EMPRESA_CONFIG.secciones_activas,
+        ...(data.config?.secciones_activas || {})
+      }
+    };
+
     const newEmpresa: EmpresaAccount = {
       id: 'emp-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
       nombre: cleanNombre,
@@ -296,7 +353,8 @@ class OrdersService {
       sub_instance: data.sub_instance?.trim() || `tenant_${cleanNombre.replace(/\s+/g, '')}`,
       created_at: new Date().toISOString(),
       total_ingresos: 0,
-      historial_accesos: []
+      historial_accesos: [],
+      config: mergedConfig
     };
 
     empresas.push(newEmpresa);
@@ -331,6 +389,26 @@ class OrdersService {
     }
 
     return newEmpresa;
+  }
+
+  updateEmpresaConfig(id: string, configUpdates: Partial<EmpresaConfig>): EmpresaAccount | null {
+    const empresas = this.getEmpresas();
+    const idx = empresas.findIndex(e => e.id === id);
+    if (idx === -1) return null;
+
+    const currentConfig = empresas[idx].config || { ...DEFAULT_EMPRESA_CONFIG };
+    const updatedConfig: EmpresaConfig = {
+      ...currentConfig,
+      ...configUpdates,
+      secciones_activas: {
+        ...currentConfig.secciones_activas,
+        ...(configUpdates.secciones_activas || {})
+      }
+    };
+
+    empresas[idx].config = updatedConfig;
+    this.saveEmpresas(empresas);
+    return empresas[idx];
   }
 
   updateEmpresa(id: string, updates: Partial<EmpresaAccount>): EmpresaAccount | null {

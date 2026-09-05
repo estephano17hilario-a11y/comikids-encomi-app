@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 
 
+import { useAuth } from '../../context/AuthContext';
+
 interface Props {
   pedidos: Pedido[];
   totalSelectedCount: number;
@@ -46,6 +48,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   onClose,
   onRegistered
 }) => {
+  const { empresaConfig } = useAuth();
+  const isShalomExcelMode = empresaConfig?.shalom_modo === 'excel';
+
   // Estado de edición de datos por pedido
   const [editedData, setEditedData] = useState<Record<string, { dni: string; phone: string; name: string; pickupCode?: string }>>({});
   const [activeTab, setActiveTab] = useState<'audit' | 'dispatching' | 'finished'>('audit');
@@ -1146,36 +1151,62 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
           {activeTab === 'audit' && (
             <div className="flex items-center gap-2">
-              {/* Fallback a Excel tradicional */}
-              <button
-                onClick={handleExportExcelFallback}
-                disabled={isExportingExcel}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Generar Excel masivo si no deseas usar la API"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-400" />
-                <span>Solo Excel</span>
-              </button>
+              {/* Si está configurado en Solo Excel */}
+              {isShalomExcelMode ? (
+                <>
+                  <span className="hidden sm:inline-block text-[11px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 rounded-xl">
+                    📄 Modo Solo EXCEL Activo
+                  </span>
+                  <button
+                    onClick={handleExportExcelFallback}
+                    disabled={isExportingExcel}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-amber-500/25 transition-all cursor-pointer active:scale-98"
+                    title="Generar y descargar Excel masivo oficial para Shalom"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-slate-950" />
+                    <span>📥 Descargar Formato Oficial Excel</span>
+                  </button>
+                  <button
+                    disabled
+                    className="px-3 py-2 rounded-xl bg-slate-800/60 text-slate-500 text-xs font-semibold cursor-not-allowed border border-slate-700/50"
+                    title="API deshabilitada para esta empresa en Matrix (Modo Solo Excel)"
+                  >
+                    ⚡ API Deshabilitada
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Fallback a Excel tradicional */}
+                  <button
+                    onClick={handleExportExcelFallback}
+                    disabled={isExportingExcel}
+                    className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Generar Excel masivo si no deseas usar la API"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-400" />
+                    <span>Solo Excel</span>
+                  </button>
 
-              {/* Botón Principal API Dispatch */}
-              <button
-                onClick={handleStartApiDispatch}
-                disabled={isDispatching || !allValid || !validateShalomPin(pickupCode).isValid}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer active:scale-98"
-              >
-                {isDispatching ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Despachando...</span>
-                  </>
-                ) : (
-                  <>
-                    <Truck className="w-4 h-4" />
-                    <span>⚡ Registrar con 1-Clic vía API</span>
-                  </>
-                )}
-              </button>
-
+                  {/* Botón Principal API Dispatch */}
+                  <button
+                    onClick={handleStartApiDispatch}
+                    disabled={isDispatching || !allValid || !validateShalomPin(pickupCode).isValid}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer active:scale-98"
+                  >
+                    {isDispatching ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Despachando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Truck className="w-4 h-4" />
+                        <span>⚡ Registrar con 1-Clic vía API</span>
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           )}
 

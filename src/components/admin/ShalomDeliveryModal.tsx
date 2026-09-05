@@ -3,6 +3,7 @@ import { Pedido, TallerConfig } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
 import { extractShalomDni, extractShalomPhone } from '../../utils/shalomExcelExporter';
 import { validateShalomPin, formatShalomPin, getDailyShalomPin } from '../../utils/formatters';
+import { useAuth } from '../../context/AuthContext';
 import {
   FileText,
   Send,
@@ -28,25 +29,24 @@ interface ShalomDeliveryModalProps {
   isOpen: boolean;
   onClose: () => void;
   orders: Pedido[];
-  tallerConfig?: TallerConfig;
-  onOrdersDelivered: (deliveredOrderIds: string[], updatedMeta?: Record<string, { guia?: string; pickupCode?: string; oseId?: string }>) => void;
+  tallerConfig: TallerConfig;
+  onOrdersDelivered: (deliveredIds: string[], updatedMeta?: Record<string, { guia?: string; pickupCode?: string; oseId?: string }>) => Promise<void>;
 }
 
-
-interface DeliveryOrderProgress {
+export interface DeliveryOrderProgress {
   orderId: string;
   customerName: string;
   phone: string;
   dni: string;
-  trackingCode: string;
+  pickupCode: string;
+  trackingNumber?: string;
+  trackingCode?: string;
   guideNumber?: string;
-  pickupCode?: string;
   manualGuideInput?: string;
   agencyName?: string;
   fileName?: string;
-  auditStatus?: 'auditing' | 'found' | 'ready' | 'verified_pdf' | 'manual_required' | 'not_found' | 'error';
-  sendStatus?: 'idle' | 'sending' | 'sent' | 'completed' | 'error';
-  isCustomManual?: boolean;
+  auditStatus: 'idle' | 'auditing' | 'verified_pdf' | 'not_found' | 'error';
+  sendStatus: 'idle' | 'pending' | 'sending' | 'completed' | 'error';
   status?: 'pending' | 'checking' | 'ready' | 'not_found' | 'sending' | 'sent' | 'error';
   errorMessage?: string;
   errorMsg?: string;
@@ -61,6 +61,10 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   tallerConfig,
   onOrdersDelivered,
 }) => {
+  const { empresaConfig } = useAuth();
+  const isVpsWhatsAppEnabled = empresaConfig?.vps_whatsapp_entregado !== false;
+  const isShalomExcelMode = empresaConfig?.shalom_modo === 'excel';
+
   const [processing, setProcessing] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -122,6 +126,12 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     setProgressList(initial);
 
     const runAudit = async () => {
+      if (isShalomExcelMode) {
+        setIsAuditing(false);
+        setCurrentStepText('Modo Solo EXCEL activo (sin conexión API directa a Shalom).');
+        return;
+      }
+
       const auth = tallerConfig?.shalom_email ? {
         email: tallerConfig.shalom_email,
         password: tallerConfig.shalom_password || '',
@@ -171,7 +181,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         // PRIORIDAD ABSOLUTA: Consultar por DNI para asegurar que trae el último paquete registrado y más actualizado
         const primarySearchKey = cleanDni || originalOrder?.shalom_ose_id || 
           (item.manualGuideInput?.trim() || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '')) || 
-          item.trackingCode;
+          item.trackingCode || item.orderId;
 
         try {
           pdfData = await ShalomApiService.fetchVoucherPdfBase64(primarySearchKey, auth, clientCtx, handleMeta);
@@ -223,7 +233,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const handleManualSearch = async (item: DeliveryOrderProgress) => {
     const cleanDni = (item.dni || '').replace(/\D/g, '').trim();
     const cleanGuide = (item.manualGuideInput || '').trim();
-    const keyToSearch = cleanGuide || cleanDni || item.trackingCode;
+    const keyToSearch = cleanGuide || cleanDni || item.trackingCode || item.orderId;
     if (!keyToSearch) return;
 
     setSearchingId(item.orderId);
@@ -716,11 +726,15 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           <button
             onClick={handleOnlyMarkDelivered}
             disabled={processing}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm order-2 sm:order-1 active:scale-98"
+            className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer shadow-sm order-2 sm:order-1 active:scale-98 ${
+              !isVpsWhatsAppEnabled
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30'
+                : 'bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80'
+            }`}
             title="Marca los pedidos como entregados en el sistema sin disparar mensajes de WhatsApp"
           >
-            <CheckCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Solo marcar como Entregado (sin WhatsApp)</span>
+            <CheckCheck className="w-4 h-4 text-emerald-300 shrink-0" />
+            <span>{!isVpsWhatsAppEnabled ? '✓ Marcar como Entregado' : 'Solo marcar como Entregado (sin WhatsApp)'}</span>
           </button>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto order-1 sm:order-2">
@@ -733,33 +747,41 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
             </button>
 
             {!overallSuccess && (
-              <button
-                onClick={handleStartDeliveryFlow}
-                disabled={processing || isAuditing}
-                className="flex-1 sm:flex-none px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer active:scale-98"
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                    <span>Enviando por WhatsApp...</span>
-                  </>
-                ) : isAuditing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                    <span>Consultando Shalom...</span>
-                  </>
-                ) : verifiedCount > 0 ? (
-                  <>
-                    <Send className="w-4 h-4 shrink-0" />
-                    <span>Enviar {verifiedCount} Guía(s) Oficial(es) PDF por WhatsApp</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4 shrink-0" />
-                    <span>Avisar por WhatsApp</span>
-                  </>
-                )}
-              </button>
+              isVpsWhatsAppEnabled ? (
+                <button
+                  onClick={handleStartDeliveryFlow}
+                  disabled={processing || isAuditing}
+                  className="flex-1 sm:flex-none px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer active:scale-98"
+                >
+                  {processing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <span>Enviando por WhatsApp...</span>
+                    </>
+                  ) : isAuditing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <span>Consultando Shalom...</span>
+                    </>
+                  ) : verifiedCount > 0 ? (
+                    <>
+                      <Send className="w-4 h-4 shrink-0" />
+                      <span>Enviar {verifiedCount} Guía(s) PDF por WhatsApp</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 shrink-0" />
+                      <span>Avisar por WhatsApp</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="text-right">
+                  <span className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-xl font-medium block">
+                    ⚡ Envío VPS WhatsApp desactivado en Matrix
+                  </span>
+                </div>
+              )
             )}
           </div>
         </div>

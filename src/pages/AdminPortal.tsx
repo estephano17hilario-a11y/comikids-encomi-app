@@ -6,6 +6,7 @@ import { OrdersSmartManager } from '../components/admin/OrdersSmartManager';
 import { ClientDirectory } from '../components/admin/ClientDirectory';
 import { VisionAnalyticsDashboard } from '../components/admin/VisionAnalyticsDashboard';
 import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettings';
+import { CompanyAchievementsTab } from '../components/admin/CompanyAchievementsTab';
 import { ComicInventoryApp } from '../modules/comic_inventory/ComicInventoryApp';
 import { liveSessionService, LiveSessionState } from '../services/liveSessionService';
 import { EncomiAiSection } from '../components/client/EncomiAiSection';
@@ -24,20 +25,28 @@ import {
   Sparkles,
   FileBarChart,
   Plus,
-  X
+  X,
+  Trophy,
+  Sliders
 } from 'lucide-react';
 
-export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'comikids' | 'encomi_ai';
+export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'inventario' | 'hitos' | 'ajustes' | 'encomi_ai';
 
 export const AdminPortal: React.FC = () => {
   const { pedidos, masterCode, tallerConfig, refreshData } = useOrders();
-  const { currentUser, logout } = useAuth();
+  const { currentUser, currentEmpresa, empresaConfig, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
 
-  // Detectar si la cuenta activa es la cuenta empresa/comikids
-  const isComikids = currentUser?.rol === 'empresa' ||
-    currentUser?.dni?.toUpperCase() === '061625' ||
-    currentUser?.dni?.toUpperCase()?.includes('COMIKIDS');
+  const companyName = currentEmpresa?.nombre || tallerConfig.nombre_taller || 'ComiKids';
+  const sec = empresaConfig?.secciones_activas || {
+    pedidos: true,
+    agendas: true,
+    estadisticas: true,
+    inventario: true,
+    hitos: true,
+    ajustes: true,
+    encomi_ai: true,
+  };
   
   // Estado de sesión Live sincronizado
   const [liveState, setLiveState] = useState<LiveSessionState>(() => liveSessionService.getState());
@@ -75,7 +84,7 @@ export const AdminPortal: React.FC = () => {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <h1 className="text-sm sm:text-base font-black text-white tracking-tight truncate">
-                  ComiKids
+                  {companyName}
                 </h1>
                 {liveState.isLive ? (
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 animate-pulse shrink-0">
@@ -84,7 +93,7 @@ export const AdminPortal: React.FC = () => {
                   </span>
                 ) : (
                   <span className="px-1.5 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black uppercase bg-pink-500/15 text-pink-300 border border-pink-500/20 shrink-0">
-                    Panel Matriz
+                    Panel Empresa
                   </span>
                 )}
               </div>
@@ -97,7 +106,7 @@ export const AdminPortal: React.FC = () => {
           {/* Quick Header Actions - Exactly on the same horizontal axis line */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             
-            {/* Botón Circular + para Añadir Nuevo Pedido (Exclusivo ComiKids) */}
+            {/* Botón Circular + para Añadir Nuevo Pedido */}
             <button
               onClick={() => setShowCreateOrderModal(true)}
               className="p-2 sm:p-2.5 rounded-2xl bg-linear-to-tr from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white border border-pink-400/40 shadow-md shadow-pink-500/25 transition-all cursor-pointer active:scale-90 flex items-center justify-center shrink-0"
@@ -116,9 +125,13 @@ export const AdminPortal: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setShowConfigModal(true)}
-              className="p-2 sm:p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors cursor-pointer shrink-0"
-              title="Configurar Datos del Remitente"
+              onClick={() => setActiveTab('ajustes')}
+              className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer shrink-0 ${
+                activeTab === 'ajustes'
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/30'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
+              }`}
+              title="Ajustes de la Empresa"
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -138,7 +151,7 @@ export const AdminPortal: React.FC = () => {
       {/* Main Container */}
       <main
         className={`flex-1 w-full max-w-7xl mx-auto space-y-4 pb-28 print:hidden transition-all ${
-          activeTab === 'comikids'
+          activeTab === 'inventario'
             ? 'px-2 sm:px-4 py-3'
             : activeTab === 'pedidos'
             ? 'px-3 sm:px-6 pt-1.5 sm:pt-2.5 pb-24'
@@ -149,81 +162,89 @@ export const AdminPortal: React.FC = () => {
         
         {/* Dynamic Section Rendering */}
         <div className="transition-all duration-300">
-          {activeTab === 'pedidos' && <OrdersSmartManager />}
-          {activeTab === 'agendas' && <ClientDirectory />}
-          {activeTab === 'estadisticas' && <VisionAnalyticsDashboard />}
-          {isComikids && (
-            <div className={activeTab === 'comikids' ? 'block' : 'hidden'}>
+          {activeTab === 'pedidos' && sec.pedidos !== false && <OrdersSmartManager />}
+          {activeTab === 'agendas' && sec.agendas !== false && <ClientDirectory />}
+          {activeTab === 'estadisticas' && sec.estadisticas !== false && <VisionAnalyticsDashboard />}
+          {activeTab === 'inventario' && sec.inventario && (
+            <div>
               <ComicInventoryApp />
             </div>
           )}
-          {activeTab === 'encomi_ai' && <EncomiAiSection isAdmin={true} />}
+          {activeTab === 'hitos' && sec.hitos !== false && <CompanyAchievementsTab />}
+          {activeTab === 'ajustes' && sec.ajustes !== false && <CompanyAccountSettings />}
+          {activeTab === 'encomi_ai' && sec.encomi_ai !== false && <EncomiAiSection isAdmin={true} />}
         </div>
 
       </main>
 
       {/* --- FLOATING APPLE VISION BOTTOM DOCK --- */}
-      <div className="fixed bottom-3 sm:bottom-6 left-0 right-0 mx-auto z-40 w-[calc(100%-1.25rem)] sm:w-11/12 max-w-xl animate-slideUp print:hidden admin-floating-dock" data-no-print="true">
-        <div className="p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl bg-slate-900/95 border border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-between gap-1 overflow-hidden">
+      <div className="fixed bottom-3 sm:bottom-6 left-0 right-0 mx-auto z-40 w-[calc(100%-1.25rem)] sm:w-11/12 max-w-2xl animate-slideUp print:hidden admin-floating-dock" data-no-print="true">
+        <div className="p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl bg-slate-900/95 border border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-between gap-1 overflow-x-auto">
           
           {/* 1. Pedidos To-Do */}
-          <button
-            onClick={() => setActiveTab('pedidos')}
-            className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'pedidos'
-                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <ClipboardList className="w-4 h-4 shrink-0" />
-            <span className="truncate max-w-full">Pedidos</span>
-            {pendingOrdersCount > 0 && (
-              <span className={`px-1 py-0.2 rounded-full text-[9px] font-black shrink-0 ${
-                activeTab === 'pedidos' ? 'bg-slate-950 text-cyan-300' : 'bg-cyan-500/30 text-cyan-300'
-              }`}>
-                {pendingOrdersCount}
-              </span>
-            )}
-          </button>
+          {sec.pedidos !== false && (
+            <button
+              onClick={() => setActiveTab('pedidos')}
+              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+                activeTab === 'pedidos'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <ClipboardList className="w-4 h-4 shrink-0" />
+              <span className="truncate max-w-full">Pedidos</span>
+              {pendingOrdersCount > 0 && (
+                <span className={`px-1 py-0.2 rounded-full text-[9px] font-black shrink-0 ${
+                  activeTab === 'pedidos' ? 'bg-slate-950 text-cyan-300' : 'bg-cyan-500/30 text-cyan-300'
+                }`}>
+                  {pendingOrdersCount}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* 2. Agendas CRM */}
-          <button
-            onClick={() => setActiveTab('agendas')}
-            className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'agendas'
-                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Users className="w-4 h-4 shrink-0" />
-            <span className="truncate max-w-full">Agendas</span>
-          </button>
+          {sec.agendas !== false && (
+            <button
+              onClick={() => setActiveTab('agendas')}
+              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+                activeTab === 'agendas'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Users className="w-4 h-4 shrink-0" />
+              <span className="truncate max-w-full">Agendas</span>
+            </button>
+          )}
 
           {/* 3. Estadísticas Vision */}
-          <button
-            onClick={() => setActiveTab('estadisticas')}
-            className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'estadisticas'
-                ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 shrink-0" />
-            <span className="truncate max-w-full">Métricas</span>
-          </button>
-
-          {/* 4. Sección ComiKids / Comic Inventory - EXCLUSIVO cuenta empresa */}
-          {isComikids && (
+          {sec.estadisticas !== false && (
             <button
-              onClick={() => setActiveTab('comikids')}
+              onClick={() => setActiveTab('estadisticas')}
+              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+                activeTab === 'estadisticas'
+                  ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 shrink-0" />
+              <span className="truncate max-w-full">Métricas</span>
+            </button>
+          )}
+
+          {/* 4. Inventario / Catálogo */}
+          {sec.inventario && (
+            <button
+              onClick={() => setActiveTab('inventario')}
               className={`relative flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'comikids'
+                activeTab === 'inventario'
                   ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-md shadow-pink-600/30'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <Store className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">Comic Inv</span>
+              <span className="truncate max-w-full">Inventario</span>
               {liveState.isLive && (
                 <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
@@ -233,18 +254,50 @@ export const AdminPortal: React.FC = () => {
             </button>
           )}
 
-          {/* 5. Encomi AI (Admin Ilimitado) */}
-          <button
-            onClick={() => setActiveTab('encomi_ai')}
-            className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-              activeTab === 'encomi_ai'
-                ? 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30'
-                : 'text-cyan-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Sparkles className="w-4 h-4 shrink-0 animate-pulse" />
-            <span className="truncate max-w-full">Encomi AI</span>
-          </button>
+          {/* 5. Hitos y Logros de Empresa (Pestaña propia) */}
+          {sec.hitos !== false && (
+            <button
+              onClick={() => setActiveTab('hitos')}
+              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+                activeTab === 'hitos'
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 shadow-md shadow-amber-500/30'
+                  : 'text-amber-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Trophy className="w-4 h-4 shrink-0" />
+              <span className="truncate max-w-full">Hitos</span>
+            </button>
+          )}
+
+          {/* 6. Ajustes de la Empresa (Reformulada) */}
+          {sec.ajustes !== false && (
+            <button
+              onClick={() => setActiveTab('ajustes')}
+              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+                activeTab === 'ajustes'
+                  ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Settings className="w-4 h-4 shrink-0" />
+              <span className="truncate max-w-full">Ajustes</span>
+            </button>
+          )}
+
+          {/* 7. Encomi AI (Admin Ilimitado) */}
+          {sec.encomi_ai !== false && (
+            <button
+              onClick={() => setActiveTab('encomi_ai')}
+              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+                activeTab === 'encomi_ai'
+                  ? 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30'
+                  : 'text-cyan-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 shrink-0 animate-pulse" />
+              <span className="truncate max-w-full">IA</span>
+            </button>
+          )}
 
         </div>
       </div>

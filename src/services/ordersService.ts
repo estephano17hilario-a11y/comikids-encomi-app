@@ -122,16 +122,6 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
         mostrar_en_rotulado: true,
         mostrar_en_comprobante: true,
         sistema: true,
-      },
-      {
-        id: 'c-shalom-tel',
-        label: 'Teléfono / WhatsApp',
-        placeholder: '9 dígitos',
-        tipo: 'telefono',
-        requerido: true,
-        mostrar_en_rotulado: false,
-        mostrar_en_comprobante: true,
-        sistema: true,
       }
     ],
     config_rotulado: {
@@ -246,16 +236,6 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
         sistema: true,
       },
       {
-        id: 'c-olva-tel',
-        label: 'Teléfono de contacto',
-        placeholder: '9 dígitos',
-        tipo: 'telefono',
-        requerido: true,
-        mostrar_en_rotulado: true,
-        mostrar_en_comprobante: true,
-        sistema: true,
-      },
-      {
         id: 'c-olva-dir',
         label: 'Dirección o Agencia Olva',
         placeholder: 'Dirección completa',
@@ -268,7 +248,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     ],
     config_rotulado: {
       incluir_campos_personalizados: true,
-      campos_visibles: ['c-olva-dni', 'c-olva-tel', 'c-olva-dir'],
+      campos_visibles: ['c-olva-dni', 'c-olva-dir'],
       incluir_remitente: true,
       mostrar_remitente_nombre: true,
       mostrar_remitente_ruc_dni: true,
@@ -806,10 +786,11 @@ class OrdersService {
       
       // Garantizar campos base obligatorios para Shalom
       const currentFields = shalom.campos_personalizados || [];
-      const hasDni = currentFields.some(c => c.id === 'c-shalom-dni' || c.label.toLowerCase().includes('dni'));
-      const hasTel = currentFields.some(c => c.id === 'c-shalom-tel' || c.label.toLowerCase().includes('tel') || c.label.toLowerCase().includes('whatsapp'));
+      // Eliminar c-shalom-tel si existe (ya no es campo del sistema)
+      const cleanedFields = currentFields.filter(c => c.id !== 'c-shalom-tel');
+      const hasDni = cleanedFields.some(c => c.id === 'c-shalom-dni' || c.label.toLowerCase().includes('dni'));
 
-      const mergedFields = [...currentFields];
+      const mergedFields = [...cleanedFields];
       if (!hasDni) {
         mergedFields.unshift({
           id: 'c-shalom-dni',
@@ -823,30 +804,8 @@ class OrdersService {
         });
         modified = true;
       } else {
-        // Asegurar que el campo DNI esté blindado como sistema y requerido
         mergedFields.forEach(c => {
           if (c.id === 'c-shalom-dni' || c.label.toLowerCase().includes('dni')) {
-            c.sistema = true;
-            c.requerido = true;
-          }
-        });
-      }
-
-      if (!hasTel) {
-        mergedFields.push({
-          id: 'c-shalom-tel',
-          label: 'Teléfono / WhatsApp',
-          placeholder: '9 dígitos',
-          tipo: 'telefono',
-          requerido: true,
-          mostrar_en_rotulado: false,
-          mostrar_en_comprobante: true,
-          sistema: true,
-        });
-        modified = true;
-      } else {
-        mergedFields.forEach(c => {
-          if (c.id === 'c-shalom-tel' || c.label.toLowerCase().includes('tel') || c.label.toLowerCase().includes('whatsapp')) {
             c.sistema = true;
             c.requerido = true;
           }
@@ -871,11 +830,12 @@ class OrdersService {
 
       // Garantizar campos base obligatorios para Olva
       const currentFields = olva.campos_personalizados || [];
-      const hasDni = currentFields.some(c => c.id === 'c-olva-dni' || c.label.toLowerCase().includes('dni'));
-      const hasTel = currentFields.some(c => c.id === 'c-olva-tel' || c.label.toLowerCase().includes('tel') || c.label.toLowerCase().includes('whatsapp'));
-      const hasDir = currentFields.some(c => c.id === 'c-olva-dir' || c.label.toLowerCase().includes('direcc') || c.label.toLowerCase().includes('agencia'));
+      // Eliminar c-olva-tel si existe (ya no es campo del sistema)
+      const cleanedFields = currentFields.filter(c => c.id !== 'c-olva-tel');
+      const hasDni = cleanedFields.some(c => c.id === 'c-olva-dni' || c.label.toLowerCase().includes('dni'));
+      const hasDir = cleanedFields.some(c => c.id === 'c-olva-dir' || c.label.toLowerCase().includes('direcc') || c.label.toLowerCase().includes('agencia'));
 
-      const mergedFields = [...currentFields];
+      const mergedFields = [...cleanedFields];
       if (!hasDni) {
         mergedFields.unshift({
           id: 'c-olva-dni',
@@ -891,27 +851,6 @@ class OrdersService {
       } else {
         mergedFields.forEach(c => {
           if (c.id === 'c-olva-dni' || c.label.toLowerCase().includes('dni')) {
-            c.sistema = true;
-            c.requerido = true;
-          }
-        });
-      }
-
-      if (!hasTel) {
-        mergedFields.push({
-          id: 'c-olva-tel',
-          label: 'Teléfono de contacto',
-          placeholder: '9 dígitos',
-          tipo: 'telefono',
-          requerido: true,
-          mostrar_en_rotulado: true,
-          mostrar_en_comprobante: true,
-          sistema: true,
-        });
-        modified = true;
-      } else {
-        mergedFields.forEach(c => {
-          if (c.id === 'c-olva-tel' || c.label.toLowerCase().includes('tel') || c.label.toLowerCase().includes('whatsapp')) {
             c.sistema = true;
             c.requerido = true;
           }
@@ -978,8 +917,8 @@ class OrdersService {
       // Asegurar que los campos del sistema se mantengan
       if (updates.campos_personalizados) {
         const baseSystemFieldIds = existing.codigo === 'shalom' 
-          ? ['c-shalom-dni', 'c-shalom-tel']
-          : ['c-olva-dni', 'c-olva-tel', 'c-olva-dir'];
+          ? ['c-shalom-dni']
+          : ['c-olva-dni', 'c-olva-dir'];
         
         const existingSystemFields = (existing.campos_personalizados || []).filter(c => c.sistema || baseSystemFieldIds.includes(c.id));
         const updatedFields = updates.campos_personalizados;

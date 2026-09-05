@@ -858,7 +858,7 @@ export const CompanyAgenciesTab: React.FC = () => {
                   if (campo.sistema) return true;
                   const id = (campo.id || '').toLowerCase();
                   const lbl = (campo.label || '').toLowerCase();
-                  if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
+                  if (['c-shalom-dni', 'c-olva-dni', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
                   if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
                   if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
                   if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
@@ -1209,7 +1209,7 @@ export const CompanyAgenciesTab: React.FC = () => {
                           if (c.sistema) return true;
                           const id = (c.id || '').toLowerCase();
                           const lbl = (c.label || '').toLowerCase();
-                          if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
+                          if (['c-shalom-dni', 'c-olva-dni', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
                           if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
                           if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
                           if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;

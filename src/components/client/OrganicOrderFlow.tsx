@@ -606,6 +606,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         setErrorMsg('Por favor ingresa tu DNI o Carnet de Extranjería (CE).');
         return;
       }
+      // Validación de CE: 9 dígitos debe empezar con "00"
+      const dniClean = dniShalom.trim();
+      if (dniClean.length === 9 && !dniClean.startsWith('00')) {
+        setErrorMsg('El Carnet de Extranjería (CE) de 9 dígitos debe comenzar con "00" (ej: 001234567). Por favor corrígelo antes de continuar.');
+        return;
+      }
     }
 
     if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
@@ -622,6 +628,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     if (selectedMethod?.tipo_formulario === 'olva') {
       if (!dniShalom.trim()) {
         setErrorMsg('Por favor ingresa el DNI o Carnet de Extranjería (CE) de quien recibe.');
+        return;
+      }
+      // Validación de CE: 9 dígitos debe empezar con "00"
+      const dniOlvaClean = dniShalom.trim();
+      if (dniOlvaClean.length === 9 && !dniOlvaClean.startsWith('00')) {
+        setErrorMsg('El Carnet de Extranjería (CE) de 9 dígitos debe comenzar con "00" (ej: 001234567). Por favor corrígelo antes de continuar.');
         return;
       }
       if (!whatsapp.trim()) {
@@ -648,7 +660,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         if (c.sistema) return true;
         const id = (c.id || '').toLowerCase();
         const lbl = (c.label || '').toLowerCase();
-        if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
+        if (['c-shalom-dni', 'c-olva-dni', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
         if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
         if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
         if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
@@ -764,9 +776,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
         const finalCustomFields: Record<string, any> = { ...customFieldValues };
         finalCustomFields['c-shalom-dni'] = dniShalom.trim();
-        finalCustomFields['c-shalom-tel'] = whatsapp.trim();
         finalCustomFields['c-olva-dni'] = dniShalom.trim();
-        finalCustomFields['c-olva-tel'] = whatsapp.trim();
         finalCustomFields['c-olva-dir'] = olvaDireccion.trim();
         finalCustomFields['DNI / CE'] = dniShalom.trim();
         finalCustomFields['DNI / Carnet de Extranjería'] = dniShalom.trim();
@@ -1775,9 +1785,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           DNI
                         </div>
                       )}
-                      {dniShalom.length === 9 && (
+                      {dniShalom.length === 9 && dniShalom.startsWith('00') && (
                         <div className="absolute right-3 px-3 py-1 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black text-xs tracking-wider shadow-sm animate-fadeIn pointer-events-none">
-                          CE
+                          CE ✓
+                        </div>
+                      )}
+                      {dniShalom.length === 9 && !dniShalom.startsWith('00') && (
+                        <div className="absolute right-3 px-2.5 py-1 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-300 font-bold text-xs tracking-wider shadow-sm animate-fadeIn pointer-events-none">
+                          CE inválido
                         </div>
                       )}
                       {dniShalom.length > 9 && (
@@ -1786,6 +1801,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </div>
                       )}
                     </div>
+                    {dniShalom.length === 9 && !dniShalom.startsWith('00') && (
+                      <p className="text-xs text-rose-400 font-semibold mt-1.5 flex items-center gap-1.5">
+                        ⚠️ El CE de 9 dígitos debe comenzar con <span className="font-mono font-black text-rose-300">"00"</span> — ej: <span className="font-mono">001234567</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Celular / WhatsApp de Contacto */}
@@ -2322,9 +2342,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               DNI
                             </div>
                           )}
-                          {dniShalom.length === 9 && (
+                          {dniShalom.length === 9 && dniShalom.startsWith('00') && (
                             <div className="absolute right-2.5 px-2 py-0.5 rounded-lg bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-black text-[11px] tracking-wider pointer-events-none animate-fadeIn">
-                              CE
+                              CE ✓
+                            </div>
+                          )}
+                          {dniShalom.length === 9 && !dniShalom.startsWith('00') && (
+                            <div className="absolute right-2.5 px-2 py-0.5 rounded-lg bg-rose-500/20 border border-rose-500/50 text-rose-300 font-bold text-[11px] tracking-wider pointer-events-none animate-fadeIn">
+                              CE inválido
                             </div>
                           )}
                           {dniShalom.length > 9 && (
@@ -2333,6 +2358,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             </div>
                           )}
                         </div>
+                        {dniShalom.length === 9 && !dniShalom.startsWith('00') && (
+                          <p className="text-[11px] text-rose-400 font-semibold mt-1 flex items-center gap-1">
+                            ⚠️ El CE de 9 dígitos debe comenzar con <span className="font-mono font-black text-rose-300">"00"</span> — ej: <span className="font-mono">001234567</span>
+                          </p>
+                        )}
                       </div>
 
                       {/* CELULAR (cliente) */}

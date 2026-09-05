@@ -1808,24 +1808,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     )}
                   </div>
 
-                  {/* Celular / WhatsApp de Contacto */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                      📱 Celular / WhatsApp de Contacto *
-                    </label>
-                    <div className="relative flex items-center">
-                      <input
-                        type="tel"
-                        required
-                        value={whatsapp}
-                        onChange={e => setWhatsapp(formatPhoneWithSpaces(e.target.value))}
-                        placeholder="987 654 321"
-                        maxLength={11}
-                        className="w-full pl-5 pr-4 py-3.5 sm:py-4 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
-                      />
-                    </div>
-                  </div>
-
                 </div>
               )}
 

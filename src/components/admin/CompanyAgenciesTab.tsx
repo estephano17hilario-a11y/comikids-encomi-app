@@ -853,213 +853,308 @@ export const CompanyAgenciesTab: React.FC = () => {
               )}
 
               {/* --- TAB 2: DATOS SOLICITADOS A LA CLIENTA --- */}
-              {activeEditorTab === 'datos' && (
-                <div className="space-y-5 animate-fadeIn">
-                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                          <Tag className="w-4 h-4 text-purple-400" />
-                          <span>Datos que se le pedirán a la clienta al elegir esta agencia</span>
-                        </span>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Puedes marcar si el dato es obligatorio, si debe imprimirse en el rótulo y si debe verse en el comprobante.
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2.5 py-1 rounded-full shrink-0 self-start">
-                        {camposList.length} datos activos
-                      </span>
-                    </div>
+              {activeEditorTab === 'datos' && (() => {
+                const isNativeSystemDuplicateField = (campo: CampoPersonalizadoAgencia) => {
+                  if (campo.sistema) return true;
+                  const id = (campo.id || '').toLowerCase();
+                  const lbl = (campo.label || '').toLowerCase();
+                  if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
+                  if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
+                  if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
+                  if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
+                  if (lbl.includes('dirección') || lbl.includes('direccion') || lbl.includes('agencia olva') || lbl.includes('agencia shalom')) return true;
+                  return false;
+                };
 
-                    {/* Lista de campos configurados */}
-                    <div className="space-y-2">
-                      {camposList.map((campo) => (
-                        <div
-                          key={campo.id}
-                          className={`p-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                            campo.sistema
-                              ? 'bg-slate-900/90 border-amber-500/30 text-white'
-                              : 'bg-slate-900/60 border-white/10 text-white'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center font-black text-xs shrink-0">
-                              {campo.tipo === 'telefono' ? <Smartphone className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-white text-xs">{campo.label}</span>
-                                {campo.sistema && (
-                                  <span className="text-[9px] font-black text-amber-300 bg-amber-500/15 px-1.5 py-0.2 rounded border border-amber-500/30">
-                                    Base Oficial
-                                  </span>
-                                )}
-                                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${campo.requerido ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-white/5 text-slate-400'}`}>
-                                  {campo.requerido ? 'Obligatorio' : 'Opcional'}
-                                </span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 font-mono block">
-                                Tipo: {campo.tipo} • Variable: <strong className="text-cyan-300">{`{${campo.label}}`}</strong>
-                              </span>
-                            </div>
-                          </div>
+                const extraCustomFields = camposList.filter(c => !isNativeSystemDuplicateField(c));
+                const tipoForm = editingMethod.tipo_formulario || 'texto_simple';
 
-                          {/* Switches de Control */}
-                          <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
-                            {/* Toggle Obligatorio */}
-                            {!campo.sistema && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, requerido: !c.requerido } : c));
-                                }}
-                                className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
-                                  campo.requerido ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-white/5 text-slate-400 border-white/10'
-                                }`}
-                              >
-                                {campo.requerido ? '★ Obligatorio' : 'Opcional'}
-                              </button>
-                            )}
+                // Definición visual clara de todos los datos nativos que el formulario oficial pide a la clienta
+                const officialSystemQuestions = [
+                  ...(tipoForm === 'shalom' ? [
+                    { id: 'sys-shalom-agencia', label: 'Sede / Agencia Shalom de Destino', desc: 'Directorio nacional de 376+ sedes en vivo con GPS y mapa interactivo.', icon: '🏢', variable: '{destino}', badge: 'Base Shalom' },
+                    { id: 'sys-shalom-dni', label: 'DNI o Carnet de Extranjería (CE)', desc: 'Validación de 8-9 dígitos con consulta y autollenado en RENIEC/SUNAT.', icon: '🪪', variable: '{dni}', badge: 'Base Shalom' },
+                    { id: 'sys-shalom-nombre', label: 'Nombres y Apellidos de la Clienta', desc: 'Nombre completo autocompletado con el DNI o ingresado manualmente.', icon: '👤', variable: '{cliente}', badge: 'Base Plataforma' },
+                    { id: 'sys-shalom-tel', label: 'Celular / WhatsApp de Contacto', desc: 'Número celular con formato peruano para notificaciones del despacho.', icon: '📱', variable: '{telefono}', badge: 'Base Plataforma' },
+                    { id: 'sys-shalom-fecha', label: 'Fecha Deseada de Envío / Despacho', desc: 'Selector de calendario con restricción automática de corte horario.', icon: '📅', variable: '{fecha}', badge: 'Base Plataforma' },
+                  ] : []),
+                  ...(tipoForm === 'olva' ? [
+                    { id: 'sys-olva-mod', label: 'Modalidad de Entrega (Agencia Olva o Domicilio)', desc: 'Selector para recojo en sede Olva o entrega directa a domicilio.', icon: '📦', variable: '{modalidad}', badge: 'Base Olva' },
+                    { id: 'sys-olva-agencia', label: 'Sede Olva o Dirección Exacta de Entrega', desc: 'Directorio oficial Olva con 376 sedes o dirección exacta de casa/trabajo.', icon: '🏢', variable: '{destino}', badge: 'Base Olva' },
+                    { id: 'sys-olva-dni', label: 'DNI o Carnet de Extranjería (CE)', desc: 'Documento oficial de quien recibe para emisión de guía y recojo.', icon: '🪪', variable: '{dni}', badge: 'Base Olva' },
+                    { id: 'sys-olva-nombre', label: 'Nombres y Apellidos de la Clienta', desc: 'Nombre de la persona autorizada para recibir el paquete.', icon: '👤', variable: '{cliente}', badge: 'Base Plataforma' },
+                    { id: 'sys-olva-tel', label: 'Celular / WhatsApp de Contacto', desc: 'Teléfono para coordinación de entrega.', icon: '📱', variable: '{telefono}', badge: 'Base Plataforma' },
+                    { id: 'sys-olva-email', label: 'Correo Electrónico', desc: 'Correo para avisos automáticos de rastreo por parte de Olva Courier.', icon: '📧', variable: '{correo}', badge: 'Base Olva' },
+                    { id: 'sys-olva-fecha', label: 'Fecha Deseada de Envío / Despacho', desc: 'Fecha programada de despacho respetando el horario de corte.', icon: '📅', variable: '{fecha}', badge: 'Base Plataforma' },
+                  ] : []),
+                  ...(tipoForm === 'mapa_direccion' ? [
+                    { id: 'sys-mot-mapa', label: 'Ubicación Fijada en Mapa y Distrito', desc: 'Geolocalización GPS exacta con búsqueda de distritos de Lima.', icon: '🗺️', variable: '{destino}', badge: 'Base Motorizado' },
+                    { id: 'sys-mot-dir', label: 'Dirección Exacta y Referencia', desc: 'Avenida, calle, número, departamento y detalles de la fachada.', icon: '📍', variable: '{destino}', badge: 'Base Motorizado' },
+                    { id: 'sys-mot-nombre', label: 'Nombres y Apellidos de la Clienta', desc: 'Persona que recibirá al motorizado en el punto de entrega.', icon: '👤', variable: '{cliente}', badge: 'Base Plataforma' },
+                    { id: 'sys-mot-tel', label: 'Celular / WhatsApp de Contacto', desc: 'Para llamadas y mensajes al momento de la entrega.', icon: '📱', variable: '{telefono}', badge: 'Base Plataforma' },
+                    { id: 'sys-mot-fecha', label: 'Fecha Deseada de Envío / Despacho', desc: 'Día programado para la ruta del motorizado.', icon: '📅', variable: '{fecha}', badge: 'Base Plataforma' },
+                  ] : []),
+                  ...(tipoForm === 'texto_simple' ? [
+                    { id: 'sys-txt-dest', label: 'Indicaciones de Destino / Entrega', desc: 'Instrucciones escritas por la clienta para el envío o entrega.', icon: '📝', variable: '{destino}', badge: 'Base General' },
+                    { id: 'sys-txt-nombre', label: 'Nombres y Apellidos de la Clienta', desc: 'Nombre completo de quien recibe el pedido.', icon: '👤', variable: '{cliente}', badge: 'Base Plataforma' },
+                    { id: 'sys-txt-tel', label: 'Celular / WhatsApp de Contacto', desc: 'Número celular para avisar cuando el paquete esté listo.', icon: '📱', variable: '{telefono}', badge: 'Base Plataforma' },
+                    { id: 'sys-txt-fecha', label: 'Fecha Deseada de Envío / Despacho', desc: 'Fecha de entrega o salida de taller.', icon: '📅', variable: '{fecha}', badge: 'Base Plataforma' },
+                  ] : []),
+                ];
 
-                            {/* Switch: Imprimir en Rótulo */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, mostrar_en_rotulado: !c.mostrar_en_rotulado } : c));
-                              }}
-                              className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
-                                campo.mostrar_en_rotulado
-                                  ? 'bg-purple-500/20 text-purple-200 border-purple-400/40 hover:bg-purple-500/30'
-                                  : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300'
-                              }`}
-                              title="Hacer que este dato se imprima en la etiqueta / rótulo"
-                            >
-                              <Tag className="w-3 h-3" />
-                              <span>{campo.mostrar_en_rotulado ? '✓ En Rótulo' : 'Sin Rótulo'}</span>
-                            </button>
-
-                            {/* Switch: Mostrar en Comprobante */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, mostrar_en_comprobante: !c.mostrar_en_comprobante } : c));
-                              }}
-                              className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
-                                campo.mostrar_en_comprobante
-                                  ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40 hover:bg-cyan-500/30'
-                                  : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300'
-                              }`}
-                              title="Mostrar este dato en el comprobante que recibe la clienta"
-                            >
-                              <Eye className="w-3 h-3" />
-                              <span>{campo.mostrar_en_comprobante ? '✓ Comprobante' : 'Oculto'}</span>
-                            </button>
-
-                            {/* Eliminar campo si no es de sistema */}
-                            {!campo.sistema ? (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteCampo(campo.id)}
-                                className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors cursor-pointer"
-                                title="Eliminar este dato"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            ) : (
-                              <span className="p-1.5 text-slate-600 cursor-not-allowed" title="Campo protegido del sistema">
-                                <Lock className="w-3.5 h-3.5" />
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Añadir nuevo campo */}
-                    <div className="p-4 rounded-2xl bg-slate-900 border border-purple-500/30 space-y-3 mt-4">
-                      <div className="text-[11px] font-bold text-purple-300 flex items-center gap-1.5">
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Añadir Nuevo Dato a Solicitar (ej: Usuario de TikTok, Referencia, etc.)</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        <div className="sm:col-span-2">
-                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                            Nombre de la Pregunta / Campo *
-                          </label>
-                          <input
-                            type="text"
-                            value={newCampoLabel}
-                            onChange={e => setNewCampoLabel(e.target.value)}
-                            placeholder="Ej. Usuario de TikTok o Referencia de Domicilio"
-                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold focus:outline-none focus:border-purple-400"
-                          />
-                        </div>
-
+                return (
+                  <div className="space-y-6 animate-fadeIn">
+                    
+                    {/* SECCIÓN 1: DATOS BASE OFICIALES DEL FORMULARIO */}
+                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-cyan-500/20 space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                            Tipo de Entrada
-                          </label>
-                          <select
-                            value={newCampoTipo}
-                            onChange={e => setNewCampoTipo(e.target.value as any)}
-                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold focus:outline-none focus:border-purple-400 cursor-pointer"
-                          >
-                            <option value="texto">Texto Simple</option>
-                            <option value="telefono">Teléfono / WhatsApp</option>
-                            <option value="numero">Número / DNI</option>
-                            <option value="textarea">Texto Largo / Referencia</option>
-                          </select>
+                          <span className="font-bold text-cyan-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                            <span>1. Datos Base que la Clienta Completará ({officialSystemQuestions.length} datos)</span>
+                          </span>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Estos datos los solicita la plataforma de manera nativa e integrada sin repeticiones.
+                          </p>
                         </div>
+                        <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 rounded-full shrink-0 self-start">
+                          ✓ Integración Oficial Activa
+                        </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 text-[11px] select-none">
-                            <input
-                              type="checkbox"
-                              checked={newCampoRequerido}
-                              onChange={e => setNewCampoRequerido(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded text-purple-500 cursor-pointer"
-                            />
-                            <span>Obligatorio</span>
-                          </label>
+                      <div className="grid grid-cols-1 gap-2">
+                        {officialSystemQuestions.map((q) => (
+                          <div
+                            key={q.id}
+                            className="p-3 rounded-2xl bg-slate-900/80 border border-white/8 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-sm"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center text-sm shrink-0">
+                                {q.icon}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <strong className="text-white text-xs font-bold truncate">{q.label}</strong>
+                                  <span className="text-[9px] font-black text-cyan-300 bg-cyan-500/15 px-1.5 py-0.2 rounded border border-cyan-500/30">
+                                    {q.badge}
+                                  </span>
+                                  <span className="text-[9px] font-bold text-rose-300 bg-rose-500/15 px-1.5 py-0.2 rounded border border-rose-500/25">
+                                    Obligatorio
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">
+                                  {q.desc} • Variable en WhatsApp: <strong className="text-cyan-300 font-mono">{q.variable}</strong>
+                                </p>
+                              </div>
+                            </div>
 
-                          <label className="flex items-center gap-1.5 cursor-pointer text-purple-300 text-[11px] select-none font-bold">
-                            <input
-                              type="checkbox"
-                              checked={newCampoRotulado}
-                              onChange={e => setNewCampoRotulado(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded text-purple-500 cursor-pointer"
-                            />
-                            <span>Imprimir en Rótulo</span>
-                          </label>
-
-                          <label className="flex items-center gap-1.5 cursor-pointer text-cyan-300 text-[11px] select-none font-bold">
-                            <input
-                              type="checkbox"
-                              checked={newCampoComprobante}
-                              onChange={e => setNewCampoComprobante(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
-                            />
-                            <span>Ver en Comprobante</span>
-                          </label>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={handleAddCampo}
-                          className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Agregar Dato a la Agencia</span>
-                        </button>
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto text-[10px] text-slate-400 bg-white/4 px-2.5 py-1 rounded-xl border border-white/5 font-bold">
+                              <span>✓ En Formulario y Rótulo</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
+                    {/* SECCIÓN 2: PREGUNTAS Y CAMPOS ADICIONALES PERSONALIZADOS */}
+                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-purple-500/30 space-y-4 shadow-xl">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="font-bold text-purple-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                            <Tag className="w-4 h-4 text-purple-400" />
+                            <span>2. Preguntas / Datos Adicionales Personalizados ({extraCustomFields.length})</span>
+                          </span>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Agrega preguntas extra exclusivas para esta agencia (ej. Usuario de TikTok, Color de Prenda, Talla, etc.).
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2.5 py-1 rounded-full shrink-0 self-start">
+                          {extraCustomFields.length} campos creados
+                        </span>
+                      </div>
+
+                      {/* Lista de campos adicionales */}
+                      {extraCustomFields.length === 0 ? (
+                        <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-500/20 text-center space-y-1">
+                          <p className="text-xs font-bold text-purple-200">No hay preguntas adicionales personalizadas.</p>
+                          <p className="text-[11px] text-slate-400">
+                            Si deseas pedir algún dato extra a la clienta (como su usuario de TikTok o referencia especial), agrégalo en el recuadro de abajo.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {extraCustomFields.map((campo) => (
+                            <div
+                              key={campo.id}
+                              className="p-3 rounded-2xl border bg-slate-900/90 border-purple-500/30 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center font-black text-xs shrink-0">
+                                  {campo.tipo === 'telefono' ? <Smartphone className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-white text-xs">{campo.label}</span>
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${campo.requerido ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-white/5 text-slate-400'}`}>
+                                      {campo.requerido ? 'Obligatorio' : 'Opcional'}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-mono block">
+                                    Tipo: {campo.tipo} • Variable en WhatsApp: <strong className="text-purple-300">{`{${campo.label}}`}</strong>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Switches de Control */}
+                              <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
+                                {/* Toggle Obligatorio */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, requerido: !c.requerido } : c));
+                                  }}
+                                  className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
+                                    campo.requerido ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-white/5 text-slate-400 border-white/10'
+                                  }`}
+                                >
+                                  {campo.requerido ? '★ Obligatorio' : 'Opcional'}
+                                </button>
+
+                                {/* Switch: Imprimir en Rótulo */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, mostrar_en_rotulado: !c.mostrar_en_rotulado } : c));
+                                  }}
+                                  className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    campo.mostrar_en_rotulado
+                                      ? 'bg-purple-500/20 text-purple-200 border-purple-400/40 hover:bg-purple-500/30'
+                                      : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300'
+                                  }`}
+                                  title="Hacer que este dato se imprima en la etiqueta / rótulo"
+                                >
+                                  <Tag className="w-3 h-3" />
+                                  <span>{campo.mostrar_en_rotulado ? '✓ En Rótulo' : 'Sin Rótulo'}</span>
+                                </button>
+
+                                {/* Switch: Mostrar en Comprobante */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, mostrar_en_comprobante: !c.mostrar_en_comprobante } : c));
+                                  }}
+                                  className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    campo.mostrar_en_comprobante
+                                      ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40 hover:bg-cyan-500/30'
+                                      : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300'
+                                  }`}
+                                  title="Mostrar este dato en el comprobante que recibe la clienta"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>{campo.mostrar_en_comprobante ? '✓ Comprobante' : 'Oculto'}</span>
+                                </button>
+
+                                {/* Eliminar campo */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCampo(campo.id)}
+                                  className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors cursor-pointer"
+                                  title="Eliminar este dato"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Añadir nuevo campo adicional */}
+                      <div className="p-4 rounded-2xl bg-slate-900 border border-purple-500/30 space-y-3 mt-4">
+                        <div className="text-[11px] font-bold text-purple-300 flex items-center gap-1.5">
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Añadir Pregunta / Dato Adicional (ej: Usuario de TikTok, Color de Prenda, etc.)</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                              Nombre de la Pregunta / Campo *
+                            </label>
+                            <input
+                              type="text"
+                              value={newCampoLabel}
+                              onChange={e => setNewCampoLabel(e.target.value)}
+                              placeholder="Ej. Usuario de TikTok o Color de Prenda"
+                              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                              Tipo de Entrada
+                            </label>
+                            <select
+                              value={newCampoTipo}
+                              onChange={e => setNewCampoTipo(e.target.value as any)}
+                              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold focus:outline-none focus:border-purple-400 cursor-pointer"
+                            >
+                              <option value="texto">Texto Simple</option>
+                              <option value="telefono">Teléfono / WhatsApp</option>
+                              <option value="numero">Número / Documento</option>
+                              <option value="textarea">Texto Largo / Referencia</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                          <div className="flex items-center gap-4">
+                            <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 text-[11px] select-none">
+                              <input
+                                type="checkbox"
+                                checked={newCampoRequerido}
+                                onChange={e => setNewCampoRequerido(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded text-purple-500 cursor-pointer"
+                              />
+                              <span>Obligatorio</span>
+                            </label>
+
+                            <label className="flex items-center gap-1.5 cursor-pointer text-purple-300 text-[11px] select-none font-bold">
+                              <input
+                                type="checkbox"
+                                checked={newCampoRotulado}
+                                onChange={e => setNewCampoRotulado(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded text-purple-500 cursor-pointer"
+                              />
+                              <span>Imprimir en Rótulo</span>
+                            </label>
+
+                            <label className="flex items-center gap-1.5 cursor-pointer text-cyan-300 text-[11px] select-none font-bold">
+                              <input
+                                type="checkbox"
+                                checked={newCampoComprobante}
+                                onChange={e => setNewCampoComprobante(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
+                              />
+                              <span>Ver en Comprobante</span>
+                            </label>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleAddCampo}
+                            className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Agregar Dato a la Agencia</span>
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* --- TAB 3: MENSAJE DEL COMPROBANTE WHATSAPP --- */}
               {activeEditorTab === 'mensaje' && (
@@ -1109,25 +1204,41 @@ export const CompanyAgenciesTab: React.FC = () => {
                       </div>
 
                       {/* Variables dinámicas de campos personalizados */}
-                      {camposList.length > 0 && (
-                        <div className="pt-2 border-t border-white/5 space-y-1">
-                          <span className="text-[10px] text-purple-300 font-bold block">
-                            Variables de campos que creaste en esta agencia:
-                          </span>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {camposList.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => insertVariableIntoMessage(c.label)}
-                                className="px-2.5 py-1 rounded-lg bg-purple-950/60 hover:bg-purple-500 hover:text-white text-purple-200 border border-purple-500/30 text-[11px] font-mono font-bold transition-all active:scale-95 cursor-pointer shadow-xs"
-                              >
-                                + {`{${c.label}}`}
-                              </button>
-                            ))}
+                      {(() => {
+                        const isNativeSystemDuplicateField = (c: CampoPersonalizadoAgencia) => {
+                          if (c.sistema) return true;
+                          const id = (c.id || '').toLowerCase();
+                          const lbl = (c.label || '').toLowerCase();
+                          if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
+                          if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
+                          if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
+                          if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
+                          return false;
+                        };
+                        const customChips = camposList.filter(c => !isNativeSystemDuplicateField(c));
+
+                        if (customChips.length === 0) return null;
+
+                        return (
+                          <div className="pt-2 border-t border-white/5 space-y-1">
+                            <span className="text-[10px] text-purple-300 font-bold block">
+                              Variables de campos adicionales que creaste en esta agencia:
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {customChips.map((c) => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  onClick={() => insertVariableIntoMessage(c.label)}
+                                  className="px-2.5 py-1 rounded-lg bg-purple-950/60 hover:bg-purple-500 hover:text-white text-purple-200 border border-purple-500/30 text-[11px] font-mono font-bold transition-all active:scale-95 cursor-pointer shadow-xs"
+                                >
+                                  + {`{${c.label}}`}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     {/* Textarea del mensaje */}

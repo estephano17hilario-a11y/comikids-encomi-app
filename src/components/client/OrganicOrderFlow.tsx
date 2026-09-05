@@ -10,7 +10,7 @@ import { PlacesMapPicker } from './PlacesMapPicker';
 import { ShalomAgenciesMap } from './ShalomAgenciesMap';
 import { OlvaAgenciesMap } from './OlvaAgenciesMap';
 import { EncomiAiChatModal } from './EncomiAiChatModal';
-import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido } from '../../types/database.types';
+import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido, CampoPersonalizadoAgencia } from '../../types/database.types';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import {
@@ -642,10 +642,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       }
     }
 
-    // Validación de campos personalizados obligatorios de la agencia
+    // Validación de campos personalizados adicionales de la agencia
     if (selectedMethod?.campos_personalizados && selectedMethod.campos_personalizados.length > 0) {
+      const isNativeDuplicateField = (c: CampoPersonalizadoAgencia) => {
+        if (c.sistema) return true;
+        const id = (c.id || '').toLowerCase();
+        const lbl = (c.label || '').toLowerCase();
+        if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
+        if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
+        if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
+        if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
+        if (lbl.includes('dirección') || lbl.includes('direccion') || lbl.includes('agencia olva') || lbl.includes('agencia shalom')) return true;
+        return false;
+      };
+
       for (const campo of selectedMethod.campos_personalizados) {
-        if (campo.requerido) {
+        if (campo.requerido && !isNativeDuplicateField(campo)) {
           const val = customFieldValues[campo.id] ?? customFieldValues[campo.label];
           if (!val || String(val).trim() === '') {
             setErrorMsg(`Por favor completa el campo requerido: ${campo.label}`);
@@ -750,6 +762,17 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           created_at: new Date().toISOString()
         };
 
+        const finalCustomFields: Record<string, any> = { ...customFieldValues };
+        finalCustomFields['c-shalom-dni'] = dniShalom.trim();
+        finalCustomFields['c-shalom-tel'] = whatsapp.trim();
+        finalCustomFields['c-olva-dni'] = dniShalom.trim();
+        finalCustomFields['c-olva-tel'] = whatsapp.trim();
+        finalCustomFields['c-olva-dir'] = olvaDireccion.trim();
+        finalCustomFields['DNI / CE'] = dniShalom.trim();
+        finalCustomFields['DNI / Carnet de Extranjería'] = dniShalom.trim();
+        finalCustomFields['Celular / WhatsApp'] = whatsapp.trim();
+        finalCustomFields['Nombres y Apellidos'] = nombreCompleto.trim();
+
         const orderPayload = {
           usuario_id: clientUserData.id,
           usuario: clientUserData,
@@ -761,7 +784,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
           observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
           fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
-          campos_personalizados: customFieldValues,
+          campos_personalizados: finalCustomFields,
         };
 
         // Creación del pedido con timeout de rescate para asegurar que NUNCA se quede colgado
@@ -1734,7 +1757,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </label>
                       {isResolvingDni && (
                         <span className="text-[11px] text-cyan-400 font-bold flex items-center gap-1 animate-pulse">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando...
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando en RENIEC/SUNAT...
                         </span>
                       )}
                     </div>
@@ -1762,6 +1785,24 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           Número inválido
                         </div>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Celular / WhatsApp de Contacto */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                      📱 Celular / WhatsApp de Contacto *
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="tel"
+                        required
+                        value={whatsapp}
+                        onChange={e => setWhatsapp(formatPhoneWithSpaces(e.target.value))}
+                        placeholder="987 654 321"
+                        maxLength={11}
+                        className="w-full pl-5 pr-4 py-3.5 sm:py-4 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
+                      />
                     </div>
                   </div>
 
@@ -2346,51 +2387,70 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               )}
 
-              {/* CAMPOS PERSONALIZADOS DINÁMICOS DE LA AGENCIA / MOTORIZADO */}
-              {(selectedMethod?.tipo_formulario !== 'mapa_direccion' || motorizadoSubStep === 'form') &&
-                selectedMethod?.campos_personalizados && selectedMethod.campos_personalizados.length > 0 && (
-                <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/90 border-2 border-indigo-500/30 space-y-3.5 shadow-xl animate-fadeIn">
-                  <div className="flex items-center gap-2 pb-2 border-b border-white/8 text-xs font-black text-indigo-300 uppercase tracking-wider">
-                    <span>📋</span>
-                    <span>Información Requerida para {selectedMethod.nombre}</span>
+              {/* CAMPOS PERSONALIZADOS ADICIONALES DE LA AGENCIA (Solo preguntas adicionales para no duplicar datos) */}
+              {(() => {
+                const isNativeDuplicateField = (campo: CampoPersonalizadoAgencia) => {
+                  if (campo.sistema) return true;
+                  const id = (campo.id || '').toLowerCase();
+                  const lbl = (campo.label || '').toLowerCase();
+                  if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
+                  if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
+                  if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
+                  if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
+                  if (lbl.includes('dirección') || lbl.includes('direccion') || lbl.includes('agencia olva') || lbl.includes('agencia shalom')) return true;
+                  return false;
+                };
+
+                const extraFields = (selectedMethod?.campos_personalizados || []).filter(c => !isNativeDuplicateField(c));
+
+                if (extraFields.length === 0 || (selectedMethod?.tipo_formulario === 'mapa_direccion' && motorizadoSubStep !== 'form')) {
+                  return null;
+                }
+
+                return (
+                  <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/90 border-2 border-indigo-500/30 space-y-3.5 shadow-xl animate-fadeIn">
+                    <div className="flex items-center gap-2 pb-2 border-b border-white/8 text-xs font-black text-indigo-300 uppercase tracking-wider">
+                      <span>📋</span>
+                      <span>Información Adicional para {selectedMethod.nombre}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {extraFields.map(campo => {
+                        const val = customFieldValues[campo.id] ?? customFieldValues[campo.label] ?? '';
+                        return (
+                          <div key={campo.id} className={campo.tipo === 'textarea' ? 'sm:col-span-2 space-y-1.5' : 'space-y-1.5'}>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                              {campo.label} {campo.requerido && <span className="text-rose-400">*</span>}
+                            </label>
+
+                            {campo.tipo === 'textarea' ? (
+                              <textarea
+                                rows={2}
+                                required={campo.requerido}
+                                value={val}
+                                onChange={e => handleCustomFieldChange(campo.id, e.target.value)}
+                                placeholder={campo.placeholder || `Ingresa ${campo.label}...`}
+                                className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 shadow-inner"
+                              />
+                            ) : (
+                              <input
+                                type={campo.tipo === 'telefono' ? 'tel' : campo.tipo === 'numero' ? 'number' : 'text'}
+                                required={campo.requerido}
+                                value={val}
+                                onChange={e => handleCustomFieldChange(campo.id, e.target.value)}
+                                placeholder={campo.placeholder || `Ingresa ${campo.label}...`}
+                                className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 shadow-inner font-medium"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
+                );
+              })()}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {selectedMethod.campos_personalizados.map(campo => {
-                      const val = customFieldValues[campo.id] ?? customFieldValues[campo.label] ?? '';
-                      return (
-                        <div key={campo.id} className={campo.tipo === 'textarea' ? 'sm:col-span-2 space-y-1.5' : 'space-y-1.5'}>
-                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                            {campo.label} {campo.requerido && <span className="text-rose-400">*</span>}
-                          </label>
-
-                          {campo.tipo === 'textarea' ? (
-                            <textarea
-                              rows={2}
-                              required={campo.requerido}
-                              value={val}
-                              onChange={e => handleCustomFieldChange(campo.id, e.target.value)}
-                              placeholder={campo.placeholder || `Ingresa ${campo.label}...`}
-                              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 shadow-inner"
-                            />
-                          ) : (
-                            <input
-                              type={campo.tipo === 'telefono' ? 'tel' : campo.tipo === 'numero' ? 'number' : 'text'}
-                              required={campo.requerido}
-                              value={val}
-                              onChange={e => handleCustomFieldChange(campo.id, e.target.value)}
-                              placeholder={campo.placeholder || `Ingresa ${campo.label}...`}
-                              className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 shadow-inner font-medium"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* NOMBRE Y APELLIDOS + TIKTOK (Solo se muestra cuando no estamos en la selección del mapa de motorizado) */}
+              {/* NOMBRE Y APELLIDOS (Solo se muestra cuando no estamos en la selección del mapa de motorizado) */}
               {(selectedMethod?.tipo_formulario !== 'mapa_direccion' || motorizadoSubStep === 'form') && (
                 <>
                   <div className="space-y-2 pt-2 border-t border-white/8">
@@ -2423,6 +2483,26 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       <User className={`w-5 h-5 absolute left-4 pointer-events-none ${dniSource ? 'text-emerald-400' : 'text-cyan-400'}`} />
                     </div>
                   </div>
+
+                  {/* Celular / WhatsApp para Motorizado y Otros Métodos (Shalom y Olva ya lo tienen en su sección) */}
+                  {selectedMethod?.tipo_formulario !== 'shalom' && selectedMethod?.tipo_formulario !== 'olva' && (
+                    <div className="space-y-1.5">
+                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                        📱 Celular / WhatsApp de Contacto *
+                      </label>
+                      <div className="relative flex items-center">
+                        <input
+                          type="tel"
+                          required
+                          value={whatsapp}
+                          onChange={e => setWhatsapp(formatPhoneWithSpaces(e.target.value))}
+                          placeholder="987 654 321"
+                          maxLength={11}
+                          className="w-full pl-5 pr-4 py-3.5 sm:py-4 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Casilla: Fecha Deseada de Envío / Despacho con Restricción de Corte Horario */}
                   <div className="space-y-2.5">

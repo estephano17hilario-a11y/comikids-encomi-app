@@ -1,7 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ordersService } from '../../services/ordersService';
-import { MetodoEnvio, CampoPersonalizadoAgencia, TallerConfig, Pedido } from '../../types/database.types';
+import {
+  MetodoEnvio,
+  CampoPersonalizadoAgencia,
+  TallerConfig,
+  Pedido,
+  DiaSemana,
+  BloqueRotuladoPersonalizado,
+} from '../../types/database.types';
 import { ShalomLabelPrint } from './ShalomLabelPrint';
+import {
+  DIAS_SEMANA_ORDEN,
+  DIAS_SEMANA_LABELS,
+  DIAS_SEMANA_ABREV,
+  getAgencyDaysSummary,
+} from '../../utils/agencyAvailability';
 import {
   Building2,
   Plus,
@@ -29,7 +42,11 @@ import {
   HelpCircle,
   Printer,
   ShieldCheck,
-  Palette
+  Palette,
+  Calendar,
+  Clock,
+  SlidersHorizontal,
+  AlertTriangle,
 } from 'lucide-react';
 
 const LOGO_PRESETS = [
@@ -66,10 +83,10 @@ export const CompanyAgenciesTab: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Sub-sección activa dentro del editor de agencia
-  const [activeEditorTab, setActiveEditorTab] = useState<'general' | 'datos' | 'mensaje' | 'rotulado'>('general');
+  // Sub-sección activa dentro del editor de agencia (5 pestañas)
+  const [activeEditorTab, setActiveEditorTab] = useState<'general' | 'disponibilidad' | 'datos' | 'mensaje' | 'rotulado'>('general');
 
-  // Estados del formulario en edición
+  // Estados generales del formulario en edición
   const [nombreMetodo, setNombreMetodo] = useState('');
   const [descripcionMetodo, setDescripcionMetodo] = useState('');
   const [iconoMetodo, setIconoMetodo] = useState('Truck');
@@ -77,31 +94,78 @@ export const CompanyAgenciesTab: React.FC = () => {
   const [camposList, setCamposList] = useState<CampoPersonalizadoAgencia[]>([]);
   const [mensajeComprobacion, setMensajeComprobacion] = useState('');
 
-  // Configuración de rotulado inteligente y remitente 100% personalizable
+  // ==========================================
+  // REQUERIMIENTO 2: DISPONIBILIDAD INTELIGENTE
+  // ==========================================
+  const [diasSemanaHabilitados, setDiasSemanaHabilitados] = useState<DiaSemana[]>([]);
+  const [usarRangoFechas, setUsarRangoFechas] = useState(false);
+  const [fechaInicioDisp, setFechaInicioDisp] = useState('');
+  const [fechaFinDisp, setFechaFinDisp] = useState('');
+  const [ocultarSiNoDisponible, setOcultarSiNoDisponible] = useState(false);
+  const [restringirFechaEnvio, setRestringirFechaEnvio] = useState(true);
+  const [mensajeDisponibilidad, setMensajeDisponibilidad] = useState('');
+
+  // ==========================================
+  // REQUERIMIENTO 1: RÓTULO 100% PERSONALIZABLE
+  // ==========================================
   const [estiloRotulo, setEstiloRotulo] = useState<'estandar_oficial' | 'vision_modern' | 'eco_ink_saving' | ''>('');
   const [previewEstilo, setPreviewEstilo] = useState<'estandar_oficial' | 'vision_modern' | 'eco_ink_saving' | ''>('');
+
+  // Logos y Encabezado
+  const [mostrarLogoEmpresa, setMostrarLogoEmpresa] = useState(true);
+  const [mostrarLogoAgencia, setMostrarLogoAgencia] = useState(true);
+  const [subtituloCabecera, setSubtituloCabecera] = useState('');
+
+  // Barcode y Tracking
+  const [mostrarBarcode, setMostrarBarcode] = useState(true);
+  const [mostrarTracking, setMostrarTracking] = useState(true);
+
+  // Destino
+  const [mostrarDestino, setMostrarDestino] = useState(true);
+  const [tituloDestino, setTituloDestino] = useState('');
+
+  // Destinatario
+  const [incluirDestinatario, setIncluirDestinatario] = useState(true);
+  const [tituloDestinatario, setTituloDestinatario] = useState('');
+  const [mostrarBadgeModalidad, setMostrarBadgeModalidad] = useState(true);
+  const [textoBadgeModalidad, setTextoBadgeModalidad] = useState('');
+  const [mostrarClienteNombre, setMostrarClienteNombre] = useState(true);
+  const [tituloClienteNombre, setTituloClienteNombre] = useState('');
+  const [mostrarClienteDni, setMostrarClienteDni] = useState(true);
+  const [tituloClienteDni, setTituloClienteDni] = useState('');
+  const [tamanoDni, setTamanoDni] = useState<'normal' | 'grande' | 'gigante'>('gigante');
+  const [mostrarClienteTelefono, setMostrarClienteTelefono] = useState(true);
+  const [tituloClienteTelefono, setTituloClienteTelefono] = useState('');
+
+  // Remitente
+  const [incluirRemitente, setIncluirRemitente] = useState(true);
+  const [tituloRemitente, setTituloRemitente] = useState('');
   const [usarRemitentePersonalizado, setUsarRemitentePersonalizado] = useState(false);
   const [customRemitenteNombre, setCustomRemitenteNombre] = useState('');
   const [customRemitenteRucDni, setCustomRemitenteRucDni] = useState('');
   const [customRemitenteCelular, setCustomRemitenteCelular] = useState('');
   const [customRemitenteOrigen, setCustomRemitenteOrigen] = useState('');
   const [customRemitenteObservaciones, setCustomRemitenteObservaciones] = useState('');
-
-  const [incluirRemitente, setIncluirRemitente] = useState(true);
   const [mostrarRemitenteNombre, setMostrarRemitenteNombre] = useState(true);
   const [mostrarRemitenteRucDni, setMostrarRemitenteRucDni] = useState(true);
   const [mostrarRemitenteTelefono, setMostrarRemitenteTelefono] = useState(true);
   const [mostrarRemitenteOrigen, setMostrarRemitenteOrigen] = useState(true);
 
-  const [incluirDestinatario, setIncluirDestinatario] = useState(true);
-  const [mostrarClienteNombre, setMostrarClienteNombre] = useState(true);
-  const [mostrarClienteDni, setMostrarClienteDni] = useState(true);
-  const [mostrarClienteTelefono, setMostrarClienteTelefono] = useState(true);
-  const [mostrarClienteDestino, setMostrarClienteDestino] = useState(true);
-  const [mostrarBarcode, setMostrarBarcode] = useState(true);
-  const [mostrarFechaSello, setMostrarFechaSello] = useState(true);
+  // Etiquetas personalizadas de campos de formulario en rótulo
+  const [etiquetasCampos, setEtiquetasCampos] = useState<Record<string, string>>({});
 
-  // Nuevo campo a solicitar
+  // Bloques libres / notas especiales en rótulo
+  const [bloquesPersonalizados, setBloquesPersonalizados] = useState<BloqueRotuladoPersonalizado[]>([]);
+  const [newBloqueTitulo, setNewBloqueTitulo] = useState('');
+  const [newBloqueContenido, setNewBloqueContenido] = useState('');
+  const [newBloqueTipo, setNewBloqueTipo] = useState<'aviso' | 'nota' | 'destacado' | 'flete'>('aviso');
+  const [newBloquePosicion, setNewBloquePosicion] = useState<'arriba' | 'medio' | 'abajo'>('medio');
+
+  // Extras
+  const [mostrarFechaSello, setMostrarFechaSello] = useState(true);
+  const [textoSelloPersonalizado, setTextoSelloPersonalizado] = useState('');
+
+  // Nuevo campo a solicitar a la clienta
   const [newCampoLabel, setNewCampoLabel] = useState('');
   const [newCampoPlaceholder, setNewCampoPlaceholder] = useState('');
   const [newCampoTipo, setNewCampoTipo] = useState<'texto' | 'telefono' | 'numero' | 'textarea'>('texto');
@@ -109,11 +173,11 @@ export const CompanyAgenciesTab: React.FC = () => {
   const [newCampoRotulado, setNewCampoRotulado] = useState(true);
   const [newCampoComprobante, setNewCampoComprobante] = useState(true);
 
-  // Referencia al textarea del mensaje para insertar variables en la posición del cursor
+  // Referencias
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // REQUERIMIENTO: Ocultar el selector de secciones (dock inferior) cuando se abre el modal
+  // Ocultar dock inferior cuando se abre algún modal
   useEffect(() => {
     const isAnyModalOpen = Boolean(editingMethod || showCreateModal || showPreviewModal);
     if (isAnyModalOpen) {
@@ -150,15 +214,49 @@ export const CompanyAgenciesTab: React.FC = () => {
     setFotoUrlMetodo(m.foto_url || '');
     setCamposList(m.campos_personalizados || []);
 
-    // REQUERIMIENTO: Mensaje por defecto pre-cargado si está vacío
+    // Mensaje WhatsApp
     setMensajeComprobacion(m.mensaje_comprobacion?.trim() || DEFAULT_STANDARD_RECEIPT(m.nombre));
 
-    // Configuración de rotulado y estilo
+    // Disponibilidad
+    const disp = m.disponibilidad;
+    setDiasSemanaHabilitados(disp?.dias_semana || []);
+    setUsarRangoFechas(Boolean(disp?.usar_rango_fechas));
+    setFechaInicioDisp(disp?.fecha_inicio || '');
+    setFechaFinDisp(disp?.fecha_fin || '');
+    setOcultarSiNoDisponible(Boolean(disp?.ocultar_si_no_disponible));
+    setRestringirFechaEnvio(disp?.restringir_fecha_envio !== false);
+    setMensajeDisponibilidad(disp?.mensaje_disponibilidad || '');
+
+    // Rótulo Inteligente 100% Personalizable
     const cfg = m.config_rotulado;
     setEstiloRotulo(cfg?.estilo_rotulo || '');
     setPreviewEstilo(cfg?.estilo_rotulo || '');
 
-    // Remitente 100% personalizable
+    setMostrarLogoEmpresa(cfg?.mostrar_logo_empresa !== false);
+    setMostrarLogoAgencia(cfg?.mostrar_logo_agencia !== false);
+    setSubtituloCabecera(cfg?.subtitulo_cabecera || '');
+
+    setMostrarBarcode(cfg?.mostrar_barcode !== false);
+    setMostrarTracking(cfg?.mostrar_tracking !== false);
+
+    setMostrarDestino(cfg?.mostrar_destino !== false);
+    setTituloDestino(cfg?.titulo_destino || '');
+
+    setIncluirDestinatario(cfg?.incluir_destinatario !== false);
+    setTituloDestinatario(cfg?.titulo_destinatario || '');
+    setMostrarBadgeModalidad(cfg?.mostrar_badge_modalidad !== false);
+    setTextoBadgeModalidad(cfg?.texto_badge_modalidad || '');
+    setMostrarClienteNombre(cfg?.mostrar_cliente_nombre !== false);
+    setTituloClienteNombre(cfg?.titulo_cliente_nombre || '');
+    setMostrarClienteDni(cfg?.mostrar_cliente_dni !== false);
+    setTituloClienteDni(cfg?.titulo_cliente_dni || '');
+    setTamanoDni(cfg?.tamano_dni || 'gigante');
+    setMostrarClienteTelefono(cfg?.mostrar_cliente_telefono !== false);
+    setTituloClienteTelefono(cfg?.titulo_cliente_telefono || '');
+
+    setEtiquetasCampos(cfg?.etiquetas_campos || {});
+    setBloquesPersonalizados(cfg?.bloques_personalizados || []);
+
     const remPers = cfg?.remitente_personalizado;
     setUsarRemitentePersonalizado(Boolean(remPers?.usar_personalizado));
     setCustomRemitenteNombre(remPers?.nombre || tallerConfig.remitente_default?.nombre || tallerConfig.nombre_taller || '');
@@ -168,18 +266,14 @@ export const CompanyAgenciesTab: React.FC = () => {
     setCustomRemitenteObservaciones(remPers?.observaciones || '');
 
     setIncluirRemitente(cfg?.incluir_remitente !== false);
+    setTituloRemitente(cfg?.titulo_remitente || '');
     setMostrarRemitenteNombre(cfg?.mostrar_remitente_nombre !== false);
     setMostrarRemitenteRucDni(cfg?.mostrar_remitente_ruc_dni !== false);
     setMostrarRemitenteTelefono(cfg?.mostrar_remitente_telefono !== false);
     setMostrarRemitenteOrigen(cfg?.mostrar_remitente_origen !== false);
 
-    setIncluirDestinatario(cfg?.incluir_destinatario !== false);
-    setMostrarClienteNombre(cfg?.mostrar_cliente_nombre !== false);
-    setMostrarClienteDni(cfg?.mostrar_cliente_dni !== false);
-    setMostrarClienteTelefono(cfg?.mostrar_cliente_telefono !== false);
-    setMostrarClienteDestino(cfg?.mostrar_cliente_destino !== false);
-    setMostrarBarcode(cfg?.mostrar_barcode !== false);
     setMostrarFechaSello(cfg?.mostrar_fecha_sello !== false);
+    setTextoSelloPersonalizado(cfg?.texto_sello_personalizado || '');
   };
 
   // Guardar agencia editada
@@ -199,11 +293,41 @@ export const CompanyAgenciesTab: React.FC = () => {
         foto_url: fotoUrlMetodo.trim() || undefined,
         campos_personalizados: camposList,
         mensaje_comprobacion: mensajeComprobacion.trim() || undefined,
+        disponibilidad: {
+          dias_semana: diasSemanaHabilitados.length > 0 ? diasSemanaHabilitados : undefined,
+          usar_rango_fechas: usarRangoFechas,
+          fecha_inicio: fechaInicioDisp.trim() || undefined,
+          fecha_fin: fechaFinDisp.trim() || undefined,
+          ocultar_si_no_disponible: ocultarSiNoDisponible,
+          restringir_fecha_envio: restringirFechaEnvio,
+          mensaje_disponibilidad: mensajeDisponibilidad.trim() || undefined,
+        },
         config_rotulado: {
           estilo_rotulo: estiloRotulo ? (estiloRotulo as any) : undefined,
+          mostrar_logo_empresa: mostrarLogoEmpresa,
+          mostrar_logo_agencia: mostrarLogoAgencia,
+          subtitulo_cabecera: subtituloCabecera.trim() || undefined,
+          mostrar_barcode: mostrarBarcode,
+          mostrar_tracking: mostrarTracking,
+          mostrar_destino: mostrarDestino,
+          titulo_destino: tituloDestino.trim() || undefined,
+          incluir_destinatario: incluirDestinatario,
+          titulo_destinatario: tituloDestinatario.trim() || undefined,
+          mostrar_badge_modalidad: mostrarBadgeModalidad,
+          texto_badge_modalidad: textoBadgeModalidad.trim() || undefined,
+          mostrar_cliente_nombre: mostrarClienteNombre,
+          titulo_cliente_nombre: tituloClienteNombre.trim() || undefined,
+          mostrar_cliente_dni: mostrarClienteDni,
+          titulo_cliente_dni: tituloClienteDni.trim() || undefined,
+          tamano_dni: tamanoDni,
+          mostrar_cliente_telefono: mostrarClienteTelefono,
+          titulo_cliente_telefono: tituloClienteTelefono.trim() || undefined,
           incluir_campos_personalizados: true,
           campos_visibles: rotuladoVisibles,
+          etiquetas_campos: etiquetasCampos,
+          bloques_personalizados: bloquesPersonalizados,
           incluir_remitente: incluirRemitente,
+          titulo_remitente: tituloRemitente.trim() || undefined,
           mostrar_remitente_nombre: mostrarRemitenteNombre,
           mostrar_remitente_ruc_dni: mostrarRemitenteRucDni,
           mostrar_remitente_telefono: mostrarRemitenteTelefono,
@@ -216,14 +340,9 @@ export const CompanyAgenciesTab: React.FC = () => {
             direccion: customRemitenteOrigen.trim() || undefined,
             observaciones: customRemitenteObservaciones.trim() || undefined,
           },
-          incluir_destinatario: incluirDestinatario,
-          mostrar_cliente_nombre: mostrarClienteNombre,
-          mostrar_cliente_dni: mostrarClienteDni,
-          mostrar_cliente_telefono: mostrarClienteTelefono,
-          mostrar_cliente_destino: mostrarClienteDestino,
-          mostrar_barcode: mostrarBarcode,
           mostrar_fecha_sello: mostrarFechaSello,
-        }
+          texto_sello_personalizado: textoSelloPersonalizado.trim() || undefined,
+        },
       });
 
       reloadMethods();
@@ -283,7 +402,7 @@ export const CompanyAgenciesTab: React.FC = () => {
             mostrar_en_rotulado: true,
             mostrar_en_comprobante: true,
             sistema: false,
-          }
+          },
         ],
         mensaje_comprobacion: DEFAULT_STANDARD_RECEIPT(nombreMetodo.trim()),
         config_rotulado: {
@@ -301,7 +420,7 @@ export const CompanyAgenciesTab: React.FC = () => {
           mostrar_cliente_destino: true,
           mostrar_barcode: true,
           mostrar_fecha_sello: true,
-        }
+        },
       });
 
       reloadMethods();
@@ -315,14 +434,12 @@ export const CompanyAgenciesTab: React.FC = () => {
     }
   };
 
-  // Alternar estado activo
   const handleToggleActivo = (m: MetodoEnvio) => {
     ordersService.updateShippingMethod(m.id, { activo: !m.activo });
     reloadMethods();
     notifySuccess(`Agencia "${m.nombre}" ${!m.activo ? 'activada' : 'desactivada'}.`);
   };
 
-  // Eliminar agencia
   const handleDeleteMethod = (m: MetodoEnvio) => {
     if (m.es_sistema || m.id === 'met-shalom' || m.id === 'met-olva' || m.codigo === 'shalom' || m.codigo === 'olva') {
       alert('⚠️ Seguridad del Sistema: Las agencias base oficiales (Shalom y Olva) no se pueden eliminar.');
@@ -336,26 +453,99 @@ export const CompanyAgenciesTab: React.FC = () => {
     }
   };
 
-  // REQUERIMIENTO: Inserción automática de variable al hacer click sin escribir llaves a mano
+  // Presets rápidos para el rótulo
+  const applyPresetRotulo = (preset: 'completo' | 'solo_destinatario' | 'eco_ahorro' | 'con_alertas') => {
+    if (preset === 'completo') {
+      setIncluirRemitente(true);
+      setMostrarRemitenteNombre(true);
+      setMostrarRemitenteRucDni(true);
+      setMostrarRemitenteTelefono(true);
+      setMostrarRemitenteOrigen(true);
+      setIncluirDestinatario(true);
+      setMostrarClienteNombre(true);
+      setMostrarClienteDni(true);
+      setMostrarClienteTelefono(true);
+      setMostrarDestino(true);
+      setMostrarBarcode(true);
+      setMostrarTracking(true);
+      setTamanoDni('gigante');
+      notifySuccess('Preset "Completo Oficial" aplicado.');
+    } else if (preset === 'solo_destinatario') {
+      setIncluirRemitente(false);
+      setIncluirDestinatario(true);
+      setMostrarClienteNombre(true);
+      setMostrarClienteDni(true);
+      setMostrarClienteTelefono(true);
+      setMostrarDestino(true);
+      setMostrarBarcode(true);
+      setTamanoDni('gigante');
+      notifySuccess('Preset "Solo Destinatario" aplicado.');
+    } else if (preset === 'eco_ahorro') {
+      setEstiloRotulo('eco_ink_saving');
+      setPreviewEstilo('eco_ink_saving');
+      setTamanoDni('grande');
+      setIncluirRemitente(true);
+      setIncluirDestinatario(true);
+      notifySuccess('Preset "Eco Ahorro Tinta" aplicado.');
+    } else if (preset === 'con_alertas') {
+      setBloquesPersonalizados([
+        {
+          id: 'b-fragil-' + Date.now().toString(36),
+          titulo: '⚠️ ¡FRÁGIL! MANEJAR CON CUIDADO',
+          contenido: 'Prendas delicadas bordadas. No golpear ni presionar.',
+          tipo: 'aviso',
+          posicion: 'medio',
+        },
+        {
+          id: 'b-flete-' + Date.now().toString(36),
+          titulo: '💰 FLETE PAGO DESTINO',
+          contenido: 'Cliente abona el costo del envío al recoger en agencia.',
+          tipo: 'flete',
+          posicion: 'medio',
+        },
+      ]);
+      notifySuccess('Preset "Con Alertas Especiales" aplicado.');
+    }
+  };
+
+  // Agregar bloque personalizado de rótulo
+  const handleAddBloque = () => {
+    if (!newBloqueContenido.trim()) {
+      alert('Ingresa el texto o aviso que saldrá en la etiqueta.');
+      return;
+    }
+    const nuevo: BloqueRotuladoPersonalizado = {
+      id: 'b-' + Date.now().toString(36),
+      titulo: newBloqueTitulo.trim() || undefined,
+      contenido: newBloqueContenido.trim(),
+      tipo: newBloqueTipo,
+      posicion: newBloquePosicion,
+    };
+    setBloquesPersonalizados(prev => [...prev, nuevo]);
+    setNewBloqueTitulo('');
+    setNewBloqueContenido('');
+  };
+
+  const handleDeleteBloque = (id: string) => {
+    setBloquesPersonalizados(prev => prev.filter(b => b.id !== id));
+  };
+
+  // Inserción de variable en WhatsApp
   const insertVariableIntoMessage = (varName: string) => {
     const token = `{${varName}}`;
     if (!textareaRef.current) {
       setMensajeComprobacion(prev => prev + ' ' + token);
       return;
     }
-
     const textarea = textareaRef.current;
     const start = textarea.selectionStart || 0;
     const end = textarea.selectionEnd || 0;
     const currentVal = textarea.value;
-
     const before = currentVal.substring(0, start);
     const after = currentVal.substring(end, currentVal.length);
-
     const newVal = before + token + after;
     setMensajeComprobacion(newVal);
 
-    // Restaurar cursor justo después del token insertado
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus();
@@ -365,7 +555,7 @@ export const CompanyAgenciesTab: React.FC = () => {
     }, 50);
   };
 
-  // REQUERIMIENTO: Agregar campo personalizado con variable lista
+  // Agregar campo personalizado
   const handleAddCampo = () => {
     if (!newCampoLabel.trim()) {
       alert('Ingresa el nombre del dato que pedirás a la clienta (ej: Usuario TikTok, Referencia, etc.)');
@@ -401,22 +591,125 @@ export const CompanyAgenciesTab: React.FC = () => {
     setCamposList(prev => prev.filter(c => c.id !== campoId));
   };
 
-  // Subir archivo de foto
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (file.size > 2 * 1024 * 1024) {
       alert('La imagen no debe superar los 2MB.');
       return;
     }
-
     const reader = new FileReader();
     reader.onload = () => {
       setFotoUrlMetodo(reader.result as string);
     };
     reader.readAsDataURL(file);
   };
+
+  // Objeto reactivo en vivo para renderizado instantáneo en el editor
+  const currentLiveMethod: MetodoEnvio = useMemo(() => {
+    return {
+      id: editingMethod?.id || 'met-live-edit',
+      codigo: editingMethod?.codigo || 'agencia_custom',
+      nombre: nombreMetodo || editingMethod?.nombre || 'Agencia',
+      descripcion: descripcionMetodo,
+      icono: iconoMetodo,
+      foto_url: fotoUrlMetodo,
+      tipo_formulario: editingMethod?.tipo_formulario || 'personalizado',
+      activo: true,
+      orden: 1,
+      campos_personalizados: camposList,
+      config_rotulado: {
+        estilo_rotulo: (previewEstilo || estiloRotulo) ? ((previewEstilo || estiloRotulo) as any) : undefined,
+        mostrar_logo_empresa: mostrarLogoEmpresa,
+        mostrar_logo_agencia: mostrarLogoAgencia,
+        subtitulo_cabecera: subtituloCabecera,
+        mostrar_barcode: mostrarBarcode,
+        mostrar_tracking: mostrarTracking,
+        mostrar_destino: mostrarDestino,
+        titulo_destino: tituloDestino,
+        incluir_destinatario: incluirDestinatario,
+        titulo_destinatario: tituloDestinatario,
+        mostrar_badge_modalidad: mostrarBadgeModalidad,
+        texto_badge_modalidad: textoBadgeModalidad,
+        mostrar_cliente_nombre: mostrarClienteNombre,
+        titulo_cliente_nombre: tituloClienteNombre,
+        mostrar_cliente_dni: mostrarClienteDni,
+        titulo_cliente_dni: tituloClienteDni,
+        tamano_dni: tamanoDni,
+        mostrar_cliente_telefono: mostrarClienteTelefono,
+        titulo_cliente_telefono: tituloClienteTelefono,
+        incluir_campos_personalizados: true,
+        campos_visibles: camposList.filter(c => c.mostrar_en_rotulado).map(c => c.id),
+        etiquetas_campos: etiquetasCampos,
+        bloques_personalizados: bloquesPersonalizados,
+        incluir_remitente: incluirRemitente,
+        titulo_remitente: tituloRemitente,
+        mostrar_remitente_nombre: mostrarRemitenteNombre,
+        mostrar_remitente_ruc_dni: mostrarRemitenteRucDni,
+        mostrar_remitente_telefono: mostrarRemitenteTelefono,
+        mostrar_remitente_origen: mostrarRemitenteOrigen,
+        remitente_personalizado: {
+          usar_personalizado: usarRemitentePersonalizado,
+          nombre: customRemitenteNombre.trim() || undefined,
+          ruc_dni: customRemitenteRucDni.trim() || undefined,
+          celular: customRemitenteCelular.trim() || undefined,
+          direccion: customRemitenteOrigen.trim() || undefined,
+          observaciones: customRemitenteObservaciones.trim() || undefined,
+        },
+        mostrar_fecha_sello: mostrarFechaSello,
+        texto_sello_personalizado: textoSelloPersonalizado,
+      },
+    };
+  }, [
+    editingMethod, nombreMetodo, descripcionMetodo, iconoMetodo, fotoUrlMetodo,
+    camposList, previewEstilo, estiloRotulo, mostrarLogoEmpresa, mostrarLogoAgencia,
+    subtituloCabecera, mostrarBarcode, mostrarTracking, mostrarDestino, tituloDestino,
+    incluirDestinatario, tituloDestinatario, mostrarBadgeModalidad, textoBadgeModalidad,
+    mostrarClienteNombre, tituloClienteNombre, mostrarClienteDni, tituloClienteDni,
+    tamanoDni, mostrarClienteTelefono, tituloClienteTelefono, etiquetasCampos,
+    bloquesPersonalizados, incluirRemitente, tituloRemitente, mostrarRemitenteNombre,
+    mostrarRemitenteRucDni, mostrarRemitenteTelefono, mostrarRemitenteOrigen,
+    usarRemitentePersonalizado, customRemitenteNombre, customRemitenteRucDni,
+    customRemitenteCelular, customRemitenteOrigen, customRemitenteObservaciones,
+    mostrarFechaSello, textoSelloPersonalizado,
+  ]);
+
+  const mockPedido: Pedido = useMemo(() => ({
+    id: 'ped-live-demo',
+    codigo_seguimiento: 'ENCOMI-9428',
+    usuario_id: 'usr-demo',
+    usuario: {
+      id: 'usr-demo',
+      dni: '72384910',
+      nombre_completo: 'María Fernanda Quispe Ramos',
+      email_default: 'maria.quispe@ejemplo.com',
+      telefono_default: '987654321',
+      password_hash: '',
+      rol: 'client',
+      avatar_url: '',
+      puntos_xp: 0,
+      nivel: 1,
+      created_at: new Date().toISOString(),
+    },
+    detalles_bordado: 'Paquete de muestra para verificación de rotulado',
+    metodo_envio_codigo: editingMethod ? editingMethod.codigo : 'agencia_demo',
+    metodo_envio_nombre: nombreMetodo || editingMethod?.nombre || 'Agencia Oficial',
+    destino_detalle: editingMethod?.codigo === 'shalom'
+      ? 'AGENCIA SHALOM - AV. MÉXICO 120, LA VICTORIA, LIMA'
+      : editingMethod?.codigo === 'olva'
+      ? 'SEDE OLVA COURIER - AV. LARCO 345, MIRAFLORES, LIMA'
+      : 'AV. PRINCIPAL 456, INT. 201, SAN ISIDRO, LIMA',
+    estado_produccion: 'completado',
+    estado_envio: 'pendiente',
+    campos_personalizados: camposList.reduce((acc, c) => {
+      if (c.id.includes('dni') || c.label.toLowerCase().includes('dni')) acc[c.id] = '72384910';
+      else if (c.id.includes('tel') || c.label.toLowerCase().includes('tel')) acc[c.id] = '987654321';
+      else if (c.id.includes('dir') || c.label.toLowerCase().includes('dir')) acc[c.id] = 'Av. Los Próceres 789';
+      else acc[c.id] = c.placeholder || 'Dato de prueba';
+      return acc;
+    }, {} as Record<string, string>),
+    created_at: new Date().toISOString(),
+  }), [editingMethod, nombreMetodo, camposList]);
 
   return (
     <div className="space-y-6 animate-fadeIn pb-16">
@@ -432,7 +725,7 @@ export const CompanyAgenciesTab: React.FC = () => {
               Gestión Total de Agencias y Métodos de Envío
             </h2>
             <p className="text-xs text-slate-400">
-              Personaliza qué datos se solicitan, fotos/logos, el mensaje de WhatsApp y el rótulo de despacho con previsualizador.
+              Personaliza qué días atiende cada agencia, el mensaje de WhatsApp y el rótulo de despacho 100% a tu medida.
             </p>
           </div>
         </div>
@@ -483,6 +776,7 @@ export const CompanyAgenciesTab: React.FC = () => {
           const isSystem = Boolean(m.es_sistema || m.id === 'met-shalom' || m.id === 'met-olva' || m.codigo === 'shalom' || m.codigo === 'olva');
           const totalCampos = m.campos_personalizados?.length || 0;
           const totalRotulado = m.campos_personalizados?.filter(c => c.mostrar_en_rotulado)?.length || 0;
+          const daysSummary = getAgencyDaysSummary(m);
 
           return (
             <div
@@ -494,7 +788,7 @@ export const CompanyAgenciesTab: React.FC = () => {
               }`}
             >
               <div className="space-y-3">
-                {/* Header de la tarjeta con Logo/Foto de la agencia */}
+                {/* Header de la tarjeta */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold border border-white/10 bg-slate-950 overflow-hidden shrink-0 shadow-inner">
@@ -538,15 +832,30 @@ export const CompanyAgenciesTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Resumen de configuración de datos y rótulo */}
-                <div className="grid grid-cols-2 gap-2 text-[10px] font-bold">
-                  <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
-                    <span className="block text-[9px] text-slate-400 uppercase font-mono">Datos a pedir:</span>
-                    <span className="text-xs font-black">{totalCampos} campos</span>
+                {/* Resumen de configuración de datos, rótulo y días de despacho */}
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-[10px] font-bold">
+                    <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                      <span className="block text-[9px] text-slate-400 uppercase font-mono">Datos a pedir:</span>
+                      <span className="text-xs font-black">{totalCampos} campos</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
+                      <span className="block text-[9px] text-slate-400 uppercase font-mono">En Rótulo:</span>
+                      <span className="text-xs font-black">{totalRotulado} campos</span>
+                    </div>
                   </div>
-                  <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
-                    <span className="block text-[9px] text-slate-400 uppercase font-mono">En Rótulo:</span>
-                    <span className="text-xs font-black">{totalRotulado} campos</span>
+
+                  {/* Badge resumen de Días de despacho */}
+                  <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] flex items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-1 font-bold">
+                      <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>{daysSummary}</span>
+                    </div>
+                    {m.disponibilidad?.ocultar_si_no_disponible && (
+                      <span className="text-[8.5px] bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-200 uppercase font-mono">
+                        Auto-oculta
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -559,20 +868,20 @@ export const CompanyAgenciesTab: React.FC = () => {
                   className="flex-1 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>Configurar</span>
+                  <span>Configurar Agencia</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleToggleActivo(m)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                  className={`p-2 rounded-xl border transition-colors cursor-pointer ${
                     m.activo
-                      ? 'bg-white/5 text-slate-300 border-white/10 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/30'
-                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
                   }`}
-                  title={m.activo ? 'Desactivar para clientes' : 'Habilitar para clientes'}
+                  title={m.activo ? 'Desactivar para clientas' : 'Activar para clientas'}
                 >
-                  {m.activo ? 'Desactivar' : 'Activar'}
+                  <Check className="w-3.5 h-3.5" />
                 </button>
 
                 {!isSystem && (
@@ -592,11 +901,11 @@ export const CompanyAgenciesTab: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* MODAL CONFIGURACIÓN COMPLETA DE AGENCIA (CAMPOS, FOTO, MENSAJE, ROTULADO) */}
+      {/* MODAL PRINCIPAL: EDITOR DE AGENCIA (5 PESTAÑAS + ESTUDIO VISUAL)          */}
       {/* ========================================================================= */}
       {editingMethod && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-4xl rounded-3xl bg-slate-900 border border-cyan-500/40 shadow-2xl shadow-cyan-950/60 flex flex-col max-h-[94vh] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-6xl rounded-3xl bg-slate-900 border border-cyan-500/40 shadow-2xl max-h-[94vh] flex flex-col overflow-hidden">
             
             {/* Header Modal */}
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-white/10 shrink-0 bg-slate-950/80">
@@ -622,21 +931,20 @@ export const CompanyAgenciesTab: React.FC = () => {
                     )}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Ajusta la foto, los datos a pedir a la clienta, el mensaje de WhatsApp y el rótulo de despacho.
+                    Días y fechas de despacho, datos a pedir, mensaje de WhatsApp y rótulo 100% personalizable en tiempo real.
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                {/* BOTÓN PREVISUALIZAR RÓTULO */}
                 <button
                   type="button"
                   onClick={() => setShowPreviewModal(true)}
                   className="px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-400/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                  title="Ver cómo quedará la etiqueta de despacho impresa con datos ficticios"
+                  title="Abrir vista de impresión a pantalla completa"
                 >
-                  <Eye className="w-3.5 h-3.5 text-purple-300" />
-                  <span className="hidden sm:inline">Previsualizar Rótulo</span>
+                  <Printer className="w-3.5 h-3.5 text-purple-300" />
+                  <span className="hidden sm:inline">Imprimir Muestra</span>
                 </button>
 
                 <button
@@ -650,7 +958,7 @@ export const CompanyAgenciesTab: React.FC = () => {
             </div>
 
             {/* Pestañas de Navegación del Editor */}
-            <div className="flex items-center gap-1 p-2 px-4 sm:px-6 bg-slate-950/40 border-b border-white/5 overflow-x-auto shrink-0">
+            <div className="flex items-center gap-1.5 p-2 px-4 sm:px-6 bg-slate-950/40 border-b border-white/5 overflow-x-auto shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveEditorTab('general')}
@@ -666,6 +974,19 @@ export const CompanyAgenciesTab: React.FC = () => {
 
               <button
                 type="button"
+                onClick={() => setActiveEditorTab('disponibilidad')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                  activeEditorTab === 'disponibilidad'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>2. Días & Calendario</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveEditorTab('datos')}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                   activeEditorTab === 'datos'
@@ -674,7 +995,7 @@ export const CompanyAgenciesTab: React.FC = () => {
                 }`}
               >
                 <Tag className="w-3.5 h-3.5" />
-                <span>2. Datos a Pedir ({camposList.length})</span>
+                <span>3. Datos a Pedir ({camposList.length})</span>
               </button>
 
               <button
@@ -687,7 +1008,7 @@ export const CompanyAgenciesTab: React.FC = () => {
                 }`}
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>3. Mensaje WhatsApp</span>
+                <span>4. Mensaje WhatsApp</span>
               </button>
 
               <button
@@ -695,44 +1016,27 @@ export const CompanyAgenciesTab: React.FC = () => {
                 onClick={() => setActiveEditorTab('rotulado')}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                   activeEditorTab === 'rotulado'
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                    ? 'bg-pink-500 text-white shadow-md font-black'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
-                <Printer className="w-3.5 h-3.5" />
-                <span>4. Rótulo Inteligente</span>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>5. Rótulo 100% Personalizable</span>
               </button>
             </div>
 
             {/* Contenido con Scroll */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 text-xs">
               
-              {/* BANNER DE AGENCIA BASE OFICIAL BLINDADA CON MAPA / GPS EXCLUSIVO */}
-              {editingMethod?.es_sistema && (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-3">
-                  <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
-                  <div>
-                    <strong className="block font-black text-amber-300 uppercase tracking-wide">
-                      Agencia Oficial Base con Integración Exclusiva (Shalom / Olva)
-                    </strong>
-                    <span className="text-[11px] text-slate-300">
-                      Esta agencia cuenta con integración exclusiva para directorio nacional en vivo, mapas interactivos y localización GPS de agencias cercanas. Sus campos base están blindados e inexpugnables para garantizar el despacho.
-                    </span>
-                  </div>
-                </div>
-              )}
-
               {/* --- TAB 1: GENERAL & FOTO --- */}
               {activeEditorTab === 'general' && (
                 <div className="space-y-5 animate-fadeIn">
-                  {/* Foto / Logo de la Agencia */}
                   <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
                     <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                       <ImageIcon className="w-4 h-4 text-cyan-400" />
                       <span>Foto o Logo de la Agencia</span>
                     </span>
 
-                    {/* Presets rápidos */}
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 mb-1.5">
                         Elige un logo predeterminado:
@@ -749,19 +1053,25 @@ export const CompanyAgenciesTab: React.FC = () => {
                                 : 'bg-slate-900 border-white/10 text-slate-300 hover:bg-white/5'
                             }`}
                           >
-                            <img src={p.url} alt={p.label} className="w-4 h-4 object-contain rounded" />
+                            <img src={p.url} alt="" className="w-4 h-4 object-contain" />
                             <span>{p.label}</span>
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* Subida o URL personalizada */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                          Subir imagen desde tu dispositivo:
-                        </label>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                        O pega la URL directa de la imagen / Sube un archivo:
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="url"
+                          value={fotoUrlMetodo}
+                          onChange={e => setFotoUrlMetodo(e.target.value)}
+                          placeholder="https://ejemplo.com/logo.png"
+                          className="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400"
+                        />
                         <input
                           type="file"
                           ref={fileInputRef}
@@ -772,391 +1082,411 @@ export const CompanyAgenciesTab: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="w-full py-2.5 px-3 rounded-xl bg-slate-900 border border-white/10 hover:border-cyan-400 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                          className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 border border-white/10 transition-colors cursor-pointer"
+                          title="Subir archivo"
                         >
-                          <Upload className="w-4 h-4 text-cyan-400" />
-                          <span>Seleccionar Foto o Logo</span>
+                          <Upload className="w-4 h-4" />
                         </button>
                       </div>
+                    </div>
+                  </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Nombre de la Agencia *
+                      </label>
+                      <input
+                        type="text"
+                        value={nombreMetodo}
+                        onChange={e => setNombreMetodo(e.target.value)}
+                        placeholder="Ej. Shalom Courier, Olva, Transportes Flores"
+                        className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-bold text-white focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Descripción o Subtítulo
+                      </label>
+                      <input
+                        type="text"
+                        value={descripcionMetodo}
+                        onChange={e => setDescripcionMetodo(e.target.value)}
+                        placeholder="Ej. Envíos a todo el Perú con recojo en agencia"
+                        className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* --- TAB 2: DISPONIBILIDAD INTELIGENTE (DÍAS Y FECHAS) --- */}
+              {activeEditorTab === 'disponibilidad' && (
+                <div className="space-y-5 animate-fadeIn">
+                  
+                  {/* Card 1: Días de la semana habilitados */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                          O pegar enlace URL de la imagen:
-                        </label>
-                        <input
-                          type="url"
-                          value={fotoUrlMetodo}
-                          onChange={e => setFotoUrlMetodo(e.target.value)}
-                          placeholder="https://ejemplo.com/logo.png"
-                          className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-cyan-400"
-                        />
+                        <span className="font-bold text-amber-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                          <Calendar className="w-4 h-4 text-amber-400" />
+                          <span>Días de la Semana Habilitados para Despacho</span>
+                        </span>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Configura qué días opera o sale encomienda por esta agencia.
+                        </p>
+                      </div>
+
+                      {/* Presets de selección rápida de días */}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setDiasSemanaHabilitados([])}
+                          className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold border transition-all cursor-pointer ${
+                            diasSemanaHabilitados.length === 0
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-400/40 font-black'
+                              : 'bg-slate-900 border-white/5 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Todos los días
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiasSemanaHabilitados(['lunes', 'martes', 'miercoles', 'jueves', 'viernes'])}
+                          className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-slate-900 border border-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+                        >
+                          Lun a Vie
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiasSemanaHabilitados(['miercoles', 'sabado'])}
+                          className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-slate-900 border border-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+                        >
+                          Mié y Sáb
+                        </button>
                       </div>
                     </div>
 
-                    {/* Preview de la foto */}
-                    {fotoUrlMetodo && (
-                      <div className="flex items-center gap-3 p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/20">
-                        <img src={fotoUrlMetodo} alt="Preview" className="w-12 h-12 object-contain bg-white/5 p-1 rounded-lg" />
-                        <div className="flex-1">
-                          <span className="text-[11px] font-bold text-cyan-300 block">Foto de Agencia Seleccionada</span>
-                          <span className="text-[10px] text-slate-400 truncate block max-w-md">{fotoUrlMetodo}</span>
+                    {/* Botones de Días de la semana */}
+                    <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 pt-1">
+                      {DIAS_SEMANA_ORDEN.map((dia) => {
+                        const isSelected = diasSemanaHabilitados.length === 0 || diasSemanaHabilitados.includes(dia);
+                        return (
+                          <button
+                            key={dia}
+                            type="button"
+                            onClick={() => {
+                              if (diasSemanaHabilitados.length === 0) {
+                                // Si estaban todos seleccionados por defecto, desmarcar solo este día
+                                setDiasSemanaHabilitados(DIAS_SEMANA_ORDEN.filter(d => d !== dia));
+                              } else if (diasSemanaHabilitados.includes(dia)) {
+                                setDiasSemanaHabilitados(prev => prev.filter(d => d !== dia));
+                              } else {
+                                setDiasSemanaHabilitados(prev => [...prev, dia]);
+                              }
+                            }}
+                            className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                              isSelected
+                                ? 'bg-amber-500/20 border-amber-400 text-amber-200 shadow-md shadow-amber-950/40'
+                                : 'bg-slate-900/60 border-white/5 text-slate-500 hover:text-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-black uppercase">{DIAS_SEMANA_ABREV[dia]}</span>
+                            <span className="text-[9.5px] font-medium">{DIAS_SEMANA_LABELS[dia]}</span>
+                            <span className={`w-2 h-2 rounded-full mt-0.5 ${isSelected ? 'bg-amber-400' : 'bg-slate-700'}`} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Card 2: Rango de Fechas (Entre qué día a qué día) */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3.5">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <span className="font-bold text-cyan-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                          <Clock className="w-4 h-4 text-cyan-400" />
+                          <span>Habilitar solo entre un Rango de Fechas (Opcional)</span>
+                        </span>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Ideal para campañas, convenios temporales o fechas específicas de entrega.
+                        </p>
+                      </div>
+
+                      <label className="flex items-center gap-2 cursor-pointer text-[11px] font-bold text-cyan-300 select-none">
+                        <input
+                          type="checkbox"
+                          checked={usarRangoFechas}
+                          onChange={e => setUsarRangoFechas(e.target.checked)}
+                          className="w-4 h-4 rounded text-cyan-500 cursor-pointer"
+                        />
+                        <span>Activar Rango de Fechas</span>
+                      </label>
+                    </div>
+
+                    {usarRangoFechas && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 animate-fadeIn">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                            Fecha de Inicio (Disponible desde):
+                          </label>
+                          <input
+                            type="date"
+                            value={fechaInicioDisp}
+                            onChange={e => setFechaInicioDisp(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                          />
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setFotoUrlMetodo('')}
-                          className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer"
-                          title="Quitar foto"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                            Fecha de Fin (Disponible hasta):
+                          </label>
+                          <input
+                            type="date"
+                            value={fechaFinDisp}
+                            onChange={e => setFechaFinDisp(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Nombre y Descripción */}
-                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
-                    <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                      <Building2 className="w-4 h-4 text-cyan-400" />
-                      <span>Nombre y Descripción para las Clientas</span>
+                  {/* Card 3: Reglas Inteligentes de Selección y Visibilidad */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                    <span className="font-bold text-purple-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-4 h-4 text-purple-400" />
+                      <span>Comportamiento Inteligente en el Formulario</span>
                     </span>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                          Nombre Público de la Agencia / Servicio *
-                        </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {/* Switch Ocultar si no está disponible */}
+                      <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-900 border border-white/5 cursor-pointer select-none">
                         <input
-                          type="text"
-                          required
-                          value={nombreMetodo}
-                          onChange={e => setNombreMetodo(e.target.value)}
-                          placeholder="Ej. Motorizado Express o Transportes Flores"
-                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white font-bold text-xs focus:outline-none focus:border-cyan-400"
+                          type="checkbox"
+                          checked={ocultarSiNoDisponible}
+                          onChange={e => setOcultarSiNoDisponible(e.target.checked)}
+                          className="w-4 h-4 rounded text-purple-500 mt-0.5 cursor-pointer"
                         />
+                        <div>
+                          <strong className="block text-slate-200 text-[11px]">Ocultar si no está disponible</strong>
+                          <span className="text-[10px] text-slate-400 block leading-tight mt-0.5">
+                            Si está marcado, la agencia no aparecerá en el catálogo para clientas fuera de sus días de despacho.
+                          </span>
+                        </div>
+                      </label>
+
+                      {/* Switch Restringir selector de fecha */}
+                      <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-900 border border-white/5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={restringirFechaEnvio}
+                          onChange={e => setRestringirFechaEnvio(e.target.checked)}
+                          className="w-4 h-4 rounded text-cyan-500 mt-0.5 cursor-pointer"
+                        />
+                        <div>
+                          <strong className="block text-slate-200 text-[11px]">Restringir fecha de envío inteligente</strong>
+                          <span className="text-[10px] text-slate-400 block leading-tight mt-0.5">
+                            Al elegir esta agencia, la fecha deseada de envío se autocalibra y restringe a solo los días habilitados.
+                          </span>
+                        </div>
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                        Mensaje Informativo de Disponibilidad (Opcional):
+                      </label>
+                      <input
+                        type="text"
+                        value={mensajeDisponibilidad}
+                        onChange={e => setMensajeDisponibilidad(e.target.value)}
+                        placeholder="Ej: Despachos exclusivamente los días Miércoles y Sábados"
+                        className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* --- TAB 3: DATOS A PEDIR (CAMPOS PERSONALIZADOS) --- */}
+              {activeEditorTab === 'datos' && (
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                    <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Tag className="w-4 h-4 text-purple-400" />
+                      <span>Campos Solicitados a la Clienta</span>
+                    </span>
+
+                    {camposList.length === 0 ? (
+                      <p className="text-slate-500 text-xs italic py-2">No hay campos configurados aún.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {camposList.map((campo) => (
+                          <div
+                            key={campo.id}
+                            className="p-3 rounded-2xl bg-slate-900 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-xs">{campo.label}</span>
+                                {campo.sistema && (
+                                  <span className="text-[9px] font-black text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
+                                    Base
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                                Tipo: {campo.tipo} • Variable: <strong className="text-purple-300">{`{${campo.label}}`}</strong>
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, requerido: !c.requerido } : c));
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
+                                  campo.requerido ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-white/5 text-slate-400 border-white/10'
+                                }`}
+                              >
+                                {campo.requerido ? '★ Obligatorio' : 'Opcional'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, mostrar_en_rotulado: !c.mostrar_en_rotulado } : c));
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  campo.mostrar_en_rotulado
+                                    ? 'bg-purple-500/20 text-purple-200 border-purple-400/40 hover:bg-purple-500/30'
+                                    : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300'
+                                }`}
+                              >
+                                <Tag className="w-3 h-3" />
+                                <span>{campo.mostrar_en_rotulado ? '✓ En Rótulo' : 'Sin Rótulo'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, mostrar_en_comprobante: !c.mostrar_en_comprobante } : c));
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  campo.mostrar_en_comprobante
+                                    ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40 hover:bg-cyan-500/30'
+                                    : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300'
+                                }`}
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>{campo.mostrar_en_comprobante ? '✓ Comprobante' : 'Oculto'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCampo(campo.id)}
+                                className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors cursor-pointer"
+                                title="Eliminar este dato"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Añadir nuevo campo adicional */}
+                    <div className="p-4 rounded-2xl bg-slate-900 border border-purple-500/30 space-y-3 mt-4">
+                      <div className="text-[11px] font-bold text-purple-300 flex items-center gap-1.5">
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Añadir Pregunta / Dato Adicional (ej: Usuario de TikTok, Color de Prenda, etc.)</span>
                       </div>
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                          Descripción breve
-                        </label>
-                        <input
-                          type="text"
-                          value={descripcionMetodo}
-                          onChange={e => setDescripcionMetodo(e.target.value)}
-                          placeholder="Ej. Entrega a domicilio o en sede central"
-                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 text-xs focus:outline-none focus:border-cyan-400"
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                            Nombre de la Pregunta / Campo *
+                          </label>
+                          <input
+                            type="text"
+                            value={newCampoLabel}
+                            onChange={e => setNewCampoLabel(e.target.value)}
+                            placeholder="Ej. Usuario de TikTok o Color de Prenda"
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold focus:outline-none focus:border-purple-400"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                            Tipo de Entrada
+                          </label>
+                          <select
+                            value={newCampoTipo}
+                            onChange={e => setNewCampoTipo(e.target.value as any)}
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold focus:outline-none focus:border-purple-400 cursor-pointer"
+                          >
+                            <option value="texto">Texto Simple</option>
+                            <option value="telefono">Teléfono / WhatsApp</option>
+                            <option value="numero">Número / Documento</option>
+                            <option value="textarea">Texto Largo / Referencia</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                        <div className="flex items-center gap-4">
+                          <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 text-[11px] select-none">
+                            <input
+                              type="checkbox"
+                              checked={newCampoRequerido}
+                              onChange={e => setNewCampoRequerido(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-purple-500 cursor-pointer"
+                            />
+                            <span>Obligatorio</span>
+                          </label>
+
+                          <label className="flex items-center gap-1.5 cursor-pointer text-purple-300 text-[11px] select-none font-bold">
+                            <input
+                              type="checkbox"
+                              checked={newCampoRotulado}
+                              onChange={e => setNewCampoRotulado(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-purple-500 cursor-pointer"
+                            />
+                            <span>Imprimir en Rótulo</span>
+                          </label>
+
+                          <label className="flex items-center gap-1.5 cursor-pointer text-cyan-300 text-[11px] select-none font-bold">
+                            <input
+                              type="checkbox"
+                              checked={newCampoComprobante}
+                              onChange={e => setNewCampoComprobante(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
+                            />
+                            <span>Ver en Comprobante</span>
+                          </label>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleAddCampo}
+                          className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Agregar Dato a la Agencia</span>
+                        </button>
                       </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* --- TAB 2: DATOS SOLICITADOS A LA CLIENTA --- */}
-              {activeEditorTab === 'datos' && (() => {
-                const isNativeSystemDuplicateField = (campo: CampoPersonalizadoAgencia) => {
-                  if (campo.sistema) return true;
-                  const id = (campo.id || '').toLowerCase();
-                  const lbl = (campo.label || '').toLowerCase();
-                  if (['c-shalom-dni', 'c-olva-dni', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
-                  if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
-                  if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
-                  if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
-                  if (lbl.includes('dirección') || lbl.includes('direccion') || lbl.includes('agencia olva') || lbl.includes('agencia shalom')) return true;
-                  return false;
-                };
-
-                const extraCustomFields = camposList.filter(c => !isNativeSystemDuplicateField(c));
-                const tipoForm = editingMethod.tipo_formulario || 'texto_simple';
-
-                // Definición visual clara de todos los datos nativos que el formulario oficial pide a la clienta
-                const officialSystemQuestions = [
-                  ...(tipoForm === 'shalom' ? [
-                    { id: 'sys-shalom-agencia', label: 'Sede / Agencia Shalom de Destino', desc: 'Directorio nacional de 376+ sedes en vivo con GPS y mapa interactivo.', icon: '🏢', variable: '{destino}', badge: 'Base Shalom' },
-                    { id: 'sys-shalom-dni', label: 'DNI o Carnet de Extranjería (CE)', desc: 'Validación de 8-9 dígitos con consulta y autollenado en RENIEC/SUNAT.', icon: '🪪', variable: '{dni}', badge: 'Base Shalom' },
-                    { id: 'sys-shalom-nombre', label: 'Nombres y Apellidos de la Clienta', desc: 'Nombre completo autocompletado con el DNI o ingresado manualmente.', icon: '👤', variable: '{cliente}', badge: 'Base Plataforma' },
-                    { id: 'sys-shalom-tel', label: 'Celular / WhatsApp de Contacto', desc: 'Número celular con formato peruano para notificaciones del despacho.', icon: '📱', variable: '{telefono}', badge: 'Base Plataforma' },
-                    { id: 'sys-shalom-fecha', label: 'Fecha Deseada de Envío / Despacho', desc: 'Selector de calendario con restricción automática de corte horario.', icon: '📅', variable: '{fecha}', badge: 'Base Plataforma' },
-                  ] : []),
-                  ...(tipoForm === 'olva' ? [
-                    { id: 'sys-olva-mod', label: 'Modalidad de Entrega (Agencia Olva o Domicilio)', desc: 'Selector para recojo en sede Olva o entrega directa a domicilio.', icon: '📦', variable: '{modalidad}', badge: 'Base Olva' },
-                    { id: 'sys-olva-agencia', label: 'Sede Olva o Dirección Exacta de Entrega', desc: 'Directorio oficial Olva con 376 sedes o dirección exacta de casa/trabajo.', icon: '🏢', variable: '{destino}', badge: 'Base Olva' },
-                    { id: 'sys-olva-dni', label: 'DNI o Carnet de Extranjería (CE)', desc: 'Documento oficial de quien recibe para emisión de guía y recojo.', icon: '🪪', variable: '{dni}', badge: 'Base Olva' },
-                    { id: 'sys-olva-nombre', label: 'Nombres y Apellidos de la Clienta', desc: 'Nombre de la persona autorizada para recibir el paquete.', icon: '👤', variable: '{cliente}', badge: 'Base Plataforma' },
-                    { id: 'sys-olva-tel', label: 'Celular / WhatsApp de Contacto', desc: 'Teléfono para coordinación de entrega.', icon: '📱', variable: '{telefono}', badge: 'Base Plataforma' },
-                    { id: 'sys-olva-email', label: 'Correo Electrónico', desc: 'Correo para avisos automáticos de rastreo por parte de Olva Courier.', icon: '📧', variable: '{correo}', badge: 'Base Olva' },
-                    { id: 'sys-olva-fecha', label: 'Fecha Deseada de Envío / Despacho', desc: 'Fecha programada de despacho respetando el horario de corte.', icon: '📅', variable: '{fecha}', badge: 'Base Plataforma' },
-                  ] : []),
-                  ...(tipoForm === 'mapa_direccion' ? [
-                    { id: 'sys-mot-mapa', label: 'Ubicación Fijada en Mapa y Distrito', desc: 'Geolocalización GPS exacta con búsqueda de distritos de Lima.', icon: '🗺️', variable: '{destino}', badge: 'Base Motorizado' },
-                    { id: 'sys-mot-dir', label: 'Dirección Exacta y Referencia', desc: 'Avenida, calle, número, departamento y detalles de la fachada.', icon: '📍', variable: '{destino}', badge: 'Base Motorizado' },
-                    { id: 'sys-mot-nombre', label: 'Nombres y Apellidos de la Clienta', desc: 'Persona que recibirá al motorizado en el punto de entrega.', icon: '👤', variable: '{cliente}', badge: 'Base Plataforma' },
-                    { id: 'sys-mot-tel', label: 'Celular / WhatsApp de Contacto', desc: 'Para llamadas y mensajes al momento de la entrega.', icon: '📱', variable: '{telefono}', badge: 'Base Plataforma' },
-                    { id: 'sys-mot-fecha', label: 'Fecha Deseada de Envío / Despacho', desc: 'Día programado para la ruta del motorizado.', icon: '📅', variable: '{fecha}', badge: 'Base Plataforma' },
-                  ] : []),
-                  ...(tipoForm === 'texto_simple' ? [
-                    { id: 'sys-txt-dest', label: 'Indicaciones de Destino / Entrega', desc: 'Instrucciones escritas por la clienta para el envío o entrega.', icon: '📝', variable: '{destino}', badge: 'Base General' },
-                    { id: 'sys-txt-nombre', label: 'Nombres y Apellidos de la Clienta', desc: 'Nombre completo de quien recibe el pedido.', icon: '👤', variable: '{cliente}', badge: 'Base Plataforma' },
-                    { id: 'sys-txt-tel', label: 'Celular / WhatsApp de Contacto', desc: 'Número celular para avisar cuando el paquete esté listo.', icon: '📱', variable: '{telefono}', badge: 'Base Plataforma' },
-                    { id: 'sys-txt-fecha', label: 'Fecha Deseada de Envío / Despacho', desc: 'Fecha de entrega o salida de taller.', icon: '📅', variable: '{fecha}', badge: 'Base Plataforma' },
-                  ] : []),
-                ];
-
-                return (
-                  <div className="space-y-6 animate-fadeIn">
-                    
-                    {/* SECCIÓN 1: DATOS BASE OFICIALES DEL FORMULARIO */}
-                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-cyan-500/20 space-y-3.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <span className="font-bold text-cyan-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                            <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                            <span>1. Datos Base que la Clienta Completará ({officialSystemQuestions.length} datos)</span>
-                          </span>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            Estos datos los solicita la plataforma de manera nativa e integrada sin repeticiones.
-                          </p>
-                        </div>
-                        <span className="text-[9px] font-black uppercase text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 rounded-full shrink-0 self-start">
-                          ✓ Integración Oficial Activa
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-2">
-                        {officialSystemQuestions.map((q) => (
-                          <div
-                            key={q.id}
-                            className="p-3 rounded-2xl bg-slate-900/80 border border-white/8 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-sm"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center text-sm shrink-0">
-                                {q.icon}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <strong className="text-white text-xs font-bold truncate">{q.label}</strong>
-                                  <span className="text-[9px] font-black text-cyan-300 bg-cyan-500/15 px-1.5 py-0.2 rounded border border-cyan-500/30">
-                                    {q.badge}
-                                  </span>
-                                  <span className="text-[9px] font-bold text-rose-300 bg-rose-500/15 px-1.5 py-0.2 rounded border border-rose-500/25">
-                                    Obligatorio
-                                  </span>
-                                </div>
-                                <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">
-                                  {q.desc} • Variable en WhatsApp: <strong className="text-cyan-300 font-mono">{q.variable}</strong>
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto text-[10px] text-slate-400 bg-white/4 px-2.5 py-1 rounded-xl border border-white/5 font-bold">
-                              <span>✓ En Formulario y Rótulo</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* SECCIÓN 2: PREGUNTAS Y CAMPOS ADICIONALES PERSONALIZADOS */}
-                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-purple-500/30 space-y-4 shadow-xl">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <span className="font-bold text-purple-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                            <Tag className="w-4 h-4 text-purple-400" />
-                            <span>2. Preguntas / Datos Adicionales Personalizados ({extraCustomFields.length})</span>
-                          </span>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            Agrega preguntas extra exclusivas para esta agencia (ej. Usuario de TikTok, Color de Prenda, Talla, etc.).
-                          </p>
-                        </div>
-                        <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2.5 py-1 rounded-full shrink-0 self-start">
-                          {extraCustomFields.length} campos creados
-                        </span>
-                      </div>
-
-                      {/* Lista de campos adicionales */}
-                      {extraCustomFields.length === 0 ? (
-                        <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-500/20 text-center space-y-1">
-                          <p className="text-xs font-bold text-purple-200">No hay preguntas adicionales personalizadas.</p>
-                          <p className="text-[11px] text-slate-400">
-                            Si deseas pedir algún dato extra a la clienta (como su usuario de TikTok o referencia especial), agrégalo en el recuadro de abajo.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {extraCustomFields.map((campo) => (
-                            <div
-                              key={campo.id}
-                              className="p-3 rounded-2xl border bg-slate-900/90 border-purple-500/30 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md"
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center font-black text-xs shrink-0">
-                                  {campo.tipo === 'telefono' ? <Smartphone className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-bold text-white text-xs">{campo.label}</span>
-                                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${campo.requerido ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-white/5 text-slate-400'}`}>
-                                      {campo.requerido ? 'Obligatorio' : 'Opcional'}
-                                    </span>
-                                  </div>
-                                  <span className="text-[10px] text-slate-400 font-mono block">
-                                    Tipo: {campo.tipo} • Variable en WhatsApp: <strong className="text-purple-300">{`{${campo.label}}`}</strong>
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Switches de Control */}
-                              <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
-                                {/* Toggle Obligatorio */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, requerido: !c.requerido } : c));
-                                  }}
-                                  className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
-                                    campo.requerido ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-white/5 text-slate-400 border-white/10'
-                                  }`}
-                                >
-                                  {campo.requerido ? '★ Obligatorio' : 'Opcional'}
-                                </button>
-
-                                {/* Switch: Imprimir en Rótulo */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, mostrar_en_rotulado: !c.mostrar_en_rotulado } : c));
-                                  }}
-                                  className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
-                                    campo.mostrar_en_rotulado
-                                      ? 'bg-purple-500/20 text-purple-200 border-purple-400/40 hover:bg-purple-500/30'
-                                      : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300'
-                                  }`}
-                                  title="Hacer que este dato se imprima en la etiqueta / rótulo"
-                                >
-                                  <Tag className="w-3 h-3" />
-                                  <span>{campo.mostrar_en_rotulado ? '✓ En Rótulo' : 'Sin Rótulo'}</span>
-                                </button>
-
-                                {/* Switch: Mostrar en Comprobante */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCamposList(prev => prev.map(c => c.id === campo.id ? { ...c, mostrar_en_comprobante: !c.mostrar_en_comprobante } : c));
-                                  }}
-                                  className={`px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
-                                    campo.mostrar_en_comprobante
-                                      ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/40 hover:bg-cyan-500/30'
-                                      : 'bg-white/5 text-slate-500 border-white/10 hover:text-slate-300'
-                                  }`}
-                                  title="Mostrar este dato en el comprobante que recibe la clienta"
-                                >
-                                  <Eye className="w-3 h-3" />
-                                  <span>{campo.mostrar_en_comprobante ? '✓ Comprobante' : 'Oculto'}</span>
-                                </button>
-
-                                {/* Eliminar campo */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteCampo(campo.id)}
-                                  className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors cursor-pointer"
-                                  title="Eliminar este dato"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Añadir nuevo campo adicional */}
-                      <div className="p-4 rounded-2xl bg-slate-900 border border-purple-500/30 space-y-3 mt-4">
-                        <div className="text-[11px] font-bold text-purple-300 flex items-center gap-1.5">
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Añadir Pregunta / Dato Adicional (ej: Usuario de TikTok, Color de Prenda, etc.)</span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                          <div className="sm:col-span-2">
-                            <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                              Nombre de la Pregunta / Campo *
-                            </label>
-                            <input
-                              type="text"
-                              value={newCampoLabel}
-                              onChange={e => setNewCampoLabel(e.target.value)}
-                              placeholder="Ej. Usuario de TikTok o Color de Prenda"
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold focus:outline-none focus:border-purple-400"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                              Tipo de Entrada
-                            </label>
-                            <select
-                              value={newCampoTipo}
-                              onChange={e => setNewCampoTipo(e.target.value as any)}
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs font-bold focus:outline-none focus:border-purple-400 cursor-pointer"
-                            >
-                              <option value="texto">Texto Simple</option>
-                              <option value="telefono">Teléfono / WhatsApp</option>
-                              <option value="numero">Número / Documento</option>
-                              <option value="textarea">Texto Largo / Referencia</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                          <div className="flex items-center gap-4">
-                            <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 text-[11px] select-none">
-                              <input
-                                type="checkbox"
-                                checked={newCampoRequerido}
-                                onChange={e => setNewCampoRequerido(e.target.checked)}
-                                className="w-3.5 h-3.5 rounded text-purple-500 cursor-pointer"
-                              />
-                              <span>Obligatorio</span>
-                            </label>
-
-                            <label className="flex items-center gap-1.5 cursor-pointer text-purple-300 text-[11px] select-none font-bold">
-                              <input
-                                type="checkbox"
-                                checked={newCampoRotulado}
-                                onChange={e => setNewCampoRotulado(e.target.checked)}
-                                className="w-3.5 h-3.5 rounded text-purple-500 cursor-pointer"
-                              />
-                              <span>Imprimir en Rótulo</span>
-                            </label>
-
-                            <label className="flex items-center gap-1.5 cursor-pointer text-cyan-300 text-[11px] select-none font-bold">
-                              <input
-                                type="checkbox"
-                                checked={newCampoComprobante}
-                                onChange={e => setNewCampoComprobante(e.target.checked)}
-                                className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
-                              />
-                              <span>Ver en Comprobante</span>
-                            </label>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={handleAddCampo}
-                            className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Agregar Dato a la Agencia</span>
-                          </button>
-                        </div>
-                      </div>
-
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* --- TAB 3: MENSAJE DEL COMPROBANTE WHATSAPP --- */}
+              {/* --- TAB 4: MENSAJE WHATSAPP --- */}
               {activeEditorTab === 'mensaje' && (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
@@ -1174,14 +1504,13 @@ export const CompanyAgenciesTab: React.FC = () => {
                       </button>
                     </div>
 
-                    {/* REQUERIMIENTO: Inserción de variables con chips/pastillas sin escribir llaves a mano */}
+                    {/* Chips de variables */}
                     <div className="p-3 rounded-2xl bg-slate-900 border border-cyan-500/20 space-y-2">
                       <div className="text-[10.5px] font-bold text-cyan-300 flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>Toca una variable para insertarla donde esté tu cursor (sin escribir llaves):</span>
                       </div>
 
-                      {/* Variables base */}
                       <div className="flex flex-wrap items-center gap-1.5">
                         {[
                           { key: 'cliente', label: '👤 Cliente' },
@@ -1196,52 +1525,14 @@ export const CompanyAgenciesTab: React.FC = () => {
                             key={item.key}
                             type="button"
                             onClick={() => insertVariableIntoMessage(item.key)}
-                            className="px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-500 hover:text-slate-950 text-cyan-200 border border-cyan-500/30 text-[11px] font-mono font-bold transition-all active:scale-95 cursor-pointer shadow-xs"
+                            className="px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-500 hover:text-slate-950 text-cyan-200 border border-cyan-500/30 text-[11px] font-mono font-bold transition-all active:scale-95 cursor-pointer"
                           >
                             + {item.label}
                           </button>
                         ))}
                       </div>
-
-                      {/* Variables dinámicas de campos personalizados */}
-                      {(() => {
-                        const isNativeSystemDuplicateField = (c: CampoPersonalizadoAgencia) => {
-                          if (c.sistema) return true;
-                          const id = (c.id || '').toLowerCase();
-                          const lbl = (c.label || '').toLowerCase();
-                          if (['c-shalom-dni', 'c-olva-dni', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
-                          if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
-                          if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
-                          if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
-                          return false;
-                        };
-                        const customChips = camposList.filter(c => !isNativeSystemDuplicateField(c));
-
-                        if (customChips.length === 0) return null;
-
-                        return (
-                          <div className="pt-2 border-t border-white/5 space-y-1">
-                            <span className="text-[10px] text-purple-300 font-bold block">
-                              Variables de campos adicionales que creaste en esta agencia:
-                            </span>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {customChips.map((c) => (
-                                <button
-                                  key={c.id}
-                                  type="button"
-                                  onClick={() => insertVariableIntoMessage(c.label)}
-                                  className="px-2.5 py-1 rounded-lg bg-purple-950/60 hover:bg-purple-500 hover:text-white text-purple-200 border border-purple-500/30 text-[11px] font-mono font-bold transition-all active:scale-95 cursor-pointer shadow-xs"
-                                >
-                                  + {`{${c.label}}`}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })()}
                     </div>
 
-                    {/* Textarea del mensaje */}
                     <textarea
                       ref={textareaRef}
                       rows={8}
@@ -1249,361 +1540,657 @@ export const CompanyAgenciesTab: React.FC = () => {
                       onChange={e => setMensajeComprobacion(e.target.value)}
                       className="w-full p-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 leading-relaxed"
                     />
-
-                    <div className="p-2.5 rounded-xl bg-slate-900/60 border border-white/5 text-[10.5px] text-slate-400 space-y-1">
-                      <p>
-                        💡 <strong>Tranquilidad:</strong> Si no incluyes alguna variable en el texto, cualquier dato completado por la clienta con la opción <em>"Ver en Comprobante"</em> se anexará automáticamente al final para que nunca se pierda nada.
-                      </p>
-                      <p className="italic text-[10px]">
-                        * El pie oficial de Encomi con el link de la app se adjunta automáticamente al final del mensaje de WhatsApp.
-                      </p>
-                    </div>
                   </div>
                 </div>
               )}
 
-              {/* --- TAB 4: ROTULADO INTELIGENTE ESTRATÉGICO Y REMITENTE 100% PERSONALIZABLE --- */}
+              {/* --- TAB 5: RÓTULO 100% PERSONALIZABLE (ESTUDIO VISUAL CON LIVE PREVIEW LADO A LADO) --- */}
               {activeEditorTab === 'rotulado' && (
                 <div className="space-y-5 animate-fadeIn">
-                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  
+                  {/* BARRA SUPERIOR: PRESETS RÁPIDOS Y ESTILO */}
+                  <div className="p-4 rounded-3xl bg-slate-950/90 border border-pink-500/30 space-y-3.5 shadow-xl">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
-                        <span className="font-bold text-slate-200 uppercase tracking-wider text-xs flex items-center gap-1.5">
-                          <Printer className="w-4 h-4 text-amber-400" />
-                          <span>Configuración Inteligente del Rótulo de Despacho</span>
+                        <span className="font-bold text-pink-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                          <Sparkles className="w-4 h-4 text-pink-400" />
+                          <span>Estudio Visual del Rótulo 100% Personalizable</span>
                         </span>
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                          Elige el estilo visual de etiqueta y personaliza al 100% los datos del remitente físico.
+                          Todo lo que cambies aquí se refleja instantáneamente en la vista previa y en la impresión física.
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setShowPreviewModal(true)}
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-purple-950/50 transition-all cursor-pointer shrink-0 active:scale-95"
-                      >
-                        <Eye className="w-4 h-4" />
-                        <span>Previsualizar en Vivo</span>
-                      </button>
-                    </div>
-
-                    {/* SELECTOR DE ESTILO DE RÓTULO PARA ESTA AGENCIA */}
-                    <div className="p-4 rounded-2xl bg-slate-900 border border-indigo-500/30 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
-                          <Palette className="w-4 h-4 text-indigo-400" />
-                          <span>Estilo de Rótulo / Etiqueta para esta Agencia</span>
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {estiloRotulo ? 'Estilo específico' : 'Heredando ajuste global'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                        {[
-                          { id: '', label: '🌐 Predeterminado Global', desc: 'Usa el estilo configurado en Ajustes' },
-                          { id: 'estandar_oficial', label: '🏷️ Estándar Oficial Encomi', desc: 'Clásico alto contraste, DNI gigante y barcode' },
-                          { id: 'vision_modern', label: '💎 Moderno Minimalista Vision', desc: 'Bordes estilizados, badges redondeados y tipografía moderna' },
-                          { id: 'eco_ink_saving', label: '🌿 Compacto Eco Ahorro', desc: 'Monocromático 100% lineal, 80% ahorro de tinta' },
-                        ].map(st => {
-                          const isSel = estiloRotulo === st.id;
-                          return (
-                            <button
-                              key={st.id}
-                              type="button"
-                              onClick={() => {
-                                setEstiloRotulo(st.id as any);
-                                setPreviewEstilo(st.id as any);
-                              }}
-                              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                                isSel
-                                  ? 'bg-indigo-950/80 border-indigo-400 text-white shadow-md shadow-indigo-950/50'
-                                  : 'bg-slate-950 border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                              }`}
-                            >
-                              <span className={`text-[11px] font-bold block leading-tight ${isSel ? 'text-indigo-300 font-black' : ''}`}>
-                                {st.label}
-                              </span>
-                              <span className="text-[9.5px] text-slate-500 leading-tight block mt-1">
-                                {st.desc}
-                              </span>
-                            </button>
-                          );
-                        })}
+                      {/* Presets de 1 solo clic */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-slate-400 font-bold mr-1">Presets:</span>
+                        <button
+                          type="button"
+                          onClick={() => applyPresetRotulo('completo')}
+                          className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-white/10 text-cyan-300 border border-cyan-500/30 text-[10.5px] font-bold transition-all cursor-pointer"
+                        >
+                          📦 Completo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyPresetRotulo('solo_destinatario')}
+                          className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-white/10 text-purple-300 border border-purple-500/30 text-[10.5px] font-bold transition-all cursor-pointer"
+                        >
+                          ⚡ Solo Destinatario
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyPresetRotulo('eco_ahorro')}
+                          className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-white/10 text-emerald-300 border border-emerald-500/30 text-[10.5px] font-bold transition-all cursor-pointer"
+                        >
+                          🌿 Eco Ahorro
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => applyPresetRotulo('con_alertas')}
+                          className="px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-white/10 text-amber-300 border border-amber-500/30 text-[10.5px] font-bold transition-all cursor-pointer"
+                        >
+                          ⚠️ Con Frágil
+                        </button>
                       </div>
                     </div>
 
-                    {/* BLOQUE 1: DATOS DE QUIÉN LO ENVÍA (REMITENTE / EMISOR - 100% PERSONALIZABLE) */}
-                    <div className="p-4 rounded-2xl bg-slate-900 border border-amber-500/20 space-y-3.5">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <ShieldCheck className="w-4 h-4 text-amber-400" />
-                          <span className="text-xs font-bold text-amber-300">
-                            Datos del Emisor / Remitente (100% Personalizable)
-                          </span>
-                        </div>
+                    {/* Selector de Estilo Visual */}
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1">
+                      {[
+                        { id: '', label: '🌐 Predeterminado Global', desc: 'Hereda de Configuración' },
+                        { id: 'estandar_oficial', label: '🏷️ Estándar Oficial Encomi', desc: 'Alto contraste con DNI gigante' },
+                        { id: 'vision_modern', label: '💎 Minimalista Vision', desc: 'Moderno, bordes y tipografía estilizada' },
+                        { id: 'eco_ink_saving', label: '🌿 Compacto Eco Ahorro', desc: 'Monocromático, 80% ahorro tinta' },
+                      ].map(st => {
+                        const isSel = estiloRotulo === st.id;
+                        return (
+                          <button
+                            key={st.id}
+                            type="button"
+                            onClick={() => {
+                              setEstiloRotulo(st.id as any);
+                              setPreviewEstilo(st.id as any);
+                            }}
+                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                              isSel
+                                ? 'bg-pink-950/60 border-pink-400 text-white shadow-md'
+                                : 'bg-slate-900 border-white/5 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            <span className={`text-[11px] font-bold block ${isSel ? 'text-pink-300 font-black' : ''}`}>
+                              {st.label}
+                            </span>
+                            <span className="text-[9.5px] text-slate-500 block mt-0.5">{st.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-                        <div className="flex items-center gap-4">
-                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-amber-200 select-none">
+                  {/* GRID LADO A LADO: CONTROLES (IZQUIERDA) + LIVE PREVIEW (DERECHA) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    
+                    {/* COLUMNA IZQUIERDA: CONTROLES Y PERSONALIZACIÓN 100% (lg:col-span-7) */}
+                    <div className="lg:col-span-7 space-y-4">
+                      
+                      {/* 1. Encabezado & Logos */}
+                      <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                        <span className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                          1. Encabezado, Logos y Tracking
+                        </span>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
                             <input
                               type="checkbox"
-                              checked={incluirRemitente}
-                              onChange={e => setIncluirRemitente(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded text-amber-500 cursor-pointer"
+                              checked={mostrarLogoEmpresa}
+                              onChange={e => setMostrarLogoEmpresa(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-cyan-500"
                             />
-                            <span>Incluir Remitente en Etiqueta</span>
+                            <span>Logo de Empresa</span>
                           </label>
 
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={mostrarLogoAgencia}
+                              onChange={e => setMostrarLogoAgencia(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-cyan-500"
+                            />
+                            <span>Logo de Agencia</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={mostrarBarcode}
+                              onChange={e => setMostrarBarcode(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-cyan-500"
+                            />
+                            <span>Código de Barras</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={mostrarTracking}
+                              onChange={e => setMostrarTracking(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-cyan-500"
+                            />
+                            <span>Texto de Tracking (#)</span>
+                          </label>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                            Subtítulo de Cabecera (Opcional):
+                          </label>
+                          <input
+                            type="text"
+                            value={subtituloCabecera}
+                            onChange={e => setSubtituloCabecera(e.target.value)}
+                            placeholder="Ej: Guía de Despacho Prioritaria o Envíos Seguros"
+                            className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 2. Destino Oficial */}
+                      <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                            2. Banner de Destino / Sucursal
+                          </span>
                           <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-cyan-300 select-none">
                             <input
                               type="checkbox"
-                              checked={usarRemitentePersonalizado}
-                              onChange={e => setUsarRemitentePersonalizado(e.target.checked)}
+                              checked={mostrarDestino}
+                              onChange={e => setMostrarDestino(e.target.checked)}
                               className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
                             />
-                            <span>Personalizar para esta agencia</span>
+                            <span>Mostrar Destino</span>
                           </label>
                         </div>
+
+                        {mostrarDestino && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                              Título del Recuadro de Destino:
+                            </label>
+                            <input
+                              type="text"
+                              value={tituloDestino}
+                              onChange={e => setTituloDestino(e.target.value)}
+                              placeholder="Ej: 📍 AGENCIA SHALOM RECOJO o 📍 DIRECCIÓN DE ENTREGA"
+                              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                        )}
                       </div>
 
-                      {/* Formulario de Remitente Personalizado */}
-                      {incluirRemitente && (
-                        <div className="space-y-3 pt-1">
-                          {usarRemitentePersonalizado && (
-                            <div className="p-3 rounded-xl bg-slate-950 border border-cyan-500/30 space-y-2.5 animate-fadeIn">
-                              <span className="text-[10px] font-bold text-cyan-300 block uppercase tracking-wider">
-                                ✏️ Escribe los datos exactos del emisor que saldrán en este rótulo:
-                              </span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                                    Nombre o Razón Social del Emisor
+                      {/* 3. Destinatario (Cliente) - 100% Personalizable */}
+                      <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider block">
+                            3. Datos de Quién Recibe (Destinatario)
+                          </span>
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-cyan-300 select-none">
+                            <input
+                              type="checkbox"
+                              checked={incluirDestinatario}
+                              onChange={e => setIncluirDestinatario(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
+                            />
+                            <span>Incluir Sección Destinatario</span>
+                          </label>
+                        </div>
+
+                        {incluirDestinatario && (
+                          <div className="space-y-3 pt-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                                  Título de la Sección:
+                                </label>
+                                <input
+                                  type="text"
+                                  value={tituloDestinatario}
+                                  onChange={e => setTituloDestinatario(e.target.value)}
+                                  placeholder="DESTINATARIO (CLIENTE)"
+                                  className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                                  Badge de Modalidad (ej: RECOJO EN AGENCIA):
+                                </label>
+                                <input
+                                  type="text"
+                                  value={textoBadgeModalidad}
+                                  onChange={e => setTextoBadgeModalidad(e.target.value)}
+                                  placeholder="RECOJO EN AGENCIA"
+                                  className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Títulos individuales y tamaño de DNI */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 border-t border-white/5">
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-[10px] font-bold text-slate-400">Título para Nombre:</label>
+                                  <label className="flex items-center gap-1 text-[10px] text-slate-400 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={mostrarClienteNombre}
+                                      onChange={e => setMostrarClienteNombre(e.target.checked)}
+                                      className="w-3 h-3 rounded"
+                                    />
+                                    <span>Ver</span>
                                   </label>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={tituloClienteNombre}
+                                  onChange={e => setTituloClienteNombre(e.target.value)}
+                                  placeholder="Nombre del Cliente:"
+                                  className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                                />
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-[10px] font-bold text-slate-400">Título para Teléfono:</label>
+                                  <label className="flex items-center gap-1 text-[10px] text-slate-400 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={mostrarClienteTelefono}
+                                      onChange={e => setMostrarClienteTelefono(e.target.checked)}
+                                      className="w-3 h-3 rounded"
+                                    />
+                                    <span>Ver</span>
+                                  </label>
+                                </div>
+                                <input
+                                  type="text"
+                                  value={tituloClienteTelefono}
+                                  onChange={e => setTituloClienteTelefono(e.target.value)}
+                                  placeholder="📱 TELÉFONO / WHATSAPP:"
+                                  className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                                />
+                              </div>
+
+                              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-900 border border-cyan-500/20">
+                                <div className="sm:col-span-2">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] font-bold text-cyan-300">Título para DNI / Doc:</label>
+                                    <label className="flex items-center gap-1 text-[10px] text-cyan-300 cursor-pointer font-bold">
+                                      <input
+                                        type="checkbox"
+                                        checked={mostrarClienteDni}
+                                        onChange={e => setMostrarClienteDni(e.target.checked)}
+                                        className="w-3 h-3 rounded"
+                                      />
+                                      <span>Ver DNI</span>
+                                    </label>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={tituloClienteDni}
+                                    onChange={e => setTituloClienteDni(e.target.value)}
+                                    placeholder="🪪 DNI / DOC RECOJO:"
+                                    className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-bold text-cyan-300 mb-1">Tamaño DNI:</label>
+                                  <select
+                                    value={tamanoDni}
+                                    onChange={e => setTamanoDni(e.target.value as any)}
+                                    className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white font-bold cursor-pointer"
+                                  >
+                                    <option value="normal">Normal (14px)</option>
+                                    <option value="grande">Grande (18px)</option>
+                                    <option value="gigante">Gigante (24px)</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 4. Remitente (Emisor) */}
+                      <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="text-xs font-bold text-amber-300 uppercase tracking-wider block">
+                            4. Datos de Quién Envía (Remitente)
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-amber-200 select-none">
+                              <input
+                                type="checkbox"
+                                checked={incluirRemitente}
+                                onChange={e => setIncluirRemitente(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded text-amber-500 cursor-pointer"
+                              />
+                              <span>Incluir Remitente</span>
+                            </label>
+
+                            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-cyan-300 select-none">
+                              <input
+                                type="checkbox"
+                                checked={usarRemitentePersonalizado}
+                                onChange={e => setUsarRemitentePersonalizado(e.target.checked)}
+                                className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
+                              />
+                              <span>Datos Propios</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {incluirRemitente && (
+                          <div className="space-y-2.5 pt-1">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                                Título de la Sección Remitente:
+                              </label>
+                              <input
+                                type="text"
+                                value={tituloRemitente}
+                                onChange={e => setTituloRemitente(e.target.value)}
+                                placeholder="REMITENTE OFICIAL:"
+                                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+
+                            {usarRemitentePersonalizado && (
+                              <div className="p-3 rounded-xl bg-slate-900 border border-cyan-500/30 grid grid-cols-1 sm:grid-cols-2 gap-2 animate-fadeIn">
+                                <div>
+                                  <label className="block text-[10px] text-slate-400 mb-0.5">Nombre Emisor:</label>
                                   <input
                                     type="text"
                                     value={customRemitenteNombre}
                                     onChange={e => setCustomRemitenteNombre(e.target.value)}
-                                    placeholder={tallerConfig.nombre_taller || 'ComiKids Envíos'}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-cyan-400"
+                                    placeholder="ComiKids Envíos"
+                                    className="w-full px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white"
                                   />
                                 </div>
-
                                 <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                                    DNI o RUC del Emisor
-                                  </label>
+                                  <label className="block text-[10px] text-slate-400 mb-0.5">DNI/RUC:</label>
                                   <input
                                     type="text"
                                     value={customRemitenteRucDni}
                                     onChange={e => setCustomRemitenteRucDni(e.target.value)}
-                                    placeholder={tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312'}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400"
+                                    placeholder="42020312"
+                                    className="w-full px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white font-mono"
                                   />
                                 </div>
-
                                 <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                                    Celular / WhatsApp del Emisor
-                                  </label>
+                                  <label className="block text-[10px] text-slate-400 mb-0.5">Celular:</label>
                                   <input
                                     type="text"
                                     value={customRemitenteCelular}
                                     onChange={e => setCustomRemitenteCelular(e.target.value)}
-                                    placeholder={tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412'}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400"
+                                    placeholder="927781412"
+                                    className="w-full px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white font-mono"
                                   />
                                 </div>
-
                                 <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                                    Dirección de Origen / Taller
-                                  </label>
+                                  <label className="block text-[10px] text-slate-400 mb-0.5">Dirección Origen:</label>
                                   <input
                                     type="text"
                                     value={customRemitenteOrigen}
                                     onChange={e => setCustomRemitenteOrigen(e.target.value)}
-                                    placeholder={tallerConfig.direccion_taller || 'Lima, Perú'}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
-                                  />
-                                </div>
-
-                                <div className="sm:col-span-2">
-                                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                                    Nota u Observación del Remitente (Opcional)
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={customRemitenteObservaciones}
-                                    onChange={e => setCustomRemitenteObservaciones(e.target.value)}
-                                    placeholder="Ej. Frágil - Despacho Prioritario Encomi"
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                                    placeholder="Lima, Perú"
+                                    className="w-full px-2.5 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white"
                                   />
                                 </div>
                               </div>
+                            )}
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-900 text-[10.5px] text-slate-300 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={mostrarRemitenteNombre}
+                                  onChange={e => setMostrarRemitenteNombre(e.target.checked)}
+                                  className="w-3.5 h-3.5 rounded text-amber-500"
+                                />
+                                <span>Ver Nombre</span>
+                              </label>
+                              <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-900 text-[10.5px] text-slate-300 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={mostrarRemitenteRucDni}
+                                  onChange={e => setMostrarRemitenteRucDni(e.target.checked)}
+                                  className="w-3.5 h-3.5 rounded text-amber-500"
+                                />
+                                <span>Ver DNI/RUC</span>
+                              </label>
+                              <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-900 text-[10.5px] text-slate-300 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={mostrarRemitenteTelefono}
+                                  onChange={e => setMostrarRemitenteTelefono(e.target.checked)}
+                                  className="w-3.5 h-3.5 rounded text-amber-500"
+                                />
+                                <span>Ver Celular</span>
+                              </label>
+                              <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-900 text-[10.5px] text-slate-300 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={mostrarRemitenteOrigen}
+                                  onChange={e => setMostrarRemitenteOrigen(e.target.checked)}
+                                  className="w-3.5 h-3.5 rounded text-amber-500"
+                                />
+                                <span>Ver Origen</span>
+                              </label>
                             </div>
-                          )}
+                          </div>
+                        )}
+                      </div>
 
-                          {/* Checkboxes de visibilidad de líneas del remitente */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={mostrarRemitenteNombre}
-                                onChange={e => setMostrarRemitenteNombre(e.target.checked)}
-                                className="w-3.5 h-3.5 rounded text-amber-500"
-                              />
-                              <span>Imprimir Nombre</span>
-                            </label>
+                      {/* 5. Etiquetas de Campos Personalizados */}
+                      {camposList.length > 0 && (
+                        <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                          <span className="text-xs font-bold text-purple-300 uppercase tracking-wider block">
+                            5. Campos del Formulario y sus Etiquetas en el Rótulo
+                          </span>
+                          <div className="space-y-2">
+                            {camposList.map((c) => (
+                              <div
+                                key={c.id}
+                                className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                                  c.mostrar_en_rotulado ? 'bg-purple-950/30 border-purple-500/40' : 'bg-slate-900 border-white/5 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={c.mostrar_en_rotulado}
+                                    onChange={() => {
+                                      setCamposList(prev => prev.map(item => item.id === c.id ? { ...item, mostrar_en_rotulado: !item.mostrar_en_rotulado } : item));
+                                    }}
+                                    className="w-4 h-4 rounded text-purple-500 cursor-pointer"
+                                  />
+                                  <span className="font-bold text-slate-200 text-xs">{c.label}</span>
+                                </div>
 
-                            <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={mostrarRemitenteRucDni}
-                                onChange={e => setMostrarRemitenteRucDni(e.target.checked)}
-                                className="w-3.5 h-3.5 rounded text-amber-500"
-                              />
-                              <span>Imprimir DNI/RUC</span>
-                            </label>
-
-                            <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={mostrarRemitenteTelefono}
-                                onChange={e => setMostrarRemitenteTelefono(e.target.checked)}
-                                className="w-3.5 h-3.5 rounded text-amber-500"
-                              />
-                              <span>Imprimir Celular</span>
-                            </label>
-
-                            <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={mostrarRemitenteOrigen}
-                                onChange={e => setMostrarRemitenteOrigen(e.target.checked)}
-                                className="w-3.5 h-3.5 rounded text-amber-500"
-                              />
-                              <span>Imprimir Origen</span>
-                            </label>
+                                {c.mostrar_en_rotulado && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-slate-400">Texto en etiqueta:</span>
+                                    <input
+                                      type="text"
+                                      value={etiquetasCampos[c.id] || ''}
+                                      onChange={e => setEtiquetasCampos(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                      placeholder={c.label}
+                                      className="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs text-purple-200 font-bold w-36"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}
-                    </div>
 
-                    {/* BLOQUE 2: DATOS DE QUIEN LO RECIBE (DESTINATARIO) */}
-                    <div className="p-4 rounded-2xl bg-slate-900 border border-cyan-500/20 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                          <Package className="w-4 h-4 text-cyan-400" />
-                          <span>Datos de Quién lo Recibe (Destinatario)</span>
-                        </span>
-                        <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-cyan-200 select-none">
-                          <input
-                            type="checkbox"
-                            checked={incluirDestinatario}
-                            onChange={e => setIncluirDestinatario(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
-                          />
-                          <span>Incluir Destinatario</span>
-                        </label>
-                      </div>
-
-                      {incluirDestinatario && (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                          <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={mostrarClienteNombre}
-                              onChange={e => setMostrarClienteNombre(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded text-cyan-500"
-                            />
-                            <span>Nombre de Clienta</span>
-                          </label>
-
-                          <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={mostrarClienteDni}
-                              onChange={e => setMostrarClienteDni(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded text-cyan-500"
-                            />
-                            <span>DNI Gigante</span>
-                          </label>
-
-                          <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={mostrarClienteTelefono}
-                              onChange={e => setMostrarClienteTelefono(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded text-cyan-500"
-                            />
-                            <span>Teléfono</span>
-                          </label>
-
-                          <label className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={mostrarClienteDestino}
-                              onChange={e => setMostrarClienteDestino(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded text-cyan-500"
-                            />
-                            <span>Destino / Sucursal</span>
-                          </label>
+                      {/* 6. Bloques Libres / Notas Especiales (100% Personalizable) */}
+                      <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-pink-300 uppercase tracking-wider block">
+                            6. Avisos y Notas Libres en el Rótulo
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {bloquesPersonalizados.length} agregada(s)
+                          </span>
                         </div>
-                      )}
-                    </div>
 
-                    {/* BLOQUE 3: CAMPOS PERSONALIZADOS EN EL RÓTULO */}
-                    {camposList.length > 0 && (
-                      <div className="p-4 rounded-2xl bg-slate-900 border border-purple-500/20 space-y-2">
-                        <span className="text-xs font-bold text-purple-300 block">
-                          Campos adicionales que se imprimirán en el rótulo:
-                        </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {camposList.map((c) => (
-                            <label
-                              key={c.id}
-                              className={`flex items-center justify-between p-2 rounded-xl border text-[11px] cursor-pointer transition-all ${
-                                c.mostrar_en_rotulado
-                                  ? 'bg-purple-950/40 border-purple-500/40 text-purple-200'
-                                  : 'bg-slate-950 border-white/5 text-slate-400'
-                              }`}
+                        {bloquesPersonalizados.length > 0 && (
+                          <div className="space-y-2">
+                            {bloquesPersonalizados.map((b) => (
+                              <div
+                                key={b.id}
+                                className="p-2.5 rounded-xl bg-slate-900 border border-pink-500/30 flex items-center justify-between gap-2"
+                              >
+                                <div>
+                                  {b.titulo && <span className="font-black text-xs text-pink-300 block">{b.titulo}</span>}
+                                  <span className="text-xs text-slate-200">{b.contenido}</span>
+                                  <span className="text-[9px] text-slate-400 uppercase font-mono block mt-0.5">
+                                    Tipo: {b.tipo} • Posición: {b.posicion}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteBloque(b.id)}
+                                  className="p-1 text-rose-400 hover:text-rose-300 transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Añadir nuevo bloque */}
+                        <div className="p-3 rounded-xl bg-slate-900 border border-white/5 space-y-2.5">
+                          <span className="text-[10.5px] font-bold text-slate-300 block">
+                            + Añadir Nuevo Bloque / Nota a la Etiqueta:
+                          </span>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              value={newBloqueTitulo}
+                              onChange={e => setNewBloqueTitulo(e.target.value)}
+                              placeholder="Título (ej: ⚠️ ¡FRÁGIL! o 💰 PAGO DESTINO)"
+                              className="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                            />
+                            <select
+                              value={newBloqueTipo}
+                              onChange={e => setNewBloqueTipo(e.target.value as any)}
+                              className="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white font-bold cursor-pointer"
                             >
-                              <span className="font-bold">{c.label}</span>
-                              <input
-                                type="checkbox"
-                                checked={c.mostrar_en_rotulado}
-                                onChange={() => {
-                                  setCamposList(prev => prev.map(item => item.id === c.id ? { ...item, mostrar_en_rotulado: !item.mostrar_en_rotulado } : item));
-                                }}
-                                className="w-3.5 h-3.5 rounded text-purple-500"
-                              />
-                            </label>
-                          ))}
+                              <option value="aviso">Aviso Amarillo (Frágil / Importante)</option>
+                              <option value="flete">Flete Rojo (Pago en Destino)</option>
+                              <option value="destacado">Destacado Púrpura (Prioritario)</option>
+                              <option value="nota">Nota Simple (Gris Neutro)</option>
+                            </select>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={newBloqueContenido}
+                              onChange={e => setNewBloqueContenido(e.target.value)}
+                              placeholder="Texto o instrucción (ej: Manejar con extremo cuidado, flete por pagar en agencia)"
+                              className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddBloque}
+                              className="px-4 py-1.5 rounded-lg bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs cursor-pointer shrink-0"
+                            >
+                              + Añadir
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    )}
 
-                    {/* BLOQUE 4: EXTRAS */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                      <label className="flex items-center gap-2 p-3 rounded-2xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={mostrarBarcode}
-                          onChange={e => setMostrarBarcode(e.target.checked)}
-                          className="w-3.5 h-3.5 rounded text-cyan-500"
-                        />
-                        <span>Código de Barras Simulado</span>
-                      </label>
+                      {/* 7. Pie de Página & Sello */}
+                      <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                            7. Pie de Página & Sello de Embalaje
+                          </span>
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-cyan-300 select-none">
+                            <input
+                              type="checkbox"
+                              checked={mostrarFechaSello}
+                              onChange={e => setMostrarFechaSello(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
+                            />
+                            <span>Mostrar Sello</span>
+                          </label>
+                        </div>
 
-                      <label className="flex items-center gap-2 p-3 rounded-2xl bg-slate-950 border border-white/5 text-[11px] text-slate-300 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={mostrarFechaSello}
-                          onChange={e => setMostrarFechaSello(e.target.checked)}
-                          className="w-3.5 h-3.5 rounded text-cyan-500"
-                        />
-                        <span>Fecha y Sello de Embalaje</span>
-                      </label>
+                        {mostrarFechaSello && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                              Texto del Sello de Calidad / Inspección:
+                            </label>
+                            <input
+                              type="text"
+                              value={textoSelloPersonalizado}
+                              onChange={e => setTextoSelloPersonalizado(e.target.value)}
+                              placeholder="Paquete Inspeccionado y Seguro"
+                              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+
+                    {/* COLUMNA DERECHA: VISTA PREVIA EN VIVO INTERACTIVA (lg:col-span-5) */}
+                    <div className="lg:col-span-5 lg:sticky lg:top-4 space-y-3">
+                      <div className="p-4 rounded-3xl bg-slate-950 border border-purple-500/40 shadow-2xl space-y-3">
+                        <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+                            <span className="text-xs font-black text-white uppercase tracking-wider">
+                              Live Preview en Tiempo Real
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                            ● SINCRONIZADO
+                          </span>
+                        </div>
+
+                        {/* RENDERIZADO DEL RÓTULO EN VIVO */}
+                        <div className="p-2 sm:p-3 rounded-2xl bg-slate-900/80 border border-white/5 flex justify-center shadow-inner overflow-x-auto max-h-[640px] overflow-y-auto">
+                          <ShalomLabelPrint
+                            pedido={mockPedido}
+                            tallerConfig={tallerConfig}
+                            customMethodOverride={currentLiveMethod}
+                            estiloRotuloOverride={(previewEstilo || estiloRotulo) as any}
+                          />
+                        </div>
+
+                        <div className="pt-2 flex items-center justify-between text-[10.5px] text-slate-400 border-t border-white/10">
+                          <span>💡 Se actualiza en vivo al escribir</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowPreviewModal(true)}
+                            className="text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
+                          >
+                            Abrir pantalla completa
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                   </div>
@@ -1647,166 +2234,89 @@ export const CompanyAgenciesTab: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL PREVISUALIZADOR DEL RÓTULO EN VIVO EXACTO A LA IMPRESIÓN REAL     */}
+      {/* MODAL PREVISUALIZADOR DEL RÓTULO EN PANTALLA COMPLETA                     */}
       {/* ========================================================================= */}
-      {showPreviewModal && (() => {
-        const liveEditedMethod: MetodoEnvio = {
-          id: editingMethod?.id || 'met-preview',
-          codigo: editingMethod?.codigo || 'agencia_demo',
-          nombre: nombreMetodo || editingMethod?.nombre || 'Agencia',
-          descripcion: descripcionMetodo,
-          icono: iconoMetodo,
-          foto_url: fotoUrlMetodo,
-          tipo_formulario: editingMethod?.tipo_formulario || 'personalizado',
-          activo: true,
-          orden: 1,
-          campos_personalizados: camposList,
-          config_rotulado: {
-            estilo_rotulo: (previewEstilo || estiloRotulo) ? ((previewEstilo || estiloRotulo) as any) : undefined,
-            incluir_campos_personalizados: true,
-            campos_visibles: camposList.filter(c => c.mostrar_en_rotulado).map(c => c.id),
-            incluir_remitente: incluirRemitente,
-            mostrar_remitente_nombre: mostrarRemitenteNombre,
-            mostrar_remitente_ruc_dni: mostrarRemitenteRucDni,
-            mostrar_remitente_telefono: mostrarRemitenteTelefono,
-            mostrar_remitente_origen: mostrarRemitenteOrigen,
-            remitente_personalizado: {
-              usar_personalizado: usarRemitentePersonalizado,
-              nombre: customRemitenteNombre.trim() || undefined,
-              ruc_dni: customRemitenteRucDni.trim() || undefined,
-              celular: customRemitenteCelular.trim() || undefined,
-              direccion: customRemitenteOrigen.trim() || undefined,
-              observaciones: customRemitenteObservaciones.trim() || undefined,
-            },
-            incluir_destinatario: incluirDestinatario,
-            mostrar_cliente_nombre: mostrarClienteNombre,
-            mostrar_cliente_dni: mostrarClienteDni,
-            mostrar_cliente_telefono: mostrarClienteTelefono,
-            mostrar_cliente_destino: mostrarClienteDestino,
-            mostrar_barcode: mostrarBarcode,
-            mostrar_fecha_sello: mostrarFechaSello,
-          }
-        };
-
-        const mockPedido: Pedido = {
-          id: 'ped-preview-demo',
-          codigo_seguimiento: 'ENCOMI-9428',
-          usuario_id: 'usr-demo',
-          usuario: {
-            id: 'usr-demo',
-            dni: '72384910',
-            nombre_completo: 'María Fernanda Quispe Ramos',
-            email_default: 'maria.quispe@ejemplo.com',
-            telefono_default: '987654321',
-            password_hash: '',
-            rol: 'client',
-            avatar_url: '',
-            puntos_xp: 0,
-            nivel: 1,
-            created_at: new Date().toISOString(),
-          },
-          detalles_bordado: 'Paquete de muestra para verificación de rotulado',
-          metodo_envio_codigo: editingMethod ? editingMethod.codigo : 'agencia_demo',
-          metodo_envio_nombre: nombreMetodo || editingMethod?.nombre || 'Agencia Oficial',
-          destino_detalle: editingMethod?.codigo === 'shalom'
-            ? 'AGENCIA SHALOM - AV. MÉXICO 120, LA VICTORIA, LIMA'
-            : editingMethod?.codigo === 'olva'
-            ? 'SEDE OLVA COURIER - AV. LARCO 345, MIRAFLORES, LIMA'
-            : 'AV. PRINCIPAL 456, INT. 201, SAN ISIDRO, LIMA',
-          estado_produccion: 'completado',
-          estado_envio: 'pendiente',
-          campos_personalizados: camposList.reduce((acc, c) => {
-            if (c.id.includes('dni') || c.label.toLowerCase().includes('dni')) acc[c.id] = '72384910';
-            else if (c.id.includes('tel') || c.label.toLowerCase().includes('tel')) acc[c.id] = '987654321';
-            else if (c.id.includes('dir') || c.label.toLowerCase().includes('dir')) acc[c.id] = 'Av. Los Próceres 789';
-            else acc[c.id] = c.placeholder || 'Dato de prueba';
-            return acc;
-          }, {} as Record<string, string>),
-          created_at: new Date().toISOString(),
-        };
-
-        return (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md animate-fadeIn">
-            <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border border-purple-500/40 shadow-2xl p-5 sm:p-6 space-y-4 max-h-[95vh] overflow-y-auto">
-              
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold">
-                    <Printer className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm sm:text-base font-black text-white">
-                      Previsualización del Rótulo Real ({nombreMetodo || 'Agencia'})
-                    </h3>
-                    <p className="text-[10px] text-slate-400">
-                      100% idéntico a lo que saldrá en la impresora térmica / A4
-                    </p>
-                  </div>
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-xl rounded-3xl bg-slate-900 border border-purple-500/40 shadow-2xl p-5 sm:p-6 space-y-4 max-h-[95vh] overflow-y-auto">
+            
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold">
+                  <Printer className="w-4 h-4" />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowPreviewModal(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Selector de estilo interactivo en el previsualizador */}
-              <div className="p-2.5 rounded-2xl bg-slate-950 border border-purple-500/30 flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold text-purple-300 flex items-center gap-1 shrink-0">
-                  <Palette className="w-3.5 h-3.5" />
-                  <span>Probar Estilo:</span>
-                </span>
-                <div className="flex items-center gap-1.5 overflow-x-auto">
-                  {[
-                    { id: 'estandar_oficial', label: '🏷️ Estándar Oficial' },
-                    { id: 'vision_modern', label: '💎 Moderno Vision' },
-                    { id: 'eco_ink_saving', label: '🌿 Eco Ahorro' },
-                  ].map(st => (
-                    <button
-                      key={st.id}
-                      type="button"
-                      onClick={() => setPreviewEstilo(st.id as any)}
-                      className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        (previewEstilo || estiloRotulo || 'estandar_oficial') === st.id
-                          ? 'bg-purple-600 text-white shadow font-black'
-                          : 'bg-white/5 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {st.label}
-                    </button>
-                  ))}
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white">
+                    Previsualización del Rótulo Real ({nombreMetodo || editingMethod?.nombre || 'Agencia'})
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    100% idéntico a lo que saldrá en la impresora térmica / A4
+                  </p>
                 </div>
               </div>
-
-              {/* RENDERIZADO DEL COMPONENTE REAL DE IMPRESIÓN */}
-              <div className="p-3 sm:p-4 rounded-2xl bg-slate-950/60 border border-white/5 flex justify-center shadow-inner overflow-x-auto">
-                <ShalomLabelPrint
-                  pedido={mockPedido}
-                  tallerConfig={tallerConfig}
-                  customMethodOverride={liveEditedMethod}
-                  estiloRotuloOverride={((previewEstilo || estiloRotulo) as any) || undefined}
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-between border-t border-white/10">
-                <span className="text-[10.5px] text-slate-400 italic">
-                  * Los datos del emisor y destinatario reflejan exactamente tu configuración actual.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowPreviewModal(false)}
-                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-colors cursor-pointer"
-                >
-                  Volver a Editar
-                </button>
-              </div>
-
+              <button
+                type="button"
+                onClick={() => setShowPreviewModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
+
+            {/* Selector de estilo interactivo */}
+            <div className="p-2.5 rounded-2xl bg-slate-950 border border-purple-500/30 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold text-purple-300 flex items-center gap-1 shrink-0">
+                <Palette className="w-3.5 h-3.5" />
+                <span>Probar Estilo:</span>
+              </span>
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                {[
+                  { id: 'estandar_oficial', label: '🏷️ Estándar Oficial' },
+                  { id: 'vision_modern', label: '💎 Moderno Vision' },
+                  { id: 'eco_ink_saving', label: '🌿 Eco Ahorro' },
+                ].map(st => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setPreviewEstilo(st.id as any)}
+                    className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      (previewEstilo || estiloRotulo || 'estandar_oficial') === st.id
+                        ? 'bg-purple-600 text-white shadow font-black'
+                        : 'bg-white/5 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {st.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Componente real de impresión */}
+            <div className="p-3 sm:p-4 rounded-2xl bg-slate-950/60 border border-white/5 flex justify-center shadow-inner overflow-x-auto">
+              <ShalomLabelPrint
+                pedido={mockPedido}
+                tallerConfig={tallerConfig}
+                customMethodOverride={currentLiveMethod}
+                estiloRotuloOverride={((previewEstilo || estiloRotulo) as any) || undefined}
+              />
+            </div>
+
+            <div className="pt-2 flex items-center justify-between border-t border-white/10">
+              <span className="text-[10.5px] text-slate-400 italic">
+                * Los datos del emisor, destinatario y cajas reflejan exactamente tu configuración actual.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPreviewModal(false)}
+                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Volver al Editor
+              </button>
+            </div>
+
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL CREAR NUEVA AGENCIA                                                */}
@@ -1894,7 +2404,7 @@ export const CompanyAgenciesTab: React.FC = () => {
               </div>
 
               <div className="p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-200 text-[11px] leading-relaxed">
-                ℹ️ La nueva agencia se creará automáticamente con campos estándar (Nombre, Teléfono y Destino) y con el mensaje oficial de WhatsApp precargado. Luego podrás añadirle campos como "Usuario de TikTok" con variables de un solo click y configurar su rótulo.
+                ℹ️ La nueva agencia se creará automáticamente con campos estándar (Nombre, Teléfono y Destino) y con el mensaje oficial de WhatsApp precargado. Luego podrás configurar sus días de despacho y personalizar su rótulo al 100%.
               </div>
 
               <div className="flex gap-3 pt-2">

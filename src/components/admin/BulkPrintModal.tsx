@@ -191,25 +191,43 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                   const shalomAgency = getShalomAgencyOnly(pedido.destino_detalle);
                   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
+                  const methods = ordersService.getShippingMethods();
+                  const currentMethod = methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
+                  const cfgRotulado = currentMethod?.config_rotulado;
+
                   const rotuladoFields = (() => {
+                    if (cfgRotulado?.incluir_campos_personalizados === false) return [];
                     if (!pedido.campos_personalizados) return [];
-                    const methods = ordersService.getShippingMethods();
-                    const currentMethod = methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
 
                     const visibleList: { label: string; valor: string }[] = [];
                     for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
                       if (val === undefined || val === null || String(val).trim() === '') continue;
                       const fieldCfg = currentMethod?.campos_personalizados?.find(c => c.id === key || c.label.toLowerCase() === key.toLowerCase());
-                      const shouldShow = fieldCfg !== undefined ? Boolean(fieldCfg.mostrar_en_rotulado) : true;
+                      const isExplicitVisible = cfgRotulado?.campos_visibles
+                        ? cfgRotulado.campos_visibles.includes(fieldCfg?.id || key)
+                        : undefined;
+                      const shouldShow = isExplicitVisible !== undefined
+                        ? isExplicitVisible
+                        : (fieldCfg !== undefined ? Boolean(fieldCfg.mostrar_en_rotulado) : true);
+
                       if (shouldShow) {
+                        const customLabel = (fieldCfg && cfgRotulado?.etiquetas_campos?.[fieldCfg.id]) ||
+                          cfgRotulado?.etiquetas_campos?.[key];
                         visibleList.push({
-                          label: fieldCfg?.label || key,
+                          label: customLabel || fieldCfg?.label || key,
                           valor: String(val)
                         });
                       }
                     }
                     return visibleList;
                   })();
+
+                  const getDniClass = () => {
+                    const sz = cfgRotulado?.tamano_dni || 'gigante';
+                    if (sz === 'normal') return 'text-base font-mono font-bold';
+                    if (sz === 'grande') return 'text-lg sm:text-xl font-mono font-black';
+                    return 'text-xl sm:text-2xl font-mono font-black';
+                  };
 
                   return (
                     <div
@@ -223,61 +241,78 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                       {/* Header: Logo Oficial ComiKids & Badge Shalom / Olva / Moto */}
                       <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
                         <div className="flex items-center gap-2">
-                          <img 
-                            src="/Comikids.png" 
-                            alt="ComiKids" 
-                            className={`w-8 h-8 object-contain shrink-0 ${inkSavingLevel >= 75 ? 'grayscale' : ''}`}
-                          />
+                          {cfgRotulado?.mostrar_logo_empresa !== false && (
+                            <img 
+                              src="/Comikids.png" 
+                              alt="ComiKids" 
+                              className={`w-8 h-8 object-contain shrink-0 ${inkSavingLevel >= 75 ? 'grayscale' : ''}`}
+                            />
+                          )}
                           <div>
                             <strong className="text-xs sm:text-sm font-black tracking-tight uppercase block leading-none text-black">
                               ComiKids
                             </strong>
                             <span className="text-[8.5px] font-black uppercase tracking-widest text-slate-600 block mt-0.5">
-                              ENCOMI ENVÍOS
+                              {cfgRotulado?.subtitulo_cabecera || 'ENCOMI ENVÍOS'}
                             </span>
                           </div>
                         </div>
 
                         <div className="text-right flex flex-col items-end">
-                          <div className={`flex items-center gap-1 px-2 py-0.5 rounded border border-black leading-none ${
-                            inkSavingLevel >= 50
-                              ? 'bg-white text-black'
-                              : isOlva ? 'bg-yellow-300' : 'bg-slate-100'
-                          }`}>
-                            {isOlva ? (
-                              <>
-                                <img 
-                                  src="/Olva-Courier-Logo.svg" 
-                                  alt="Olva" 
-                                  className="h-3 w-auto object-contain shrink-0" 
-                                />
-                                <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
-                                  OLVA COURIER
-                                </span>
-                              </>
-                            ) : isShalom ? (
-                              <>
-                                <img 
-                                  src="/Shalom-Courier-Logo.webp" 
-                                  alt="Shalom" 
-                                  className="h-3 w-auto object-contain shrink-0" 
-                                />
-                                <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
-                                  SHALOM
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-xs leading-none">🛵</span>
-                                <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
-                                  MOTORIZADO
-                                </span>
-                              </>
-                            )}
-                          </div>
-                          <span className="font-mono text-[9.5px] font-black text-slate-900 mt-0.5">
-                            #{pedido.codigo_seguimiento}
-                          </span>
+                          {cfgRotulado?.mostrar_logo_agencia !== false && (
+                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded border border-black leading-none ${
+                              inkSavingLevel >= 50
+                                ? 'bg-white text-black'
+                                : isOlva ? 'bg-yellow-300' : 'bg-slate-100'
+                            }`}>
+                              {currentMethod?.foto_url ? (
+                                <>
+                                  <img 
+                                    src={currentMethod.foto_url} 
+                                    alt={currentMethod.nombre} 
+                                    className="h-3 w-auto object-contain shrink-0" 
+                                  />
+                                  <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
+                                    {currentMethod.nombre}
+                                  </span>
+                                </>
+                              ) : isOlva ? (
+                                <>
+                                  <img 
+                                    src="/Olva-Courier-Logo.svg" 
+                                    alt="Olva" 
+                                    className="h-3 w-auto object-contain shrink-0" 
+                                  />
+                                  <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
+                                    OLVA COURIER
+                                  </span>
+                                </>
+                              ) : isShalom ? (
+                                <>
+                                  <img 
+                                    src="/Shalom-Courier-Logo.webp" 
+                                    alt="Shalom" 
+                                    className="h-3 w-auto object-contain shrink-0" 
+                                  />
+                                  <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
+                                    SHALOM
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-xs leading-none">🛵</span>
+                                  <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
+                                    {currentMethod?.nombre || 'MOTORIZADO'}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          {cfgRotulado?.mostrar_tracking !== false && (
+                            <span className="font-mono text-[9.5px] font-black text-slate-900 mt-0.5">
+                              #{pedido.codigo_seguimiento}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -285,50 +320,72 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                       <div className="flex-1 flex flex-col justify-around py-1 space-y-1 overflow-hidden">
                         
                         {/* Destinatario */}
-                        <div className="border-b border-dashed border-slate-300 pb-1">
-                          <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
-                            DESTINATARIO:
-                          </span>
-                          <strong className="text-base sm:text-lg font-black text-black block leading-tight pt-0.5 line-clamp-1 uppercase tracking-tight">
-                            {pedido.usuario?.nombre_completo || 'Cliente'}
-                          </strong>
-                        </div>
-
-                        {/* DNI GIGANTE (REQ: DNI MAS GRANDE EN EL ROTULADO Y SIN TELÉFONO EN SHALOM) */}
-                        <div className={`p-1.5 rounded border flex items-center ${isShalom ? 'justify-center py-2' : 'justify-between'} ${
-                          inkSavingLevel >= 75
-                            ? 'bg-white border-black'
-                            : 'bg-slate-100 border-slate-400'
-                        }`}>
-                          <div className={isShalom ? 'text-center w-full' : ''}>
-                            <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block leading-none mb-0.5">
-                              🪪 DNI RECOJO:
+                        {cfgRotulado?.incluir_destinatario !== false && (
+                          <div className="border-b border-dashed border-slate-300 pb-1">
+                            <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
+                              {cfgRotulado?.titulo_destinatario || 'DESTINATARIO:'}
                             </span>
-                            <span className="text-xl sm:text-2xl font-mono font-black text-black tracking-widest block leading-tight">
-                              {clientDni}
-                            </span>
+                            {cfgRotulado?.mostrar_cliente_nombre !== false && (
+                              <strong className="text-base sm:text-lg font-black text-black block leading-tight pt-0.5 line-clamp-1 uppercase tracking-tight">
+                                {pedido.usuario?.nombre_completo || 'Cliente'}
+                              </strong>
+                            )}
                           </div>
-                          {!isShalom && (
-                            <div className="text-right">
-                              <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block leading-none">
-                                TELÉFONO:
-                              </span>
-                              <span className="text-xs font-mono font-bold text-slate-900 block leading-tight">
-                                {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default || '-')}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                        )}
+
+                        {/* DNI GIGANTE Y TELÉFONO */}
+                        {(cfgRotulado?.mostrar_cliente_dni !== false || cfgRotulado?.mostrar_cliente_telefono !== false) && (
+                          <div className={`p-1.5 rounded border flex items-center ${isShalom && cfgRotulado?.mostrar_cliente_telefono === false ? 'justify-center py-2' : 'justify-between'} ${
+                            inkSavingLevel >= 75
+                              ? 'bg-white border-black'
+                              : 'bg-slate-100 border-slate-400'
+                          }`}>
+                            {cfgRotulado?.mostrar_cliente_dni !== false && (
+                              <div className={isShalom && cfgRotulado?.mostrar_cliente_telefono === false ? 'text-center w-full' : ''}>
+                                <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block leading-none mb-0.5">
+                                  {cfgRotulado?.titulo_cliente_dni || '🪪 DNI RECOJO:'}
+                                </span>
+                                <span className={`${getDniClass()} text-black tracking-widest block leading-tight`}>
+                                  {clientDni}
+                                </span>
+                              </div>
+                            )}
+                            {cfgRotulado?.mostrar_cliente_telefono !== false && (
+                              <div className="text-right">
+                                <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest block leading-none">
+                                  {cfgRotulado?.titulo_cliente_telefono || 'TELÉFONO:'}
+                                </span>
+                                <span className="text-xs font-mono font-bold text-slate-900 block leading-tight">
+                                  {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default || '-')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Bloques Libres en Rótulo Masivo */}
+                        {cfgRotulado?.bloques_personalizados && cfgRotulado.bloques_personalizados.length > 0 && (
+                          <div className="space-y-0.5">
+                            {cfgRotulado.bloques_personalizados.slice(0, 2).map(b => (
+                              <div key={b.id} className="px-1.5 py-0.5 rounded border border-black text-center text-[7.5px] font-black uppercase">
+                                {b.titulo && <span className="mr-1 text-slate-700">{b.titulo}:</span>}
+                                <span>{b.contenido}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
                         {/* Agencia o Dirección Completa */}
-                        <div className="pt-0.5">
-                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block leading-none">
-                            {isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA:'}
-                          </span>
-                          <p className="text-[10px] font-black text-black leading-tight pt-0.5 break-words">
-                            {isShalom ? shalomAgency : pedido.destino_detalle}
-                          </p>
-                        </div>
+                        {cfgRotulado?.mostrar_destino !== false && (
+                          <div className="pt-0.5">
+                            <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block leading-none">
+                              {cfgRotulado?.titulo_destino || (isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA:')}
+                            </span>
+                            <p className="text-[10px] font-black text-black leading-tight pt-0.5 break-words">
+                              {isShalom ? shalomAgency : pedido.destino_detalle}
+                            </p>
+                          </div>
+                        )}
 
                         {/* Campos Personalizados de Rotulado Inteligente */}
                         {rotuladoFields.length > 0 && (

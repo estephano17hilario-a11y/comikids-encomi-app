@@ -88,6 +88,84 @@ export interface CampoPersonalizadoAgencia {
   sistema?: boolean; // Protegido contra eliminación (ej. DNI, teléfono en agencias base)
 }
 
+export type DiaSemana = 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado' | 'domingo';
+
+export interface DisponibilidadAgencia {
+  dias_semana?: DiaSemana[]; // Días específicos de la semana habilitados para despacho
+  usar_rango_fechas?: boolean;
+  fecha_inicio?: string; // YYYY-MM-DD
+  fecha_fin?: string; // YYYY-MM-DD
+  ocultar_si_no_disponible?: boolean; // Si no está disponible, no aparece en las opciones
+  restringir_fecha_envio?: boolean; // Solo permite registrar en los días específicos al poner la fecha de envío
+  mensaje_disponibilidad?: string; // Mensaje explicativo para la clienta
+}
+
+export interface BloqueRotuladoPersonalizado {
+  id: string;
+  titulo?: string;
+  contenido: string;
+  tipo?: 'aviso' | 'nota' | 'destacado' | 'flete';
+  posicion?: 'arriba' | 'medio' | 'abajo';
+}
+
+export interface ConfigRotuladoAgencia {
+  incluir_campos_personalizados?: boolean;
+  campos_visibles?: string[]; // IDs de los campos personalizados que irán en el rótulo
+  etiquetas_campos?: Record<string, string>; // Título personalizado en rótulo por campo: { [campoId]: 'Etiqueta' }
+  
+  // Estilo de Rótulo Seleccionado
+  estilo_rotulo?: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving';
+
+  // Logos y Encabezado
+  mostrar_logo_empresa?: boolean;
+  mostrar_logo_agencia?: boolean;
+  subtitulo_cabecera?: string; // Ej: "Guía de Despacho Prioritaria"
+  
+  // Destino
+  mostrar_destino?: boolean;
+  titulo_destino?: string; // Ej: "📍 SUCURSAL / AGENCIA DESTINO:"
+  
+  // Bloque Remitente (Quien envía) - 100% Personalizable
+  incluir_remitente?: boolean;
+  titulo_remitente?: string; // Ej: "REMITENTE OFICIAL:"
+  mostrar_remitente_nombre?: boolean;
+  mostrar_remitente_ruc_dni?: boolean;
+  mostrar_remitente_telefono?: boolean;
+  mostrar_remitente_origen?: boolean;
+  remitente_personalizado?: {
+    usar_personalizado?: boolean;
+    nombre?: string;
+    ruc_dni?: string;
+    celular?: string;
+    direccion?: string;
+    observaciones?: string;
+  };
+  
+  // Bloque Destinatario (Quien recibe)
+  incluir_destinatario?: boolean;
+  titulo_destinatario?: string; // Ej: "DESTINATARIO (CLIENTE)"
+  mostrar_cliente_nombre?: boolean;
+  titulo_cliente_nombre?: string; // Ej: "Cliente:"
+  mostrar_cliente_dni?: boolean;
+  titulo_cliente_dni?: string; // Ej: "🪪 DNI / DOC RECOJO:"
+  tamano_dni?: 'normal' | 'grande' | 'gigante';
+  mostrar_cliente_telefono?: boolean;
+  titulo_cliente_telefono?: string; // Ej: "📱 TELÉFONO:"
+  mostrar_cliente_destino?: boolean;
+  mostrar_observaciones?: boolean;
+  mostrar_badge_modalidad?: boolean;
+  texto_badge_modalidad?: string; // Ej: "RECOJO EN AGENCIA" o "ENTREGA A DOMICILIO"
+
+  // Bloques de texto libre y notas personalizadas
+  bloques_personalizados?: BloqueRotuladoPersonalizado[];
+  
+  // Extras de Rótulo
+  mostrar_barcode?: boolean;
+  mostrar_tracking?: boolean;
+  mostrar_fecha_sello?: boolean;
+  texto_sello_personalizado?: string; // Ej: "Paquete de Despacho Seguro"
+}
+
 export interface MetodoEnvio {
   id: string;
   codigo: string;
@@ -101,40 +179,8 @@ export interface MetodoEnvio {
   es_sistema?: boolean; // TRUE para Shalom y Olva (no se pueden borrar ni alterar campos base)
   campos_personalizados?: CampoPersonalizadoAgencia[];
   mensaje_comprobacion?: string; // Plantilla editable por agencia sin el pie de Encomi
-  config_rotulado?: {
-    incluir_campos_personalizados?: boolean;
-    campos_visibles?: string[]; // IDs de los campos personalizados que irán en el rótulo
-    
-    // Estilo de Rótulo Seleccionado
-    estilo_rotulo?: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving';
-    
-    // Bloque Remitente (Quien envía) - 100% Personalizable
-    incluir_remitente?: boolean;
-    mostrar_remitente_nombre?: boolean;
-    mostrar_remitente_ruc_dni?: boolean;
-    mostrar_remitente_telefono?: boolean;
-    mostrar_remitente_origen?: boolean;
-    remitente_personalizado?: {
-      usar_personalizado?: boolean;
-      nombre?: string;
-      ruc_dni?: string;
-      celular?: string;
-      direccion?: string;
-      observaciones?: string;
-    };
-    
-    // Bloque Destinatario (Quien recibe)
-    incluir_destinatario?: boolean;
-    mostrar_cliente_nombre?: boolean;
-    mostrar_cliente_dni?: boolean;
-    mostrar_cliente_telefono?: boolean;
-    mostrar_cliente_destino?: boolean;
-    mostrar_observaciones?: boolean;
-    
-    // Extras de Rótulo
-    mostrar_barcode?: boolean;
-    mostrar_fecha_sello?: boolean;
-  };
+  disponibilidad?: DisponibilidadAgencia; // Configuración inteligente de días y fechas
+  config_rotulado?: ConfigRotuladoAgencia;
 }
 
 export interface Pedido {

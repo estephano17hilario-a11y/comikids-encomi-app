@@ -14,6 +14,12 @@ import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido, CampoPersonalizadoAgenci
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import {
+  isAgencyDateAllowed,
+  getNextAvailableDateForAgency,
+  getAgencyDaysSummary,
+  isAgencyCurrentlyVisible,
+} from '../../utils/agencyAvailability';
+import {
   DatosComprobante,
   enviarComprobanteAWhatsapp,
   buildWhatsAppComprobanteUrl,
@@ -47,7 +53,8 @@ import {
   Maximize2,
   Calendar,
   Loader2,
-  ShieldCheck
+  ShieldCheck,
+  AlertTriangle
 } from 'lucide-react';
 
 
@@ -584,6 +591,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     if (method?.tipo_formulario === 'mapa_direccion') {
       setMotorizadoSubStep('map');
     }
+
+    // Auto-calibrar la fecha de envío si la actual no está permitida para esta agencia
+    if (method) {
+      const check = isAgencyDateAllowed(method, fechaEnvioDeseada);
+      if (!check.allowed) {
+        const nextValid = getNextAvailableDateForAgency(method, fechaEnvioDeseada, minShippingDate);
+        setFechaEnvioDeseada(nextValid);
+      }
+    }
+
     setOrganicStep(3);
   };
 
@@ -595,6 +612,15 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     if (!nombreCompleto.trim()) {
       setErrorMsg('Por favor ingresa tu Nombre Completo.');
       return;
+    }
+
+    // Validación de fecha de despacho según disponibilidad de la agencia
+    if (selectedMethod?.disponibilidad?.restringir_fecha_envio !== false) {
+      const dateCheck = isAgencyDateAllowed(selectedMethod, fechaEnvioDeseada);
+      if (!dateCheck.allowed) {
+        setErrorMsg(dateCheck.reason || 'La fecha seleccionada no es un día de despacho para esta agencia. Por favor ajústala antes de continuar.');
+        return;
+      }
     }
 
     if (selectedMethod?.tipo_formulario === 'shalom') {
@@ -1441,16 +1467,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               PASO 2: SELECCIÓN DE MÉTODO (CON LOGOS OFICIALES, SHALOM Y OTRAS AGENCIAS)
               ===================================================================== */}
           {organicStep === 2 && (() => {
-            const mainMethods = activeShippingMethods.filter(
+            const visibleMethods = activeShippingMethods.filter(m =>
+              isAgencyCurrentlyVisible(m, fechaEnvioDeseada)
+            );
+            const mainMethods = visibleMethods.filter(
               m => m.tipo_formulario !== 'olva' && m.codigo !== 'olva'
             );
-            const otherMethods = activeShippingMethods.filter(
+            const otherMethods = visibleMethods.filter(
               m => m.tipo_formulario === 'olva' || m.codigo === 'olva'
             );
 
             const renderMethodButton = (method: MetodoEnvio) => {
               const isShalom = method.tipo_formulario === 'shalom' || method.codigo === 'shalom';
               const isOlva = method.tipo_formulario === 'olva' || method.codigo === 'olva';
+              const daysSummary = getAgencyDaysSummary(method);
 
               return (
                 <button
@@ -1467,6 +1497,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     ) : isOlva ? (
                       <div className="w-12 h-12 rounded-2xl bg-[#FFDE00] border border-yellow-400/60 flex items-center justify-center p-1 group-hover:scale-105 transition-transform overflow-hidden shrink-0 shadow-md">
                         <img src="/Olva-Courier-Logo.svg" alt="Olva Courier" className="w-full h-full object-contain" />
+                      </div>
+                    ) : method.foto_url ? (
+                      <div className="w-12 h-12 rounded-2xl bg-white/6 border border-white/10 flex items-center justify-center p-1 group-hover:scale-105 transition-transform overflow-hidden shrink-0">
+                        <img src={method.foto_url} alt={method.nombre} className="w-full h-full object-contain" />
                       </div>
                     ) : (
                       <div className="w-12 h-12 rounded-2xl bg-white/6 border border-white/10 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-105 transition-transform shrink-0">
@@ -1485,6 +1519,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         {isOlva && (
                           <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-yellow-400/25 text-yellow-300 border border-yellow-400/40 shadow-xs">
                             Olva
+                          </span>
+                        )}
+                        {daysSummary && daysSummary !== 'Todos los días hábiles' && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            📅 {daysSummary}
                           </span>
                         )}
                       </h4>
@@ -2568,6 +2607,35 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         <p className="leading-snug">{cutoffStatus.noticeText}</p>
                       </div>
                     </div>
+
+                    {/* Alerta Inteligente de Disponibilidad de la Agencia */}
+                    {selectedMethod && (() => {
+                      const agencyDateStatus = isAgencyDateAllowed(selectedMethod, fechaEnvioDeseada);
+                      if (agencyDateStatus.allowed) return null;
+
+                      return (
+                        <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs space-y-2 animate-fadeIn shadow-md">
+                          <div className="flex items-center gap-2 font-black text-amber-300">
+                            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                            <span>Aviso de Despacho para {selectedMethod.nombre}</span>
+                          </div>
+                          <p className="text-[11.5px] leading-relaxed">
+                            {agencyDateStatus.reason}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextValid = getNextAvailableDateForAgency(selectedMethod, fechaEnvioDeseada, minShippingDate);
+                              setFechaEnvioDeseada(nextValid);
+                            }}
+                            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer active:scale-95"
+                          >
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>Cambiar al próximo día disponible</span>
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
 

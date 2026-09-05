@@ -5,6 +5,7 @@ import { useShalomAgencies, formatFullAgencyName } from '../../hooks/useShalomAg
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import { DniService } from '../../services/dniService';
+import { isAgencyDateAllowed, getNextAvailableDateForAgency } from '../../utils/agencyAvailability';
 import {
   X,
   PlusCircle,
@@ -16,7 +17,9 @@ import {
   Clock,
   Sparkles,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Calendar,
+  AlertTriangle
 } from 'lucide-react';
 
 
@@ -276,7 +279,18 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
               <label className="block text-xs font-semibold text-slate-300 mb-1">Método de Envío</label>
               <select
                 value={selectedMethodId}
-                onChange={e => setSelectedMethodId(e.target.value)}
+                onChange={e => {
+                  const newId = e.target.value;
+                  setSelectedMethodId(newId);
+                  const m = activeShippingMethods.find(item => item.id === newId);
+                  if (m) {
+                    const check = isAgencyDateAllowed(m, fechaLimite);
+                    if (!check.allowed) {
+                      const next = getNextAvailableDateForAgency(m, fechaLimite, minShippingDate);
+                      setFechaLimite(next);
+                    }
+                  }
+                }}
                 className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
               >
                 {activeShippingMethods.map(m => (
@@ -308,6 +322,30 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
               />
             </div>
           </div>
+
+          {/* Alerta si la fecha de despacho no coincide con la agencia */}
+          {selectedMethod && (() => {
+            const check = isAgencyDateAllowed(selectedMethod, fechaLimite);
+            if (check.allowed) return null;
+            return (
+              <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{check.reason}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = getNextAvailableDateForAgency(selectedMethod, fechaLimite, minShippingDate);
+                    setFechaLimite(next);
+                  }}
+                  className="px-2 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold text-[10px] shrink-0"
+                >
+                  Ajustar a fecha válida
+                </button>
+              </div>
+            );
+          })()}
 
           {selectedMethod?.tipo_formulario === 'shalom' ? (
             <div className="space-y-2.5 bg-slate-950 p-3 rounded-2xl border border-cyan-500/30">

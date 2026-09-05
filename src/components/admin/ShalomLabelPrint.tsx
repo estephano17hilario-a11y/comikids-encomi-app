@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pedido, TallerConfig, MetodoEnvio } from '../../types/database.types';
+import { Pedido, TallerConfig, MetodoEnvio, BloqueRotuladoPersonalizado } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
 import { InkSavingLevel, getInkSavingStyles } from '../../utils/inkSavingService';
 import { extractShalomDni } from '../../utils/shalomExcelExporter';
@@ -52,22 +52,36 @@ export const ShalomLabelPrint: React.FC<Props> = ({
   const senderObservaciones = senderCustom?.observaciones || tallerConfig.remitente_default?.observaciones || '';
 
   const rotuladoFields = useMemo(() => {
+    if (cfgRotulado?.incluir_campos_personalizados === false) return [];
     if (!pedido.campos_personalizados) return [];
 
     const visibleList: { label: string; valor: string }[] = [];
     for (const [key, val] of Object.entries(pedido.campos_personalizados)) {
       if (val === undefined || val === null || String(val).trim() === '') continue;
-      const fieldCfg = currentMethod?.campos_personalizados?.find(c => c.id === key || c.label.toLowerCase() === key.toLowerCase());
-      const shouldShow = fieldCfg !== undefined ? Boolean(fieldCfg.mostrar_en_rotulado) : true;
+      const fieldCfg = currentMethod?.campos_personalizados?.find(
+        c => c.id === key || c.label.toLowerCase() === key.toLowerCase()
+      );
+
+      const isExplicitVisible = cfgRotulado?.campos_visibles
+        ? cfgRotulado.campos_visibles.includes(fieldCfg?.id || key)
+        : undefined;
+
+      const shouldShow = isExplicitVisible !== undefined
+        ? isExplicitVisible
+        : (fieldCfg !== undefined ? Boolean(fieldCfg.mostrar_en_rotulado) : true);
+
       if (shouldShow) {
+        const customLabel = (fieldCfg && cfgRotulado?.etiquetas_campos?.[fieldCfg.id]) ||
+          cfgRotulado?.etiquetas_campos?.[key];
+
         visibleList.push({
-          label: fieldCfg?.label || key,
+          label: customLabel || fieldCfg?.label || key,
           valor: String(val)
         });
       }
     }
     return visibleList;
-  }, [pedido, currentMethod]);
+  }, [pedido, currentMethod, cfgRotulado]);
 
   const getClientDni = () => {
     const extracted = extractShalomDni(pedido);
@@ -86,6 +100,52 @@ export const ShalomLabelPrint: React.FC<Props> = ({
   const clientDni = getClientDni();
   const eco = getInkSavingStyles(inkSavingLevel);
 
+  // Helper para renderizar bloques libres / notas especiales
+  const renderBloquesPersonalizados = (pos: 'arriba' | 'medio' | 'abajo') => {
+    const bloques = (cfgRotulado?.bloques_personalizados || []).filter(b => (b.posicion || 'medio') === pos);
+    if (bloques.length === 0) return null;
+
+    return (
+      <div className="my-2 space-y-1.5">
+        {bloques.map((b: BloqueRotuladoPersonalizado) => {
+          const isAviso = b.tipo === 'aviso';
+          const isFlete = b.tipo === 'flete';
+          const isDestacado = b.tipo === 'destacado';
+
+          return (
+            <div
+              key={b.id}
+              className={`p-2 rounded-xl text-center border font-bold text-xs ${
+                isAviso
+                  ? 'bg-amber-100 border-amber-400 text-amber-950 font-black'
+                  : isFlete
+                  ? 'bg-rose-100 border-rose-400 text-rose-950 font-black'
+                  : isDestacado
+                  ? 'bg-purple-100 border-purple-400 text-purple-950'
+                  : 'bg-slate-100 border-slate-300 text-slate-900'
+              }`}
+            >
+              {b.titulo && (
+                <span className="block text-[9.5px] uppercase font-black tracking-wider leading-none mb-0.5">
+                  {b.titulo}
+                </span>
+              )}
+              <span className="block leading-snug">{b.contenido}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Helper para tamaño de DNI
+  const getDniSizeClass = () => {
+    const sz = cfgRotulado?.tamano_dni || 'gigante';
+    if (sz === 'normal') return 'text-sm sm:text-base font-bold';
+    if (sz === 'grande') return 'text-base sm:text-lg font-black';
+    return 'text-xl sm:text-2xl font-black'; // gigante
+  };
+
   // =========================================================================
   // VARIANTE 1: ESTILO MODERNO MINIMALISTA VISION
   // =========================================================================
@@ -98,14 +158,16 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         {/* Modern Header Banner */}
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
           <div className="flex items-center gap-2.5">
-            <img
-              src={tallerConfig.logo_url || '/Comikids.png'}
-              alt={tallerConfig.nombre_taller || 'Empresa'}
-              className="w-10 h-10 object-contain rounded-xl border border-slate-200 shadow-sm"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
-            />
+            {cfgRotulado?.mostrar_logo_empresa !== false && (
+              <img
+                src={tallerConfig.logo_url || '/Comikids.png'}
+                alt={tallerConfig.nombre_taller || 'Empresa'}
+                className="w-10 h-10 object-contain rounded-xl border border-slate-200 shadow-sm shrink-0"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+              />
+            )}
             <div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <h2 className="text-sm sm:text-base font-black uppercase tracking-tight text-slate-950 leading-tight">
                   {senderNombre}
                 </h2>
@@ -113,28 +175,37 @@ export const ShalomLabelPrint: React.FC<Props> = ({
                   VISION
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 font-medium">Guía de Despacho Prioritaria</span>
+              <span className="text-[10px] text-slate-500 font-medium block">
+                {cfgRotulado?.subtitulo_cabecera || 'Guía de Despacho Prioritaria'}
+              </span>
             </div>
           </div>
 
-          <div className="text-right">
-            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-black text-[10px] uppercase">
-              {currentMethod?.foto_url ? (
-                <img src={currentMethod.foto_url} alt="" className="h-3.5 w-auto object-contain" />
-              ) : isOlva ? (
-                <img src="/Olva-Courier-Logo.svg" alt="" className="h-3 w-auto object-contain" />
-              ) : isShalom ? (
-                <img src="/Shalom-Courier-Logo.webp" alt="" className="h-3 w-auto object-contain" />
-              ) : (
-                <span>🚚</span>
-              )}
-              <span>{currentMethod?.nombre || 'EXPRESS'}</span>
-            </div>
-            <p className="font-mono font-black text-xs text-slate-950 mt-1">
-              #{pedido.codigo_seguimiento}
-            </p>
+          <div className="text-right shrink-0">
+            {cfgRotulado?.mostrar_logo_agencia !== false && (
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-black text-[10px] uppercase">
+                {currentMethod?.foto_url ? (
+                  <img src={currentMethod.foto_url} alt="" className="h-3.5 w-auto object-contain" />
+                ) : isOlva ? (
+                  <img src="/Olva-Courier-Logo.svg" alt="" className="h-3 w-auto object-contain" />
+                ) : isShalom ? (
+                  <img src="/Shalom-Courier-Logo.webp" alt="" className="h-3 w-auto object-contain" />
+                ) : (
+                  <span>🚚</span>
+                )}
+                <span>{currentMethod?.nombre || 'EXPRESS'}</span>
+              </div>
+            )}
+            {cfgRotulado?.mostrar_tracking !== false && (
+              <p className="font-mono font-black text-xs text-slate-950 mt-1">
+                #{pedido.codigo_seguimiento}
+              </p>
+            )}
           </div>
         </div>
+
+        {/* Bloques Libres Arriba */}
+        {renderBloquesPersonalizados('arriba')}
 
         {/* Barcode Modern Box */}
         {cfgRotulado?.mostrar_barcode !== false && (
@@ -151,88 +222,118 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         )}
 
         {/* Destino Banner */}
-        <div className="mb-3 p-3 rounded-2xl bg-slate-950 text-white text-center shadow-md">
-          <span className="text-[9.5px] font-bold uppercase tracking-widest text-slate-400 block mb-0.5">
-            📍 DESTINO OFICIAL DE ENTREGA
-          </span>
-          <h3 className="text-base sm:text-lg font-black uppercase leading-tight tracking-tight text-white">
-            {pedido.destino_detalle}
-          </h3>
-        </div>
+        {cfgRotulado?.mostrar_destino !== false && (
+          <div className="mb-3 p-3 rounded-2xl bg-slate-950 text-white text-center shadow-md">
+            <span className="text-[9.5px] font-bold uppercase tracking-widest text-slate-400 block mb-0.5">
+              {cfgRotulado?.titulo_destino || '📍 DESTINO OFICIAL DE ENTREGA'}
+            </span>
+            <h3 className="text-base sm:text-lg font-black uppercase leading-tight tracking-tight text-white break-words">
+              {pedido.destino_detalle}
+            </h3>
+          </div>
+        )}
 
         {/* Card Destinatario */}
-        <div className="mb-3 p-3.5 rounded-2xl border border-slate-300 bg-white space-y-2">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-              👤 DESTINATARIO
-            </span>
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-              RECOJO PERSONAL
-            </span>
-          </div>
-
-          <div>
-            <span className="text-[10px] text-slate-500 block font-medium">Cliente:</span>
-            <span className="text-base sm:text-lg font-black uppercase text-slate-950 leading-snug block">
-              {pedido.usuario?.nombre_completo || 'Cliente'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
-              <span className="text-[8.5px] font-black uppercase tracking-wider text-slate-500 block">
-                🪪 DNI / DOCUMENTO:
+        {cfgRotulado?.incluir_destinatario !== false && (
+          <div className="mb-3 p-3.5 rounded-2xl border border-slate-300 bg-white space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                {cfgRotulado?.titulo_destinatario || '👤 DESTINATARIO'}
               </span>
-              <span className="text-base sm:text-lg font-mono font-black text-slate-950 block leading-tight mt-0.5">
-                {clientDni}
-              </span>
+              {cfgRotulado?.mostrar_badge_modalidad !== false && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 uppercase">
+                  {cfgRotulado?.texto_badge_modalidad || (isShalom || isOlva ? 'RECOJO EN AGENCIA' : 'ENTREGA A DOMICILIO')}
+                </span>
+              )}
             </div>
 
-            <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
-              <span className="text-[8.5px] font-black uppercase tracking-wider text-slate-500 block">
-                📱 TELÉFONO / WHATSAPP:
-              </span>
-              <span className="text-xs sm:text-sm font-mono font-bold text-slate-900 block leading-tight mt-1">
-                {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
-              </span>
-            </div>
-          </div>
+            {cfgRotulado?.mostrar_cliente_nombre !== false && (
+              <div>
+                <span className="text-[10px] text-slate-500 block font-medium">
+                  {cfgRotulado?.titulo_cliente_nombre || 'Cliente:'}
+                </span>
+                <span className="text-base sm:text-lg font-black uppercase text-slate-950 leading-snug block">
+                  {pedido.usuario?.nombre_completo || 'Cliente'}
+                </span>
+              </div>
+            )}
 
-          {rotuladoFields.length > 0 && (
-            <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-1.5">
-              {rotuladoFields.map(f => (
-                <div key={f.label} className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[10px]">
-                  <span className="font-bold text-slate-500 block text-[8px] uppercase">{f.label}:</span>
-                  <span className="font-bold text-slate-900 truncate block">{f.valor}</span>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {cfgRotulado?.mostrar_cliente_dni !== false && (
+                <div className={`p-2 rounded-xl bg-slate-100 border border-slate-200 ${cfgRotulado?.mostrar_cliente_telefono === false ? 'col-span-2 text-center' : ''}`}>
+                  <span className="text-[8.5px] font-black uppercase tracking-wider text-slate-500 block">
+                    {cfgRotulado?.titulo_cliente_dni || '🪪 DNI / DOCUMENTO:'}
+                  </span>
+                  <span className={`${getDniSizeClass()} font-mono font-black text-slate-950 block leading-tight mt-0.5 tracking-wider`}>
+                    {clientDni}
+                  </span>
                 </div>
-              ))}
+              )}
+
+              {cfgRotulado?.mostrar_cliente_telefono !== false && (
+                <div className={`p-2 rounded-xl bg-slate-100 border border-slate-200 ${cfgRotulado?.mostrar_cliente_dni === false ? 'col-span-2' : ''}`}>
+                  <span className="text-[8.5px] font-black uppercase tracking-wider text-slate-500 block">
+                    {cfgRotulado?.titulo_cliente_telefono || '📱 TELÉFONO / WHATSAPP:'}
+                  </span>
+                  <span className="text-xs sm:text-sm font-mono font-bold text-slate-900 block leading-tight mt-1">
+                    {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {rotuladoFields.length > 0 && (
+              <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-1.5">
+                {rotuladoFields.map(f => (
+                  <div key={f.label} className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[10px]">
+                    <span className="font-bold text-slate-500 block text-[8px] uppercase">{f.label}:</span>
+                    <span className="font-bold text-slate-900 truncate block">{f.valor}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Bloques Libres Medio */}
+        {renderBloquesPersonalizados('medio')}
 
         {/* Card Remitente (Personalizado o Global) */}
         {cfgRotulado?.incluir_remitente !== false && (
           <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-[10.5px] space-y-1">
             <div className="flex items-center justify-between font-black text-slate-800 text-[10px] uppercase">
-              <span>🏢 REMITENTE OFICIAL:</span>
-              <span className="font-bold text-slate-900">{senderNombre}</span>
+              <span>{cfgRotulado?.titulo_remitente || '🏢 REMITENTE OFICIAL:'}</span>
+              {cfgRotulado?.mostrar_remitente_nombre !== false && (
+                <span className="font-bold text-slate-900">{senderNombre}</span>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-1 text-slate-700 pt-0.5">
-              <p><strong className="text-slate-900">RUC/DNI:</strong> {senderRucDni}</p>
-              <p><strong className="text-slate-900">Cel:</strong> {senderCelular}</p>
+              {cfgRotulado?.mostrar_remitente_ruc_dni !== false && (
+                <p><strong className="text-slate-900">RUC/DNI:</strong> {senderRucDni}</p>
+              )}
+              {cfgRotulado?.mostrar_remitente_telefono !== false && (
+                <p><strong className="text-slate-900">Cel:</strong> {senderCelular}</p>
+              )}
             </div>
-            <p className="text-slate-600 text-[10px] truncate"><strong className="text-slate-900">Origen:</strong> {senderOrigen}</p>
+            {cfgRotulado?.mostrar_remitente_origen !== false && (
+              <p className="text-slate-600 text-[10px] truncate"><strong className="text-slate-900">Origen:</strong> {senderOrigen}</p>
+            )}
             {senderObservaciones && (
               <p className="text-purple-700 text-[9.5px] font-bold italic pt-0.5">Nota: {senderObservaciones}</p>
             )}
           </div>
         )}
 
-        {/* Footer */}
-        <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[9.5px] text-slate-500 font-mono">
-          <span>📦 Paquete Inspeccionado y Seguro</span>
-          <span>{formatDate(new Date().toISOString())}</span>
-        </div>
+        {/* Bloques Libres Abajo */}
+        {renderBloquesPersonalizados('abajo')}
+
+        {/* Footer Sello */}
+        {cfgRotulado?.mostrar_fecha_sello !== false && (
+          <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[9.5px] text-slate-500 font-mono">
+            <span>📦 {cfgRotulado?.texto_sello_personalizado || 'Paquete Inspeccionado y Seguro'}</span>
+            <span>{formatDate(new Date().toISOString())}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -249,27 +350,38 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         {/* Header Eco */}
         <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-2">
           <div className="flex items-center gap-2">
-            <img
-              src={tallerConfig.logo_url || '/Comikids.png'}
-              alt="Logo"
-              className="w-8 h-8 object-contain grayscale"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
-            />
+            {cfgRotulado?.mostrar_logo_empresa !== false && (
+              <img
+                src={tallerConfig.logo_url || '/Comikids.png'}
+                alt="Logo"
+                className="w-8 h-8 object-contain grayscale shrink-0"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+              />
+            )}
             <div>
               <h2 className="text-sm font-black uppercase text-black leading-none">{senderNombre}</h2>
-              <span className="text-[9px] text-slate-600 font-bold">DESPACHO ECO AHORRO</span>
+              <span className="text-[9px] text-slate-600 font-bold block mt-0.5">
+                {cfgRotulado?.subtitulo_cabecera || 'DESPACHO ECO AHORRO'}
+              </span>
             </div>
           </div>
 
-          <div className="text-right">
-            <span className="inline-block px-2 py-0.5 border border-black rounded text-[9px] font-black uppercase">
-              {currentMethod?.nombre || 'OFICIAL'}
-            </span>
-            <p className="font-mono font-black text-xs text-black mt-0.5">
-              #{pedido.codigo_seguimiento}
-            </p>
+          <div className="text-right shrink-0">
+            {cfgRotulado?.mostrar_logo_agencia !== false && (
+              <span className="inline-block px-2 py-0.5 border border-black rounded text-[9px] font-black uppercase">
+                {currentMethod?.nombre || 'OFICIAL'}
+              </span>
+            )}
+            {cfgRotulado?.mostrar_tracking !== false && (
+              <p className="font-mono font-black text-xs text-black mt-0.5">
+                #{pedido.codigo_seguimiento}
+              </p>
+            )}
           </div>
         </div>
+
+        {/* Bloques Libres Arriba */}
+        {renderBloquesPersonalizados('arriba')}
 
         {/* Barcode Eco */}
         {cfgRotulado?.mostrar_barcode !== false && (
@@ -286,62 +398,105 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         )}
 
         {/* Destino Eco */}
-        <div className="mb-2 p-2 border-2 border-black rounded-xl text-center">
-          <span className="text-[9px] font-black uppercase tracking-wider text-slate-700 block">
-            DESTINO:
-          </span>
-          <h3 className="text-sm sm:text-base font-black uppercase text-black leading-tight">
-            {pedido.destino_detalle}
-          </h3>
-        </div>
+        {cfgRotulado?.mostrar_destino !== false && (
+          <div className="mb-2 p-2 border-2 border-black rounded-xl text-center">
+            <span className="text-[9px] font-black uppercase tracking-wider text-slate-700 block">
+              {cfgRotulado?.titulo_destino || 'DESTINO:'}
+            </span>
+            <h3 className="text-sm sm:text-base font-black uppercase text-black leading-tight break-words">
+              {pedido.destino_detalle}
+            </h3>
+          </div>
+        )}
 
         {/* Destinatario Eco */}
-        <div className="mb-2 p-2.5 border border-black rounded-xl space-y-1.5">
-          <div>
-            <span className="text-[9px] text-slate-600 block">DESTINATARIO:</span>
-            <span className="text-base font-black uppercase text-black leading-tight block">
-              {pedido.usuario?.nombre_completo || 'Cliente'}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between border-t border-slate-300 pt-1">
-            <div>
-              <span className="text-[8px] font-bold uppercase text-slate-600 block">DNI / CE:</span>
-              <span className="text-base font-mono font-black text-black block leading-none">{clientDni}</span>
-            </div>
-            <div className="text-right">
-              <span className="text-[8px] font-bold uppercase text-slate-600 block">TELÉFONO:</span>
-              <span className="text-xs font-mono font-bold text-black block leading-none">
-                {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+        {cfgRotulado?.incluir_destinatario !== false && (
+          <div className="mb-2 p-2.5 border border-black rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+              <span className="text-[9px] text-slate-600 font-black uppercase">
+                {cfgRotulado?.titulo_destinatario || 'DESTINATARIO:'}
               </span>
+              {cfgRotulado?.mostrar_badge_modalidad !== false && (
+                <span className="text-[8px] font-bold px-1.5 py-0.2 rounded border border-black uppercase">
+                  {cfgRotulado?.texto_badge_modalidad || (isShalom || isOlva ? 'RECOJO AGENCIA' : 'DOMICILIO')}
+                </span>
+              )}
             </div>
-          </div>
 
-          {rotuladoFields.length > 0 && (
-            <div className="pt-1 border-t border-slate-200 grid grid-cols-2 gap-1 text-[9px]">
-              {rotuladoFields.map(f => (
-                <p key={f.label}><strong className="text-black">{f.label}:</strong> {f.valor}</p>
-              ))}
+            {cfgRotulado?.mostrar_cliente_nombre !== false && (
+              <div>
+                <span className="text-base font-black uppercase text-black leading-tight block">
+                  {pedido.usuario?.nombre_completo || 'Cliente'}
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t border-slate-300 pt-1">
+              {cfgRotulado?.mostrar_cliente_dni !== false && (
+                <div>
+                  <span className="text-[8px] font-bold uppercase text-slate-600 block">
+                    {cfgRotulado?.titulo_cliente_dni || 'DNI / CE:'}
+                  </span>
+                  <span className={`${getDniSizeClass()} font-mono font-black text-black block leading-none`}>
+                    {clientDni}
+                  </span>
+                </div>
+              )}
+              {cfgRotulado?.mostrar_cliente_telefono !== false && (
+                <div className="text-right">
+                  <span className="text-[8px] font-bold uppercase text-slate-600 block">
+                    {cfgRotulado?.titulo_cliente_telefono || 'TELÉFONO:'}
+                  </span>
+                  <span className="text-xs font-mono font-bold text-black block leading-none">
+                    {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {rotuladoFields.length > 0 && (
+              <div className="pt-1 border-t border-slate-200 grid grid-cols-2 gap-1 text-[9px]">
+                {rotuladoFields.map(f => (
+                  <p key={f.label}><strong className="text-black">{f.label}:</strong> {f.valor}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Bloques Libres Medio */}
+        {renderBloquesPersonalizados('medio')}
 
         {/* Remitente Eco */}
         {cfgRotulado?.incluir_remitente !== false && (
           <div className="p-2 border border-slate-400 rounded-xl text-[9.5px] space-y-0.5 text-slate-800">
-            <p className="font-black text-black uppercase">REMITENTE: {senderNombre}</p>
+            <p className="font-black text-black uppercase">
+              {cfgRotulado?.titulo_remitente || 'REMITENTE:'} {cfgRotulado?.mostrar_remitente_nombre !== false ? senderNombre : ''}
+            </p>
             <div className="flex items-center justify-between">
-              <span><strong>DNI/RUC:</strong> {senderRucDni}</span>
-              <span><strong>Cel:</strong> {senderCelular}</span>
+              {cfgRotulado?.mostrar_remitente_ruc_dni !== false && (
+                <span><strong>DNI/RUC:</strong> {senderRucDni}</span>
+              )}
+              {cfgRotulado?.mostrar_remitente_telefono !== false && (
+                <span><strong>Cel:</strong> {senderCelular}</span>
+              )}
             </div>
-            <p className="truncate"><strong>Origen:</strong> {senderOrigen}</p>
+            {cfgRotulado?.mostrar_remitente_origen !== false && (
+              <p className="truncate"><strong>Origen:</strong> {senderOrigen}</p>
+            )}
           </div>
         )}
 
-        <div className="mt-1.5 pt-1 border-t border-slate-300 flex items-center justify-between text-[8.5px] text-slate-600">
-          <span>📦 Encomienda Eco</span>
-          <span>{formatDate(new Date().toISOString())}</span>
-        </div>
+        {/* Bloques Libres Abajo */}
+        {renderBloquesPersonalizados('abajo')}
+
+        {/* Sello Footer */}
+        {cfgRotulado?.mostrar_fecha_sello !== false && (
+          <div className="mt-1.5 pt-1 border-t border-slate-300 flex items-center justify-between text-[8.5px] text-slate-600">
+            <span>📦 {cfgRotulado?.texto_sello_personalizado || 'Encomienda Eco'}</span>
+            <span>{formatDate(new Date().toISOString())}</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -352,69 +507,80 @@ export const ShalomLabelPrint: React.FC<Props> = ({
   return (
     <div
       id="shalom-print-area"
-      className={`w-full max-w-110 mx-auto p-4 sm:p-5 rounded-3xl ${eco.containerBorder} shadow-2xl relative overflow-hidden transition-all duration-200`}
+      className={`w-full max-w-110 mx-auto p-4 sm:p-5 rounded-3xl ${eco.containerBorder} shadow-2xl relative overflow-hidden transition-all duration-200 bg-white text-slate-900`}
       style={{ fontFamily: eco.fontFamily }}
     >
       {/* Top Header ComiKids & Badge con Logo Shalom / Olva / Moto */}
       <div className={`flex items-center justify-between border-b-2 border-dashed ${inkSavingLevel >= 50 ? 'border-slate-400' : 'border-pink-500'} pb-2.5 mb-2.5`}>
         <div className="flex items-center gap-2">
-          <img
-            src={tallerConfig.logo_url || '/Comikids.png'}
-            alt={senderNombre}
-            className={`w-10 h-10 object-contain rounded-xl shadow ${inkSavingLevel >= 75 ? 'grayscale contrast-125' : ''}`}
-            onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
-          />
+          {cfgRotulado?.mostrar_logo_empresa !== false && (
+            <img
+              src={tallerConfig.logo_url || '/Comikids.png'}
+              alt={senderNombre}
+              className={`w-10 h-10 object-contain rounded-xl shadow shrink-0 ${inkSavingLevel >= 75 ? 'grayscale contrast-125' : ''}`}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+            />
+          )}
           <div>
             <h2 className="text-base font-black uppercase tracking-tight text-slate-900 leading-none">
               {senderNombre}
             </h2>
-            <span className="text-[10px] text-slate-500 font-bold">Envíos Seguros</span>
+            <span className="text-[10px] text-slate-500 font-bold block mt-0.5">
+              {cfgRotulado?.subtitulo_cabecera || 'Envíos Seguros'}
+            </span>
           </div>
         </div>
 
-        <div className="text-right">
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black text-[10px] uppercase mb-1 ${eco.badgeCarrier}`}>
-            {currentMethod?.foto_url ? (
-              <>
-                <img
-                  src={currentMethod.foto_url}
-                  alt={currentMethod.nombre}
-                  className="h-4 w-auto max-w-16 object-contain"
-                />
-                <span>{currentMethod.nombre}</span>
-              </>
-            ) : isOlva ? (
-              <>
-                <img
-                  src="/Olva-Courier-Logo.svg"
-                  alt="Olva"
-                  className="h-3.5 w-auto object-contain"
-                />
-                <span>OLVA COURIER</span>
-              </>
-            ) : isShalom ? (
-              <>
-                <img
-                  src="/Shalom-Courier-Logo.webp"
-                  alt="Shalom"
-                  className="h-3.5 w-auto object-contain"
-                />
-                <span>SHALOM VIP</span>
-              </>
-            ) : (
-              <>
-                <span>🛵</span>
-                <span>{currentMethod?.nombre || 'MOTORIZADO'}</span>
-              </>
-            )}
-          </div>
-          <p className="font-mono font-black text-xs text-slate-900 pt-0.5">
-            #{pedido.codigo_seguimiento}
-          </p>
+        <div className="text-right shrink-0">
+          {cfgRotulado?.mostrar_logo_agencia !== false && (
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-black text-[10px] uppercase mb-1 ${eco.badgeCarrier}`}>
+              {currentMethod?.foto_url ? (
+                <>
+                  <img
+                    src={currentMethod.foto_url}
+                    alt={currentMethod.nombre}
+                    className="h-4 w-auto max-w-16 object-contain"
+                  />
+                  <span>{currentMethod.nombre}</span>
+                </>
+              ) : isOlva ? (
+                <>
+                  <img
+                    src="/Olva-Courier-Logo.svg"
+                    alt="Olva"
+                    className="h-3.5 w-auto object-contain"
+                  />
+                  <span>OLVA COURIER</span>
+                </>
+              ) : isShalom ? (
+                <>
+                  <img
+                    src="/Shalom-Courier-Logo.webp"
+                    alt="Shalom"
+                    className="h-3.5 w-auto object-contain"
+                  />
+                  <span>SHALOM VIP</span>
+                </>
+              ) : (
+                <>
+                  <span>🛵</span>
+                  <span>{currentMethod?.nombre || 'MOTORIZADO'}</span>
+                </>
+              )}
+            </div>
+          )}
+          {cfgRotulado?.mostrar_tracking !== false && (
+            <p className="font-mono font-black text-xs text-slate-900 pt-0.5">
+              #{pedido.codigo_seguimiento}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Barcode Simulation with Eco-Print calculation */}
+      {/* Bloques Libres Arriba */}
+      {renderBloquesPersonalizados('arriba')}
+
+      {/* Barcode Simulation */}
       {cfgRotulado?.mostrar_barcode !== false && (
         <div className={`my-2 p-2 rounded-2xl border ${inkSavingLevel >= 50 ? 'bg-white border-slate-400' : 'bg-cyan-50/70 border-cyan-300'} text-center`}>
           <div className={`flex justify-center items-center gap-0.5 ${eco.barcodeHeight} mb-1`}>
@@ -433,88 +599,107 @@ export const ShalomLabelPrint: React.FC<Props> = ({
       )}
 
       {/* DESTINO DESTACADO */}
-      <div className={`${eco.destinoBox} rounded-2xl mb-2.5 text-center`}>
-        <span className={`text-[10px] uppercase tracking-wider ${eco.destinoSub} flex items-center justify-center gap-1`}>
-          <span>🚀</span>
-          <span>{isOlva ? 'DESTINO OLVA COURIER:' : isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA MOTORIZADO:'}</span>
-        </span>
-        <h2 className={`text-base sm:text-lg uppercase tracking-tight leading-tight mt-0.5 ${eco.destinoTitle}`}>
-          {pedido.destino_detalle}
-        </h2>
-      </div>
+      {cfgRotulado?.mostrar_destino !== false && (
+        <div className={`${eco.destinoBox} rounded-2xl mb-2.5 text-center`}>
+          <span className={`text-[10px] uppercase tracking-wider ${eco.destinoSub} flex items-center justify-center gap-1`}>
+            <span>🚀</span>
+            <span>
+              {cfgRotulado?.titulo_destino || (isOlva ? 'DESTINO OLVA COURIER:' : isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA MOTORIZADO:')}
+            </span>
+          </span>
+          <h2 className={`text-base sm:text-lg uppercase tracking-tight leading-tight mt-0.5 ${eco.destinoTitle} break-words`}>
+            {pedido.destino_detalle}
+          </h2>
+        </div>
+      )}
 
       {/* SECCIÓN CONSIGNATARIO (DESTINATARIO) CON DNI GIGANTE */}
-      <div className={`rounded-2xl p-3 mb-2.5 ${eco.sectionBg}`}>
-        <div className="flex items-center justify-between border-b border-slate-300 pb-1 mb-2">
-          <span className="text-[11px] font-black uppercase text-slate-800 flex items-center gap-1">
-            <span>👤</span>
-            <span>DESTINATARIO (CLIENTE)</span>
-          </span>
-          <span className="text-[10px] font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-300">
-            RECOJO EN AGENCIA
-          </span>
-        </div>
-
-        <div className="space-y-2 text-xs text-slate-900">
-          <div>
-            <span className={eco.subtleText}>Nombre del Cliente:</span>{' '}
-            <span className="font-black text-lg sm:text-xl uppercase block text-slate-950 leading-snug tracking-tight">
-              {pedido.usuario?.nombre_completo || 'Cliente'}
+      {cfgRotulado?.incluir_destinatario !== false && (
+        <div className={`rounded-2xl p-3 mb-2.5 ${eco.sectionBg}`}>
+          <div className="flex items-center justify-between border-b border-slate-300 pb-1 mb-2">
+            <span className="text-[11px] font-black uppercase text-slate-800 flex items-center gap-1">
+              <span>👤</span>
+              <span>{cfgRotulado?.titulo_destinatario || 'DESTINATARIO (CLIENTE)'}</span>
             </span>
-          </div>
-
-          {/* DNI GIGANTE Y DESTACADO */}
-          <div className={`${eco.dniBox} rounded-xl flex items-center ${isShalom ? 'justify-center py-2' : 'justify-between'} shadow-xs`}>
-            <div className={isShalom ? 'text-center w-full' : ''}>
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none mb-0.5">
-                🪪 DNI / DOC RECOJO:
+            {cfgRotulado?.mostrar_badge_modalidad !== false && (
+              <span className="text-[10px] font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-300 uppercase">
+                {cfgRotulado?.texto_badge_modalidad || (isShalom || isOlva ? 'RECOJO EN AGENCIA' : 'ENTREGA A DOMICILIO')}
               </span>
-              <span className={`${eco.dniText} block leading-tight mt-0.5`}>
-                {clientDni}
-              </span>
-            </div>
-            {!isShalom && (
-              <div className="text-right">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none">
-                  TELÉFONO:
-                </span>
-                <span className="text-sm sm:text-base font-mono font-bold text-slate-900 block leading-tight mt-0.5">
-                  {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
-                </span>
-              </div>
             )}
           </div>
 
-          {!isShalom && (pedido.usuario?.email || pedido.usuario?.email_default) && (
-            <p className="pt-0.5 text-[10.5px]">
-              <span className={eco.subtleText}>Correo:</span>{' '}
-              <span className="font-mono font-bold text-slate-800">{pedido.usuario.email || pedido.usuario.email_default}</span>
-            </p>
-          )}
+          <div className="space-y-2 text-xs text-slate-900">
+            {cfgRotulado?.mostrar_cliente_nombre !== false && (
+              <div>
+                <span className={eco.subtleText}>
+                  {cfgRotulado?.titulo_cliente_nombre || 'Nombre del Cliente:'}
+                </span>{' '}
+                <span className="font-black text-lg sm:text-xl uppercase block text-slate-950 leading-snug tracking-tight">
+                  {pedido.usuario?.nombre_completo || 'Cliente'}
+                </span>
+              </div>
+            )}
 
-          {/* CAMPOS PERSONALIZADOS - ROTULADO INTELIGENTE */}
-          {rotuladoFields.length > 0 && (
-            <div className="mt-2 pt-1.5 border-t border-slate-300 grid grid-cols-2 gap-1.5">
-              {rotuladoFields.map(f => (
-                <div key={f.label} className="p-1.5 rounded-lg bg-white border border-slate-300">
-                  <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 block leading-none">
-                    {f.label}:
-                  </span>
-                  <span className="text-xs font-bold text-slate-900 block truncate leading-tight mt-0.5">
-                    {f.valor}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+            {/* DNI GIGANTE Y DESTACADO */}
+            {(cfgRotulado?.mostrar_cliente_dni !== false || cfgRotulado?.mostrar_cliente_telefono !== false) && (
+              <div className={`${eco.dniBox} rounded-xl flex items-center ${isShalom && cfgRotulado?.mostrar_cliente_telefono === false ? 'justify-center py-2' : 'justify-between'} shadow-xs`}>
+                {cfgRotulado?.mostrar_cliente_dni !== false && (
+                  <div className={isShalom && cfgRotulado?.mostrar_cliente_telefono === false ? 'text-center w-full' : ''}>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none mb-0.5">
+                      {cfgRotulado?.titulo_cliente_dni || '🪪 DNI / DOC RECOJO:'}
+                    </span>
+                    <span className={`${getDniSizeClass()} block leading-tight mt-0.5 ${eco.dniText} font-mono tracking-wider`}>
+                      {clientDni}
+                    </span>
+                  </div>
+                )}
+                {cfgRotulado?.mostrar_cliente_telefono !== false && (
+                  <div className="text-right">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none">
+                      {cfgRotulado?.titulo_cliente_telefono || 'TELÉFONO:'}
+                    </span>
+                    <span className="text-sm sm:text-base font-mono font-bold text-slate-900 block leading-tight mt-0.5">
+                      {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isShalom && (pedido.usuario?.email || pedido.usuario?.email_default) && (
+              <p className="pt-0.5 text-[10.5px]">
+                <span className={eco.subtleText}>Correo:</span>{' '}
+                <span className="font-mono font-bold text-slate-800">{pedido.usuario.email || pedido.usuario.email_default}</span>
+              </p>
+            )}
+
+            {/* CAMPOS PERSONALIZADOS - ROTULADO INTELIGENTE */}
+            {rotuladoFields.length > 0 && (
+              <div className="mt-2 pt-1.5 border-t border-slate-300 grid grid-cols-2 gap-1.5">
+                {rotuladoFields.map(f => (
+                  <div key={f.label} className="p-1.5 rounded-lg bg-white border border-slate-300">
+                    <span className="text-[8px] font-black uppercase tracking-wider text-slate-500 block leading-none">
+                      {f.label}:
+                    </span>
+                    <span className="text-xs font-bold text-slate-900 block truncate leading-tight mt-0.5">
+                      {f.valor}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Bloques Libres Medio */}
+      {renderBloquesPersonalizados('medio')}
 
       {/* SECCIÓN REMITENTE (100% PERSONALIZABLE O GLOBAL) */}
       {cfgRotulado?.incluir_remitente !== false && (
         <div className={`rounded-xl p-2.5 mb-2 text-[10.5px] ${eco.sectionBg} space-y-0.5`}>
           <div className="font-black uppercase text-slate-800 mb-0.5 flex items-center justify-between">
-            <span>REMITENTE OFICIAL:</span>
+            <span>{cfgRotulado?.titulo_remitente || 'REMITENTE OFICIAL:'}</span>
             {cfgRotulado?.mostrar_remitente_nombre !== false && (
               <span className="font-bold text-slate-900">{senderNombre}</span>
             )}
@@ -536,12 +721,15 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         </div>
       )}
 
+      {/* Bloques Libres Abajo */}
+      {renderBloquesPersonalizados('abajo')}
+
       {/* DETALLES DE PAQUETE */}
       {cfgRotulado?.mostrar_fecha_sello !== false && (
         <div className="border-t border-dashed border-slate-300 pt-1.5 flex items-center justify-between text-[10px] text-slate-600">
           <div className="flex items-center gap-1 font-bold text-slate-800">
             <span>📦</span>
-            <span>Paquete de Despacho Seguro</span>
+            <span>{cfgRotulado?.texto_sello_personalizado || 'Paquete de Despacho Seguro'}</span>
           </div>
           <div className="font-bold text-slate-700">
             Impreso el {formatDate(new Date().toISOString())}
@@ -551,4 +739,3 @@ export const ShalomLabelPrint: React.FC<Props> = ({
     </div>
   );
 };
-

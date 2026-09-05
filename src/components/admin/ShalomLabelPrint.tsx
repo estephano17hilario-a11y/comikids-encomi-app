@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pedido, TallerConfig } from '../../types/database.types';
+import { Pedido, TallerConfig, MetodoEnvio } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
 import { InkSavingLevel, getInkSavingStyles } from '../../utils/inkSavingService';
 import { extractShalomDni } from '../../utils/shalomExcelExporter';
@@ -9,20 +9,47 @@ interface Props {
   pedido: Pedido;
   tallerConfig: TallerConfig;
   inkSavingLevel?: InkSavingLevel;
+  estiloRotuloOverride?: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving';
+  customMethodOverride?: MetodoEnvio;
 }
 
-export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSavingLevel = 0 }) => {
+export const ShalomLabelPrint: React.FC<Props> = ({
+  pedido,
+  tallerConfig,
+  inkSavingLevel = 0,
+  estiloRotuloOverride,
+  customMethodOverride,
+}) => {
   const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
   const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
   const clientPhone = pedido.usuario?.telefono_default || (pedido.usuario?.dni?.length === 9 ? pedido.usuario.dni : '');
 
   // Rotulado inteligente: Configuración del método y campos personalizados
-  const methods = useMemo(() => ordersService.getShippingMethods(), []);
   const currentMethod = useMemo(() => {
+    if (customMethodOverride) return customMethodOverride;
+    const methods = ordersService.getShippingMethods();
     return methods.find(m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo);
-  }, [methods, pedido.metodo_envio_codigo]);
+  }, [customMethodOverride, pedido.metodo_envio_codigo]);
 
   const cfgRotulado = currentMethod?.config_rotulado;
+
+  // Estilo de rotulado efectivo
+  const effectiveStyle: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving' =
+    estiloRotuloOverride ||
+    currentMethod?.config_rotulado?.estilo_rotulo ||
+    tallerConfig.estilo_rotulo_default ||
+    'estandar_oficial';
+
+  // Datos 100% Personalizables del Emisor (Remitente)
+  const senderCustom = currentMethod?.config_rotulado?.remitente_personalizado?.usar_personalizado
+    ? currentMethod.config_rotulado.remitente_personalizado
+    : undefined;
+
+  const senderNombre = senderCustom?.nombre || tallerConfig.remitente_default?.nombre || tallerConfig.nombre_taller || 'Comikids Envíos';
+  const senderRucDni = senderCustom?.ruc_dni || tallerConfig.remitente_default?.ruc_dni || tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312';
+  const senderCelular = senderCustom?.celular || tallerConfig.remitente_default?.celular || tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412';
+  const senderOrigen = senderCustom?.direccion || tallerConfig.remitente_default?.direccion || tallerConfig.direccion_taller || 'Av. Gamarra 1234, La Victoria, Lima';
+  const senderObservaciones = senderCustom?.observaciones || tallerConfig.remitente_default?.observaciones || '';
 
   const rotuladoFields = useMemo(() => {
     if (!pedido.campos_personalizados) return [];
@@ -59,6 +86,269 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
   const clientDni = getClientDni();
   const eco = getInkSavingStyles(inkSavingLevel);
 
+  // =========================================================================
+  // VARIANTE 1: ESTILO MODERNO MINIMALISTA VISION
+  // =========================================================================
+  if (effectiveStyle === 'vision_modern') {
+    return (
+      <div
+        id="shalom-print-area"
+        className="w-full max-w-115 mx-auto p-4 sm:p-5 rounded-3xl border-2 border-slate-800 bg-white text-slate-900 shadow-2xl relative overflow-hidden transition-all duration-200 font-sans"
+      >
+        {/* Modern Header Banner */}
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
+          <div className="flex items-center gap-2.5">
+            <img
+              src={tallerConfig.logo_url || '/Comikids.png'}
+              alt={tallerConfig.nombre_taller || 'Empresa'}
+              className="w-10 h-10 object-contain rounded-xl border border-slate-200 shadow-sm"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+            />
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-sm sm:text-base font-black uppercase tracking-tight text-slate-950 leading-tight">
+                  {senderNombre}
+                </h2>
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-900 text-white tracking-wider">
+                  VISION
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-medium">Guía de Despacho Prioritaria</span>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-black text-[10px] uppercase">
+              {currentMethod?.foto_url ? (
+                <img src={currentMethod.foto_url} alt="" className="h-3.5 w-auto object-contain" />
+              ) : isOlva ? (
+                <img src="/Olva-Courier-Logo.svg" alt="" className="h-3 w-auto object-contain" />
+              ) : isShalom ? (
+                <img src="/Shalom-Courier-Logo.webp" alt="" className="h-3 w-auto object-contain" />
+              ) : (
+                <span>🚚</span>
+              )}
+              <span>{currentMethod?.nombre || 'EXPRESS'}</span>
+            </div>
+            <p className="font-mono font-black text-xs text-slate-950 mt-1">
+              #{pedido.codigo_seguimiento}
+            </p>
+          </div>
+        </div>
+
+        {/* Barcode Modern Box */}
+        {cfgRotulado?.mostrar_barcode !== false && (
+          <div className="mb-3 p-2 rounded-2xl bg-slate-50 border border-slate-200 text-center">
+            <div className="flex justify-center items-center gap-0.5 h-7 mb-1">
+              {[4, 2, 6, 2, 8, 3, 2, 5, 2, 7, 3, 2, 4, 6, 2, 5, 3, 8, 2, 4, 3, 6, 2, 4, 2, 7, 2, 3, 5, 2, 4].map((w, i) => (
+                <div key={i} className="bg-slate-900 h-full" style={{ width: `${w}px` }} />
+              ))}
+            </div>
+            <span className="font-mono text-[10.5px] font-black text-slate-800 tracking-wider">
+              *{pedido.codigo_seguimiento}*
+            </span>
+          </div>
+        )}
+
+        {/* Destino Banner */}
+        <div className="mb-3 p-3 rounded-2xl bg-slate-950 text-white text-center shadow-md">
+          <span className="text-[9.5px] font-bold uppercase tracking-widest text-slate-400 block mb-0.5">
+            📍 DESTINO OFICIAL DE ENTREGA
+          </span>
+          <h3 className="text-base sm:text-lg font-black uppercase leading-tight tracking-tight text-white">
+            {pedido.destino_detalle}
+          </h3>
+        </div>
+
+        {/* Card Destinatario */}
+        <div className="mb-3 p-3.5 rounded-2xl border border-slate-300 bg-white space-y-2">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              👤 DESTINATARIO
+            </span>
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+              RECOJO PERSONAL
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-500 block font-medium">Cliente:</span>
+            <span className="text-base sm:text-lg font-black uppercase text-slate-950 leading-snug block">
+              {pedido.usuario?.nombre_completo || 'Cliente'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
+              <span className="text-[8.5px] font-black uppercase tracking-wider text-slate-500 block">
+                🪪 DNI / DOCUMENTO:
+              </span>
+              <span className="text-base sm:text-lg font-mono font-black text-slate-950 block leading-tight mt-0.5">
+                {clientDni}
+              </span>
+            </div>
+
+            <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
+              <span className="text-[8.5px] font-black uppercase tracking-wider text-slate-500 block">
+                📱 TELÉFONO / WHATSAPP:
+              </span>
+              <span className="text-xs sm:text-sm font-mono font-bold text-slate-900 block leading-tight mt-1">
+                {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+              </span>
+            </div>
+          </div>
+
+          {rotuladoFields.length > 0 && (
+            <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-1.5">
+              {rotuladoFields.map(f => (
+                <div key={f.label} className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[10px]">
+                  <span className="font-bold text-slate-500 block text-[8px] uppercase">{f.label}:</span>
+                  <span className="font-bold text-slate-900 truncate block">{f.valor}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Card Remitente (Personalizado o Global) */}
+        {cfgRotulado?.incluir_remitente !== false && (
+          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-[10.5px] space-y-1">
+            <div className="flex items-center justify-between font-black text-slate-800 text-[10px] uppercase">
+              <span>🏢 REMITENTE OFICIAL:</span>
+              <span className="font-bold text-slate-900">{senderNombre}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-slate-700 pt-0.5">
+              <p><strong className="text-slate-900">RUC/DNI:</strong> {senderRucDni}</p>
+              <p><strong className="text-slate-900">Cel:</strong> {senderCelular}</p>
+            </div>
+            <p className="text-slate-600 text-[10px] truncate"><strong className="text-slate-900">Origen:</strong> {senderOrigen}</p>
+            {senderObservaciones && (
+              <p className="text-purple-700 text-[9.5px] font-bold italic pt-0.5">Nota: {senderObservaciones}</p>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[9.5px] text-slate-500 font-mono">
+          <span>📦 Paquete Inspeccionado y Seguro</span>
+          <span>{formatDate(new Date().toISOString())}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VARIANTE 2: ESTILO COMPACTO ECO ULTRA-AHORRO (100% LINEAL, 0% RELLENO NEGRO)
+  // =========================================================================
+  if (effectiveStyle === 'eco_ink_saving') {
+    return (
+      <div
+        id="shalom-print-area"
+        className="w-full max-w-115 mx-auto p-3.5 sm:p-4 rounded-2xl border-2 border-dashed border-slate-700 bg-white text-black shadow-none relative overflow-hidden font-sans text-xs"
+      >
+        {/* Header Eco */}
+        <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-2">
+          <div className="flex items-center gap-2">
+            <img
+              src={tallerConfig.logo_url || '/Comikids.png'}
+              alt="Logo"
+              className="w-8 h-8 object-contain grayscale"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+            />
+            <div>
+              <h2 className="text-sm font-black uppercase text-black leading-none">{senderNombre}</h2>
+              <span className="text-[9px] text-slate-600 font-bold">DESPACHO ECO AHORRO</span>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <span className="inline-block px-2 py-0.5 border border-black rounded text-[9px] font-black uppercase">
+              {currentMethod?.nombre || 'OFICIAL'}
+            </span>
+            <p className="font-mono font-black text-xs text-black mt-0.5">
+              #{pedido.codigo_seguimiento}
+            </p>
+          </div>
+        </div>
+
+        {/* Barcode Eco */}
+        {cfgRotulado?.mostrar_barcode !== false && (
+          <div className="mb-2 p-1.5 border border-slate-400 rounded-xl text-center">
+            <div className="flex justify-center items-center gap-0.5 h-6 mb-0.5">
+              {[4, 2, 6, 2, 8, 3, 2, 5, 2, 7, 3, 2, 4, 6, 2, 5, 3, 8, 2, 4, 3, 6, 2, 4, 2, 7, 2, 3, 5, 2, 4].map((w, i) => (
+                <div key={i} className="bg-black h-full" style={{ width: `${Math.max(1, Math.round(w * 0.7))}px` }} />
+              ))}
+            </div>
+            <span className="font-mono text-[10px] font-black text-black">
+              #{pedido.codigo_seguimiento}
+            </span>
+          </div>
+        )}
+
+        {/* Destino Eco */}
+        <div className="mb-2 p-2 border-2 border-black rounded-xl text-center">
+          <span className="text-[9px] font-black uppercase tracking-wider text-slate-700 block">
+            DESTINO:
+          </span>
+          <h3 className="text-sm sm:text-base font-black uppercase text-black leading-tight">
+            {pedido.destino_detalle}
+          </h3>
+        </div>
+
+        {/* Destinatario Eco */}
+        <div className="mb-2 p-2.5 border border-black rounded-xl space-y-1.5">
+          <div>
+            <span className="text-[9px] text-slate-600 block">DESTINATARIO:</span>
+            <span className="text-base font-black uppercase text-black leading-tight block">
+              {pedido.usuario?.nombre_completo || 'Cliente'}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-slate-300 pt-1">
+            <div>
+              <span className="text-[8px] font-bold uppercase text-slate-600 block">DNI / CE:</span>
+              <span className="text-base font-mono font-black text-black block leading-none">{clientDni}</span>
+            </div>
+            <div className="text-right">
+              <span className="text-[8px] font-bold uppercase text-slate-600 block">TELÉFONO:</span>
+              <span className="text-xs font-mono font-bold text-black block leading-none">
+                {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+              </span>
+            </div>
+          </div>
+
+          {rotuladoFields.length > 0 && (
+            <div className="pt-1 border-t border-slate-200 grid grid-cols-2 gap-1 text-[9px]">
+              {rotuladoFields.map(f => (
+                <p key={f.label}><strong className="text-black">{f.label}:</strong> {f.valor}</p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Remitente Eco */}
+        {cfgRotulado?.incluir_remitente !== false && (
+          <div className="p-2 border border-slate-400 rounded-xl text-[9.5px] space-y-0.5 text-slate-800">
+            <p className="font-black text-black uppercase">REMITENTE: {senderNombre}</p>
+            <div className="flex items-center justify-between">
+              <span><strong>DNI/RUC:</strong> {senderRucDni}</span>
+              <span><strong>Cel:</strong> {senderCelular}</span>
+            </div>
+            <p className="truncate"><strong>Origen:</strong> {senderOrigen}</p>
+          </div>
+        )}
+
+        <div className="mt-1.5 pt-1 border-t border-slate-300 flex items-center justify-between text-[8.5px] text-slate-600">
+          <span>📦 Encomienda Eco</span>
+          <span>{formatDate(new Date().toISOString())}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // VARIANTE 3 (POR DEFECTO): ESTÁNDAR OFICIAL ENCOMI (CLÁSICO ALTA VISIBILIDAD)
+  // =========================================================================
   return (
     <div
       id="shalom-print-area"
@@ -70,13 +360,13 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
         <div className="flex items-center gap-2">
           <img
             src={tallerConfig.logo_url || '/Comikids.png'}
-            alt={tallerConfig.nombre_taller || 'Empresa'}
+            alt={senderNombre}
             className={`w-10 h-10 object-contain rounded-xl shadow ${inkSavingLevel >= 75 ? 'grayscale contrast-125' : ''}`}
             onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
           />
           <div>
             <h2 className="text-base font-black uppercase tracking-tight text-slate-900 leading-none">
-              {tallerConfig.nombre_taller || 'ComiKids'}
+              {senderNombre}
             </h2>
             <span className="text-[10px] text-slate-500 font-bold">Envíos Seguros</span>
           </div>
@@ -168,10 +458,12 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
         <div className="space-y-2 text-xs text-slate-900">
           <div>
             <span className={eco.subtleText}>Nombre del Cliente:</span>{' '}
-            <span className="font-black text-lg sm:text-xl uppercase block text-slate-950 leading-snug tracking-tight">{pedido.usuario?.nombre_completo || 'Cliente'}</span>
+            <span className="font-black text-lg sm:text-xl uppercase block text-slate-950 leading-snug tracking-tight">
+              {pedido.usuario?.nombre_completo || 'Cliente'}
+            </span>
           </div>
 
-          {/* DNI GIGANTE Y DESTACADO (REQ: DNI MAS GRANDE EN ROTULADO Y SIN TELÉFONO EN SHALOM) */}
+          {/* DNI GIGANTE Y DESTACADO */}
           <div className={`${eco.dniBox} rounded-xl flex items-center ${isShalom ? 'justify-center py-2' : 'justify-between'} shadow-xs`}>
             <div className={isShalom ? 'text-center w-full' : ''}>
               <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 block leading-none mb-0.5">
@@ -218,25 +510,28 @@ export const ShalomLabelPrint: React.FC<Props> = ({ pedido, tallerConfig, inkSav
         </div>
       </div>
 
-      {/* SECCIÓN REMITENTE (ENCOMI ENVÍOS / COMIKIDS) */}
+      {/* SECCIÓN REMITENTE (100% PERSONALIZABLE O GLOBAL) */}
       {cfgRotulado?.incluir_remitente !== false && (
-        <div className={`rounded-xl p-2 mb-2 text-[10.5px] ${eco.sectionBg} space-y-0.5`}>
+        <div className={`rounded-xl p-2.5 mb-2 text-[10.5px] ${eco.sectionBg} space-y-0.5`}>
           <div className="font-black uppercase text-slate-800 mb-0.5 flex items-center justify-between">
             <span>REMITENTE OFICIAL:</span>
             {cfgRotulado?.mostrar_remitente_nombre !== false && (
-              <span className="font-bold text-slate-900">{tallerConfig.nombre_taller || 'Comikids Envíos'}</span>
+              <span className="font-bold text-slate-900">{senderNombre}</span>
             )}
           </div>
           <div className="grid grid-cols-2 gap-1 text-slate-700">
             {cfgRotulado?.mostrar_remitente_ruc_dni !== false && (
-              <p><span className="font-bold">DNI/RUC:</span> {tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312'}</p>
+              <p><span className="font-bold">DNI/RUC:</span> {senderRucDni}</p>
             )}
             {cfgRotulado?.mostrar_remitente_telefono !== false && (
-              <p><span className="font-bold">Celular:</span> {tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412'}</p>
+              <p><span className="font-bold">Celular:</span> {senderCelular}</p>
             )}
           </div>
           {cfgRotulado?.mostrar_remitente_origen !== false && (
-            <p className="text-slate-600 text-[10px]"><span className="font-bold">Origen:</span> {tallerConfig.direccion_taller}</p>
+            <p className="text-slate-600 text-[10px]"><span className="font-bold">Origen:</span> {senderOrigen}</p>
+          )}
+          {senderObservaciones && (
+            <p className="text-purple-700 text-[9.5px] font-bold italic pt-0.5">Nota: {senderObservaciones}</p>
           )}
         </div>
       )}

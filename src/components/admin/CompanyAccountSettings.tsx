@@ -39,7 +39,11 @@ import {
   Sliders,
   Image as ImageIcon,
   Upload,
-  Palette
+  Palette,
+  Printer,
+  FileText,
+  Layers,
+  ShieldCheck
 } from 'lucide-react';
 
 const DIAS_SEMANA_ORDEN: HorarioDiaDespacho['dia'][] = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
@@ -74,12 +78,20 @@ export const CompanyAccountSettings: React.FC = () => {
     setNewMasterCode(companyCode);
   }, [companyCode]);
 
-  // 2. Estado para Datos de Remitente Oficial (Olva Courier / Shalom)
-  const [remitenteDni, setRemitenteDni] = useState(tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312');
+  // 2. Estado para Datos de Remitente Oficial (Olva Courier / Shalom / Agencias)
+  const [remitenteDni, setRemitenteDni] = useState(tallerConfig.remitente_dni || tallerConfig.ruc_dni || tallerConfig.remitente_default?.ruc_dni || '42020312');
   const [remitenteEmail, setRemitenteEmail] = useState(tallerConfig.remitente_email || 'comikidsperu@gmail.com');
-  const [remitenteCelular, setRemitenteCelular] = useState(tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412');
-  const [remitenteNombre, setRemitenteNombre] = useState(tallerConfig.nombre_taller || companyName);
+  const [remitenteCelular, setRemitenteCelular] = useState(tallerConfig.remitente_celular || tallerConfig.celular_taller || tallerConfig.remitente_default?.celular || '927781412');
+  const [remitenteNombre, setRemitenteNombre] = useState(tallerConfig.nombre_taller || tallerConfig.remitente_default?.nombre || companyName);
+  const [remitenteDireccion, setRemitenteDireccion] = useState(tallerConfig.remitente_default?.direccion || tallerConfig.direccion_taller || 'Lima, Perú');
+  const [remitenteObservaciones, setRemitenteObservaciones] = useState(tallerConfig.remitente_default?.observaciones || '');
   const [remitenteSuccessMsg, setRemitenteSuccessMsg] = useState('');
+
+  // Estado para Estilo Predeterminado de Rótulos de Envío
+  const [estiloRotuloDefault, setEstiloRotuloDefault] = useState<'estandar_oficial' | 'vision_modern' | 'eco_ink_saving'>(
+    tallerConfig.estilo_rotulo_default || 'estandar_oficial'
+  );
+  const [rotuloSuccessMsg, setRotuloSuccessMsg] = useState('');
 
   // 3. Estado para Horario Límite y Días de Despacho POR DÍA
   const [horaCorteGeneral, setHoraCorteGeneral] = useState(tallerConfig.hora_corte_envio_hoy || '18:00');
@@ -196,9 +208,30 @@ export const CompanyAccountSettings: React.FC = () => {
       remitente_email: remitenteEmail.trim(),
       remitente_celular: remitenteCelular.trim(),
       celular_taller: remitenteCelular.trim(),
+      direccion_taller: remitenteDireccion.trim(),
+      remitente_default: {
+        nombre: remitenteNombre.trim(),
+        ruc_dni: remitenteDni.trim(),
+        celular: remitenteCelular.trim(),
+        direccion: remitenteDireccion.trim(),
+        observaciones: remitenteObservaciones.trim(),
+      }
     });
-    setRemitenteSuccessMsg('¡Datos de remitente guardados exitosamente para Olva Courier y Shalom!');
+    setRemitenteSuccessMsg('¡Datos de remitente guardados exitosamente para todas las agencias y rótulos!');
     setTimeout(() => setRemitenteSuccessMsg(''), 4000);
+  };
+
+  const handleSaveEstiloRotulo = (style: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving') => {
+    setEstiloRotuloDefault(style);
+    updateTallerConfig({
+      estilo_rotulo_default: style
+    });
+    const styleName =
+      style === 'estandar_oficial' ? 'Estándar Oficial Encomi' :
+      style === 'vision_modern' ? 'Moderno Minimalista Vision' :
+      'Compacto Eco Ultra-Ahorro';
+    setRotuloSuccessMsg(`¡Estilo predeterminado de rótulos cambiado a "${styleName}"!`);
+    setTimeout(() => setRotuloSuccessMsg(''), 4000);
   };
 
   const handleSaveCutoffSettings = (e: React.FormEvent) => {
@@ -613,7 +646,7 @@ export const CompanyAccountSettings: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. DATOS DE REMITENTE OFICIAL OLVA COURIER SHALOM */}
+          {/* 2. DATOS DE REMITENTE OFICIAL OLVA COURIER SHALOM Y RÓTULOS */}
           <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-yellow-500/30 bg-yellow-950/15 backdrop-blur-2xl space-y-4 shadow-xl">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-yellow-500/20 text-yellow-400 flex items-center justify-center text-xl">
@@ -621,13 +654,13 @@ export const CompanyAccountSettings: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-base font-black text-white flex items-center gap-2">
-                  <span>Datos de Remitente Oficial (Olva Courier & Shalom)</span>
+                  <span>Datos de Remitente Oficial (Olva Courier, Shalom & Rótulos)</span>
                   <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-yellow-400/20 text-yellow-300 border border-yellow-400/30">
-                    Quién Envía
+                    Quién Envía • 100% Personalizable
                   </span>
                 </h3>
                 <p className="text-xs text-slate-300">
-                  Datos oficiales de quien envía que se sincronizan al emitir guías y comprobantes
+                  Datos oficiales de quien envía que se sincronizan con las guías, comprobantes y rótulos de despacho de todas las agencias.
                 </p>
               </div>
             </div>
@@ -689,11 +722,37 @@ export const CompanyAccountSettings: React.FC = () => {
                     className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-yellow-300 font-mono font-bold focus:outline-none focus:border-yellow-400 shadow-inner"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                    📍 Dirección de Origen / Taller
+                  </label>
+                  <input
+                    type="text"
+                    value={remitenteDireccion}
+                    onChange={e => setRemitenteDireccion(e.target.value)}
+                    placeholder="Ej. Jr. Gamarra 1234, La Victoria, Lima"
+                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-yellow-400 shadow-inner"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                    📝 Observaciones / Notas Predeterminadas en Rótulos
+                  </label>
+                  <input
+                    type="text"
+                    value={remitenteObservaciones}
+                    onChange={e => setRemitenteObservaciones(e.target.value)}
+                    placeholder="Ej. Paquete Frágil - Entregar con Cuidado"
+                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-yellow-400 shadow-inner"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
                 <span className="text-[11px] text-slate-400">
-                  ✓ Se sincronizan con la emisión de etiquetas de Shalom y Olva Courier.
+                  ✓ Estos datos se usan como remitente predeterminado en todas tus agencias y rótulos térmicos/A4.
                 </span>
 
                 <button
@@ -709,6 +768,111 @@ export const CompanyAccountSettings: React.FC = () => {
             {remitenteSuccessMsg && (
               <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn">
                 ✓ {remitenteSuccessMsg}
+              </p>
+            )}
+          </div>
+
+          {/* 2.5 SELECTOR DE ESTILO PREDETERMINADO DE RÓTULOS (TÉRMICA / A4) */}
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-emerald-500/30 bg-emerald-950/15 backdrop-blur-2xl space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl shrink-0">
+                  <Printer className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <span>Estilo Predeterminado de Rótulos de Despacho</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                      Impresión Térmica & A4
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Elige el diseño visual que se usará para imprimir los rótulos de paquetes. Cada agencia puede heredar este estilo o usar uno propio.
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 rounded-xl self-start sm:self-auto">
+                Estilo Activo: <strong className="text-white">
+                  {estiloRotuloDefault === 'estandar_oficial' ? 'Estándar Oficial Encomi' : estiloRotuloDefault === 'vision_modern' ? 'Moderno Minimalista Vision' : 'Compacto Eco Ultra-Ahorro'}
+                </strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              {[
+                {
+                  id: 'estandar_oficial' as const,
+                  title: '🏷️ Estándar Oficial Encomi',
+                  badge: 'Recomendado',
+                  badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+                  desc: 'Diseño corporativo con código de barras legible, recuadros contrastados claros y orden oficial para couriers peruanos.',
+                  previewBg: 'bg-slate-900 border-emerald-500/40'
+                },
+                {
+                  id: 'vision_modern' as const,
+                  title: '✨ Moderno Minimalista Vision',
+                  badge: 'Diseño Premium',
+                  badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+                  desc: 'Esquinas redondeadas, tipografía moderna con badges destacados y acentos visuales limpios de alta estética.',
+                  previewBg: 'bg-slate-900 border-cyan-500/40'
+                },
+                {
+                  id: 'eco_ink_saving' as const,
+                  title: '🌱 Compacto Eco Ultra-Ahorro',
+                  badge: 'Ahorro Tinta',
+                  badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+                  desc: 'Bordes finos de 1px sin rellenos pesados ni fondos oscuros. Máxima velocidad y vida útil para cabezales térmicos.',
+                  previewBg: 'bg-slate-900 border-amber-500/40'
+                }
+              ].map((style) => {
+                const isSelected = estiloRotuloDefault === style.id;
+                return (
+                  <div
+                    key={style.id}
+                    onClick={() => handleSaveEstiloRotulo(style.id)}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 relative group overflow-hidden ${
+                      isSelected
+                        ? 'bg-slate-900 border-2 border-emerald-400 shadow-xl shadow-emerald-950/60 scale-[1.02]'
+                        : 'bg-slate-950/80 border-white/10 hover:border-white/25 hover:bg-slate-900/60'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <h4 className="font-black text-white text-xs leading-tight group-hover:text-emerald-300 transition-colors">
+                          {style.title}
+                        </h4>
+                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border shrink-0 ${style.badgeClass}`}>
+                          {style.badge}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        {style.desc}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px]">
+                      <span className="text-slate-500 font-mono">Formato Térmica 80mm / A4</span>
+                      <span className={`font-bold flex items-center gap-1 ${isSelected ? 'text-emerald-400' : 'text-slate-400'}`}>
+                        {isSelected ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Predeterminado</span>
+                          </>
+                        ) : (
+                          'Toca para elegir'
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {rotuloSuccessMsg && (
+              <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{rotuloSuccessMsg}</span>
               </p>
             )}
           </div>

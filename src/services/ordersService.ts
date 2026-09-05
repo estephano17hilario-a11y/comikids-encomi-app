@@ -308,6 +308,7 @@ export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   mensaje_corte_personalizado: '',
   logo_url: '/Comikids.png',
   tema_fondo: 'vision-obsidian',
+  estilo_rotulo_default: 'estandar_oficial',
 };
 
 
@@ -776,32 +777,175 @@ class OrdersService {
   // --- MÉTODOS DE ENVÍO / DESTINOS (Configurables por la empresa) ---
   getShippingMethods(): MetodoEnvio[] {
     const raw = localStorage.getItem(STORAGE_KEYS.SHIPPING_METHODS);
+    let list: MetodoEnvio[];
     if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.SHIPPING_METHODS, JSON.stringify(DEFAULT_METODOS_ENVIO));
-      return DEFAULT_METODOS_ENVIO;
+      list = JSON.parse(JSON.stringify(DEFAULT_METODOS_ENVIO));
+      localStorage.setItem(STORAGE_KEYS.SHIPPING_METHODS, JSON.stringify(list));
+      return list;
     }
     try {
-      const parsed: MetodoEnvio[] = JSON.parse(raw);
-      // Asegurar que Olva Courier exista en la lista cargada
-      const hasOlva = parsed.some(m => m.codigo === 'olva' || m.tipo_formulario === 'olva');
-      if (!hasOlva) {
-        const olvaMethod = DEFAULT_METODOS_ENVIO.find(m => m.codigo === 'olva') || {
-          id: 'met-olva',
-          codigo: 'olva',
-          nombre: 'Olva Courier Nacional',
-          descripcion: 'Envíos a domicilio y agencias Olva en todo el Perú',
-          icono: 'Truck',
-          tipo_formulario: 'olva',
-          activo: true,
-          orden: parsed.length + 1,
-        };
-        parsed.push(olvaMethod);
-        this.saveShippingMethods(parsed);
-      }
-      return parsed;
+      list = JSON.parse(raw);
     } catch {
-      return DEFAULT_METODOS_ENVIO;
+      list = JSON.parse(JSON.stringify(DEFAULT_METODOS_ENVIO));
     }
+
+    let modified = false;
+
+    // 1. REQUERIMIENTO: Asegurar que Shalom exista y tenga sus campos base obligatorios inexpugnables
+    const shalomIndex = list.findIndex(m => m.codigo === 'shalom' || m.tipo_formulario === 'shalom' || m.id === 'met-shalom');
+    const defaultShalom = DEFAULT_METODOS_ENVIO.find(m => m.codigo === 'shalom')!;
+    if (shalomIndex === -1) {
+      list.unshift(JSON.parse(JSON.stringify(defaultShalom)));
+      modified = true;
+    } else {
+      const shalom = list[shalomIndex];
+      shalom.es_sistema = true;
+      shalom.codigo = 'shalom';
+      shalom.tipo_formulario = 'shalom';
+      if (!shalom.foto_url) shalom.foto_url = '/Shalom-Courier-Logo.webp';
+      
+      // Garantizar campos base obligatorios para Shalom
+      const currentFields = shalom.campos_personalizados || [];
+      const hasDni = currentFields.some(c => c.id === 'c-shalom-dni' || c.label.toLowerCase().includes('dni'));
+      const hasTel = currentFields.some(c => c.id === 'c-shalom-tel' || c.label.toLowerCase().includes('tel') || c.label.toLowerCase().includes('whatsapp'));
+
+      const mergedFields = [...currentFields];
+      if (!hasDni) {
+        mergedFields.unshift({
+          id: 'c-shalom-dni',
+          label: 'DNI / CE de quien recibe',
+          placeholder: '8 dígitos numéricos',
+          tipo: 'numero',
+          requerido: true,
+          mostrar_en_rotulado: true,
+          mostrar_en_comprobante: true,
+          sistema: true,
+        });
+        modified = true;
+      } else {
+        // Asegurar que el campo DNI esté blindado como sistema y requerido
+        mergedFields.forEach(c => {
+          if (c.id === 'c-shalom-dni' || c.label.toLowerCase().includes('dni')) {
+            c.sistema = true;
+            c.requerido = true;
+          }
+        });
+      }
+
+      if (!hasTel) {
+        mergedFields.push({
+          id: 'c-shalom-tel',
+          label: 'Teléfono / WhatsApp',
+          placeholder: '9 dígitos',
+          tipo: 'telefono',
+          requerido: true,
+          mostrar_en_rotulado: false,
+          mostrar_en_comprobante: true,
+          sistema: true,
+        });
+        modified = true;
+      } else {
+        mergedFields.forEach(c => {
+          if (c.id === 'c-shalom-tel' || c.label.toLowerCase().includes('tel') || c.label.toLowerCase().includes('whatsapp')) {
+            c.sistema = true;
+            c.requerido = true;
+          }
+        });
+      }
+
+      shalom.campos_personalizados = mergedFields;
+    }
+
+    // 2. REQUERIMIENTO: Asegurar que Olva Courier exista y tenga sus campos base obligatorios inexpugnables
+    const olvaIndex = list.findIndex(m => m.codigo === 'olva' || m.tipo_formulario === 'olva' || m.id === 'met-olva');
+    const defaultOlva = DEFAULT_METODOS_ENVIO.find(m => m.codigo === 'olva')!;
+    if (olvaIndex === -1) {
+      list.push(JSON.parse(JSON.stringify(defaultOlva)));
+      modified = true;
+    } else {
+      const olva = list[olvaIndex];
+      olva.es_sistema = true;
+      olva.codigo = 'olva';
+      olva.tipo_formulario = 'olva';
+      if (!olva.foto_url) olva.foto_url = '/Olva-Courier-Logo.svg';
+
+      // Garantizar campos base obligatorios para Olva
+      const currentFields = olva.campos_personalizados || [];
+      const hasDni = currentFields.some(c => c.id === 'c-olva-dni' || c.label.toLowerCase().includes('dni'));
+      const hasTel = currentFields.some(c => c.id === 'c-olva-tel' || c.label.toLowerCase().includes('tel') || c.label.toLowerCase().includes('whatsapp'));
+      const hasDir = currentFields.some(c => c.id === 'c-olva-dir' || c.label.toLowerCase().includes('direcc') || c.label.toLowerCase().includes('agencia'));
+
+      const mergedFields = [...currentFields];
+      if (!hasDni) {
+        mergedFields.unshift({
+          id: 'c-olva-dni',
+          label: 'DNI / CE',
+          placeholder: '8 dígitos',
+          tipo: 'numero',
+          requerido: true,
+          mostrar_en_rotulado: true,
+          mostrar_en_comprobante: true,
+          sistema: true,
+        });
+        modified = true;
+      } else {
+        mergedFields.forEach(c => {
+          if (c.id === 'c-olva-dni' || c.label.toLowerCase().includes('dni')) {
+            c.sistema = true;
+            c.requerido = true;
+          }
+        });
+      }
+
+      if (!hasTel) {
+        mergedFields.push({
+          id: 'c-olva-tel',
+          label: 'Teléfono de contacto',
+          placeholder: '9 dígitos',
+          tipo: 'telefono',
+          requerido: true,
+          mostrar_en_rotulado: true,
+          mostrar_en_comprobante: true,
+          sistema: true,
+        });
+        modified = true;
+      } else {
+        mergedFields.forEach(c => {
+          if (c.id === 'c-olva-tel' || c.label.toLowerCase().includes('tel') || c.label.toLowerCase().includes('whatsapp')) {
+            c.sistema = true;
+            c.requerido = true;
+          }
+        });
+      }
+
+      if (!hasDir) {
+        mergedFields.push({
+          id: 'c-olva-dir',
+          label: 'Dirección o Agencia Olva',
+          placeholder: 'Dirección completa',
+          tipo: 'texto',
+          requerido: true,
+          mostrar_en_rotulado: true,
+          mostrar_en_comprobante: true,
+          sistema: true,
+        });
+        modified = true;
+      } else {
+        mergedFields.forEach(c => {
+          if (c.id === 'c-olva-dir' || c.label.toLowerCase().includes('direcc') || c.label.toLowerCase().includes('agencia')) {
+            c.sistema = true;
+            c.requerido = true;
+          }
+        });
+      }
+
+      olva.campos_personalizados = mergedFields;
+    }
+
+    if (modified) {
+      this.saveShippingMethods(list);
+    }
+    return list;
   }
 
   saveShippingMethods(methods: MetodoEnvio[]) {
@@ -825,11 +969,33 @@ class OrdersService {
     if (idx === -1) return null;
 
     const existing = methods[idx];
-    // Protección de Shalom y Olva: No se puede cambiar su código base ni su tipo de formulario
+    // Protección estricta de Shalom y Olva: No se puede cambiar su código base, tipo de formulario ni eliminar sus campos base
     if (existing.es_sistema || existing.codigo === 'shalom' || existing.codigo === 'olva') {
       delete updates.codigo;
       delete updates.tipo_formulario;
       updates.es_sistema = true;
+
+      // Asegurar que los campos del sistema se mantengan
+      if (updates.campos_personalizados) {
+        const baseSystemFieldIds = existing.codigo === 'shalom' 
+          ? ['c-shalom-dni', 'c-shalom-tel']
+          : ['c-olva-dni', 'c-olva-tel', 'c-olva-dir'];
+        
+        const existingSystemFields = (existing.campos_personalizados || []).filter(c => c.sistema || baseSystemFieldIds.includes(c.id));
+        const updatedFields = updates.campos_personalizados;
+
+        // Si faltaba algún campo base en updatedFields, se reinserta
+        existingSystemFields.forEach(sysField => {
+          const found = updatedFields.find(u => u.id === sysField.id);
+          if (!found) {
+            updatedFields.unshift(sysField);
+          } else {
+            found.sistema = true;
+            found.requerido = true;
+          }
+        });
+        updates.campos_personalizados = updatedFields;
+      }
     }
 
     methods[idx] = { ...existing, ...updates };

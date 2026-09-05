@@ -105,12 +105,23 @@ export interface MetodoEnvio {
     incluir_campos_personalizados?: boolean;
     campos_visibles?: string[]; // IDs de los campos personalizados que irán en el rótulo
     
-    // Bloque Remitente (Quien envía)
+    // Estilo de Rótulo Seleccionado
+    estilo_rotulo?: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving';
+    
+    // Bloque Remitente (Quien envía) - 100% Personalizable
     incluir_remitente?: boolean;
     mostrar_remitente_nombre?: boolean;
     mostrar_remitente_ruc_dni?: boolean;
     mostrar_remitente_telefono?: boolean;
     mostrar_remitente_origen?: boolean;
+    remitente_personalizado?: {
+      usar_personalizado?: boolean;
+      nombre?: string;
+      ruc_dni?: string;
+      celular?: string;
+      direccion?: string;
+      observaciones?: string;
+    };
     
     // Bloque Destinatario (Quien recibe)
     incluir_destinatario?: boolean;
@@ -194,6 +205,14 @@ export interface TallerConfig {
   horarios_por_dia?: Record<string, HorarioDiaDespacho>;
   logo_url?: string; // Foto de perfil / Logo oficial de la empresa
   tema_fondo?: string; // ID del tema futurista seleccionado
+  estilo_rotulo_default?: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving'; // Estilo predeterminado de rótulos
+  remitente_default?: {
+    nombre?: string;
+    ruc_dni?: string;
+    celular?: string;
+    direccion?: string;
+    observaciones?: string;
+  };
 }
 
 

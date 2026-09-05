@@ -10,6 +10,7 @@ interface Props {
   tallerConfig: TallerConfig;
   inkSavingLevel?: InkSavingLevel;
   estiloRotuloOverride?: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving';
+  orientacionOverride?: 'horizontal' | 'vertical';
   customMethodOverride?: MetodoEnvio;
 }
 
@@ -18,6 +19,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
   tallerConfig,
   inkSavingLevel = 0,
   estiloRotuloOverride,
+  orientacionOverride,
   customMethodOverride,
 }) => {
   const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
@@ -32,6 +34,12 @@ export const ShalomLabelPrint: React.FC<Props> = ({
   }, [customMethodOverride, pedido.metodo_envio_codigo]);
 
   const cfgRotulado = currentMethod?.config_rotulado;
+
+  // Orientación efectiva: 'horizontal' (Echado - Primera Imagen) | 'vertical' (Parado - Segunda Imagen)
+  const effectiveOrientation: 'horizontal' | 'vertical' =
+    orientacionOverride ||
+    currentMethod?.config_rotulado?.orientacion ||
+    'horizontal';
 
   // Estilo de rotulado efectivo
   const effectiveStyle: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving' =
@@ -147,6 +155,209 @@ export const ShalomLabelPrint: React.FC<Props> = ({
   };
 
   // =========================================================================
+  // MODO 1: ECHADO / HORIZONTAL (100% FIEL A LA PRIMERA IMAGEN DE ROTULADO)
+  // =========================================================================
+  if (effectiveOrientation === 'horizontal') {
+    return (
+      <div
+        id="shalom-print-area"
+        className={`w-full max-w-[430px] mx-auto p-3.5 sm:p-4 rounded-2xl bg-white text-slate-900 border-2 border-dashed ${
+          inkSavingLevel >= 75 ? 'border-slate-700' : 'border-black'
+        } shadow-xl print:shadow-none font-sans relative overflow-hidden transition-all`}
+        style={{ fontFamily: eco.fontFamily }}
+      >
+        {/* Cabecera Superior: Logo ComiKids / Sender, Subtítulo & Badge Carrier / Tracking */}
+        <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-2 shrink-0">
+          <div className="flex items-center gap-2">
+            {cfgRotulado?.mostrar_logo_empresa !== false && (
+              <img
+                src={tallerConfig.logo_url || '/Comikids.png'}
+                alt={senderNombre}
+                className={`w-8 h-8 object-contain shrink-0 ${inkSavingLevel >= 75 ? 'grayscale' : ''}`}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+              />
+            )}
+            <div>
+              <h2 className="text-sm font-black uppercase text-black leading-none tracking-tight">
+                {senderNombre}
+              </h2>
+              <span className="text-[8.5px] font-black uppercase tracking-widest text-slate-600 block mt-0.5">
+                {cfgRotulado?.subtitulo_cabecera || 'ENCOMI ENVÍOS'}
+              </span>
+            </div>
+          </div>
+
+          <div className="text-right flex flex-col items-end">
+            {cfgRotulado?.mostrar_logo_agencia !== false && (
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-black leading-none ${
+                inkSavingLevel >= 50
+                  ? 'bg-white text-black'
+                  : isOlva ? 'bg-yellow-300 text-black' : isShalom ? 'bg-slate-100 text-black' : 'bg-slate-100 text-black'
+              }`}>
+                {currentMethod?.foto_url ? (
+                  <>
+                    <img src={currentMethod.foto_url} alt="" className="h-3 w-auto object-contain shrink-0" />
+                    <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
+                      {currentMethod.nombre}
+                    </span>
+                  </>
+                ) : isOlva ? (
+                  <>
+                    <img src="/Olva-Courier-Logo.svg" alt="" className="h-3 w-auto object-contain shrink-0" />
+                    <span className="text-[8.5px] font-black uppercase tracking-wider text-black">OLVA COURIER</span>
+                  </>
+                ) : isShalom ? (
+                  <>
+                    <img src="/Shalom-Courier-Logo.webp" alt="" className="h-3 w-auto object-contain shrink-0" />
+                    <span className="text-[8.5px] font-black uppercase tracking-wider text-black">SHALOM VIP</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xs leading-none">🛵</span>
+                    <span className="text-[8.5px] font-black uppercase tracking-wider text-black">
+                      {currentMethod?.nombre || 'MOTORIZADO LOCAL LIMA'}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+            {cfgRotulado?.mostrar_tracking !== false && (
+              <span className="font-mono text-[9.5px] font-black text-slate-900 mt-0.5">
+                #{pedido.codigo_seguimiento}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Bloques Libres Arriba */}
+        {renderBloquesPersonalizados('arriba')}
+
+        {/* Barcode opcional en horizontal si el usuario lo activó */}
+        {cfgRotulado?.mostrar_barcode && (
+          <div className="mb-2 p-1.5 border border-slate-300 rounded-lg text-center bg-slate-50/50">
+            <div className="flex justify-center items-center gap-0.5 h-6 mb-0.5">
+              {[3, 1, 5, 2, 6, 2, 1, 4, 2, 5, 2, 1, 3, 5, 2, 4, 2, 6, 1, 3, 2, 5, 2, 3, 1, 5, 2, 2, 4, 1, 3].map((w, i) => (
+                <div key={i} className="bg-black h-full" style={{ width: `${w}px` }} />
+              ))}
+            </div>
+            <span className="font-mono text-[9px] font-black text-black">#{pedido.codigo_seguimiento}</span>
+          </div>
+        )}
+
+        {/* Bloque Destinatario Principal (Idéntico a Primera Imagen) */}
+        {cfgRotulado?.incluir_destinatario !== false && (
+          <div className="border-b border-dashed border-slate-300 pb-1.5 mb-2">
+            <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
+              {cfgRotulado?.titulo_destinatario || 'DESTINATARIO:'}
+            </span>
+            {cfgRotulado?.mostrar_cliente_nombre !== false && (
+              <h3 className="text-lg sm:text-xl font-black text-black block leading-tight pt-0.5 uppercase tracking-tight break-words">
+                {pedido.usuario?.nombre_completo || 'Cliente'}
+              </h3>
+            )}
+          </div>
+        )}
+
+        {/* Recuadro Destacado: DNI RECOJO & TELÉFONO */}
+        {(cfgRotulado?.mostrar_cliente_dni !== false || cfgRotulado?.mostrar_cliente_telefono !== false) && (
+          <div className={`p-2.5 rounded-xl border flex items-center mb-2.5 ${
+            isShalom && cfgRotulado?.mostrar_cliente_telefono === false ? 'justify-center py-2.5' : 'justify-between'
+          } ${
+            inkSavingLevel >= 75
+              ? 'bg-white border-black'
+              : 'bg-slate-100/90 border-slate-300'
+          }`}>
+            {cfgRotulado?.mostrar_cliente_dni !== false && (
+              <div className={isShalom && cfgRotulado?.mostrar_cliente_telefono === false ? 'text-center w-full' : ''}>
+                <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-widest block leading-none mb-0.5">
+                  {cfgRotulado?.titulo_cliente_dni || '🪪 DNI RECOJO:'}
+                </span>
+                <span className={`${getDniSizeClass()} font-mono text-black tracking-widest block leading-tight`}>
+                  {clientDni}
+                </span>
+              </div>
+            )}
+            {cfgRotulado?.mostrar_cliente_telefono !== false && (
+              <div className="text-right">
+                <span className="text-[8.5px] font-black text-slate-600 uppercase tracking-widest block leading-none">
+                  {cfgRotulado?.titulo_cliente_telefono || 'TELÉFONO:'}
+                </span>
+                <span className="text-xs sm:text-sm font-mono font-bold text-slate-900 block leading-tight mt-0.5">
+                  {clientPhone ? `+51 ${clientPhone}` : (pedido.usuario?.telefono_default ? `+51 ${pedido.usuario.telefono_default}` : '-')}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Bloques Libres Medio */}
+        {renderBloquesPersonalizados('medio')}
+
+        {/* Dirección o Sucursal Destino */}
+        {cfgRotulado?.mostrar_destino !== false && (
+          <div className="mb-2">
+            <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest block leading-none">
+              {cfgRotulado?.titulo_destino || (isShalom ? 'SUCURSAL / AGENCIA SHALOM:' : 'DIRECCIÓN DE ENTREGA:')}
+            </span>
+            <p className="text-[11.5px] sm:text-xs font-black text-black leading-snug pt-0.5 break-words">
+              {pedido.destino_detalle}
+            </p>
+          </div>
+        )}
+
+        {/* Campos Personalizados de Rotulado Inteligente */}
+        {rotuladoFields.length > 0 && (
+          <div className="mb-2 pt-1 border-t border-dashed border-slate-300 grid grid-cols-2 gap-1 text-[8.5px]">
+            {rotuladoFields.map(f => (
+              <div key={f.label} className="p-1 rounded bg-slate-50 border border-slate-200">
+                <span className="font-bold text-slate-500 uppercase">{f.label}: </span>
+                <strong className="font-black text-black">{f.valor}</strong>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Remitente opcional en modo horizontal */}
+        {cfgRotulado?.incluir_remitente && (
+          <div className="mb-2 p-2 rounded-xl bg-slate-50 border border-slate-200 text-[9.5px] text-slate-700">
+            <span className="font-black text-black uppercase block">
+              {cfgRotulado?.titulo_remitente || 'REMITENTE:'} {senderNombre}
+            </span>
+            <div className="flex items-center justify-between mt-0.5 text-[9px]">
+              {cfgRotulado?.mostrar_remitente_ruc_dni !== false && (
+                <span><strong>RUC/DNI:</strong> {senderRucDni}</span>
+              )}
+              {cfgRotulado?.mostrar_remitente_telefono !== false && (
+                <span><strong>Cel:</strong> {senderCelular}</span>
+              )}
+            </div>
+            {cfgRotulado?.mostrar_remitente_origen !== false && (
+              <p className="text-[8.5px] text-slate-600 truncate mt-0.5"><strong>Origen:</strong> {senderOrigen}</p>
+            )}
+          </div>
+        )}
+
+        {/* Bloques Libres Abajo */}
+        {renderBloquesPersonalizados('abajo')}
+
+        {/* Footer Oficial Idéntico a Primera Imagen */}
+        {cfgRotulado?.mostrar_fecha_sello !== false && (
+          <div className="pt-2 border-t-2 border-black flex items-center justify-between text-[8.5px] font-black text-slate-700 leading-none shrink-0">
+            <div className="flex items-center gap-1">
+              <span>📦</span>
+              <span>{cfgRotulado?.texto_sello_personalizado || 'Paquete de Despacho Seguro'}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span>★ {senderNombre || 'ComiKids'} ★</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // MODO 2: PARADO / VERTICAL (SEGUNDA IMAGEN)
   // VARIANTE 1: ESTILO MODERNO MINIMALISTA VISION
   // =========================================================================
   if (effectiveStyle === 'vision_modern') {

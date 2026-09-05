@@ -90,9 +90,18 @@ export interface CampoPersonalizadoAgencia {
 
 export type DiaSemana = 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado' | 'domingo';
 
+export interface HorarioDia {
+  es_24_horas?: boolean;
+  hora_inicio?: string; // Formato HH:mm ej: "08:30"
+  hora_fin?: string;    // Formato HH:mm ej: "18:30"
+}
+
 export interface DisponibilidadAgencia {
   dias_semana?: DiaSemana[]; // Días específicos de la semana habilitados para despacho
-  usar_rango_fechas?: boolean;
+  modalidad_horario?: 'uno_para_todos' | 'individual_por_dia';
+  horario_global?: HorarioDia;
+  horarios_por_dia?: Partial<Record<DiaSemana, HorarioDia>>;
+  usar_rango_fechas?: boolean; // Mantenido opcional por compatibilidad
   fecha_inicio?: string; // YYYY-MM-DD
   fecha_fin?: string; // YYYY-MM-DD
   ocultar_si_no_disponible?: boolean; // Si no está disponible, no aparece en las opciones
@@ -109,6 +118,9 @@ export interface BloqueRotuladoPersonalizado {
 }
 
 export interface ConfigRotuladoAgencia {
+  // Orientación del Rótulo: 'horizontal' (Echado - Primera Imagen) | 'vertical' (Parado - Segunda Imagen)
+  orientacion?: 'horizontal' | 'vertical';
+
   incluir_campos_personalizados?: boolean;
   campos_visibles?: string[]; // IDs de los campos personalizados que irán en el rótulo
   etiquetas_campos?: Record<string, string>; // Título personalizado en rótulo por campo: { [campoId]: 'Etiqueta' }

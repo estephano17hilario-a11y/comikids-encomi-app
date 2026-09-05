@@ -6,6 +6,7 @@ import {
   TallerConfig,
   Pedido,
   DiaSemana,
+  HorarioDia,
   BloqueRotuladoPersonalizado,
 } from '../../types/database.types';
 import { ShalomLabelPrint } from './ShalomLabelPrint';
@@ -14,6 +15,7 @@ import {
   DIAS_SEMANA_LABELS,
   DIAS_SEMANA_ABREV,
   getAgencyDaysSummary,
+  formatHorarioAmigable,
 } from '../../utils/agencyAvailability';
 import {
   Building2,
@@ -47,6 +49,7 @@ import {
   Clock,
   SlidersHorizontal,
   AlertTriangle,
+  Layout,
 } from 'lucide-react';
 
 const LOGO_PRESETS = [
@@ -95,19 +98,20 @@ export const CompanyAgenciesTab: React.FC = () => {
   const [mensajeComprobacion, setMensajeComprobacion] = useState('');
 
   // ==========================================
-  // REQUERIMIENTO 2: DISPONIBILIDAD INTELIGENTE
+  // REQUERIMIENTO 2: DISPONIBILIDAD Y HORARIOS
   // ==========================================
   const [diasSemanaHabilitados, setDiasSemanaHabilitados] = useState<DiaSemana[]>([]);
-  const [usarRangoFechas, setUsarRangoFechas] = useState(false);
-  const [fechaInicioDisp, setFechaInicioDisp] = useState('');
-  const [fechaFinDisp, setFechaFinDisp] = useState('');
+  const [modalidadHorario, setModalidadHorario] = useState<'uno_para_todos' | 'individual_por_dia'>('uno_para_todos');
+  const [horarioGlobal, setHorarioGlobal] = useState<HorarioDia>({ es_24_horas: true, hora_inicio: '08:30', hora_fin: '18:30' });
+  const [horariosPorDia, setHorariosPorDia] = useState<Partial<Record<DiaSemana, HorarioDia>>>({});
   const [ocultarSiNoDisponible, setOcultarSiNoDisponible] = useState(false);
   const [restringirFechaEnvio, setRestringirFechaEnvio] = useState(true);
   const [mensajeDisponibilidad, setMensajeDisponibilidad] = useState('');
 
   // ==========================================
-  // REQUERIMIENTO 1: RÓTULO 100% PERSONALIZABLE
+  // REQUERIMIENTO 1: RÓTULO 100% PERSONALIZABLE & ORIENTACIÓN
   // ==========================================
+  const [orientacionRotulo, setOrientacionRotulo] = useState<'horizontal' | 'vertical'>('horizontal');
   const [estiloRotulo, setEstiloRotulo] = useState<'estandar_oficial' | 'vision_modern' | 'eco_ink_saving' | ''>('');
   const [previewEstilo, setPreviewEstilo] = useState<'estandar_oficial' | 'vision_modern' | 'eco_ink_saving' | ''>('');
 
@@ -220,15 +224,16 @@ export const CompanyAgenciesTab: React.FC = () => {
     // Disponibilidad
     const disp = m.disponibilidad;
     setDiasSemanaHabilitados(disp?.dias_semana || []);
-    setUsarRangoFechas(Boolean(disp?.usar_rango_fechas));
-    setFechaInicioDisp(disp?.fecha_inicio || '');
-    setFechaFinDisp(disp?.fecha_fin || '');
+    setModalidadHorario(disp?.modalidad_horario || 'uno_para_todos');
+    setHorarioGlobal(disp?.horario_global || { es_24_horas: true, hora_inicio: '08:30', hora_fin: '18:30' });
+    setHorariosPorDia(disp?.horarios_por_dia || {});
     setOcultarSiNoDisponible(Boolean(disp?.ocultar_si_no_disponible));
     setRestringirFechaEnvio(disp?.restringir_fecha_envio !== false);
     setMensajeDisponibilidad(disp?.mensaje_disponibilidad || '');
 
     // Rótulo Inteligente 100% Personalizable
     const cfg = m.config_rotulado;
+    setOrientacionRotulo(cfg?.orientacion || 'horizontal');
     setEstiloRotulo(cfg?.estilo_rotulo || '');
     setPreviewEstilo(cfg?.estilo_rotulo || '');
 
@@ -295,14 +300,15 @@ export const CompanyAgenciesTab: React.FC = () => {
         mensaje_comprobacion: mensajeComprobacion.trim() || undefined,
         disponibilidad: {
           dias_semana: diasSemanaHabilitados.length > 0 ? diasSemanaHabilitados : undefined,
-          usar_rango_fechas: usarRangoFechas,
-          fecha_inicio: fechaInicioDisp.trim() || undefined,
-          fecha_fin: fechaFinDisp.trim() || undefined,
+          modalidad_horario: modalidadHorario,
+          horario_global: horarioGlobal,
+          horarios_por_dia: modalidadHorario === 'individual_por_dia' ? horariosPorDia : undefined,
           ocultar_si_no_disponible: ocultarSiNoDisponible,
           restringir_fecha_envio: restringirFechaEnvio,
           mensaje_disponibilidad: mensajeDisponibilidad.trim() || undefined,
         },
         config_rotulado: {
+          orientacion: orientacionRotulo,
           estilo_rotulo: estiloRotulo ? (estiloRotulo as any) : undefined,
           mostrar_logo_empresa: mostrarLogoEmpresa,
           mostrar_logo_agencia: mostrarLogoAgencia,
@@ -618,7 +624,17 @@ export const CompanyAgenciesTab: React.FC = () => {
       activo: true,
       orden: 1,
       campos_personalizados: camposList,
+      disponibilidad: {
+        dias_semana: diasSemanaHabilitados,
+        modalidad_horario: modalidadHorario,
+        horario_global: horarioGlobal,
+        horarios_por_dia: modalidadHorario === 'individual_por_dia' ? horariosPorDia : undefined,
+        ocultar_si_no_disponible: ocultarSiNoDisponible,
+        restringir_fecha_envio: restringirFechaEnvio,
+        mensaje_disponibilidad: mensajeDisponibilidad,
+      },
       config_rotulado: {
+        orientacion: orientacionRotulo,
         estilo_rotulo: (previewEstilo || estiloRotulo) ? ((previewEstilo || estiloRotulo) as any) : undefined,
         mostrar_logo_empresa: mostrarLogoEmpresa,
         mostrar_logo_agencia: mostrarLogoAgencia,
@@ -662,7 +678,9 @@ export const CompanyAgenciesTab: React.FC = () => {
     };
   }, [
     editingMethod, nombreMetodo, descripcionMetodo, iconoMetodo, fotoUrlMetodo,
-    camposList, previewEstilo, estiloRotulo, mostrarLogoEmpresa, mostrarLogoAgencia,
+    camposList, diasSemanaHabilitados, modalidadHorario, horarioGlobal, horariosPorDia,
+    ocultarSiNoDisponible, restringirFechaEnvio, mensajeDisponibilidad,
+    orientacionRotulo, previewEstilo, estiloRotulo, mostrarLogoEmpresa, mostrarLogoAgencia,
     subtituloCabecera, mostrarBarcode, mostrarTracking, mostrarDestino, tituloDestino,
     incluirDestinatario, tituloDestinatario, mostrarBadgeModalidad, textoBadgeModalidad,
     mostrarClienteNombre, tituloClienteNombre, mostrarClienteDni, tituloClienteDni,
@@ -674,42 +692,48 @@ export const CompanyAgenciesTab: React.FC = () => {
     mostrarFechaSello, textoSelloPersonalizado,
   ]);
 
-  const mockPedido: Pedido = useMemo(() => ({
-    id: 'ped-live-demo',
-    codigo_seguimiento: 'ENCOMI-9428',
-    usuario_id: 'usr-demo',
-    usuario: {
-      id: 'usr-demo',
-      dni: '72384910',
-      nombre_completo: 'María Fernanda Quispe Ramos',
-      email_default: 'maria.quispe@ejemplo.com',
-      telefono_default: '987654321',
-      password_hash: '',
-      rol: 'client',
-      avatar_url: '',
-      puntos_xp: 0,
-      nivel: 1,
+  const mockPedido: Pedido = useMemo(() => {
+    const isEchado = orientacionRotulo === 'horizontal';
+
+    return {
+      id: 'ped-live-demo',
+      codigo_seguimiento: isEchado ? 'BYT-2026-5328' : 'ENCOMI-9428',
+      usuario_id: 'usr-demo',
+      usuario: {
+        id: 'usr-demo',
+        dni: isEchado ? '986 669 388' : '72384910',
+        nombre_completo: isEchado ? 'SILVANA VILLAVICENCIO' : 'MARÍA FERNANDA QUISPE RAMOS',
+        email_default: 'cliente@ejemplo.com',
+        telefono_default: isEchado ? '986669388' : '987654321',
+        password_hash: '',
+        rol: 'client',
+        avatar_url: '',
+        puntos_xp: 0,
+        nivel: 1,
+        created_at: new Date().toISOString(),
+      },
+      detalles_bordado: 'Paquete de muestra para verificación de rotulado',
+      metodo_envio_codigo: editingMethod ? editingMethod.codigo : 'agencia_demo',
+      metodo_envio_nombre: nombreMetodo || editingMethod?.nombre || 'Agencia Oficial',
+      destino_detalle: isEchado
+        ? 'Lima (Cercado) • Calle Angel Valenzuela 693 seccion 1, Lima (Ref: Interseccion av alborada con av bertello)'
+        : (editingMethod?.codigo === 'shalom'
+          ? 'AGENCIA SHALOM - AV. MÉXICO 120, LA VICTORIA, LIMA'
+          : editingMethod?.codigo === 'olva'
+          ? 'SEDE OLVA COURIER - AV. LARCO 345, MIRAFLORES, LIMA'
+          : 'AV. PRINCIPAL 456, INT. 201, SAN ISIDRO, LIMA'),
+      estado_produccion: 'completado',
+      estado_envio: 'pendiente',
+      campos_personalizados: camposList.reduce((acc, c) => {
+        if (c.id.includes('dni') || c.label.toLowerCase().includes('dni')) acc[c.id] = isEchado ? '986 669 388' : '72384910';
+        else if (c.id.includes('tel') || c.label.toLowerCase().includes('tel')) acc[c.id] = isEchado ? '986669388' : '987654321';
+        else if (c.id.includes('dir') || c.label.toLowerCase().includes('dir')) acc[c.id] = 'Calle Angel Valenzuela 693';
+        else acc[c.id] = c.placeholder || 'Dato de prueba';
+        return acc;
+      }, {} as Record<string, string>),
       created_at: new Date().toISOString(),
-    },
-    detalles_bordado: 'Paquete de muestra para verificación de rotulado',
-    metodo_envio_codigo: editingMethod ? editingMethod.codigo : 'agencia_demo',
-    metodo_envio_nombre: nombreMetodo || editingMethod?.nombre || 'Agencia Oficial',
-    destino_detalle: editingMethod?.codigo === 'shalom'
-      ? 'AGENCIA SHALOM - AV. MÉXICO 120, LA VICTORIA, LIMA'
-      : editingMethod?.codigo === 'olva'
-      ? 'SEDE OLVA COURIER - AV. LARCO 345, MIRAFLORES, LIMA'
-      : 'AV. PRINCIPAL 456, INT. 201, SAN ISIDRO, LIMA',
-    estado_produccion: 'completado',
-    estado_envio: 'pendiente',
-    campos_personalizados: camposList.reduce((acc, c) => {
-      if (c.id.includes('dni') || c.label.toLowerCase().includes('dni')) acc[c.id] = '72384910';
-      else if (c.id.includes('tel') || c.label.toLowerCase().includes('tel')) acc[c.id] = '987654321';
-      else if (c.id.includes('dir') || c.label.toLowerCase().includes('dir')) acc[c.id] = 'Av. Los Próceres 789';
-      else acc[c.id] = c.placeholder || 'Dato de prueba';
-      return acc;
-    }, {} as Record<string, string>),
-    created_at: new Date().toISOString(),
-  }), [editingMethod, nombreMetodo, camposList]);
+    };
+  }, [editingMethod, nombreMetodo, camposList, orientacionRotulo]);
 
   return (
     <div className="space-y-6 animate-fadeIn pb-16">
@@ -840,8 +864,10 @@ export const CompanyAgenciesTab: React.FC = () => {
                       <span className="text-xs font-black">{totalCampos} campos</span>
                     </div>
                     <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
-                      <span className="block text-[9px] text-slate-400 uppercase font-mono">En Rótulo:</span>
-                      <span className="text-xs font-black">{totalRotulado} campos</span>
+                      <span className="block text-[9px] text-slate-400 uppercase font-mono">Formato Rótulo:</span>
+                      <span className="text-xs font-black">
+                        {m.config_rotulado?.orientacion === 'vertical' ? '📄 Parado (Vertical)' : '🖼️ Echado (Horizontal)'}
+                      </span>
                     </div>
                   </div>
 
@@ -1201,54 +1227,248 @@ export const CompanyAgenciesTab: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Card 2: Rango de Fechas (Entre qué día a qué día) */}
-                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3.5">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
+                  {/* Card 2: Rango de Horario (Personalizado por día o uno para todos, con opción 24 horas) */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-cyan-500/30 space-y-4 shadow-xl">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
                       <div>
                         <span className="font-bold text-cyan-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
                           <Clock className="w-4 h-4 text-cyan-400" />
-                          <span>Habilitar solo entre un Rango de Fechas (Opcional)</span>
+                          <span>Rango de Horario de Despacho & Atención</span>
                         </span>
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                          Ideal para campañas, convenios temporales o fechas específicas de entrega.
+                          Personaliza las horas de operación: define un horario para todos los días o configúralo individualmente con opción 24 horas.
                         </p>
                       </div>
 
-                      <label className="flex items-center gap-2 cursor-pointer text-[11px] font-bold text-cyan-300 select-none">
-                        <input
-                          type="checkbox"
-                          checked={usarRangoFechas}
-                          onChange={e => setUsarRangoFechas(e.target.checked)}
-                          className="w-4 h-4 rounded text-cyan-500 cursor-pointer"
-                        />
-                        <span>Activar Rango de Fechas</span>
-                      </label>
+                      {/* Selector de Modalidad: Uno para todos vs Individual por día */}
+                      <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => setModalidadHorario('uno_para_todos')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                            modalidadHorario === 'uno_para_todos'
+                              ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <span>🌐</span>
+                          <span>Uno solo para todos</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalidadHorario('individual_por_dia')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                            modalidadHorario === 'individual_por_dia'
+                              ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <span>📅</span>
+                          <span>Individual por día</span>
+                        </button>
+                      </div>
                     </div>
 
-                    {usarRangoFechas && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 animate-fadeIn">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                            Fecha de Inicio (Disponible desde):
+                    {/* MODALIDAD 1: UNO SOLO PARA TODOS */}
+                    {modalidadHorario === 'uno_para_todos' && (
+                      <div className="space-y-3.5 pt-1 animate-fadeIn">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 border border-white/5">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xl">🕒</span>
+                            <div>
+                              <strong className="text-xs text-white block">Atención Continua 24 Horas</strong>
+                              <span className="text-[10.5px] text-slate-400 block">
+                                La agencia opera todo el día sin restricción de horario de inicio ni fin.
+                              </span>
+                            </div>
+                          </div>
+
+                          <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 px-3 py-1.5 rounded-xl border border-cyan-500/30">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(horarioGlobal.es_24_horas)}
+                              onChange={e => setHorarioGlobal(prev => ({ ...prev, es_24_horas: e.target.checked }))}
+                              className="w-4 h-4 rounded text-cyan-500 cursor-pointer"
+                            />
+                            <span className="text-xs font-bold text-cyan-300">
+                              {horarioGlobal.es_24_horas ? '⚡ Activado (Todo el día)' : 'Desactivado (Fijar horas)'}
+                            </span>
                           </label>
-                          <input
-                            type="date"
-                            value={fechaInicioDisp}
-                            onChange={e => setFechaInicioDisp(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
-                          />
                         </div>
 
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                            Fecha de Fin (Disponible hasta):
-                          </label>
-                          <input
-                            type="date"
-                            value={fechaFinDisp}
-                            onChange={e => setFechaFinDisp(e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
-                          />
+                        {!horarioGlobal.es_24_horas && (
+                          <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-3 animate-fadeIn">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <span className="text-[11px] font-bold text-slate-300">Ventana Horaria para todos los días:</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] text-slate-400 font-bold">Presets:</span>
+                                {[
+                                  { label: '08:00 - 18:00', start: '08:00', end: '18:00' },
+                                  { label: '08:30 - 18:30', start: '08:30', end: '18:30' },
+                                  { label: '09:00 - 19:00', start: '09:00', end: '19:00' },
+                                  { label: '09:00 - 13:00 (Mañanas)', start: '09:00', end: '13:00' },
+                                ].map((p, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setHorarioGlobal({ es_24_horas: false, hora_inicio: p.start, hora_fin: p.end })}
+                                    className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-mono transition-all cursor-pointer"
+                                  >
+                                    {p.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                                  Hora de Inicio / Apertura:
+                                </label>
+                                <input
+                                  type="time"
+                                  value={horarioGlobal.hora_inicio || '08:30'}
+                                  onChange={e => setHorarioGlobal(prev => ({ ...prev, hora_inicio: e.target.value }))}
+                                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                                  Hora de Fin / Cierre:
+                                </label>
+                                <input
+                                  type="time"
+                                  value={horarioGlobal.hora_fin || '18:30'}
+                                  onChange={e => setHorarioGlobal(prev => ({ ...prev, hora_fin: e.target.value }))}
+                                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* MODALIDAD 2: INDIVIDUAL POR DÍA */}
+                    {modalidadHorario === 'individual_por_dia' && (
+                      <div className="space-y-2.5 pt-1 animate-fadeIn">
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 pb-1">
+                          <span>Configura el horario específico para cada día de la semana:</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const all24: Partial<Record<DiaSemana, HorarioDia>> = {};
+                              DIAS_SEMANA_ORDEN.forEach(d => { all24[d] = { es_24_horas: true }; });
+                              setHorariosPorDia(all24);
+                            }}
+                            className="text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
+                          >
+                            ⚡ Poner todos en 24 Horas
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2">
+                          {DIAS_SEMANA_ORDEN.map((dia) => {
+                            const diaHabilitado = diasSemanaHabilitados.length === 0 || diasSemanaHabilitados.includes(dia);
+                            const hDia = horariosPorDia[dia] || { es_24_horas: false, hora_inicio: '08:30', hora_fin: '18:30' };
+                            const es24h = Boolean(hDia.es_24_horas);
+
+                            return (
+                              <div
+                                key={dia}
+                                className={`p-3 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                  diaHabilitado
+                                    ? 'bg-slate-900/90 border-white/10'
+                                    : 'bg-slate-950/50 border-white/5 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-[130px]">
+                                  <span className={`w-2.5 h-2.5 rounded-full ${diaHabilitado ? 'bg-amber-400' : 'bg-slate-600'}`} />
+                                  <div>
+                                    <strong className="text-xs text-white block capitalize">{DIAS_SEMANA_LABELS[dia]}</strong>
+                                    <span className="text-[9.5px] text-slate-400">
+                                      {diaHabilitado ? 'Día activo' : 'No despacha'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  {/* Switch 24 Horas para este día */}
+                                  <label className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300 cursor-pointer select-none bg-slate-950 px-2.5 py-1 rounded-lg border border-white/10">
+                                    <input
+                                      type="checkbox"
+                                      checked={es24h}
+                                      onChange={e => {
+                                        setHorariosPorDia(prev => ({
+                                          ...prev,
+                                          [dia]: {
+                                            ...prev[dia],
+                                            es_24_horas: e.target.checked,
+                                            hora_inicio: prev[dia]?.hora_inicio || '08:30',
+                                            hora_fin: prev[dia]?.hora_fin || '18:30',
+                                          },
+                                        }));
+                                      }}
+                                      className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
+                                    />
+                                    <span>24 Horas</span>
+                                  </label>
+
+                                  {!es24h && (
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="time"
+                                        value={hDia.hora_inicio || '08:30'}
+                                        onChange={e => {
+                                          const val = e.target.value;
+                                          setHorariosPorDia(prev => ({
+                                            ...prev,
+                                            [dia]: { ...prev[dia], hora_inicio: val, es_24_horas: false },
+                                          }));
+                                        }}
+                                        className="px-2 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
+                                      />
+                                      <span className="text-slate-500 text-xs font-bold">a</span>
+                                      <input
+                                        type="time"
+                                        value={hDia.hora_fin || '18:30'}
+                                        onChange={e => {
+                                          const val = e.target.value;
+                                          setHorariosPorDia(prev => ({
+                                            ...prev,
+                                            [dia]: { ...prev[dia], hora_fin: val, es_24_horas: false },
+                                          }));
+                                        }}
+                                        className="px-2 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
+                                      />
+                                    </div>
+                                  )}
+
+                                  {/* Botón para replicar este horario a todos los demás */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated: Partial<Record<DiaSemana, HorarioDia>> = {};
+                                      DIAS_SEMANA_ORDEN.forEach(d => {
+                                        updated[d] = {
+                                          es_24_horas: es24h,
+                                          hora_inicio: hDia.hora_inicio || '08:30',
+                                          hora_fin: hDia.hora_fin || '18:30',
+                                        };
+                                      });
+                                      setHorariosPorDia(updated);
+                                      notifySuccess(`Horario de ${DIAS_SEMANA_LABELS[dia]} copiado a todos los días.`);
+                                    }}
+                                    title="Copiar este horario a todos los demás días"
+                                    className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                  >
+                                    Copiar a todos
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1548,6 +1768,51 @@ export const CompanyAgenciesTab: React.FC = () => {
               {activeEditorTab === 'rotulado' && (
                 <div className="space-y-5 animate-fadeIn">
                   
+                  {/* SELECTOR MAESTRO DE ORIENTACIÓN: ECHADO (HORIZONTAL) VS PARADO (VERTICAL) */}
+                  <div className="p-4 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border-2 border-cyan-500/50 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xl">
+                    <div className="space-y-0.5">
+                      <span className="font-black text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+                        <Layout className="w-4 h-4 text-cyan-400" />
+                        <span>Formato y Orientación del Rótulo para Impresión</span>
+                      </span>
+                      <p className="text-[11px] text-slate-300">
+                        Elige si esta agencia se imprimirá <strong>Echado (Horizontal - Primera Imagen)</strong> o <strong>Parado (Vertical - Segunda Imagen)</strong>.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setOrientacionRotulo('horizontal')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 ${
+                          orientacionRotulo === 'horizontal'
+                            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30 scale-[1.03] border border-cyan-300'
+                            : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+                        }`}
+                      >
+                        <span className="text-base">🖼️</span>
+                        <div className="text-left leading-none">
+                          <span className="block font-black">Modo Echado</span>
+                          <span className="text-[9px] opacity-80">Horizontal (Imagen 1)</span>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOrientacionRotulo('vertical')}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 ${
+                          orientacionRotulo === 'vertical'
+                            ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/30 scale-[1.03] border border-purple-300'
+                            : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
+                        }`}
+                      >
+                        <span className="text-base">📄</span>
+                        <div className="text-left leading-none">
+                          <span className="block font-black">Modo Parado</span>
+                          <span className="text-[9px] opacity-80">Vertical (Imagen 2)</span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* BARRA SUPERIOR: PRESETS RÁPIDOS Y ESTILO */}
                   <div className="p-4 rounded-3xl bg-slate-950/90 border border-pink-500/30 space-y-3.5 shadow-xl">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -2177,6 +2442,7 @@ export const CompanyAgenciesTab: React.FC = () => {
                             tallerConfig={tallerConfig}
                             customMethodOverride={currentLiveMethod}
                             estiloRotuloOverride={(previewEstilo || estiloRotulo) as any}
+                            orientacionOverride={orientacionRotulo}
                           />
                         </div>
 
@@ -2263,23 +2529,23 @@ export const CompanyAgenciesTab: React.FC = () => {
               </button>
             </div>
 
-            {/* Selector de estilo interactivo */}
-            <div className="p-2.5 rounded-2xl bg-slate-950 border border-purple-500/30 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold text-purple-300 flex items-center gap-1 shrink-0">
-                <Palette className="w-3.5 h-3.5" />
-                <span>Probar Estilo:</span>
-              </span>
-              <div className="flex items-center gap-1.5 overflow-x-auto">
+            {/* Selector de estilo y orientación interactivo */}
+            <div className="p-2.5 rounded-2xl bg-slate-950 border border-purple-500/30 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+                <span className="text-[11px] font-bold text-purple-300 flex items-center gap-1 shrink-0 mr-1">
+                  <Palette className="w-3.5 h-3.5" />
+                  <span>Estilo:</span>
+                </span>
                 {[
                   { id: 'estandar_oficial', label: '🏷️ Estándar Oficial' },
-                  { id: 'vision_modern', label: '💎 Moderno Vision' },
-                  { id: 'eco_ink_saving', label: '🌿 Eco Ahorro' },
+                  { id: 'vision_modern', label: '💎 Vision' },
+                  { id: 'eco_ink_saving', label: '🌿 Eco' },
                 ].map(st => (
                   <button
                     key={st.id}
                     type="button"
                     onClick={() => setPreviewEstilo(st.id as any)}
-                    className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    className={`px-2 py-1 rounded-xl text-[10.5px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                       (previewEstilo || estiloRotulo || 'estandar_oficial') === st.id
                         ? 'bg-purple-600 text-white shadow font-black'
                         : 'bg-white/5 text-slate-400 hover:text-white'
@@ -2288,6 +2554,32 @@ export const CompanyAgenciesTab: React.FC = () => {
                     {st.label}
                   </button>
                 ))}
+              </div>
+
+              {/* Toggle de orientación en la muestra */}
+              <div className="flex items-center gap-1 shrink-0 border-t sm:border-t-0 sm:border-l border-white/10 pt-1 sm:pt-0 sm:pl-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setOrientacionRotulo('horizontal')}
+                  className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition-all cursor-pointer ${
+                    orientacionRotulo === 'horizontal'
+                      ? 'bg-cyan-500 text-slate-950 font-black'
+                      : 'bg-white/5 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🖼️ Echado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOrientacionRotulo('vertical')}
+                  className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition-all cursor-pointer ${
+                    orientacionRotulo === 'vertical'
+                      ? 'bg-purple-500 text-white font-black'
+                      : 'bg-white/5 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  📄 Parado
+                </button>
               </div>
             </div>
 
@@ -2298,6 +2590,7 @@ export const CompanyAgenciesTab: React.FC = () => {
                 tallerConfig={tallerConfig}
                 customMethodOverride={currentLiveMethod}
                 estiloRotuloOverride={((previewEstilo || estiloRotulo) as any) || undefined}
+                orientacionOverride={orientacionRotulo}
               />
             </div>
 

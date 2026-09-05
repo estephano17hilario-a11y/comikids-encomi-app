@@ -6,6 +6,8 @@ import { X, Printer, FileText, Droplet } from 'lucide-react';
 import { printElement } from '../../utils/nativePrintService';
 import { InkSavingLevel, INK_SAVING_LEVELS } from '../../utils/inkSavingService';
 
+import { ordersService } from '../../services/ordersService';
+
 interface Props {
   pedido: Pedido;
   tallerConfig: TallerConfig;
@@ -15,6 +17,13 @@ interface Props {
 export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClose }) => {
   const [printing, setPrinting] = useState(false);
   const [inkSavingLevel, setInkSavingLevel] = useState<InkSavingLevel>(0);
+
+  const agencyMethod = ordersService.getShippingMethods().find(
+    m => m.codigo === pedido.metodo_envio_codigo || m.id === pedido.metodo_envio_codigo
+  );
+  const [orientacion, setOrientacion] = useState<'horizontal' | 'vertical'>(
+    () => agencyMethod?.config_rotulado?.orientacion || 'horizontal'
+  );
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -26,7 +35,7 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
   const handlePrint = async () => {
     setPrinting(true);
     try {
-      await printElement('shalom-print-area', `Rotulo_${pedido.codigo_seguimiento}_Eco${inkSavingLevel}`);
+      await printElement('shalom-print-area', `Rotulo_${pedido.codigo_seguimiento}_Eco${inkSavingLevel}_${orientacion}`);
     } catch (err) {
       console.error('Error al imprimir:', err);
       window.print();
@@ -63,6 +72,40 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* SELECTOR DE ORIENTACIÓN: ECHADO (HORIZONTAL) VS PARADO (VERTICAL) */}
+        <div className="mb-3 p-2.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-2 print:hidden" data-no-print="true">
+          <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+            <span>📐</span>
+            <span>Orientación:</span>
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOrientacion('horizontal')}
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                orientacion === 'horizontal'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black shadow-md shadow-cyan-500/20 scale-[1.02]'
+                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>🖼️</span>
+              <span>Echado (Horizontal)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrientacion('vertical')}
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                orientacion === 'vertical'
+                  ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-black shadow-md shadow-purple-500/20 scale-[1.02]'
+                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>📄</span>
+              <span>Parado (Vertical)</span>
+            </button>
+          </div>
         </div>
 
         {/* SELECTOR DE AHORRO DE TINTA / ECO-PRINT (0%, 25%, 50%, 75%, 90%) */}
@@ -111,6 +154,7 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
             pedido={pedido}
             tallerConfig={tallerConfig}
             inkSavingLevel={inkSavingLevel}
+            orientacionOverride={orientacion}
           />
         </div>
 

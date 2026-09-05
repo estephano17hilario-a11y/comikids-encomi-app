@@ -260,6 +260,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
     } catch {}
 
+    setPedidos(prev => [created, ...prev.filter(p => p.id !== created.id)]);
     setLatestNewOrder(created);
     // Sincronizar en segundo plano sin demorar la respuesta inmediata al usuario
     refreshData().catch(e => console.warn('Background refreshData warn:', e));

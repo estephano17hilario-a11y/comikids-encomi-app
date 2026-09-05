@@ -70,7 +70,18 @@ export const OrdersSmartManager: React.FC = () => {
     updatePedido,
     updateEstadoEnvio,
     updateEstadoProduccion,
+    refreshData,
   } = useOrders();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -189,13 +200,20 @@ export const OrdersSmartManager: React.FC = () => {
     return pedidos.filter(order => {
       // Search term
       const query = searchTerm.toLowerCase().trim();
+      const cleanPhone = getCleanClientPhone(order);
+      const queryDigits = query.replace(/\D/g, '');
+
       const matchSearch =
         !query ||
         order.codigo_seguimiento.toLowerCase().includes(query) ||
         order.destino_detalle.toLowerCase().includes(query) ||
         (order.usuario?.nombre_completo && order.usuario.nombre_completo.toLowerCase().includes(query)) ||
         (order.usuario?.dni && order.usuario.dni.toLowerCase().includes(query)) ||
-        (order.observaciones_cliente && order.observaciones_cliente.toLowerCase().includes(query));
+        (order.usuario?.telefono_default && order.usuario.telefono_default.includes(query)) ||
+        (cleanPhone && queryDigits && cleanPhone.includes(queryDigits)) ||
+        (order.observaciones_cliente && order.observaciones_cliente.toLowerCase().includes(query)) ||
+        (order.shalom_clave_recojo && order.shalom_clave_recojo.toLowerCase().includes(query)) ||
+        (order.shalom_numero_guia && order.shalom_numero_guia.toLowerCase().includes(query));
 
       if (!matchSearch) return false;
 
@@ -1086,15 +1104,26 @@ export const OrdersSmartManager: React.FC = () => {
         {/* Search Bar & Filters Compactos */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
           
-          <div className="relative col-span-1 sm:col-span-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Buscar por código, cliente, DNI o agencia..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-            />
+          <div className="col-span-1 sm:col-span-1 flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Buscar por cliente, DNI, teléfono, código..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              />
+            </div>
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              title="Sincronizar y actualizar pedidos desde la nube"
+              className="px-2.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 rounded-xl flex items-center gap-1 text-xs font-bold transition-all cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline text-[11px]">Sincronizar</span>
+            </button>
           </div>
 
           {/* Status Tabs con nombre Enviado */}

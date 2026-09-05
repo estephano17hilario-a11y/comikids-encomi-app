@@ -1078,17 +1078,50 @@ class OrdersService {
 
         if (!ordersError && dbOrders) {
           const deletedIds = this.getDeletedOrderIds();
-          const currentUsers = this.getUsers();
+          const allKnownUsers: Usuario[] = [...(dbUsers || []), ...this.getUsers()];
+          
+          // Mapas de indexación rápida para enlazar la clienta con su pedido
+          const userById = new Map<string, Usuario>();
+          const userByDni = new Map<string, Usuario>();
+          const userByPhone = new Map<string, Usuario>();
+
+          allKnownUsers.forEach(u => {
+            if (u.id) userById.set(u.id, u);
+            if (u.dni && !u.dni.startsWith('usr-')) {
+              userByDni.set(u.dni.trim().toLowerCase(), u);
+            }
+            if (u.telefono_default) {
+              const pDigits = u.telefono_default.replace(/\D/g, '').slice(-9);
+              if (pDigits) userByPhone.set(pDigits, u);
+            }
+          });
+
           const syncedOrders: Pedido[] = dbOrders
             .filter((p: any) => !deletedIds.has(p.id))
             .map((p: any) => {
-              let matchedUser = currentUsers.find(u => 
-                u.id === p.usuario_id || 
-                u.dni === p.usuario_id || 
-                (u.telefono_default && u.telefono_default === p.usuario_id)
-              ) || p.usuario;
+              // 1. Extracción de DNI del texto del destino (ej: Shalom DNI/CE Recojo: 75864041)
+              let extractedDni = '';
+              const matchDoc = String(p.destino_detalle || '').match(/DNI(?:\/CE)?(?:\s*Recojo)?:\s*([0-9A-Za-z]+)/i);
+              if (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) {
+                extractedDni = matchDoc[1].trim().toLowerCase();
+              }
 
-              // Extraer el nombre real de la clienta si usuario_id era el admin o estaba vacío
+              // 2. Extracción de Teléfono del texto del destino
+              let extractedPhone = '';
+              const matchPhone = String(p.destino_detalle || '').match(/(?:Tel|Cel|WhatsApp|Telefono|Celular)[\s:]*([0-9]{9})/i);
+              if (matchPhone && matchPhone[1]) {
+                extractedPhone = matchPhone[1].trim();
+              }
+
+              // 3. Enlazar usuario
+              let matchedUser = 
+                userById.get(p.usuario_id) ||
+                (extractedDni ? userByDni.get(extractedDni) : undefined) ||
+                (extractedPhone ? userByPhone.get(extractedPhone) : undefined) ||
+                userByDni.get(String(p.usuario_id || '').toLowerCase()) ||
+                p.usuario;
+
+              // 4. Extraer el nombre real de la clienta
               let clientName = matchedUser?.nombre_completo;
               if (!clientName || clientName === 'Encomi Envíos' || clientName === 'ComiKids' || clientName.trim() === '') {
                 if (p.detalles_bordado && p.detalles_bordado.includes('Envío de Mercadería para ')) {
@@ -1098,30 +1131,31 @@ class OrdersService {
                 }
               }
 
-              // Extraer DNI real si matchedUser.dni es un ID autogenerado 'usr-...'
+              // 5. Normalizar DNI
               let realDni = matchedUser?.dni;
               if (!realDni || realDni.startsWith('usr-') || realDni === '00000000') {
-                const matchDoc = String(p.destino_detalle || '').match(/DNI(?:\/CE)?(?:\s*Recojo)?:\s*([0-9A-Za-z]+)/i);
-                if (matchDoc && matchDoc[1] && !matchDoc[1].startsWith('usr-')) {
-                  realDni = matchDoc[1].trim();
-                } else if (matchedUser?.dni_default && !matchedUser.dni_default.startsWith('usr-')) {
-                  realDni = matchedUser.dni_default;
-                } else {
-                  realDni = '';
-                }
+                realDni = extractedDni || matchedUser?.dni_default || '';
+              }
+
+              // 6. Normalizar Teléfono
+              let realPhone = matchedUser?.telefono_default;
+              if (!realPhone) {
+                realPhone = extractedPhone || '';
               }
 
               if (matchedUser) {
                 matchedUser = {
                   ...matchedUser,
                   dni: realDni || (matchedUser.dni && !matchedUser.dni.startsWith('usr-') ? matchedUser.dni : ''),
+                  telefono_default: realPhone || matchedUser.telefono_default || '',
                   nombre_completo: clientName || matchedUser.nombre_completo || 'Cliente',
                 };
-              } else if (clientName) {
+              } else {
                 matchedUser = {
-                  id: p.usuario_id || 'usr-temp',
+                  id: p.usuario_id || ('usr-' + (realDni || Date.now())),
                   dni: realDni || '',
-                  nombre_completo: clientName,
+                  telefono_default: realPhone || '',
+                  nombre_completo: clientName || 'Cliente',
                   rol: 'client',
                   created_at: p.created_at || new Date().toISOString()
                 };
@@ -1129,9 +1163,8 @@ class OrdersService {
 
               return {
                 ...p,
-                usuario: matchedUser || undefined
+                usuario: matchedUser
               };
-
             });
           
           if (!userId) {
@@ -1166,72 +1199,85 @@ class OrdersService {
       updated_at: now,
     };
 
+    // Guardar inmediatamente en localStorage local
     const orders = this.getLocalOrders();
     const updated = [newPedido, ...orders];
     this.saveLocalOrders(updated);
 
-    // Contar pedidos previos del usuario para dar XP y logros correctos
+    // Contar pedidos previos del usuario para dar XP
     const allOrders = this.getLocalOrders();
     const userOrderCount = allOrders.filter(o => o.usuario_id === pedidoData.usuario_id).length;
 
-    // Sincronización en segundo plano con protección de timeout para NO bloquear al usuario
-    const syncCloudAndXp = async () => {
+    // PERSISTENCIA INMEDIATA EN LA NUBE SUPABASE (AWAITED):
+    // Garantiza que el pedido esté 100% guardado en el servidor antes de que el navegador móvil abra WhatsApp
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
       try {
-        // 1. Dar XP base por el pedido de forma asíncrona
-        this.awardXp(pedidoData.usuario_id, 50).catch(e => console.warn('XP award warn:', e));
+        // 1. Sincronizar o crear el usuario en Supabase
+        if (pedidoData.usuario) {
+          const cleanUser = {
+            id: pedidoData.usuario.id,
+            dni: pedidoData.usuario.dni,
+            nombre_completo: pedidoData.usuario.nombre_completo,
+            edad: pedidoData.usuario.edad ? Number(pedidoData.usuario.edad) : null,
+            genero: pedidoData.usuario.genero || null,
+            motivo_compra: pedidoData.usuario.motivo_compra || null,
+            password_hash: pedidoData.usuario.password_hash || 'incomi2026',
+            rol: pedidoData.usuario.rol || 'client',
+            avatar_url: pedidoData.usuario.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${pedidoData.usuario.dni}`,
+            puntos_xp: pedidoData.usuario.puntos_xp || 0,
+            nivel: pedidoData.usuario.nivel || 1,
+            telefono_default: pedidoData.usuario.telefono_default || null,
+            created_at: pedidoData.usuario.created_at || now,
+          };
 
-        // 2. Verificar logros basados en conteo
-        try {
-          const { ACHIEVEMENTS_CATALOG } = await import('../data/achievementsList');
-          for (const ach of ACHIEVEMENTS_CATALOG) {
-            if (ach.reqCount && userOrderCount >= ach.reqCount) {
-              const existing = this.getLocalAchievements();
-              if (!existing.some(a => a.usuario_id === pedidoData.usuario_id && a.codigo_logro === ach.codigo)) {
-                this.awardXp(pedidoData.usuario_id, ach.puntosXp, ach.codigo, ach.titulo, ach.descripcion).catch(console.warn);
-              }
+          try {
+            await Promise.race([
+              client.from('usuarios').upsert(cleanUser, { onConflict: 'dni' }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout usuario')), 2500))
+            ]);
+          } catch (uErr) {
+            console.warn('[SUPABASE USUARIO UPSERT NOTICE]:', uErr);
+          }
+        }
+
+        // 2. Guardar el pedido en Supabase
+        const dbPayload = this.sanitizePedidoForDb(newPedido);
+        const { error: insErr } = await Promise.race([
+          client.from('pedidos').upsert(dbPayload),
+          new Promise<{ error: Error }>((_, reject) => setTimeout(() => reject(new Error('Timeout pedido')), 4500))
+        ]).catch(async (tErr) => {
+          console.warn('[RETRY] Reintentando inserción directa en Supabase:', tErr);
+          return await client.from('pedidos').upsert(dbPayload);
+        });
+
+        if (insErr) {
+          console.error('[CRITICAL] Error al insertar pedido en Supabase:', insErr);
+        } else {
+          console.log('[SUCCESS] Pedido confirmado y guardado en Supabase:', newPedido.id);
+        }
+      } catch (cloudErr) {
+        console.warn('[SUPABASE PERSISTENCE WARN]:', cloudErr);
+      }
+    }
+
+    // Tareas secundarias asíncronas (XP y Logros) ejecutadas en segundo plano
+    setTimeout(async () => {
+      try {
+        this.awardXp(pedidoData.usuario_id, 50).catch(() => {});
+        const { ACHIEVEMENTS_CATALOG } = await import('../data/achievementsList');
+        for (const ach of ACHIEVEMENTS_CATALOG) {
+          if (ach.reqCount && userOrderCount >= ach.reqCount) {
+            const existing = this.getLocalAchievements();
+            if (!existing.some(a => a.usuario_id === pedidoData.usuario_id && a.codigo_logro === ach.codigo)) {
+              this.awardXp(pedidoData.usuario_id, ach.puntosXp, ach.codigo, ach.titulo, ach.descripcion).catch(() => {});
             }
           }
-        } catch (e) {
-          console.warn('Achievements sync warn:', e);
         }
-
-        // 3. Guardar en Supabase con timeout de 3.5s para no quedar colgado
-        if (isSupabaseConfigured && supabase) {
-          if (pedidoData.usuario) {
-            const cleanUser = {
-              id: pedidoData.usuario.id,
-              dni: pedidoData.usuario.dni,
-              nombre_completo: pedidoData.usuario.nombre_completo,
-              edad: pedidoData.usuario.edad ? Number(pedidoData.usuario.edad) : null,
-              genero: pedidoData.usuario.genero || null,
-              motivo_compra: pedidoData.usuario.motivo_compra || null,
-              password_hash: pedidoData.usuario.password_hash || 'incomi2026',
-              rol: pedidoData.usuario.rol || 'client',
-              avatar_url: pedidoData.usuario.avatar_url || '',
-              puntos_xp: pedidoData.usuario.puntos_xp || 0,
-              nivel: pedidoData.usuario.nivel || 1,
-              telefono_default: pedidoData.usuario.telefono_default || null,
-              created_at: pedidoData.usuario.created_at || now,
-            };
-            await Promise.race([
-              supabase.from('usuarios').upsert(cleanUser),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout upsert usuario')), 3500))
-            ]).catch(err => console.warn('Supabase upsert usuario warn:', err));
-          }
-
-          const dbPayload = this.sanitizePedidoForDb(newPedido);
-          await Promise.race([
-            supabase.from('pedidos').upsert(dbPayload),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout upsert pedido')), 3500))
-          ]).catch(err => console.warn('Supabase upsert pedido warn:', err));
-        }
-      } catch (err) {
-        console.warn('Error en sincronización background de nuevo pedido:', err);
+      } catch (e) {
+        console.warn('Background XP warn:', e);
       }
-    };
-
-    // Disparar sincronización sin bloquear el retorno inmediato
-    syncCloudAndXp();
+    }, 0);
 
     return newPedido;
   }

@@ -59,6 +59,55 @@ export const formatFechaConDia = (dateStr?: string): string => {
 };
 
 /**
+ * Helper inteligente para determinar si un campo personalizado es redundante o interno del sistema
+ * para evitar duplicar información que ya aparece en la cabecera oficial del comprobante (DNI, Teléfono, Nombre, etc.)
+ */
+export const isIgnoredOrRedundantCustomField = (rawKey: string, val: any, datos: DatosComprobante): boolean => {
+  if (!rawKey || val === undefined || val === null) return true;
+  const strVal = String(val).trim();
+  if (!strVal || strVal.toLowerCase() === 'undefined' || strVal.toLowerCase() === 'null') return true;
+
+  const cleanKey = rawKey.trim().toLowerCase();
+
+  // 1. Claves internas del sistema (c-shalom-dni, c-olva-dni, c-olva-dir, etc.)
+  if (cleanKey.startsWith('c-') || cleanKey.startsWith('sys_') || cleanKey.startsWith('_') || cleanKey.startsWith('custom_')) {
+    return true;
+  }
+
+  // 2. Normalización de nombre de campo (sin tildes, sin signos ni espacios)
+  const normKey = cleanKey
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+
+  const redundantStandardKeys = new Set([
+    'dni', 'ce', 'dnice', 'documento', 'doc', 'numdoc', 'numerodocumento', 'carnet', 'carnetdeextranjeria',
+    'nombre', 'nombres', 'apellidos', 'nombrecompleto', 'nombresyapellidos', 'cliente', 'destinatario',
+    'telefono', 'tel', 'celular', 'whatsapp', 'cel', 'celularwhatsapp', 'telefonowhatsapp',
+    'correo', 'email', 'correoelectronico',
+    'direccion', 'direccolva', 'direccionexacta', 'distrito', 'destino', 'agencia',
+    'referencia', 'ref',
+    'modalidad', 'metodo', 'metododeenvio', 'tipoenvio',
+    'orden', 'codigo', 'codigodeseguimiento', 'tracking',
+    'fecha', 'fechadeenvio', 'fechadeseada'
+  ]);
+
+  if (redundantStandardKeys.has(normKey)) return true;
+
+  // 3. Comparación de valor contra datos estándar principales para evitar duplicados idénticos
+  const docStd = (datos.documentoRecojo || '').trim();
+  const phoneStd = (datos.telefonoCliente || '').replace(/\D/g, '');
+  const valPhoneDigits = strVal.replace(/\D/g, '');
+  const nameStd = (datos.destinatario || '').trim().toLowerCase();
+
+  if (docStd && strVal === docStd) return true;
+  if (phoneStd && valPhoneDigits.length >= 8 && (phoneStd.includes(valPhoneDigits) || valPhoneDigits.includes(phoneStd))) return true;
+  if (nameStd && strVal.toLowerCase() === nameStd) return true;
+
+  return false;
+};
+
+/**
  * Genera el texto formateado del Comprobante de Envío Oficial
  * Permite plantillas personalizadas por agencia (sin el bloque Encomi en edición, pero siempre presente en el mensaje final).
  */
@@ -78,13 +127,17 @@ export const buildWhatsAppComprobanteMessage = (datos: DatosComprobante): string
   const lineaMaps = datos.coordenadasMapsUrl ? `🗺️ *Ubicación GPS:*\n${datos.coordenadasMapsUrl}\n` : "";
   const lineaCorreo = datos.correoCliente ? `📧 *Correo:* ${datos.correoCliente.trim()}\n` : "";
 
-  // Campos adicionales dinámicos configurados para la agencia
+  // Campos adicionales dinámicos configurados para la agencia (filtrando cualquier clave técnica o duplicada)
   let lineasCamposExtra = '';
   if (datos.camposPersonalizados && Object.keys(datos.camposPersonalizados).length > 0) {
-    lineasCamposExtra = Object.entries(datos.camposPersonalizados)
-      .filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== '')
-      .map(([k, v]) => `📌 *${k}:* ${v}`)
-      .join('\n') + '\n';
+    const validExtra = Object.entries(datos.camposPersonalizados)
+      .filter(([k, v]) => !isIgnoredOrRedundantCustomField(k, v, datos));
+
+    if (validExtra.length > 0) {
+      lineasCamposExtra = validExtra
+        .map(([k, v]) => `📌 *${k}:* ${String(v).trim()}`)
+        .join('\n') + '\n';
+    }
   }
 
   const bloqueEncomi = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n¿Buscas que tu negocio sea 10x más rápido al entregar pedidos? Entonces buscas a Encomi 🚀\n👉 ${funnelShortUrl}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n¡Muchas gracias por tu preferencia! 💖✨🙏`;
@@ -122,13 +175,13 @@ export const buildWhatsAppComprobanteMessage = (datos: DatosComprobante): string
       });
     }
 
-    // Si hay campos que el usuario no colocó manualmente en el texto con llaves, se agregan limpiamente
+    // Si hay campos válidos que el usuario no colocó manualmente en el texto con llaves, se agregan limpiamente
     let camposFaltantesTexto = '';
     if (datos.camposPersonalizados) {
       const faltantes = Object.entries(datos.camposPersonalizados)
-        .filter(([k, v]) => !camposYaInsertados.has(k) && v !== undefined && v !== null && String(v).trim() !== '');
+        .filter(([k, v]) => !camposYaInsertados.has(k) && !isIgnoredOrRedundantCustomField(k, v, datos));
       if (faltantes.length > 0 && !datos.plantillaMensajeAgencia.includes('{campos_adicionales}')) {
-        camposFaltantesTexto = '\n' + faltantes.map(([k, v]) => `📌 *${k}:* ${v}`).join('\n');
+        camposFaltantesTexto = '\n' + faltantes.map(([k, v]) => `📌 *${k}:* ${String(v).trim()}`).join('\n');
       }
     }
 

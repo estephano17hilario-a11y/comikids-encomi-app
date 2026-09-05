@@ -796,18 +796,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           nombre_completo: nombreCompleto.trim(),
           telefono_default: whatsapp.trim(),
           email: correoCliente.trim() || undefined,
+          password_hash: 'incomi2026',
           rol: 'client',
           created_at: new Date().toISOString()
         };
 
+        // Mantener únicamente los campos personalizados reales ingresados por el usuario
         const finalCustomFields: Record<string, any> = { ...customFieldValues };
-        finalCustomFields['c-shalom-dni'] = dniShalom.trim();
-        finalCustomFields['c-olva-dni'] = dniShalom.trim();
-        finalCustomFields['c-olva-dir'] = olvaDireccion.trim();
-        finalCustomFields['DNI / CE'] = dniShalom.trim();
-        finalCustomFields['DNI / Carnet de Extranjería'] = dniShalom.trim();
-        finalCustomFields['Celular / WhatsApp'] = whatsapp.trim();
-        finalCustomFields['Nombres y Apellidos'] = nombreCompleto.trim();
 
         const orderPayload = {
           usuario_id: clientUserData.id,
@@ -823,14 +818,17 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           campos_personalizados: finalCustomFields,
         };
 
-        // Creación del pedido con timeout de rescate para asegurar que NUNCA se quede colgado
-        const newOrder = await Promise.race([
-          createPedido(orderPayload),
-          new Promise<Pedido>((_, reject) => setTimeout(() => reject(new Error('Timeout de creación de pedido')), 4000))
-        ]).catch((createErr) => {
-          console.warn('Timeout o fallo en createPedido context, usando fallback local inmediato:', createErr);
-          return ordersService.createPedido(orderPayload);
-        });
+        // Creación del pedido asegurando que quede persistido en el servidor antes de abrir WhatsApp
+        let newOrder: Pedido;
+        try {
+          newOrder = await Promise.race([
+            createPedido(orderPayload),
+            new Promise<Pedido>((_, reject) => setTimeout(() => reject(new Error('Timeout de creación de pedido')), 7000))
+          ]);
+        } catch (createErr) {
+          console.warn('Timeout o fallo en createPedido context, usando fallback directo con ordersService:', createErr);
+          newOrder = await ordersService.createPedido(orderPayload);
+        }
 
         triggerConfetti();
         setCreatedOrder(newOrder);

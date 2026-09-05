@@ -16,7 +16,8 @@ import {
   ShieldCheck,
   Zap,
   MapPin,
-  Clock
+  Clock,
+  X
 } from 'lucide-react';
 
 interface Props {
@@ -54,7 +55,15 @@ export const OrderSuccessAnimation: React.FC<Props> = ({
 
       if (elapsed >= duration) {
         clearInterval(interval);
-        handleRedirect();
+        try {
+          enviarComprobanteAWhatsapp(comprobanteData);
+        } catch (e) {
+          console.warn('Auto redirect error:', e);
+        }
+        // Dejar un breve buffer para permitir toque directo en móviles si el navegador bloquea el auto-intent
+        setTimeout(() => {
+          onFinished();
+        }, 1800);
       }
     }, 50);
 
@@ -65,9 +74,15 @@ export const OrderSuccessAnimation: React.FC<Props> = ({
     };
   }, []);
 
-  const handleRedirect = () => {
-    enviarComprobanteAWhatsapp(comprobanteData);
-    onFinished();
+  const handleManualClick = () => {
+    try {
+      enviarComprobanteAWhatsapp(comprobanteData);
+    } catch (e) {
+      console.warn('Manual WhatsApp click error:', e);
+    }
+    setTimeout(() => {
+      onFinished();
+    }, 400);
   };
 
   const progressPercent = Math.min(100, Math.max(0, ((2.5 - countdown) / 2.5) * 100));
@@ -82,6 +97,16 @@ export const OrderSuccessAnimation: React.FC<Props> = ({
 
       <div className="relative w-full max-w-md rounded-3xl bg-slate-900/95 border border-white/15 p-6 sm:p-8 shadow-2xl shadow-purple-950/50 text-center space-y-6 transform transition-all duration-300 scale-100">
         
+        {/* Botón de Cierre Superior */}
+        <button
+          type="button"
+          onClick={onFinished}
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+          title="Cerrar ventana"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
         {/* Holograma Central 3D del Paquete */}
         <div className="relative mx-auto w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
           {/* Anillos giratorios de alta tasa de cuadros */}
@@ -155,7 +180,7 @@ export const OrderSuccessAnimation: React.FC<Props> = ({
         {/* Botón de Acción Inmediata */}
         <button
           type="button"
-          onClick={handleRedirect}
+          onClick={handleManualClick}
           className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-900/40 transition-all active:scale-98 cursor-pointer group"
         >
           <Send className="w-4 h-4 fill-current group-hover:translate-x-0.5 transition-transform" />

@@ -473,6 +473,17 @@ export class TenantController {
                 individualPickupCode = shalomLivePin.trim();
                 console.log(`[DELIVERY VOUCHER] ✓ Clave de recojo oficial extraída en vivo de Shalom Pro para #${numbersOnly}: "${individualPickupCode}"`);
               }
+
+              // Extraer la guía de remisión REAL más actualizada de Shalom Pro
+              const shalomLiveGuia = (pdfRes.headers['x-shalom-guia'] as string) || (pdfRes.headers['X-Shalom-Guia'] as string);
+              if (shalomLiveGuia && shalomLiveGuia.trim()) {
+                order.guideNumber = shalomLiveGuia.trim();
+                console.log(`[DELIVERY VOUCHER] ✓ Guía oficial más actualizada extraída en vivo de Shalom Pro para #${numbersOnly}: "${order.guideNumber}"`);
+              }
+              const shalomLiveOseId = (pdfRes.headers['x-shalom-ose-id'] as string) || (pdfRes.headers['X-Shalom-Ose-Id'] as string);
+              if (shalomLiveOseId && shalomLiveOseId.trim()) {
+                (order as any).oseId = shalomLiveOseId.trim();
+              }
             }
           } catch (pdfErr: any) {
             console.warn(`[DELIVERY VOUCHER LIVE FETCH WARN ${searchKey}]`, pdfErr?.message);
@@ -499,7 +510,7 @@ export class TenantController {
         }
 
         if (!individualPickupCode) {
-          individualPickupCode = (request.body as any)?.pickupCode || '0808';
+          individualPickupCode = (request.body as any)?.pickupCode || '0909';
         }
 
         // 3. Armar el Mensaje Oficial Conciso para WhatsApp
@@ -542,7 +553,23 @@ export class TenantController {
           }
 
 
-          results.push({ phone: phoneClean, fileName: formattedFileName, status: 'success' });
+          // Persistir estado entregado y datos oficiales más actualizados en Supabase
+          try {
+            await supabaseAdmin
+              .from('pedidos')
+              .update({
+                estado_envio: 'entregado',
+                registrado_shalom: true,
+                ...(order.guideNumber && order.guideNumber !== 'S/G' && !order.guideNumber.startsWith('SH-') ? { shalom_numero_guia: order.guideNumber } : {}),
+                ...(individualPickupCode ? { shalom_clave_recojo: individualPickupCode } : {}),
+                ...((order as any).oseId ? { shalom_ose_id: String((order as any).oseId) } : {}),
+              })
+              .or(`codigo_seguimiento.eq.${numbersOnly},codigo_seguimiento.eq.${rawCode},id.eq.${rawCode}`);
+          } catch (supErr: any) {
+            console.warn('[DELIVERY VOUCHER SUPABASE UPDATE WARN]', supErr?.message);
+          }
+
+          results.push({ phone: phoneClean, fileName: formattedFileName, guideNumber: order.guideNumber, pickupCode: individualPickupCode, status: 'success' });
           successCount++;
         } catch (deliveryErr: any) {
           console.error(`[DELIVERY VOUCHER SEND ERROR ${phoneClean}]`, deliveryErr?.response?.data || deliveryErr?.message);

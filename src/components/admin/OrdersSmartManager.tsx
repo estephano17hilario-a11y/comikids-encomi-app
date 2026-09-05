@@ -37,11 +37,28 @@ import {
   Building2,
   RefreshCw,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Calendar,
+  MessageCircle
 } from 'lucide-react';
 import { getApiBaseUrl } from '../../config/api';
 import { resolveShalomAgencyDetails, extractShalomDestino } from '../../utils/shalomAgencyResolver';
+import { formatFechaConDia } from '../../services/whatsappService';
 
+// Helper exhaustivo para extraer número celular de la clienta
+export const getCleanClientPhone = (order: Pedido): string => {
+  let phone = order.usuario?.telefono_default || '';
+  if (!phone && order.usuario?.dni && order.usuario.dni.length === 9 && order.usuario.dni.startsWith('9')) {
+    phone = order.usuario.dni;
+  }
+  if (!phone && order.destino_detalle) {
+    const match = order.destino_detalle.match(/(?:Tel|Cel|WhatsApp|Telefono|Celular)[\s:]*([0-9]{9})/i);
+    if (match && match[1]) phone = match[1];
+  }
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length >= 9) return digits.slice(-9);
+  return digits;
+};
 
 export const OrdersSmartManager: React.FC = () => {
   const {
@@ -520,7 +537,7 @@ export const OrdersSmartManager: React.FC = () => {
         )}
 
         {/* Client Info */}
-        <div className="space-y-1">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-black text-white tracking-tight truncate">
               {order.usuario?.nombre_completo || 'Cliente'}
@@ -530,6 +547,80 @@ export const OrdersSmartManager: React.FC = () => {
                 {dni}
               </span>
             )}
+          </div>
+
+          {/* Teléfono de la Clienta y Botón Directo a WhatsApp */}
+          {(() => {
+            const clientPhone = getCleanClientPhone(order);
+            const clientName = order.usuario?.nombre_completo || 'Cliente';
+            return (
+              <div className="flex items-center justify-between gap-2 py-0.5" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-[11px] font-mono font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1 shrink-0">
+                    📱 {clientPhone ? `+51 ${clientPhone.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}` : 'Sin teléfono'}
+                  </span>
+                </div>
+
+                {clientPhone ? (
+                  <a
+                    href={`https://wa.me/51${clientPhone}?text=${encodeURIComponent(`¡Hola ${clientName}! Te escribimos de Encomi / ComiKids respecto a tu pedido #${order.codigo_seguimiento}.`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white text-[11px] font-black shadow-xs shadow-emerald-950/50 active:scale-95 transition-all shrink-0 cursor-pointer"
+                    title={`Abrir chat de WhatsApp con ${clientName} (${clientPhone})`}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                    <span>WhatsApp</span>
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingPedido(order);
+                    }}
+                    className="text-[10px] font-bold text-slate-400 hover:text-cyan-300 underline cursor-pointer"
+                  >
+                    + Agregar Teléfono
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Fecha Deseada de Envío Elegida por la Clienta (Visualización y Edición Rápida en Sistema) */}
+          <div className="p-2 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 flex flex-wrap items-center justify-between gap-2 shadow-xs" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-1.5 text-xs text-cyan-200">
+              <Calendar className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div className="leading-tight">
+                <span className="text-[10px] uppercase font-black text-cyan-400 block tracking-wider">
+                  Fecha Envío Cliente:
+                </span>
+                <span className="text-xs font-black text-white">
+                  {formatFechaConDia(order.fecha_limite)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <label className="text-[10px] text-slate-400 font-bold hidden sm:inline" title="Cambiar fecha elegida en el sistema">
+                Cambiar:
+              </label>
+              <input
+                type="date"
+                value={order.fecha_limite || ''}
+                onChange={async (e) => {
+                  e.stopPropagation();
+                  const newDate = e.target.value;
+                  if (newDate) {
+                    await updatePedido(order.id, { fecha_limite: newDate });
+                  }
+                }}
+                className="px-2 py-1 bg-slate-900 border border-cyan-500/40 rounded-xl text-xs font-mono font-bold text-cyan-300 focus:outline-none focus:border-cyan-300 cursor-pointer shadow-inner"
+                title="Cambiar fecha elegida para este envío en el sistema"
+              />
+            </div>
           </div>
 
           <div className="flex items-start gap-1.5 text-xs text-slate-300">
@@ -561,7 +652,13 @@ export const OrdersSmartManager: React.FC = () => {
                     <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/50 px-2.5 py-1 rounded-xl border border-emerald-500/40">
                       <div className="flex items-center gap-1.5 truncate">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span className="truncate">Despachado API: <strong>{order.shalom_numero_guia || (order.shalom_ose_id ? `OSE #${order.shalom_ose_id}` : 'Registrado')}</strong></span>
+                        <span className="truncate">
+                          {order.shalom_numero_guia || order.shalom_ose_id ? (
+                            <>Despachado API: <strong>{order.shalom_numero_guia || `OSE #${order.shalom_ose_id}`}</strong></>
+                          ) : (
+                            <span className="text-amber-300 font-semibold">Marcado para Shalom (Sin Guía API)</span>
+                          )}
+                        </span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         {order.shalom_clave_recojo && (
@@ -882,8 +979,8 @@ export const OrdersSmartManager: React.FC = () => {
                 className="py-2 px-3 rounded-xl bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
                 title="Abrir asistente de registro oficial en Shalom con validaciones"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-yellow-300" />
-                <span>Registrar Shalom</span>
+                <Truck className="w-3.5 h-3.5 text-cyan-300" />
+                <span>Registrar Shalom (1-Clic)</span>
               </button>
 
               {/* Imprimir en Lote */}
@@ -1363,9 +1460,9 @@ export const OrdersSmartManager: React.FC = () => {
           onClose={() => setShowShalomRegister(false)}
           onRegistered={async (results) => {
             for (const r of results) {
-              // SEGURIDAD CRÍTICA: SOLO actualizar pedidos que realmente tengan OSE ID o Guía emitida por Shalom
-              if (!r.oseId && !r.guideNumber) {
-                console.warn(`[ON REGISTERED SKIP] Pedido ${r.pedidoId} no fue emitido en Shalom (sin OSE ID/Guía). No se modifica en base de datos.`);
+              // SEGURIDAD CRÍTICA: SOLO actualizar pedidos que realmente tengan OSE ID o Guía oficial emitida por Shalom
+              if (!r.oseId && (!r.guideNumber || r.guideNumber.startsWith('SH-') || r.guideNumber === 'S/G')) {
+                console.warn(`[ON REGISTERED SKIP] Pedido ${r.pedidoId} no fue emitido en Shalom (sin OSE ID/Guía oficial). No se modifica en base de datos.`);
                 continue;
               }
 
@@ -1486,16 +1583,14 @@ export const OrdersSmartManager: React.FC = () => {
           onOrdersDelivered={async (deliveredIds, updatedMeta) => {
             for (const id of deliveredIds) {
               const meta = updatedMeta?.[id];
-              if (meta?.guia || meta?.pickupCode || meta?.oseId) {
-                await updatePedido(id, {
-                  estado_envio: 'entregado',
-                  ...(meta?.guia ? { shalom_numero_guia: meta.guia } : {}),
-                  ...(meta?.pickupCode ? { shalom_clave_recojo: meta.pickupCode } : {}),
-                  ...(meta?.oseId ? { shalom_ose_id: meta.oseId } : {}),
-                });
-              } else {
-                await updateEstadoEnvio(id, 'entregado');
-              }
+              const isRealGuia = meta?.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-');
+              await updatePedido(id, {
+                estado_envio: 'entregado',
+                registrado_shalom: true,
+                ...(isRealGuia ? { shalom_numero_guia: meta.guia } : {}),
+                ...(meta?.pickupCode ? { shalom_clave_recojo: meta.pickupCode } : {}),
+                ...(meta?.oseId ? { shalom_ose_id: meta.oseId } : {}),
+              });
             }
             clearSelection();
             setDeliveryTargetOrders(null);

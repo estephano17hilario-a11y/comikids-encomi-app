@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
 import { extractShalomDni, extractShalomPhone } from '../../utils/shalomExcelExporter';
-import { validateShalomPin, formatShalomPin } from '../../utils/formatters';
+import { validateShalomPin, formatShalomPin, getDailyShalomPin } from '../../utils/formatters';
 import {
   FileText,
   Send,
@@ -68,7 +68,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const [overallSuccess, setOverallSuccess] = useState(false);
   const [currentStepText, setCurrentStepText] = useState('');
   const [searchingId, setSearchingId] = useState<string | null>(null);
-  const [pickupCode, setPickupCode] = useState('0808');
+  const [pickupCode, setPickupCode] = useState(() => getDailyShalomPin());
   const auditedRef = React.useRef(false);
   const cancelledAuditRef = React.useRef(false);
 
@@ -100,11 +100,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const manualGuideInput = isRealShalomGuide ? o.shalom_numero_guia! : '';
       const orderPickupCode = o.shalom_clave_recojo || (o as any).clave_recojo || formatShalomPin(pickupCode);
       
-      const hasPriorRegistration = Boolean(
-        isRealShalomGuide ||
-        o.shalom_ose_id ||
-        (o as any).shalom_registrado_api === true
-      );
+      const cleanDni = dni.replace(/\D/g, '').trim();
+      const hasIdent = Boolean(cleanDni.length >= 6 || o.codigo_seguimiento || o.shalom_numero_guia || o.shalom_ose_id);
 
       return {
         orderId: o.id,
@@ -117,7 +114,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         agencyName: o.destino_detalle || 'Agencia Shalom',
         fileName,
         pickupCode: orderPickupCode,
-        auditStatus: hasPriorRegistration ? 'auditing' : 'not_found',
+        auditStatus: hasIdent ? 'auditing' : 'not_found',
         sendStatus: 'idle',
       };
     });
@@ -159,17 +156,20 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         };
 
         let pdfData: string | null = null;
-        const handleMeta = (meta: { pickupCode?: string; guia?: string }) => {
+        const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
           if (meta.pickupCode) {
             item.pickupCode = meta.pickupCode;
           }
-          if (meta.guia) {
+          if (meta.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-')) {
             item.guideNumber = meta.guia;
             item.manualGuideInput = meta.guia;
+            const safeName = item.customerName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
+            item.fileName = `Guia_Shalom_${safeName}_${meta.guia}.pdf`;
           }
         };
 
-        const primarySearchKey = originalOrder?.shalom_ose_id || 
+        // PRIORIDAD ABSOLUTA: Consultar por DNI para asegurar que trae el último paquete registrado y más actualizado
+        const primarySearchKey = cleanDni || originalOrder?.shalom_ose_id || 
           (item.manualGuideInput?.trim() || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '')) || 
           item.trackingCode;
 
@@ -242,13 +242,15 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       internalCode: item.trackingCode,
     };
 
-    const handleMeta = (meta: { pickupCode?: string; guia?: string }) => {
+    const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
       if (meta.pickupCode) {
         item.pickupCode = meta.pickupCode;
       }
-      if (meta.guia) {
+      if (meta.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-')) {
         item.guideNumber = meta.guia;
         item.manualGuideInput = meta.guia;
+        const safeName = item.customerName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
+        item.fileName = `Guia_Shalom_${safeName}_${meta.guia}.pdf`;
       }
     };
 
@@ -466,7 +468,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                   maxLength={4}
                   value={pickupCode}
                   onChange={(e) => setPickupCode(formatShalomPin(e.target.value))}
-                  placeholder="0808"
+                  placeholder={pickupCode || '0909'}
                   className={`w-20 px-2.5 py-1.5 rounded-xl bg-slate-950 border font-mono font-bold text-center text-sm focus:outline-none transition-all shadow-inner ${
                     validateShalomPin(pickupCode).isValid
                       ? 'border-amber-500/50 text-amber-300 focus:border-amber-400 focus:ring-1 focus:ring-amber-400'

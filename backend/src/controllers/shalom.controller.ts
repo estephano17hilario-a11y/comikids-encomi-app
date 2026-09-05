@@ -296,9 +296,9 @@ export class ShalomController {
       const rawPhone = String(order.receiver?.phone || order.destinatario?.telefono || '999999999').replace(/\D/g, '');
       const phoneInt = parseInt(rawPhone.slice(-9), 10) || 900000000;
 
-      let pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '0808').trim().replace(/\D/g, '').slice(0, 4);
-      if (pickupCode.length !== 4 || pickupCode === '1234' || (Number(pickupCode) >= 2010 && Number(pickupCode) <= 2026)) {
-        pickupCode = '0808';
+      let pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '0909').trim().replace(/\D/g, '').slice(0, 4);
+      if (pickupCode.length !== 4 || pickupCode === '1234' || (Number(pickupCode) >= 2010 && Number(pickupCode) <= 2026) || pickupCode === '0808') {
+        pickupCode = '0909';
       }
 
       const orderToCreate = {
@@ -356,17 +356,29 @@ export class ShalomController {
       // Desempaquetar exhaustivamente los datos retornados por Shalom Pro
       const rawResData = response?.data?.data || response?.data?.order || response?.data || {};
       const oseId = rawResData.ose_id || rawResData.id || rawResData.order_id || (response?.data?.id ? response.data.id : null);
+      
+      // SEGURIDAD CRÍTICA: Si Shalom Pro no retornó un ID numérico de orden, fallar de inmediato
+      // para evitar que el usuario crea erróneamente que el pedido fue admitido en Shalom
+      if (!oseId) {
+        console.error('[SHALOM PROXY CREATE ORDER ERROR] Shalom Pro no retornó un ID de orden válido:', response?.data);
+        return reply.code(200).send({
+          success: false,
+          error: 'Shalom Pro no confirmó la creación de la orden (no se recibió un ID oficial de Shalom). Verifica los datos de agencia y destinatario.',
+        });
+      }
+
       const serie = rawResData.serie || response?.data?.serie || 'V204';
       const rawGuia = rawResData.guia || rawResData.guide_number || rawResData.numero_guia || response?.data?.guia;
-      const fullGuia = rawGuia ? (serie && !String(rawGuia).includes('-') ? `${serie}-${rawGuia}` : String(rawGuia)) : (oseId ? `${serie}-${oseId}` : `SH-${oseId || 'OK'}`);
-      const trackingCode = rawResData.codigo || rawResData.tracking_code || rawResData.pickup_code || String(oseId || '');
+      // NUNCA generar guías sintéticas como 'SH-OK' o 'V204-ID'. Solo usar guía oficial si fue asignada
+      const fullGuia = rawGuia ? (serie && !String(rawGuia).includes('-') ? `${serie}-${rawGuia}` : String(rawGuia)) : null;
+      const trackingCode = rawResData.codigo || rawResData.tracking_code || rawResData.pickup_code || String(oseId);
       const confirmedPin = rawResData.pickup_code || rawResData.codigo || pickupCode;
 
       const normalizedData = {
         ...rawResData,
         id: oseId,
         ose_id: oseId,
-        guia: rawGuia || oseId,
+        guia: rawGuia || null,
         serie,
         guide_number: fullGuia,
         numero_guia: fullGuia,
@@ -396,6 +408,8 @@ export class ShalomController {
       let errMsg = errData?.message || errData?.error?.message || errData?.error || error?.message || 'Error en Shalom Pro';
       if (errData?.error?.code === 'shalom_login_unavailable' || errMsg.includes('autenticar') || errMsg.includes('login')) {
         errMsg = 'No se pudo autenticar la cuenta contra Shalom Pro en este momento. El servidor de Shalom está ocupado o con verificación de seguridad. Reintenta en unos minutos.';
+      } else if (errMsg.includes('clave del d') || errMsg.includes('clave de ayer') || errMsg.includes('dia anterior') || errMsg.includes('reutilizar claves')) {
+        errMsg = `Shalom Pro: No puede usar la clave del día anterior. La clave se ha rotado automáticamente a una nueva. Reintenta con la nueva clave.`;
       } else if (error.code === 'ECONNABORTED' || errMsg.includes('timeout')) {
         errMsg = 'Tiempo de espera agotado al conectar con Shalom Pro (el servidor de Shalom tardó más de 25s en responder).';
       }
@@ -545,28 +559,6 @@ export class ShalomController {
       const SHOP_PHONES = ['927781412', '987654321', '986398000', '989834969', '51927781412', '51987654321'];
       const SHOP_DNIS = ['42020312', '00000000', '20512528458', '20000000001'];
 
-      // 0. INTENTO DIRECTO RÁPIDO (50ms): Si el parámetro es un ID numérico de Shalom (ej: 97593650), descargarlo directamente
-      if (/^\d{5,12}$/.test(cleanSearch)) {
-        try {
-          const directRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/${endpoint}`,
-            {
-              headers,
-              responseType: 'arraybuffer',
-              timeout: 12000,
-            }
-          );
-          if (directRes.status === 200 && directRes.data && directRes.data.length > 100) {
-            console.log(`[SHALOM PROXY DIRECT PDF SUCCESS] Ticket descargado directamente para OSE ID #${cleanSearch} (${directRes.data.length} bytes)`);
-            reply.header('Content-Type', 'application/pdf');
-            reply.header('Content-Disposition', `inline; filename="${filePrefix}_${cleanSearch}.pdf"`);
-            return reply.send(directRes.data);
-          }
-        } catch (directErr: any) {
-          console.log(`[SHALOM PROXY DIRECT PDF NOTICE] ID ${cleanSearch} no respondió directo (${directErr?.message}), buscando en catálogo inteligente...`);
-        }
-      }
-
       // 1. Extraer identificadores limpios del cliente (Sin falsos positivos)
       const is8DigitDni = /^\d{8}$/.test(cleanSearch);
       const is11DigitRuc = /^\d{11}$/.test(cleanSearch);
@@ -586,6 +578,30 @@ export class ShalomController {
       const targetPhone = SHOP_PHONES.includes(rawPhone) || SHOP_PHONES.some(p => rawPhone.endsWith(p)) ? '' : rawPhone;
       const targetName = ['clienta', 'cliente', 'comikids', 'encomi', 'milagros', 'usuario', 'destinatario'].includes(rawName) || rawName.length < 3 ? '' : rawName;
 
+      // 0. INTENTO DIRECTO RÁPIDO (50ms): SOLO si NO hay DNI de clienta a buscar (si hay DNI, es obligatorio buscar el último paquete actualizado)
+      if (!targetDni && /^\d{5,12}$/.test(cleanSearch)) {
+        try {
+          const directRes = await axios.get(
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/${endpoint}`,
+            {
+              headers,
+              responseType: 'arraybuffer',
+              timeout: 12000,
+            }
+          );
+          if (directRes.status === 200 && directRes.data && directRes.data.length > 100) {
+            console.log(`[SHALOM PROXY DIRECT PDF SUCCESS] Ticket descargado directamente para OSE ID #${cleanSearch} (${directRes.data.length} bytes)`);
+            reply.header('Content-Type', 'application/pdf');
+            reply.header('Content-Disposition', `inline; filename="${filePrefix}_${cleanSearch}.pdf"`);
+            reply.header('Access-Control-Expose-Headers', 'X-Shalom-Ose-Id');
+            reply.header('X-Shalom-Ose-Id', cleanSearch);
+            return reply.send(directRes.data);
+          }
+        } catch (directErr: any) {
+          console.log(`[SHALOM PROXY DIRECT PDF NOTICE] ID ${cleanSearch} no respondió directo (${directErr?.message}), buscando en catálogo inteligente...`);
+        }
+      }
+
       console.log(`[SHALOM PROXY POS TICKET] Consultando Ticket Oficial Shalom (DNI: "${targetDni || 'S/DNI'}", Guía: "${targetGuia || 'S/G'}", Code: "${targetInternalCode || 'S/C'}", Tel: "${targetPhone || 'S/T'}", Nombre: "${targetName || 'S/N'}")...`);
 
       // Helper para extraer DNI normalizado de una orden
@@ -594,8 +610,13 @@ export class ShalomController {
           o.receiver?.document || 
           o.receiver?.document_number || 
           o.destinatario?.documento || 
+          o.destinatario?.document_number ||
           o.receiver?.doc || 
+          o.receiver?.dni ||
           o.receiver_document || 
+          o.document_number ||
+          o.request?.receiver?.document ||
+          o.data?.receiver?.document ||
           ''
         ).replace(/\D/g, '').trim();
       };
@@ -661,13 +682,20 @@ export class ShalomController {
         const pool = list.filter(isActiveOrder);
 
         // 1. PRIORIDAD ABSOLUTA: Coincidencia por DNI del destinatario
-        // Toma SIEMPRE el despacho activo MÁS NUEVO de esta clienta (ID más alto)
+        // Toma SIEMPRE el despacho activo MÁS NUEVO de esta clienta (ID más alto y fecha más reciente)
         if (targetDni && targetDni.length >= 6) {
           const dniMatches = pool.filter((o: any) => getOrderReceiverDni(o) === targetDni);
 
           if (dniMatches.length > 0) {
-            // Ordenar por ID descendente (el despacho más nuevo al inicio)
-            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+            // Ordenar por ID / Fecha descendente (el despacho más nuevo y reciente al inicio)
+            dniMatches.sort((a, b) => {
+              const dateA = new Date(a.created_at || a.fecha_emision || a.fecha || 0).getTime();
+              const dateB = new Date(b.created_at || b.fecha_emision || b.fecha || 0).getTime();
+              if (dateB !== dateA && !isNaN(dateA) && !isNaN(dateB)) {
+                return dateB - dateA;
+              }
+              return Number(b.id || 0) - Number(a.id || 0);
+            });
 
             // Si el usuario especificó una guía manual exacta, verificarla
             if (targetGuia && targetGuia.length >= 5) {
@@ -684,7 +712,8 @@ export class ShalomController {
             const nameFiltered = dniMatches.filter(isNameCompatible);
             const bestMatches = nameFiltered.length > 0 ? nameFiltered : dniMatches;
 
-            // Retornar SIEMPRE el despacho más nuevo (ID más alto)
+            // Retornar SIEMPRE el despacho más nuevo de esta clienta
+            console.log(`[SHALOM PROXY] ✓ Seleccionado paquete MÁS ACTUALIZADO para DNI ${targetDni}: Orden #${bestMatches[0].id} (Guía: ${bestMatches[0].serie || 'V204'}-${bestMatches[0].guia || bestMatches[0].id})`);
             return bestMatches[0];
           }
 

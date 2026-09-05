@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { getApiBaseUrl } from '../../config/api';
 import { useOrders } from '../../context/OrderContext';
 import { Pedido } from '../../types/database.types';
+import { getDailyShalomPin } from '../../utils/formatters';
 import {
   QrCode,
   CheckCircle2,
@@ -351,7 +352,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
               customerName: selectedOrderForDispatch.usuario?.nombre_completo || 'Cliente',
               trackingCode: selectedOrderForDispatch.codigo_seguimiento,
               agencyName: selectedOrderForDispatch.destino_detalle || 'Agencia Shalom',
-              pickupCode: selectedOrderForDispatch.shalom_clave_recojo || '0808',
+              pickupCode: selectedOrderForDispatch.shalom_clave_recojo || getDailyShalomPin(),
               guideNumber: selectedOrderForDispatch.shalom_numero_guia || selectedOrderForDispatch.codigo_seguimiento,
             },
           ],
@@ -410,7 +411,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
           trackingCode: selectedOrderForNotify.codigo_seguimiento,
           agencyName: selectedOrderForNotify.destino_detalle,
           guideNumber: selectedOrderForNotify.shalom_numero_guia || selectedOrderForNotify.codigo_seguimiento,
-          pickupCode: selectedOrderForNotify.shalom_clave_recojo || '0808',
+          pickupCode: selectedOrderForNotify.shalom_clave_recojo || getDailyShalomPin(),
         }),
       });
 
@@ -453,7 +454,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
           trackingCode: 'TEST-001',
           agencyName: 'Oficina Central',
           guideNumber: 'TEST-WHATSAPP',
-          pickupCode: '0808',
+          pickupCode: getDailyShalomPin(),
         }),
       });
 

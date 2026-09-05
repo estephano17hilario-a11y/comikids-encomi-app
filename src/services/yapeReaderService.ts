@@ -159,10 +159,10 @@ export const yapeReaderService = {
       handle = h;
     }).catch(() => {});
 
-    // Polling de respaldo cada 5 segundos
+    // Polling de respaldo cada 3.5 segundos (3-4 segundos)
     const interval = setInterval(() => {
       this.syncNativeYapes();
-    }, 5000);
+    }, 3500);
 
     return () => {
       if (handle) handle.remove();

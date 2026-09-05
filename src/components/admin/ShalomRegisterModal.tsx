@@ -5,7 +5,7 @@ import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalo
 import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
 import { ShalomApiService, ShalomDispatchResult } from '../../services/shalomApiService';
 import { getApiBaseUrl } from '../../config/api';
-import { validateShalomPin, formatShalomPin } from '../../utils/formatters';
+import { validateShalomPin, formatShalomPin, getDailyShalomPin, getNextShalomPin, saveUsedShalomPin } from '../../utils/formatters';
 
 import {
   X,
@@ -65,8 +65,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const [downloadingPdfIds, setDownloadingPdfIds] = useState<Record<string, boolean>>({});
   const [downloadingAll, setDownloadingAll] = useState(false);
 
-  // Clave de recojo temporal para Shalom
-  const [pickupCode, setPickupCode] = useState('0808');
+  // Clave de recojo temporal para Shalom (rotación diaria automática anti-errores)
+  const [pickupCode, setPickupCode] = useState(() => getDailyShalomPin());
+  const [pinYesterdayError, setPinYesterdayError] = useState<{ oldPin: string; newPin: string } | null>(null);
 
   // Modo tradicional Excel fallback
   const [isExportingExcel, setIsExportingExcel] = useState(false);
@@ -229,7 +230,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       const res = await ShalomApiService.registerOrder(payload, auth);
       res.pickupCode = rowPickupCode;
 
-      if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
+      if (res.success && (res.oseId || (res.guideNumber && !res.guideNumber.startsWith('SH-') && res.guideNumber !== 'S/G'))) {
         try {
           const clientCtx = {
             dni: row.data.dni,
@@ -293,6 +294,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       return;
     }
 
+    setPinYesterdayError(null);
     setIsDispatching(true);
     setActiveTab('dispatching');
     setProgressIndex(0);
@@ -309,14 +311,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       const row = auditedRows[i];
       setProgressIndex(i + 1);
 
-      // Rate Limiting dinámico y adaptativo:
-      // - Si son más de 15 paquetes: intervalo aleatorio entre 1.1s y 2.1s (1100ms a 2100ms) para evitar detección por ráfagas y bloqueos WAF
-      // - Si son 15 o menos paquetes: intervalo aleatorio entre 1.1s y 1.8s (1100ms a 1800ms)
+      // Rate Limiting solicitado: exactamente entre 3 y 4 segundos por orden (3000ms a 4000ms)
       if (i > 0) {
-        const isLargeBatch = auditedRows.length > 15;
-        const delayMs = isLargeBatch
-          ? Math.floor(1100 + Math.random() * 1000) // 1.1s a 2.1s
-          : Math.floor(1100 + Math.random() * 700);  // 1.1s a 1.8s
+        const delayMs = Math.floor(3000 + Math.random() * 1000); // 3.0s a 4.0s
         await new Promise(r => setTimeout(r, delayMs));
       }
 
@@ -358,15 +355,39 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         const res = await ShalomApiService.registerOrder(payload, auth);
         res.pickupCode = rowPickupCode;
         
-        if (res.success && (res.oseId || res.guideNumber || res.trackingCode)) {
+        if (res.success && (res.oseId || (res.guideNumber && !res.guideNumber.startsWith('SH-') && res.guideNumber !== 'S/G'))) {
           successfulIds.push(row.pedido.id);
         }
 
         resultsMap[row.pedido.id] = res;
 
-        // Si Shalom Pro reporta indisponibilidad de autenticación o bloqueo de sesión, detener el lote inmediatamente
+        // Si Shalom Pro reporta error por clave usada ayer o indisponibilidad de autenticación, detener el lote inmediatamente
         if (!res.success) {
           const errStr = String(typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || '')).toLowerCase();
+          
+          // Detección de regla de clave del día anterior de Shalom Pro
+          const isPinYesterday = errStr.includes('clave del d') || errStr.includes('clave de ayer') || errStr.includes('dia anterior') || errStr.includes('reutilizar claves');
+          if (isPinYesterday) {
+            const nextPin = getNextShalomPin(rowPickupCode);
+            setPickupCode(nextPin);
+            setPinYesterdayError({ oldPin: rowPickupCode, newPin: nextPin });
+            console.warn(`[SHALOM PIN AUTO-RECOVERY] Clave ${rowPickupCode} rechazada por Shalom (usada ayer). Rotada automáticamente a ${nextPin}. Deteniendo lote para reintento en 1 clic.`);
+            for (let j = i + 1; j < auditedRows.length; j++) {
+              const remRow = auditedRows[j];
+              resultsMap[remRow.pedido.id] = {
+                pedidoId: remRow.pedido.id,
+                codigoSeguimiento: remRow.pedido.codigo_seguimiento,
+                success: false,
+                errorMessage: `Shalom Pro no permite la clave '${rowPickupCode}' (fue la usada ayer). Nueva clave lista: '${nextPin}'. Presiona 'Reintentar todo en 1-Clic'.`,
+                customerPhone: remRow.data.phone,
+                customerName: remRow.data.name,
+                agencyName: remRow.destino,
+                pickupCode: nextPin,
+              };
+            }
+            break;
+          }
+
           if (errStr.includes('autenticar') || errStr.includes('shalom_login_unavailable') || errStr.includes('credenciales') || errStr.includes('unauthorized')) {
             console.warn('[SHALOM DISPATCH STOP] Deteniendo lote por fallo de autenticación en Shalom Pro.');
             for (let j = i + 1; j < auditedRows.length; j++) {
@@ -407,6 +428,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     setActiveTab('finished');
 
     if (successfulIds.length > 0) {
+      saveUsedShalomPin(pickupCode);
       try {
         const successResults = successfulIds.map(id => {
           const res = resultsMap[id];
@@ -618,7 +640,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                     maxLength={4}
                     value={pickupCode}
                     onChange={(e) => setPickupCode(formatShalomPin(e.target.value))}
-                    placeholder="0808"
+                    placeholder={pickupCode || '0909'}
                     className={`w-20 px-2.5 py-1.5 rounded-xl bg-slate-950 border font-mono font-bold text-center text-sm focus:outline-none transition-all shadow-inner ${
                       validateShalomPin(pickupCode).isValid
                         ? 'border-amber-500/50 text-amber-300 focus:border-amber-400 focus:ring-1 focus:ring-amber-400'
@@ -820,7 +842,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               </p>
               <div className="pt-1">
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-emerald-300 bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-500/40 font-semibold shadow-inner">
-                  🛡️ Intervalo dinámico antibloqueo activo ({totalCount > 15 ? '1.1s – 2.1s' : '1.1s – 1.8s'} por paquete)
+                  🛡️ Intervalo dinámico antibloqueo activo (3.0s – 4.0s por paquete)
                 </span>
               </div>
             </div>
@@ -885,6 +907,52 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                 </button>
               )}
             </div>
+
+            {/* Banner de Recuperación Inmediata en 1-Clic si la clave fue rechazada por ser la de ayer */}
+            {pinYesterdayError && (
+              <div className="p-4 rounded-2xl bg-amber-500/20 border-2 border-amber-500/50 text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn shadow-lg shadow-amber-950/40">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/30 flex items-center justify-center text-amber-300 shrink-0 font-bold">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Clave '{pinYesterdayError.oldPin}' fue la usada ayer en Shalom Pro</span>
+                      <span className="text-[10px] bg-amber-500/30 px-2 py-0.5 rounded-full text-amber-200 border border-amber-500/40 font-mono font-bold">
+                        Nueva: {pinYesterdayError.newPin}
+                      </span>
+                    </h4>
+                    <p className="text-xs text-amber-300/90 mt-0.5">
+                      Shalom Pro exige no repetir la clave del día anterior. Hemos rotado automáticamente la clave a <strong className="text-white font-mono">{pinYesterdayError.newPin}</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Actualizar todas las filas editadas con el nuevo PIN y reintentar inmediatamente en 1 clic
+                    const updatedEdited: Record<string, { dni: string; phone: string; name: string; pickupCode?: string }> = {};
+                    for (const p of pedidos) {
+                      updatedEdited[p.id] = {
+                        ...(editedData[p.id] || { dni: '', phone: '', name: '' }),
+                        pickupCode: pinYesterdayError.newPin,
+                      };
+                    }
+                    setEditedData(updatedEdited);
+                    setPickupCode(pinYesterdayError.newPin);
+                    setPinYesterdayError(null);
+                    setTimeout(() => {
+                      handleStartApiDispatch();
+                    }, 50);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>⚡ Reintentar todo en 1-Clic con PIN {pinYesterdayError.newPin}</span>
+                </button>
+              </div>
+            )}
 
             {/* Listado de Resultados y Descarga de Rótulos / Reintentos */}
             <div className="space-y-2.5">
@@ -1103,7 +1171,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                 ) : (
                   <>
                     <Truck className="w-4 h-4" />
-                    <span>Despachar Automáticamente vía API</span>
+                    <span>⚡ Registrar con 1-Clic vía API</span>
                   </>
                 )}
               </button>

@@ -155,11 +155,10 @@ class OrdersService {
       this.saveUsers(users);
 
       if (isSupabaseConfigured && supabase) {
-        try {
-          await supabase.from('usuarios').upsert(users[existingIdx]);
-        } catch (err) {
-          console.warn('Error actualizando usuario existente en Supabase:', err);
-        }
+        Promise.race([
+          supabase.from('usuarios').upsert(users[existingIdx]),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout upsert usuario')), 2500))
+        ]).catch(err => console.warn('Supabase upsert existing usuario warn:', err));
       }
       return { user: users[existingIdx] };
     }
@@ -183,13 +182,12 @@ class OrdersService {
     users.push(newUser);
     this.saveUsers(users);
 
-    // Save to Supabase if connected
+    // Save to Supabase if connected with 2.5s timeout
     if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('usuarios').upsert(newUser);
-      } catch (err) {
-        console.warn('Error guardando usuario en Supabase:', err);
-      }
+      Promise.race([
+        supabase.from('usuarios').upsert(newUser),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout upsert usuario')), 2500))
+      ]).catch(err => console.warn('Supabase upsert new usuario warn:', err));
     }
 
     return { user: newUser };
@@ -245,11 +243,10 @@ class OrdersService {
     this.saveUsers(users);
 
     if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('usuarios').update(updates).eq('id', userId);
-      } catch (e) {
-        console.warn(e);
-      }
+      Promise.race([
+        supabase.from('usuarios').update(updates).eq('id', userId),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout update usuario')), 2500))
+      ]).catch(e => console.warn('Supabase update usuario warn:', e));
     }
     return users[index];
   }
@@ -561,53 +558,66 @@ class OrdersService {
 
     // Contar pedidos previos del usuario para dar XP y logros correctos
     const allOrders = this.getLocalOrders();
-    const userOrderCount = allOrders.filter(o => o.usuario_id === pedidoData.usuario_id).length + 1; // +1 por el nuevo
+    const userOrderCount = allOrders.filter(o => o.usuario_id === pedidoData.usuario_id).length;
 
-    // Dar XP base por el pedido
-    await this.awardXp(pedidoData.usuario_id, 50);
-
-    // Verificar logros basados en conteo
-    const { ACHIEVEMENTS_CATALOG } = await import('../data/achievementsList');
-    for (const ach of ACHIEVEMENTS_CATALOG) {
-      if (ach.reqCount && userOrderCount >= ach.reqCount) {
-        const existing = this.getLocalAchievements();
-        if (!existing.some(a => a.usuario_id === pedidoData.usuario_id && a.codigo_logro === ach.codigo)) {
-          await this.awardXp(pedidoData.usuario_id, ach.puntosXp, ach.codigo, ach.titulo, ach.descripcion);
-        }
-      }
-    }
-
-    if (isSupabaseConfigured && supabase) {
+    // Sincronización en segundo plano con protección de timeout para NO bloquear al usuario
+    const syncCloudAndXp = async () => {
       try {
-        // Asegurar que el usuario existe en Supabase antes de insertar el pedido
-        if (pedidoData.usuario) {
-          const cleanUser = {
-            id: pedidoData.usuario.id,
-            dni: pedidoData.usuario.dni,
-            nombre_completo: pedidoData.usuario.nombre_completo,
-            edad: pedidoData.usuario.edad ? Number(pedidoData.usuario.edad) : null,
-            genero: pedidoData.usuario.genero || null,
-            motivo_compra: pedidoData.usuario.motivo_compra || null,
-            password_hash: pedidoData.usuario.password_hash || 'incomi2026',
-            rol: pedidoData.usuario.rol || 'client',
-            avatar_url: pedidoData.usuario.avatar_url || '',
-            puntos_xp: pedidoData.usuario.puntos_xp || 0,
-            nivel: pedidoData.usuario.nivel || 1,
-            telefono_default: pedidoData.usuario.telefono_default || null,
-            created_at: pedidoData.usuario.created_at || now,
-          };
-          await supabase.from('usuarios').upsert(cleanUser);
+        // 1. Dar XP base por el pedido de forma asíncrona
+        this.awardXp(pedidoData.usuario_id, 50).catch(e => console.warn('XP award warn:', e));
+
+        // 2. Verificar logros basados en conteo
+        try {
+          const { ACHIEVEMENTS_CATALOG } = await import('../data/achievementsList');
+          for (const ach of ACHIEVEMENTS_CATALOG) {
+            if (ach.reqCount && userOrderCount >= ach.reqCount) {
+              const existing = this.getLocalAchievements();
+              if (!existing.some(a => a.usuario_id === pedidoData.usuario_id && a.codigo_logro === ach.codigo)) {
+                this.awardXp(pedidoData.usuario_id, ach.puntosXp, ach.codigo, ach.titulo, ach.descripcion).catch(console.warn);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Achievements sync warn:', e);
         }
 
-        const dbPayload = this.sanitizePedidoForDb(newPedido);
-        const { error: insError } = await supabase.from('pedidos').upsert(dbPayload);
-        if (insError) {
-          console.error('Error insertando pedido en Supabase:', insError);
+        // 3. Guardar en Supabase con timeout de 3.5s para no quedar colgado
+        if (isSupabaseConfigured && supabase) {
+          if (pedidoData.usuario) {
+            const cleanUser = {
+              id: pedidoData.usuario.id,
+              dni: pedidoData.usuario.dni,
+              nombre_completo: pedidoData.usuario.nombre_completo,
+              edad: pedidoData.usuario.edad ? Number(pedidoData.usuario.edad) : null,
+              genero: pedidoData.usuario.genero || null,
+              motivo_compra: pedidoData.usuario.motivo_compra || null,
+              password_hash: pedidoData.usuario.password_hash || 'incomi2026',
+              rol: pedidoData.usuario.rol || 'client',
+              avatar_url: pedidoData.usuario.avatar_url || '',
+              puntos_xp: pedidoData.usuario.puntos_xp || 0,
+              nivel: pedidoData.usuario.nivel || 1,
+              telefono_default: pedidoData.usuario.telefono_default || null,
+              created_at: pedidoData.usuario.created_at || now,
+            };
+            await Promise.race([
+              supabase.from('usuarios').upsert(cleanUser),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout upsert usuario')), 3500))
+            ]).catch(err => console.warn('Supabase upsert usuario warn:', err));
+          }
+
+          const dbPayload = this.sanitizePedidoForDb(newPedido);
+          await Promise.race([
+            supabase.from('pedidos').upsert(dbPayload),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout upsert pedido')), 3500))
+          ]).catch(err => console.warn('Supabase upsert pedido warn:', err));
         }
       } catch (err) {
-        console.error('Error al guardar pedido en Supabase:', err);
+        console.warn('Error en sincronización background de nuevo pedido:', err);
       }
-    }
+    };
+
+    // Disparar sincronización sin bloquear el retorno inmediato
+    syncCloudAndXp();
 
     return newPedido;
   }

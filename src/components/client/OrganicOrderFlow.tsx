@@ -620,84 +620,98 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             olva_modalidad_default: olvaModalidad,
           };
           activeUser = { ...activeUser, ...userUpdates };
-          await ordersService.updateUserProfile(activeUser.id, userUpdates);
+          ordersService.updateUserProfile(activeUser.id, userUpdates).catch(e => console.warn('User profile update warn:', e));
         } else {
-          // Registrar o actualizar el perfil de la clienta
-          const regRes = await ordersService.registerUser(
-            nombreCompleto.trim(),
-            userIdentifier,
-            undefined,
-            'incomi2026',
-            whatsapp.trim()
-          );
-          activeUser = regRes.user || null;
-          if (activeUser) {
-            await ordersService.updateUserProfile(activeUser.id, {
-              dni_default: dniShalom.trim().length >= 8 ? dniShalom.trim() : undefined,
-              email_default: correoCliente.trim() || undefined,
-              distrito_default: distritoQuery.trim() || undefined,
-              direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || undefined,
-              referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || undefined,
-              olva_modalidad_default: olvaModalidad,
-            } as any);
-          }
-          if (currentUser?.rol !== 'empresa' && activeUser) {
-            await login(userIdentifier, 'incomi2026');
+          // Registrar o actualizar el perfil de la clienta en memoria
+          try {
+            const regRes = await ordersService.registerUser(
+              nombreCompleto.trim(),
+              userIdentifier,
+              undefined,
+              'incomi2026',
+              whatsapp.trim()
+            );
+            activeUser = regRes.user || null;
+            if (activeUser) {
+              ordersService.updateUserProfile(activeUser.id, {
+                dni_default: dniShalom.trim().length >= 8 ? dniShalom.trim() : undefined,
+                email_default: correoCliente.trim() || undefined,
+                distrito_default: distritoQuery.trim() || undefined,
+                direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || undefined,
+                referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || undefined,
+                olva_modalidad_default: olvaModalidad,
+              } as any).catch(e => console.warn('User extra update warn:', e));
+            }
+          } catch (regErr) {
+            console.warn('Error en registro preliminar de usuario (continuando con pedido):', regErr);
           }
         }
 
-      let finalDestinoDetalle = '';
-      let agencyLat = selectedAgencyObject?.latitude ? Number(selectedAgencyObject.latitude) : undefined;
-      let agencyLng = selectedAgencyObject?.longitude ? Number(selectedAgencyObject.longitude) : undefined;
+        let finalDestinoDetalle = '';
+        let agencyLat = selectedAgencyObject?.latitude ? Number(selectedAgencyObject.latitude) : undefined;
+        let agencyLng = selectedAgencyObject?.longitude ? Number(selectedAgencyObject.longitude) : undefined;
 
-      if (selectedMethod?.tipo_formulario === 'shalom') {
-        const fullAgencyStr = selectedAgencyObject ? formatFullAgencyName(selectedAgencyObject) : 'AGENCIA SHALOM CENTRAL';
-        finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dniShalom.trim()})`;
-      } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
-        finalDestinoDetalle = `${distritoQuery.trim()} • ${direccionExacta.trim()}${referencia.trim() ? ` (Ref: ${referencia.trim()})` : ''}`;
-      } else if (selectedMethod?.tipo_formulario === 'olva') {
-        const modLabel = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
-        const refText = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';
-        finalDestinoDetalle = `Olva Courier (${modLabel}): ${olvaDireccion.trim()}${refText} • DNI: ${dniShalom.trim()} • Tel: ${whatsapp.trim()} • Correo: ${correoCliente.trim()}`;
-      } else {
-        finalDestinoDetalle = customDestinoText.trim() || 'Indicaciones de entrega';
+        if (selectedMethod?.tipo_formulario === 'shalom') {
+          const fullAgencyStr = selectedAgencyObject ? formatFullAgencyName(selectedAgencyObject) : 'AGENCIA SHALOM CENTRAL';
+          finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dniShalom.trim()})`;
+        } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
+          finalDestinoDetalle = `${distritoQuery.trim()} • ${direccionExacta.trim()}${referencia.trim() ? ` (Ref: ${referencia.trim()})` : ''}`;
+        } else if (selectedMethod?.tipo_formulario === 'olva') {
+          const modLabel = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
+          const refText = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';
+          finalDestinoDetalle = `Olva Courier (${modLabel}): ${olvaDireccion.trim()}${refText} • DNI: ${dniShalom.trim()} • Tel: ${whatsapp.trim()} • Correo: ${correoCliente.trim()}`;
+        } else {
+          finalDestinoDetalle = customDestinoText.trim() || 'Indicaciones de entrega';
+        }
+
+        const clientUserData = activeUser || {
+          id: 'usr-' + Date.now().toString(36),
+          dni: userIdentifier,
+          nombre_completo: nombreCompleto.trim(),
+          telefono_default: whatsapp.trim(),
+          email: correoCliente.trim() || undefined,
+          rol: 'client',
+          created_at: new Date().toISOString()
+        };
+
+        const orderPayload = {
+          usuario_id: clientUserData.id,
+          usuario: clientUserData,
+          detalles_bordado: `Envío de Mercadería para ${nombreCompleto.trim()}`,
+          metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
+          metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
+          destino_detalle: finalDestinoDetalle,
+          latitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLat : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lat : undefined),
+          longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
+          observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
+          fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
+        };
+
+        // Creación del pedido con timeout de rescate para asegurar que NUNCA se quede colgado
+        const newOrder = await Promise.race([
+          createPedido(orderPayload),
+          new Promise<Pedido>((_, reject) => setTimeout(() => reject(new Error('Timeout de creación de pedido')), 4000))
+        ]).catch((createErr) => {
+          console.warn('Timeout o fallo en createPedido context, usando fallback local inmediato:', createErr);
+          return ordersService.createPedido(orderPayload);
+        });
+
+        triggerConfetti();
+        setCreatedOrder(newOrder);
+        setShowDispatchAnimation(true);
+
+        // Login en segundo plano sin bloquear el despacho
+        if (currentUser?.rol !== 'empresa' && activeUser) {
+          login(userIdentifier, 'incomi2026').catch(e => console.warn('Background login warn:', e));
+        }
+
+      } catch (err) {
+        console.error('Error al registrar el envío:', err);
+        setErrorMsg('Ocurrió un problema temporal. Por favor presiona de nuevo para confirmar.');
+      } finally {
+        setSubmitting(false);
       }
-
-      const clientUserData = activeUser || {
-        id: 'usr-' + Date.now().toString(36),
-        dni: userIdentifier,
-        nombre_completo: nombreCompleto.trim(),
-        telefono_default: whatsapp.trim(),
-        email: correoCliente.trim() || undefined,
-        rol: 'client',
-        created_at: new Date().toISOString()
-      };
-
-
-      const newOrder = await createPedido({
-        usuario_id: clientUserData.id,
-        usuario: clientUserData,
-        detalles_bordado: `Envío de Mercadería para ${nombreCompleto.trim()}`,
-        metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
-        metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
-        destino_detalle: finalDestinoDetalle,
-        latitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLat : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lat : undefined),
-        longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
-        observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
-        fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
-      });
-
-      triggerConfetti();
-      setCreatedOrder(newOrder);
-      setShowDispatchAnimation(true);
-
-    } catch (err) {
-      console.error(err);
-      setErrorMsg('Error al registrar el envío. Intenta nuevamente.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    };
 
   // Paso 1 & 2: Extracción dinámica de variables para el Comprobante Estándar
   const getDatosComprobanteActual = (order: Pedido | null): DatosComprobante => {

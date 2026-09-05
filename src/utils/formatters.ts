@@ -84,3 +84,74 @@ export function formatShalomPin(pin?: string): string {
   return String(pin).replace(/\D/g, '').slice(0, 4);
 }
 
+/**
+ * Pool de claves de recojo fáciles de recordar y válidas ante Shalom Pro.
+ * Nunca repite consecutivamente la clave del día anterior.
+ */
+export const SAFE_SHALOM_PINS = ['0909', '0707', '0505', '0303', '0606', '0404', '0202', '0808'];
+
+/**
+ * Obtiene la clave de recojo predeterminada para el día actual.
+ * Garantiza que la clave sea diferente a la usada ayer.
+ */
+export function getDailyShalomPin(): string {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  const diff = now.getTime() - start.getTime();
+  const oneDay = 1000 * 60 * 60 * 24;
+  const dayOfYear = Math.floor(diff / oneDay);
+
+  // Rotación determinista por día del año (módulo 8)
+  const defaultRotatingPin = SAFE_SHALOM_PINS[dayOfYear % SAFE_SHALOM_PINS.length];
+
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('incomi_last_used_shalom_pin');
+      const storedDate = localStorage.getItem('incomi_last_used_shalom_pin_date');
+      const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+
+      // Si ayer se usó una clave y hoy la rotación coincide con esa, avanzar al siguiente
+      if (stored && storedDate !== todayStr && defaultRotatingPin === stored) {
+        const nextIdx = (SAFE_SHALOM_PINS.indexOf(stored) + 1) % SAFE_SHALOM_PINS.length;
+        return SAFE_SHALOM_PINS[nextIdx];
+      }
+
+      // Proteger activamente contra 0808 si fue la clave usada ayer
+      if (defaultRotatingPin === '0808' || stored === '0808') {
+        return '0909';
+      }
+    } catch {}
+  }
+
+  return defaultRotatingPin === '0808' ? '0909' : defaultRotatingPin;
+}
+
+/**
+ * Avanza al siguiente PIN seguro en caso de que Shalom rechace el actual.
+ */
+export function getNextShalomPin(currentPin?: string): string {
+  if (!currentPin) return '0909';
+  const clean = currentPin.trim();
+  const idx = SAFE_SHALOM_PINS.indexOf(clean);
+  if (idx === -1) {
+    return clean === '0808' ? '0909' : '0707';
+  }
+  const nextIdx = (idx + 1) % SAFE_SHALOM_PINS.length;
+  const next = SAFE_SHALOM_PINS[nextIdx];
+  return next === clean ? '0909' : next;
+}
+
+/**
+ * Guarda en almacenamiento local la clave utilizada con éxito hoy.
+ */
+export function saveUsedShalomPin(pin: string): void {
+  if (typeof window !== 'undefined' && pin) {
+    try {
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+      localStorage.setItem('incomi_last_used_shalom_pin', pin.trim());
+      localStorage.setItem('incomi_last_used_shalom_pin_date', todayStr);
+    } catch {}
+  }
+}
+

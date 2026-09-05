@@ -9,6 +9,7 @@ import { DEPARTAMENTOS_PERU } from '../../data/shalomAgencies';
 import { DEPARTAMENTOS_OLVA } from '../../data/olvaAgencies';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { DniService } from '../../services/dniService';
+import { getDailyShalomPin } from '../../utils/formatters';
 import {
   X,
   Save,
@@ -29,7 +30,8 @@ import {
   Truck,
   Edit3,
   Building2,
-  Loader2
+  Loader2,
+  Calendar
 } from 'lucide-react';
 
 
@@ -87,6 +89,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   const [nombreCliente, setNombreCliente] = useState(initialClientName);
   const [telefonoCliente, setTelefonoCliente] = useState(pedido.usuario?.telefono_default || '');
   const [dniCliente, setDniCliente] = useState(pedido.usuario?.dni || '');
+  const [fechaEnvioCliente, setFechaEnvioCliente] = useState(pedido.fecha_limite || '');
   const [isResolvingDni, setIsResolvingDni] = useState(false);
   const [dniSource, setDniSource] = useState<string | null>(null);
 
@@ -217,7 +220,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   // Otros campos
   const [detallesBordado, setDetallesBordado] = useState(pedido.detalles_bordado || '');
   const [observaciones, setObservaciones] = useState(pedido.observaciones_cliente || '');
-  const [claveRecojo, setClaveRecojo] = useState(pedido.shalom_clave_recojo || '0808');
+  const [claveRecojo, setClaveRecojo] = useState(pedido.shalom_clave_recojo || getDailyShalomPin());
   const [estadoEnvio, setEstadoEnvio] = useState<EstadoEnvio>(pedido.estado_envio);
   const [estadoProduccion, setEstadoProduccion] = useState<EstadoProduccion>(pedido.estado_produccion);
   const [saving, setSaving] = useState(false);
@@ -361,7 +364,8 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
         destino_detalle: finalDestino,
         detalles_bordado: updatedDetalles,
         observaciones_cliente: observaciones.trim(),
-        shalom_clave_recojo: claveRecojo.trim() || '0808',
+        fecha_limite: fechaEnvioCliente || undefined,
+        shalom_clave_recojo: claveRecojo.trim() || getDailyShalomPin(),
         estado_envio: estadoEnvio,
         estado_produccion: estadoProduccion,
         usuario: {
@@ -419,9 +423,9 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
         {/* Formulario */}
         <form onSubmit={handleSubmit} className="space-y-4">
           
-          {/* Datos del Cliente */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-1">
+          {/* Datos del Cliente y Fecha de Envío */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-cyan-400" />
@@ -485,6 +489,20 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                 onChange={e => handleDniInputChange(e.target.value)}
                 placeholder="Ej. 71234567"
                 className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                Fecha Envío Cliente
+              </label>
+              <input
+                type="date"
+                value={fechaEnvioCliente}
+                onChange={e => setFechaEnvioCliente(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-cyan-300 font-mono font-bold focus:outline-none focus:border-cyan-500 cursor-pointer"
+                title="Fecha elegida por la clienta para enviar"
               />
             </div>
           </div>
@@ -785,7 +803,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                       maxLength={6}
                       value={claveRecojo}
                       onChange={e => setClaveRecojo(e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
-                      placeholder="0808"
+                      placeholder={getDailyShalomPin() || '0909'}
                       className="w-full px-3 py-2 bg-slate-900 border border-amber-500/50 rounded-xl text-xs font-mono font-bold text-amber-300 text-center focus:outline-none focus:border-amber-400"
                     />
                   </div>

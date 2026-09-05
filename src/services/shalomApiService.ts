@@ -3,6 +3,7 @@ import { extractShalomDni, extractShalomPhone, extractShalomOrigen } from '../ut
 import { resolveShalomAgencyDetails, ResolvedShalomAgency } from '../utils/shalomAgencyResolver';
 import { getApiBaseUrl } from '../config/api';
 import { validateShalomPdfContent } from '../utils/shalomPdfValidator';
+import { getDailyShalomPin } from '../utils/formatters';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -115,7 +116,7 @@ export class ShalomApiService {
    * Prepara el payload estandarizado para un pedido individual.
    * Resuelve de forma determinista la agencia de destino con el mismo extractor oficial de Excel.
    */
-  public static buildOrderPayload(pedido: Pedido, tallerConfig: TallerConfig, pickupCode: string = '0808'): ShalomOrderPayload {
+  public static buildOrderPayload(pedido: Pedido, tallerConfig: TallerConfig, pickupCode: string = getDailyShalomPin()): ShalomOrderPayload {
     const dni = extractShalomDni(pedido) || '00000000';
     const phone = extractShalomPhone(pedido) || '999999999';
     const agencyDetails = resolveShalomAgencyDetails(pedido.destino_detalle);
@@ -167,7 +168,7 @@ export class ShalomApiService {
       });
 
       const orderBody = {
-        pickup_code: payload.pickup_code || '0808',
+        pickup_code: payload.pickup_code || getDailyShalomPin(),
         destiny_terminal_id: agencyDetails.terminalId,
         destination_agency: agencyDetails.officialDestination,
         destination_agency_code: agencyDetails.code,
@@ -216,18 +217,34 @@ export class ShalomApiService {
         const rawData = resJson.data || {};
         const data = rawData.data || rawData.order || rawData;
         const oseId = data.ose_id || data.id || rawData.ose_id || rawData.id;
-        const serie = data.serie || rawData.serie || 'V204';
-        const rawGuia = data.guia || data.guide_number || data.numero_guia || rawData.guia;
-        const guideNumber = rawGuia ? (serie && !String(rawGuia).includes('-') ? `${serie}-${rawGuia}` : String(rawGuia)) : (oseId ? `${serie}-${oseId}` : (data.guide_number || data.numero_guia || ''));
-        const trackingCode = data.codigo || data.tracking_code || data.codigo_rastreo || (oseId ? String(oseId) : payload.codigoSeguimiento);
         const confirmedAgency = resJson.agency_official || resJson.agency_name || agencyDetails.officialDestination;
         const confirmedFullName = resJson.agency_full_name || agencyDetails.agencyName;
+
+        if (!oseId) {
+          return {
+            pedidoId: payload.pedidoId,
+            codigoSeguimiento: payload.codigoSeguimiento,
+            success: false,
+            errorMessage: 'Shalom Pro no confirmó la creación del paquete (no se recibió ID oficial). Revisa los datos de destino y remitente.',
+            customerPhone: payload.destinatario.telefono,
+            customerName: payload.destinatario.nombre,
+            agencyName: confirmedAgency,
+            agencyFullName: confirmedFullName,
+            terminalId: agencyDetails.terminalId,
+          };
+        }
+
+        const serie = data.serie || rawData.serie || 'V204';
+        const rawGuia = data.guia || data.guide_number || data.numero_guia || rawData.guia;
+        // Solo asignar número de guía si es una guía real emitida, nunca 'SH-OK'
+        const guideNumber = rawGuia ? (serie && !String(rawGuia).includes('-') ? `${serie}-${rawGuia}` : String(rawGuia)) : (data.guide_number || data.numero_guia || undefined);
+        const trackingCode = data.codigo || data.tracking_code || data.codigo_rastreo || String(oseId);
 
         return {
           pedidoId: payload.pedidoId,
           codigoSeguimiento: payload.codigoSeguimiento,
           success: true,
-          oseId: oseId ? String(oseId) : undefined,
+          oseId: String(oseId),
           guideNumber: guideNumber || undefined,
           trackingCode,
           pickupCode: data.pickup_code || payload.pickup_code,
@@ -340,7 +357,7 @@ export class ShalomApiService {
       fileName?: string;
       pickupCode?: string;
     }>,
-    pickupCode: string = '0808'
+    pickupCode: string = getDailyShalomPin()
   ): Promise<{ success: boolean; notifiedCount: number; errors: any[] }> {
     try {
       const response = await fetch(`${getApiBaseUrl()}/tenant/sync-dispatch-whatsapp`, {
@@ -388,7 +405,7 @@ export class ShalomApiService {
       pickupCode?: string;
       dni?: string;
     }>,
-    pickupCode: string = '0808'
+    pickupCode: string = getDailyShalomPin()
   ): Promise<{ success: boolean; deliveredCount?: number; notifiedCount?: number; errors?: any[]; results?: any[] }> {
     try {
       const response = await fetch(`${getApiBaseUrl()}/tenant/send-delivery-vouchers`, {
@@ -429,7 +446,7 @@ export class ShalomApiService {
     oseId: number | string,
     auth?: ShalomAuthCredentials,
     clientContext?: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string },
-    onMetadata?: (meta: { pickupCode?: string; guia?: string }) => void
+    onMetadata?: (meta: { pickupCode?: string; guia?: string; oseId?: string }) => void
   ): Promise<string | null> {
     return this.fetchVoucherPdfBase64(oseId, auth, clientContext, onMetadata);
   }
@@ -443,7 +460,7 @@ export class ShalomApiService {
     oseId: number | string,
     auth?: ShalomAuthCredentials,
     clientContext?: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string },
-    onMetadata?: (meta: { pickupCode?: string; guia?: string }) => void
+    onMetadata?: (meta: { pickupCode?: string; guia?: string; oseId?: string }) => void
   ): Promise<string | null> {
     try {
       const headers: Record<string, string> = {
@@ -475,6 +492,7 @@ export class ShalomApiService {
 
       const livePin = response.headers.get('x-shalom-pickup-code') || response.headers.get('X-Shalom-Pickup-Code');
       const liveGuia = response.headers.get('x-shalom-guia') || response.headers.get('X-Shalom-Guia');
+      const liveOseId = response.headers.get('x-shalom-ose-id') || response.headers.get('X-Shalom-Ose-Id');
       const returnedDni = response.headers.get('x-shalom-receiver-dni') || response.headers.get('X-Shalom-Receiver-Dni');
       const returnedNameRaw = response.headers.get('x-shalom-receiver-name') || response.headers.get('X-Shalom-Receiver-Name');
       const returnedName = returnedNameRaw ? decodeURIComponent(returnedNameRaw).toLowerCase() : '';
@@ -505,8 +523,8 @@ export class ShalomApiService {
         }
       }
 
-      if (onMetadata && (livePin || liveGuia)) {
-        onMetadata({ pickupCode: livePin || undefined, guia: liveGuia || undefined });
+      if (onMetadata && (livePin || liveGuia || liveOseId)) {
+        onMetadata({ pickupCode: livePin || undefined, guia: liveGuia || undefined, oseId: liveOseId || undefined });
       }
 
 

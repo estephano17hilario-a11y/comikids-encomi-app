@@ -261,7 +261,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } catch {}
 
     setLatestNewOrder(created);
-    await refreshData();
+    // Sincronizar en segundo plano sin demorar la respuesta inmediata al usuario
+    refreshData().catch(e => console.warn('Background refreshData warn:', e));
     return created;
   };
 

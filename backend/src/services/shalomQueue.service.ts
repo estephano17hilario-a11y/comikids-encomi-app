@@ -15,7 +15,7 @@ export class ShalomQueueService {
   private static queue: QueuedTask<any>[] = [];
   private static isProcessing = false;
   private static lastExecutionTime = 0;
-  private static minDelayMs = 1200; // 1.2 segundos mínimo entre peticiones hacia Shalom
+  private static minDelayMs = 3000; // 3.0 segundos mínimo entre peticiones hacia Shalom
 
   /**
    * Encola una tarea hacia Shalom y devuelve una promesa que se resuelve cuando la tarea se ejecuta.
@@ -44,10 +44,10 @@ export class ShalomQueueService {
       const item = this.queue.shift();
       if (!item) break;
 
-      // Calcular tiempo transcurrido desde la última petición para respetar el rate limit
+      // Calcular tiempo transcurrido desde la última petición para respetar el rate limit (3 a 4 segundos)
       const now = Date.now();
       const elapsed = now - this.lastExecutionTime;
-      const targetDelay = this.minDelayMs + Math.floor(Math.random() * 600); // 1.2s - 1.8s
+      const targetDelay = this.minDelayMs + Math.floor(Math.random() * 1000); // 3.0s - 4.0s
 
       if (elapsed < targetDelay) {
         const waitMs = targetDelay - elapsed;

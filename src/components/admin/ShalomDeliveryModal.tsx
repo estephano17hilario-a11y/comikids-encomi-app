@@ -4,6 +4,7 @@ import { ShalomApiService } from '../../services/shalomApiService';
 import { extractShalomDni, extractShalomPhone } from '../../utils/shalomExcelExporter';
 import { validateShalomPin, formatShalomPin, getDailyShalomPin } from '../../utils/formatters';
 import { useAuth } from '../../context/AuthContext';
+import { getApiBaseUrl } from '../../config/api';
 import {
   FileText,
   Send,
@@ -22,7 +23,8 @@ import {
   Check,
   CheckCheck,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  QrCode
 } from 'lucide-react';
 
 interface ShalomDeliveryModalProps {
@@ -61,7 +63,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   tallerConfig,
   onOrdersDelivered,
 }) => {
-  const { empresaConfig } = useAuth();
+  const { empresaConfig, currentEmpresa } = useAuth();
+  const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids_tienda';
+  const senderPhone = currentEmpresa?.telefono_contacto || tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '51927781412';
   const isVpsWhatsAppEnabled = empresaConfig?.vps_whatsapp_entregado !== false;
   const isShalomExcelMode = empresaConfig?.shalom_modo === 'excel';
 
@@ -73,6 +77,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const [currentStepText, setCurrentStepText] = useState('');
   const [searchingId, setSearchingId] = useState<string | null>(null);
   const [pickupCode, setPickupCode] = useState(() => getDailyShalomPin());
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrBase64, setQrBase64] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
   const auditedRef = React.useRef(false);
   const cancelledAuditRef = React.useRef(false);
 
@@ -229,6 +236,25 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleOpenQrModal = async () => {
+    setQrLoading(true);
+    setShowQrModal(true);
+    setQrBase64(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/tenant/${subInstance}/qr`);
+      const json = await res.json().catch(() => ({}));
+      if (json.success && (json.data?.qrcode?.base64 || json.data?.base64)) {
+        setQrBase64(json.data.qrcode?.base64 || json.data.base64);
+      } else {
+        alert('No se pudo generar el código QR. Intenta nuevamente.');
+      }
+    } catch (e: any) {
+      alert(`Error obteniendo QR: ${e.message}`);
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
   // Búsqueda manual personalizada por Guía o DNI ingresado por el usuario
   const handleManualSearch = async (item: DeliveryOrderProgress) => {
     const cleanDni = (item.dni || '').replace(/\D/g, '').trim();
@@ -351,13 +377,27 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     }
 
 
-    setCurrentStepText('Despachando Guías Oficiales de Shalom por WhatsApp a clientas (+51 927 781 412)...');
+    const displayPhone = senderPhone ? `(+${senderPhone.replace(/^51/, '')})` : '';
+    setCurrentStepText(`Despachando Guías Oficiales de Shalom vía Sub-QR ${subInstance} ${displayPhone}...`);
 
-    const sendRes = await ShalomApiService.sendDeliveryVouchers(payloadForWhatsApp, pickupCode);
+    const sendRes = await ShalomApiService.sendDeliveryVouchers(payloadForWhatsApp, pickupCode, subInstance);
 
+    if (!sendRes.success) {
+      const errorMsg = sendRes.error || 'No se pudieron despachar los comprobantes por WhatsApp. Verifica la conexión del Sub-QR.';
+      alert(`⚠️ ${errorMsg}`);
+      setCurrentStepText(`⚠️ ${errorMsg}`);
+      updatedList.forEach((it) => {
+        if (it.sendStatus === 'sending') {
+          it.sendStatus = 'error';
+          it.errorMsg = errorMsg;
+        }
+      });
+      setProgressList([...updatedList]);
+      setProcessing(false);
+      return;
+    }
 
-
-    if (sendRes.success && sendRes.results) {
+    if (sendRes.results && sendRes.results.length > 0) {
       sendRes.results.forEach((resItem: any) => {
         const target = updatedList.find((p) => p.phone.endsWith(resItem.phone.slice(-9)));
         if (target) {
@@ -378,7 +418,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     setProgressList([...updatedList]);
     setProcessing(false);
     setOverallSuccess(true);
-    setCurrentStepText('¡Guías oficiales en PDF de Shalom entregadas exitosamente por WhatsApp!');
+    setCurrentStepText(`¡Guías oficiales en PDF entregadas exitosamente por WhatsApp desde Sub-QR (${subInstance})!`);
 
     const metaMap: Record<string, { guia?: string; pickupCode?: string; oseId?: string }> = {};
     for (const item of updatedList) {
@@ -430,9 +470,19 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                 <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
                   Consola de Entrega & Extracción Oficial Shalom API
                 </h3>
-                <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full">
-                  Línea: +51 927 781 412
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full flex items-center gap-1">
+                  <span>Sub-QR: {subInstance}</span>
+                  {senderPhone && <span className="text-emerald-300">+{senderPhone.replace(/^51/, '51 ')}</span>}
                 </span>
+                <button
+                  type="button"
+                  onClick={handleOpenQrModal}
+                  className="px-2 py-0.5 text-[10px] font-bold bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 rounded-full cursor-pointer transition-colors flex items-center gap-1"
+                  title="Ver o escanear el Sub-QR de esta empresa"
+                >
+                  <QrCode className="w-3 h-3" />
+                  <span>Ver Sub-QR</span>
+                </button>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
                 Descarga el PDF 100% auténtico de Shalom Pro y lo adjunta por WhatsApp con la clave <strong className="text-amber-300 font-mono">{pickupCode}</strong>
@@ -786,6 +836,57 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal interactivo para ver y escanear el Sub-QR de la empresa */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-sm rounded-3xl bg-slate-900 border border-purple-500/40 p-6 shadow-2xl space-y-4 text-center">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <h4 className="text-sm font-black text-white">Sub Código QR Empresa</h4>
+                  <p className="text-[10px] text-slate-400 font-mono">{subInstance}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner min-h-[220px]">
+              {qrLoading ? (
+                <div className="flex flex-col items-center gap-2 text-slate-600">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+                  <span className="text-xs font-bold">Generando QR de la Empresa...</span>
+                </div>
+              ) : qrBase64 ? (
+                <img src={qrBase64} alt="Sub-QR WhatsApp" className="w-52 h-52 object-contain" />
+              ) : (
+                <p className="text-xs text-slate-500">No se pudo cargar el código QR.</p>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Escanea este QR desde el WhatsApp de tu empresa ({senderPhone ? `+${senderPhone}` : 'Línea de Tienda'}) para enviar mensajes a clientas.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setShowQrModal(false)}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-xs hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              Listo / Cerrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

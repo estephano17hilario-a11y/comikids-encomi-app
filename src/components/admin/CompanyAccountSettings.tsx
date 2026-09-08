@@ -43,8 +43,12 @@ import {
   Printer,
   FileText,
   Layers,
-  ShieldCheck
+  ShieldCheck,
+  Smartphone,
+  QrCode,
+  Loader2
 } from 'lucide-react';
+import { getApiBaseUrl } from '../../config/api';
 
 const DIAS_SEMANA_ORDEN: HorarioDiaDespacho['dia'][] = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
 
@@ -73,6 +77,32 @@ export const CompanyAccountSettings: React.FC = () => {
   const [newMasterCode, setNewMasterCode] = useState(companyCode);
   const [codeSuccessMsg, setCodeSuccessMsg] = useState('');
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+
+  // Sub-QR de WhatsApp de la cuenta de empresa
+  const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids_tienda';
+  const senderPhone = currentEmpresa?.telefono_contacto || tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '51927781412';
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrBase64, setQrBase64] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+
+  const handleOpenQrModal = async () => {
+    setQrLoading(true);
+    setShowQrModal(true);
+    setQrBase64(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/tenant/${subInstance}/qr`);
+      const json = await res.json().catch(() => ({}));
+      if (json.success && (json.data?.qrcode?.base64 || json.data?.base64)) {
+        setQrBase64(json.data.qrcode?.base64 || json.data.base64);
+      } else {
+        alert('No se pudo generar el código QR. Intenta nuevamente.');
+      }
+    } catch (e: any) {
+      alert(`Error obteniendo QR: ${e.message}`);
+    } finally {
+      setQrLoading(false);
+    }
+  };
 
   useEffect(() => {
     setNewMasterCode(companyCode);
@@ -643,6 +673,48 @@ export const CompanyAccountSettings: React.FC = () => {
             <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-cyan-500/30 flex items-center justify-between gap-3 text-xs font-mono text-cyan-300 overflow-x-auto">
               <span className="truncate">{publicOrderUrl}</span>
               <span className="text-[10px] text-slate-500 shrink-0 font-sans uppercase font-bold">Enlace Activo</span>
+            </div>
+          </div>
+
+          {/* 1.5. LÍNEA WHATSAPP SUB CÓDIGO QR DE LA EMPRESA (ENVÍOS A 1 CLICK) */}
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-emerald-500/30 bg-emerald-950/15 backdrop-blur-2xl space-y-4 shadow-xl">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <span>Línea WhatsApp Oficial / Sub Código QR</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                      Mensajes a 1 Click
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Número vinculado para enviar comprobantes, guías de despacho y estados automáticos a los clientes (¡nunca desde el bot maestro!).
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenQrModal}
+                className="py-2.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/30 transition-all cursor-pointer"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Escanear / Vincular Sub QR</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-500/20">
+              <div className="p-3 rounded-2xl bg-slate-950/80 border border-emerald-500/20">
+                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Sub-Instancia Asignada</span>
+                <span className="text-xs font-mono font-bold text-emerald-300">{subInstance}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-950/80 border border-emerald-500/20">
+                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Teléfono Emisor Oficial</span>
+                <span className="text-xs font-mono font-bold text-emerald-300">+{senderPhone}</span>
+              </div>
             </div>
           </div>
 
@@ -1359,6 +1431,68 @@ export const CompanyAccountSettings: React.FC = () => {
       {/* Modal de Cambio de Contraseña */}
       {showChangePasswordModal && (
         <ChangePasswordModal onClose={() => setShowChangePasswordModal(false)} />
+      )}
+
+      {/* Modal Sub Código QR */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-sm font-black text-white">Sub Código QR WhatsApp</h3>
+              </div>
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-center py-2">
+              <p className="text-xs text-slate-300">
+                Escanea este QR desde el WhatsApp de la empresa (+{senderPhone}) para que todos los envíos con 1 clic salgan directamente desde este número.
+              </p>
+              <div className="text-[11px] font-mono text-emerald-400 font-bold mt-1">
+                Instancia: {subInstance}
+              </div>
+            </div>
+
+            <div className="flex justify-center p-4 bg-white rounded-2xl min-h-[220px] items-center">
+              {qrLoading ? (
+                <div className="flex flex-col items-center gap-2 text-slate-800">
+                  <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+                  <span className="text-xs font-bold">Generando Sub QR...</span>
+                </div>
+              ) : qrBase64 ? (
+                <img src={qrBase64} alt="Sub QR Code" className="w-56 h-56 object-contain" />
+              ) : (
+                <div className="text-xs text-slate-500 font-medium text-center">
+                  No se pudo cargar el código QR.<br />Presiona reintentar.
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleOpenQrModal}
+                disabled={qrLoading}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+              >
+                Recargar QR
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition-all cursor-pointer"
+              >
+                Listo / Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

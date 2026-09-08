@@ -405,6 +405,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tenantId: selectedBotInstance || 'tenant_Comikids_tienda',
           phone: finalPhone,
           customerName: clientName,
           message: statusText,
@@ -448,6 +449,7 @@ export const EvolutionWhatsAppManager: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tenantId: selectedBotInstance || 'tenant_Comikids_tienda',
           phone: finalPhone,
           customerName: 'Administrador',
           message: testMessage,

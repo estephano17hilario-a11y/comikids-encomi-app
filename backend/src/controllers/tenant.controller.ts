@@ -187,12 +187,140 @@ export class TenantController {
   }
 
   /**
-   * Sincronización post-despacho: Cambia etiqueta a 'Despachando en Shalom' y notifica a las clientas por WhatsApp
+   * Resuelve con estricta seguridad la instancia de WhatsApp de la cuenta de empresa (Sub-QR).
+   * BLOQUEA TERMINANTEMENTE el uso de la instancia del Bot Maestro (main_bot / comikids_whatsapp / 901985319)
+   * para evitar que los mensajes a clientes se envíen desde el número del bot.
+   */
+  public static async resolveEmpresaSenderInstance(
+    requestedTenantId?: string,
+    preferredPhone?: string
+  ): Promise<{ instanceName: string; isFallback: boolean; ownerPhone?: string; error?: string }> {
+    try {
+      const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
+        headers: { apikey: env.EVOLUTION_API_KEY },
+        timeout: 6000,
+      });
+      const instances: any[] = Array.isArray(fetchRes.data) ? fetchRes.data : [];
+
+      // Filtro estricto: EXCLUIR bots maestros (main_bot, comikids_whatsapp, 901985319, o instance name env)
+      const isMasterBot = (inst: any) => {
+        const name = String(inst.name || '').toLowerCase();
+        const jid = String(inst.ownerJid || '');
+        const masterEnv = String(env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp').toLowerCase();
+        return (
+          name === 'main_bot' ||
+          name === 'comikids_whatsapp' ||
+          name === masterEnv ||
+          jid.includes('901985319')
+        );
+      };
+
+      const subInstances = instances.filter((inst) => !isMasterBot(inst));
+
+      if (subInstances.length === 0) {
+        return {
+          instanceName: '',
+          isFallback: false,
+          error: 'No hay ninguna sub-instancia de WhatsApp (Sub-QR de empresa) registrada en el sistema. Por favor crea o escanea el código QR de tu empresa en el panel.',
+        };
+      }
+
+      // Normalizar identificadores de búsqueda
+      const rawId = String(requestedTenantId || '').trim();
+      const cleanId = rawId.toLowerCase();
+      const cleanPhone = String(preferredPhone || '').replace(/\D/g, '');
+
+      let matchedInstance: any = null;
+
+      // 1. Coincidencia por teléfono emisor si se proveyó
+      if (cleanPhone && cleanPhone.length >= 7) {
+        matchedInstance = subInstances.find((i) =>
+          String(i.ownerJid || '').includes(cleanPhone.slice(-9))
+        );
+      }
+
+      // 2. Coincidencia exacta por nombre
+      if (!matchedInstance && rawId) {
+        matchedInstance = subInstances.find((i) => i.name === rawId);
+      }
+
+      // 3. Coincidencia con prefijo 'tenant_'
+      if (!matchedInstance && rawId) {
+        const withPrefix = rawId.startsWith('tenant_') ? rawId : `tenant_${rawId}`;
+        matchedInstance = subInstances.find(
+          (i) => i.name.toLowerCase() === withPrefix.toLowerCase()
+        );
+      }
+
+      // 4. Coincidencia flexible por alias o slug (ej. 'Comikids' -> 'tenant_Comikids_tienda', o viceversa)
+      if (!matchedInstance && rawId && cleanId !== 'matrix' && cleanId !== 'default') {
+        matchedInstance = subInstances.find((i) => {
+          const iName = i.name.toLowerCase();
+          return (
+            iName.includes(cleanId.replace(/^tenant_/, '')) ||
+            cleanId.includes(iName.replace(/^tenant_/, ''))
+          );
+        });
+      }
+
+      // 5. Si no se especificó o era Comikids default, buscar la línea histórica de ComiKids (+51 927 781 412 / tenant_Comikids_tienda)
+      if (!matchedInstance) {
+        matchedInstance = subInstances.find((i) =>
+          String(i.ownerJid || '').includes('927781412') ||
+          i.name.toLowerCase().includes('comikids')
+        );
+      }
+
+      // 6. Fallback únicamente al primer sub-instance si no hubo coincidencia (NUNCA AL BOT)
+      if (!matchedInstance) {
+        matchedInstance = subInstances[0];
+      }
+
+      const instanceName = matchedInstance.name;
+      const ownerPhone = String(matchedInstance.ownerJid || '').replace(/[^0-9]/g, '');
+
+      // Verificar si la sub-instancia seleccionada está conectada
+      if (matchedInstance.connectionStatus === 'open') {
+        return { instanceName, isFallback: false, ownerPhone };
+      }
+
+      // Si la candidata está close o connecting, verificar si hay alguna otra sub-instancia de tienda abierta
+      const openAlternative = subInstances.find((i) => i.connectionStatus === 'open');
+      if (openAlternative) {
+        console.warn(
+          `[SUB-QR ROUTING] Sub-instancia "${instanceName}" está en estado "${matchedInstance.connectionStatus}". Usando alternativa abierta: "${openAlternative.name}"`
+        );
+        return {
+          instanceName: openAlternative.name,
+          isFallback: true,
+          ownerPhone: String(openAlternative.ownerJid || '').replace(/[^0-9]/g, ''),
+        };
+      }
+
+      // NINGUNA sub-instancia de empresa está abierta: BLOQUEAR ENVÍO Y NO USAR BOT MAESTRO
+      return {
+        instanceName,
+        isFallback: false,
+        ownerPhone,
+        error: `La línea de WhatsApp de tu empresa (${instanceName}${ownerPhone ? ` / +${ownerPhone}` : ''}) no está conectada (Estado: ${matchedInstance.connectionStatus || 'close'}). Por favor escanea el Sub Código QR de WhatsApp de tu empresa para reconectarla antes de enviar.`,
+      };
+    } catch (err: any) {
+      console.error('[RESOLVE EMPRESA SENDER ERROR]', err?.message || err);
+      return {
+        instanceName: '',
+        isFallback: false,
+        error: `Error al verificar la línea de WhatsApp de la empresa: ${err?.message || 'Fallo de conexión'}`,
+      };
+    }
+  }
+
+  /**
+   * Sincroniza y notifica a las clientas por WhatsApp cuando los pedidos son despachados en ruta hacia Shalom
    */
   public static async syncDispatchWhatsApp(
     request: FastifyRequest<{
       Body: {
-        orders: Array<{
+        orders?: Array<{
           phone: string;
           customerName: string;
           trackingCode: string;
@@ -202,12 +330,40 @@ export class TenantController {
         }>;
         labelName?: string;
         tenantId?: string;
+        instanceName?: string;
+        subInstance?: string;
+        phone?: string;
+        customerName?: string;
+        message?: string;
+        trackingCode?: string;
+        agencyName?: string;
+        guideNumber?: string;
+        pickupCode?: string;
+        orderCode?: string;
       };
     }>,
     reply: FastifyReply
   ) {
     try {
-      const { orders = [], labelName = 'Despachando en Shalom', tenantId = 'matrix' } = request.body || {};
+      const body = request.body || ({} as any);
+      let orders = Array.isArray(body.orders) && body.orders.length > 0
+        ? body.orders
+        : [];
+
+      // Si se envió un solo pedido en la raíz (ej. aviso rápido o prueba)
+      if (orders.length === 0 && body.phone) {
+        orders = [{
+          phone: body.phone,
+          customerName: body.customerName || 'Cliente',
+          trackingCode: body.trackingCode || '',
+          guideNumber: body.guideNumber || '',
+          agencyName: body.agencyName || 'Agencia Shalom',
+          orderCode: body.orderCode || body.trackingCode,
+        }];
+      }
+
+      const labelName = body.labelName || 'Despachando en Shalom';
+      const requestedTenant = body.tenantId || body.instanceName || body.subInstance;
 
       if (!Array.isArray(orders) || orders.length === 0) {
         return reply.code(400).send({
@@ -216,47 +372,19 @@ export class TenantController {
         });
       }
 
-      // 1. Determinar instancia oficial de despacho: Prioridad TOTAL a ComiKids Tienda (+51 927 781 412 / tenant_Comikids_tienda)
-      let userSenderInstance = 'tenant_Comikids_tienda';
-      try {
-        const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
-          headers: { apikey: env.EVOLUTION_API_KEY },
-          timeout: 5000,
+      // 1. Determinar instancia oficial de despacho: Sub-QR de la empresa (NUNCA EL BOT)
+      const resolution = await TenantController.resolveEmpresaSenderInstance(requestedTenant);
+      if (resolution.error || !resolution.instanceName) {
+        return reply.code(400).send({
+          success: false,
+          error: resolution.error || 'La línea de WhatsApp de tu empresa (Sub-QR) no está conectada. Escanea el código QR de la empresa para habilitar los envíos.',
         });
-        const instances = Array.isArray(fetchRes.data) ? fetchRes.data : [];
-
-        // 1. Buscar la línea oficial de ComiKids (+51 927 781 412)
-        const comikidsStoreOpen = instances.find((i: any) => 
-          i.connectionStatus === 'open' && (
-            String(i.ownerJid || '').includes('927781412') ||
-            String(i.name || '').toLowerCase().includes('comikids_tienda') ||
-            String(i.name || '').toLowerCase().includes('tenant_comikids')
-          )
-        );
-
-        // 2. Si no, cualquier sub-instancia abierta que no sea el bot master (+51 901 985 319)
-        const subOpen = instances.find((i: any) =>
-          i.connectionStatus === 'open' &&
-          i.name !== 'main_bot' &&
-          i.name !== 'comikids_whatsapp' &&
-          !String(i.ownerJid || '').includes('901985319')
-        );
-
-        // 3. Fallback a cualquier instancia abierta
-        const anyOpen = instances.find((i: any) => i.connectionStatus === 'open');
-
-        if (comikidsStoreOpen) {
-          userSenderInstance = comikidsStoreOpen.name;
-        } else if (subOpen) {
-          userSenderInstance = subOpen.name;
-        } else if (anyOpen) {
-          userSenderInstance = anyOpen.name;
-        }
-      } catch (err) {
-        console.warn('[SYNC DISPATCH INSTANCE CHECK WARN]', err);
       }
 
-      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía "${userSenderInstance}" (+51 927 781 412) con protección Anti-Ban...`);
+      const userSenderInstance = resolution.instanceName;
+      const userSenderPhone = resolution.ownerPhone || '51927781412';
+
+      console.log(`[SYNC DISPATCH] Sincronizando ${orders.length} órdenes despachadas vía Sub-QR "${userSenderInstance}" (+${userSenderPhone}) con protección Anti-Ban...`);
 
 
       const results = [];
@@ -341,7 +469,7 @@ export class TenantController {
   public static async sendDeliveryVouchers(
     request: FastifyRequest<{
       Body: {
-        orders: Array<{
+        orders?: Array<{
           phone: string;
           customerName: string;
           trackingCode: string;
@@ -352,14 +480,21 @@ export class TenantController {
           fileName?: string;
           pickupCode?: string;
         }>;
+        dispatches?: any[];
         tenantId?: string;
+        instanceName?: string;
+        subInstance?: string;
         pickupCode?: string;
       };
     }>,
     reply: FastifyReply
   ) {
     try {
-      const { orders = [], tenantId = 'Comikids' } = request.body || {};
+      const body = request.body || ({} as any);
+      const orders = Array.isArray(body.orders) && body.orders.length > 0
+        ? body.orders
+        : (Array.isArray(body.dispatches) ? body.dispatches : []);
+      const requestedTenant = body.tenantId || body.instanceName || body.subInstance || 'Comikids';
 
       if (!Array.isArray(orders) || orders.length === 0) {
         return reply.code(400).send({
@@ -368,47 +503,19 @@ export class TenantController {
         });
       }
 
-      // 1. Determinar instancia oficial de despacho: Prioridad TOTAL a ComiKids Tienda (+51 927 781 412 / tenant_Comikids_tienda)
-      let userSenderInstance = 'tenant_Comikids_tienda';
-      try {
-        const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
-          headers: { apikey: env.EVOLUTION_API_KEY },
-          timeout: 5000,
+      // 1. Determinar instancia oficial de despacho: Sub-QR de la empresa (NUNCA EL BOT)
+      const resolution = await TenantController.resolveEmpresaSenderInstance(requestedTenant);
+      if (resolution.error || !resolution.instanceName) {
+        return reply.code(400).send({
+          success: false,
+          error: resolution.error || 'La línea de WhatsApp de tu empresa (Sub-QR) no está conectada. Escanea el código QR de la empresa para habilitar los envíos.',
         });
-        const instances = Array.isArray(fetchRes.data) ? fetchRes.data : [];
-
-        // 1. Buscar la línea oficial de ComiKids (+51 927 781 412)
-        const comikidsStoreOpen = instances.find((i: any) => 
-          i.connectionStatus === 'open' && (
-            String(i.ownerJid || '').includes('927781412') ||
-            String(i.name || '').toLowerCase().includes('comikids_tienda') ||
-            String(i.name || '').toLowerCase().includes('tenant_comikids')
-          )
-        );
-
-        // 2. Si no, cualquier sub-instancia abierta que no sea el bot master (+51 901 985 319)
-        const subOpen = instances.find((i: any) =>
-          i.connectionStatus === 'open' &&
-          i.name !== 'main_bot' &&
-          i.name !== 'comikids_whatsapp' &&
-          !String(i.ownerJid || '').includes('901985319')
-        );
-
-        // 3. Fallback a cualquier instancia abierta
-        const anyOpen = instances.find((i: any) => i.connectionStatus === 'open');
-
-        if (comikidsStoreOpen) {
-          userSenderInstance = comikidsStoreOpen.name;
-        } else if (subOpen) {
-          userSenderInstance = subOpen.name;
-        } else if (anyOpen) {
-          userSenderInstance = anyOpen.name;
-        }
-      } catch (err) {
-        console.warn('[DELIVERY VOUCHER SENDER WARN]', err);
       }
 
-      console.log(`[DELIVERY VOUCHERS] Despachando ${orders.length} guías de remisión oficiales vía "${userSenderInstance}" (+51 927 781 412) con Anti-Ban (3-6s)...`);
+      const userSenderInstance = resolution.instanceName;
+      const userSenderPhone = resolution.ownerPhone || '51927781412';
+
+      console.log(`[DELIVERY VOUCHERS] Despachando ${orders.length} guías de remisión oficiales vía Sub-QR "${userSenderInstance}" (+${userSenderPhone}) con Anti-Ban (3-6s)...`);
 
       const results = [];
       let successCount = 0;

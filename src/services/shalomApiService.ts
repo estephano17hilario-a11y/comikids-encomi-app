@@ -357,8 +357,9 @@ export class ShalomApiService {
       fileName?: string;
       pickupCode?: string;
     }>,
-    pickupCode: string = getDailyShalomPin()
-  ): Promise<{ success: boolean; notifiedCount: number; errors: any[] }> {
+    pickupCode: string = getDailyShalomPin(),
+    tenantId?: string
+  ): Promise<{ success: boolean; notifiedCount: number; errors: any[]; error?: string }> {
     try {
       const response = await fetch(`${getApiBaseUrl()}/tenant/sync-dispatch-whatsapp`, {
         method: 'POST',
@@ -369,13 +370,24 @@ export class ShalomApiService {
           orders: dispatchedOrders,
           labelName: 'Despachando en Shalom',
           pickupCode,
+          tenantId,
+          instanceName: tenantId,
+          subInstance: tenantId,
         }),
       });
 
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        return {
+          success: false,
+          notifiedCount: 0,
+          error: data.error || 'No se pudo sincronizar por WhatsApp',
+          errors: [data.error || 'Error en WhatsApp API'],
+        };
+      }
 
-      const data = await response.json();
       return {
-        success: response.ok,
+        success: true,
         notifiedCount: data.notifiedCount || dispatchedOrders.length,
         errors: data.errors || [],
       };
@@ -384,6 +396,7 @@ export class ShalomApiService {
       return {
         success: false,
         notifiedCount: 0,
+        error: err.message,
         errors: [err.message],
       };
     }
@@ -391,6 +404,7 @@ export class ShalomApiService {
 
   /**
    * Envía los Tickets Oficiales POS de Shalom por WhatsApp a cada clienta al confirmar entrega.
+   * Utiliza la sub-instancia Sub-QR afiliada a la cuenta de empresa actual.
    */
   public static async sendDeliveryVouchers(
     dispatchedOrders: Array<{
@@ -405,8 +419,9 @@ export class ShalomApiService {
       pickupCode?: string;
       dni?: string;
     }>,
-    pickupCode: string = getDailyShalomPin()
-  ): Promise<{ success: boolean; deliveredCount?: number; notifiedCount?: number; errors?: any[]; results?: any[] }> {
+    pickupCode: string = getDailyShalomPin(),
+    tenantId?: string
+  ): Promise<{ success: boolean; deliveredCount?: number; notifiedCount?: number; errors?: any[]; error?: string; results?: any[] }> {
     try {
       const response = await fetch(`${getApiBaseUrl()}/tenant/send-delivery-vouchers`, {
         method: 'POST',
@@ -416,12 +431,26 @@ export class ShalomApiService {
         body: JSON.stringify({
           orders: dispatchedOrders,
           pickupCode,
+          tenantId,
+          instanceName: tenantId,
+          subInstance: tenantId,
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        return {
+          success: false,
+          deliveredCount: 0,
+          notifiedCount: 0,
+          error: data.error || 'No se pudieron despachar las guías por WhatsApp',
+          errors: [data.error || 'Error en WhatsApp API'],
+          results: data.results || [],
+        };
+      }
+
       return {
-        success: response.ok,
+        success: true,
         deliveredCount: data.deliveredCount || data.notifiedCount || dispatchedOrders.length,
         notifiedCount: data.deliveredCount || data.notifiedCount || dispatchedOrders.length,
         errors: data.errors || [],
@@ -433,6 +462,7 @@ export class ShalomApiService {
         success: false,
         deliveredCount: 0,
         notifiedCount: 0,
+        error: err.message,
         errors: [err.message],
         results: [],
       };

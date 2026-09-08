@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { Pedido } from '../../types/database.types';
 import { buildWhatsAppStatusNotifyUrl } from '../../services/whatsappService';
 import { ShalomApiService } from '../../services/shalomApiService';
+import { useAuth } from '../../context/AuthContext';
+import { useOrders } from '../../context/OrderContext';
 import {
   MessageCircle,
   CheckCircle2,
@@ -39,6 +41,12 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
   statusName,
   onClose,
 }) => {
+  const { currentEmpresa, empresaConfig } = useAuth();
+  const { tallerConfig } = useOrders();
+
+  const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids_tienda';
+  const senderPhone = currentEmpresa?.telefono_contacto || tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '51927781412';
+
   // Inicializar estado de tareas con los teléfonos disponibles
   const [items, setItems] = useState<ToDoItemState[]>(() => {
     return orders.map(order => {
@@ -84,9 +92,14 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
 
 
     try {
-      await ShalomApiService.syncDispatchedWhatsApp(payload);
+      const res = await ShalomApiService.syncDispatchedWhatsApp(payload, undefined, subInstance);
+      if (!res.success) {
+        alert(`⚠️ ${res.error || 'Error al notificar por WhatsApp. Verifica la conexión del Sub-QR.'}`);
+        return;
+      }
       setItems(prev => prev.map(it => ({ ...it, sent: true })));
-    } catch (err) {
+    } catch (err: any) {
+      alert(`⚠️ Error al enviar por WhatsApp: ${err.message}`);
       console.error('[AUTO WHATSAPP NOTIFY ERROR]', err);
     } finally {
       setIsSendingAllAuto(false);
@@ -156,9 +169,12 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
                 <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                   {statusName}
                 </span>
+                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Sub-QR: {subInstance}
+                </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Envía la actualización a cada clienta desde la línea <strong className="text-emerald-400">+51 927 781 412</strong>
+                Envía la actualización a cada clienta desde la línea de la empresa <strong className="text-emerald-400">+{senderPhone.replace(/^51/, '51 ')}</strong>
               </p>
             </div>
           </div>
@@ -384,7 +400,7 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
                 {isSendingAllAuto ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Enviando por WhatsApp API (+51 927 781 412)...</span>
+                    <span>Enviando por WhatsApp API ({subInstance})...</span>
                   </>
                 ) : (
                   <>

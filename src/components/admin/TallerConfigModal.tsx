@@ -4,7 +4,8 @@ import { useOrders } from '../../context/OrderContext';
 import { TallerConfig } from '../../types/database.types';
 import { ShalomApiService } from '../../services/shalomApiService';
 import { evaluateShippingCutoff, formatFriendlyTime, formatFriendlyDate } from '../../utils/shippingCutoff';
-import { X, Settings, Save, Store, Phone, MapPin, Check, Eye, EyeOff, Copy, Clock, Calendar } from 'lucide-react';
+import { getApiBaseUrl } from '../../config/api';
+import { X, Settings, Save, Store, Phone, MapPin, Check, Eye, EyeOff, Copy, Clock, Calendar, QrCode, Loader2 } from 'lucide-react';
 
 interface Props {
   onClose: () => void;
@@ -18,6 +19,9 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
   const [testStatus, setTestStatus] = useState<{ valid: boolean; message: string } | null>(null);
   const [showCopilotPass, setShowCopilotPass] = useState(false);
   const [copiedPass, setCopiedPass] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrBase64, setQrBase64] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
 
 
   useEffect(() => {
@@ -53,6 +57,26 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
       setSaved(false);
       onClose();
     }, 1500);
+  };
+
+  const handleOpenQrModal = async () => {
+    const targetInst = formData.copilot_sub_instance || 'tenant_Comikids_tienda';
+    setQrLoading(true);
+    setShowQrModal(true);
+    setQrBase64(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/tenant/${targetInst}/qr`);
+      const json = await res.json().catch(() => ({}));
+      if (json.success && (json.data?.qrcode?.base64 || json.data?.base64)) {
+        setQrBase64(json.data.qrcode?.base64 || json.data.base64);
+      } else {
+        alert('No se pudo generar el código QR. Intenta nuevamente.');
+      }
+    } catch (e: any) {
+      alert(`Error obteniendo QR: ${e.message}`);
+    } finally {
+      setQrLoading(false);
+    }
   };
 
   return createPortal(
@@ -249,9 +273,9 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
                 <label className="block text-[11px] text-slate-300 mb-1">Instancia Sub-QR</label>
                 <input
                   type="text"
-                  value={formData.copilot_sub_instance || 'tenant_Comikids'}
+                  value={formData.copilot_sub_instance || 'tenant_Comikids_tienda'}
                   onChange={e => setFormData({ ...formData, copilot_sub_instance: e.target.value })}
-                  placeholder="tenant_Comikids"
+                  placeholder="tenant_Comikids_tienda"
                   className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
                 />
               </div>
@@ -265,6 +289,20 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
                   className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"
                 />
               </div>
+            </div>
+
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-purple-900/30 border border-purple-500/20">
+              <span className="text-[10px] text-purple-200">
+                Línea oficial para envíos automáticos de 1 clic (Sub-QR)
+              </span>
+              <button
+                type="button"
+                onClick={handleOpenQrModal}
+                className="px-2.5 py-1 text-[11px] font-bold bg-purple-600 hover:bg-purple-500 text-white rounded-lg flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>Escanear / Ver Sub-QR</span>
+              </button>
             </div>
 
             <div>
@@ -486,6 +524,57 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
         </form>
 
       </div>
+
+      {/* Modal para ver y escanear el Sub-QR */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-sm rounded-3xl bg-slate-900 border border-purple-500/40 p-6 shadow-2xl space-y-4 text-center">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <h4 className="text-sm font-black text-white">Sub Código QR WhatsApp</h4>
+                  <p className="text-[10px] text-slate-400 font-mono">{formData.copilot_sub_instance || 'tenant_Comikids_tienda'}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner min-h-[220px]">
+              {qrLoading ? (
+                <div className="flex flex-col items-center gap-2 text-slate-600">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+                  <span className="text-xs font-bold">Generando QR...</span>
+                </div>
+              ) : qrBase64 ? (
+                <img src={qrBase64} alt="Sub-QR WhatsApp" className="w-52 h-52 object-contain" />
+              ) : (
+                <p className="text-xs text-slate-500">No se pudo cargar el código QR.</p>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Escanea este QR desde el WhatsApp de tu empresa ({formData.copilot_owner_phone || '51927781412'}) para despachar pedidos con 1 solo clic.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setShowQrModal(false)}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-xs hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              Listo / Cerrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

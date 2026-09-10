@@ -450,72 +450,98 @@ export class ShalomController {
 
   private static cachedAllOrders: any[] = [];
   private static lastAllOrdersFetch: number = 0;
+  private static syncPromise: Promise<any[]> | null = null;
   private static pdfMemoryCache = new Map<string, { buffer: Buffer; headers: Record<string, string>; timestamp: number }>();
 
   /**
-   * Sincroniza todas las órdenes de Shalom Pro en memoria ultra-rápida (1 sola petición rápida)
-   * y las ordena de más recientes a más antiguas (ID descendente)
+   * Sincroniza todas las órdenes de Shalom Pro con paginación inteligente (las más recientes de hoy primero).
+   * Deduplica llamadas concurrentes para evitar bloqueos y timeouts.
    */
   private static async getAllShalomOrders(
     headers: Record<string, string>,
     forceRefresh: boolean = false
   ): Promise<any[]> {
     const now = Date.now();
-    // Reutilizar caché en memoria si tiene menos de 15 segundos
+    // Reutilizar caché en memoria si tiene menos de 15 segundos y no se pide refresco forzado
     if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 15000)) {
       return ShalomController.cachedAllOrders;
     }
 
-    try {
-      const allOrders: any[] = [];
-      let page = 1;
-      const perPage = 100;
-      let hasMore = true;
+    // Si ya hay una sincronización en proceso, reusar la misma promesa para evitar saturar Shalom API
+    if (ShalomController.syncPromise) {
+      return ShalomController.syncPromise;
+    }
 
-      while (hasMore && page <= 10) {
+    ShalomController.syncPromise = (async () => {
+      try {
+        const perPage = 100;
+        // 1. Obtener la primera página para conocer last_page y total
+        let firstRes: any;
         try {
-          const res = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
-            params: { per_page: perPage, page },
+          firstRes = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
+            params: { per_page: perPage, page: 1 },
             headers,
-            timeout: 12000,
+            timeout: 10000,
           });
+        } catch (err: any) {
+          console.warn('[SHALOM PROXY ORDERS SYNC] Error obteniendo página 1:', err?.message);
+          return ShalomController.cachedAllOrders;
+        }
 
-          const list = res.data?.orders || res.data?.data || (Array.isArray(res.data) ? res.data : []);
-          if (!list || list.length === 0) {
-            hasMore = false;
-          } else {
-            allOrders.push(...list);
-            const totalFromMeta = res.data?.meta?.total;
-            const lastPageFromMeta = res.data?.meta?.last_page;
-            if (lastPageFromMeta && page >= lastPageFromMeta) {
-              hasMore = false;
-            } else if (totalFromMeta && allOrders.length >= totalFromMeta) {
-              hasMore = false;
-            } else if (list.length < perPage) {
-              hasMore = false;
-            } else {
-              page++;
+        const meta = firstRes.data?.meta || {};
+        const lastPage = Number(meta.last_page || 1);
+        const page1Orders = firstRes.data?.orders || firstRes.data?.data || (Array.isArray(firstRes.data) ? firstRes.data : []);
+
+        const allOrdersMap = new Map<number | string, any>();
+        page1Orders.forEach((o: any) => { if (o && o.id) allOrdersMap.set(o.id, o); });
+
+        // 2. Si hay múltiples páginas, traer las páginas MÁS RECIENTES (de lastPage hacia atrás)
+        // porque en Shalom la última página contiene los pedidos creados HOY
+        if (lastPage > 1) {
+          const pagesToFetch: number[] = [];
+          for (let p = lastPage; p >= 2; p--) {
+            pagesToFetch.push(p);
+            if (pagesToFetch.length >= 4) break; // Traer hasta 4 páginas recientes en paralelo
+          }
+
+          const pageResults = await Promise.allSettled(
+            pagesToFetch.map(pageNum =>
+              axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
+                params: { per_page: perPage, page: pageNum },
+                headers,
+                timeout: 10000,
+              })
+            )
+          );
+
+          for (const item of pageResults) {
+            if (item.status === 'fulfilled') {
+              const res = item.value;
+              const list = res.data?.orders || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+              list.forEach((o: any) => { if (o && o.id) allOrdersMap.set(o.id, o); });
             }
           }
-        } catch (pageErr: any) {
-          console.warn(`[SHALOM PROXY ORDERS SYNC] Error en página ${page}:`, pageErr?.message);
-          hasMore = false;
         }
-      }
 
-      // Ordenar TODAS las órdenes por ID descendente (las más recientes de hoy al inicio)
-      allOrders.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+        const allOrders = Array.from(allOrdersMap.values());
+        // Ordenar TODAS las órdenes por ID descendente (las más recientes de hoy al inicio de la lista)
+        allOrders.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 
-      if (allOrders.length > 0) {
-        ShalomController.cachedAllOrders = allOrders;
-        ShalomController.lastAllOrdersFetch = now;
+        if (allOrders.length > 0) {
+          ShalomController.cachedAllOrders = allOrders;
+          ShalomController.lastAllOrdersFetch = Date.now();
+        }
+        console.log(`[SHALOM PROXY ORDERS SYNC] ✓ ${allOrders.length} órdenes sincronizadas de Shalom Pro (las más recientes de hoy al inicio).`);
+        return ShalomController.cachedAllOrders;
+      } catch (err: any) {
+        console.warn('[SHALOM PROXY GET ALL ORDERS WARN]', err?.message);
+        return ShalomController.cachedAllOrders;
+      } finally {
+        ShalomController.syncPromise = null;
       }
-      console.log(`[SHALOM PROXY ORDERS SYNC] ✓ ${allOrders.length} órdenes sincronizadas de Shalom Pro.`);
-      return ShalomController.cachedAllOrders;
-    } catch (err: any) {
-      console.warn('[SHALOM PROXY GET ALL ORDERS WARN]', err?.message);
-      return ShalomController.cachedAllOrders;
-    }
+    })();
+
+    return ShalomController.syncPromise;
   }
 
   /**
@@ -533,7 +559,7 @@ export class ShalomController {
   private static async fetchOrderPdf(
     request: FastifyRequest<{
       Params: { oseId: string };
-      Querystring: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string };
+      Querystring: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string; refresh?: string };
       Headers: { [key: string]: string };
     }>,
     reply: FastifyReply,
@@ -541,7 +567,8 @@ export class ShalomController {
   ) {
     try {
       const { oseId } = request.params;
-      const { dni: qDni, phone: qPhone, name: qName, guia: qGuia, orderDate: qOrderDate, internalCode: qInternalCode } = request.query || {};
+      const { dni: qDni, phone: qPhone, name: qName, guia: qGuia, orderDate: qOrderDate, internalCode: qInternalCode, refresh: qRefresh } = request.query || {};
+      const forceRefresh = qRefresh === '1' || qRefresh === 'true';
       const cleanSearch = decodeURIComponent(oseId || '').trim();
       const credentials = await ShalomController.getShalomCredentials(request.headers);
 
@@ -565,9 +592,9 @@ export class ShalomController {
       const is9DigitPhone = /^9\d{8}$/.test(cleanSearch);
       const isShalomGuide = /^(V\d{3}|[A-Z]\d{3})[- ]?\d{4,8}$/i.test(cleanSearch);
       const isInternalCode = cleanSearch.startsWith('CMD-') || cleanSearch.startsWith('SH-') || (/^\d{1,6}$/.test(cleanSearch) && !is8DigitDni);
-      const isNumericOseId = /^\d{5,12}$/.test(cleanSearch);
+      const isNumericOseId = /^\d{1,9}$/.test(cleanSearch) && !is8DigitDni && !is11DigitRuc;
 
-      let rawDni = (qDni || (!isNumericOseId && (is8DigitDni || is11DigitRuc) ? cleanSearch : '')).replace(/\D/g, '').trim();
+      let rawDni = (qDni || (is8DigitDni || is11DigitRuc ? cleanSearch : '')).replace(/\D/g, '').trim();
       let rawPhone = (qPhone || (is9DigitPhone ? cleanSearch : '')).replace(/\D/g, '').trim();
       let rawName = (qName || '').toLowerCase().trim();
       const targetGuia = (qGuia || (isShalomGuide ? cleanSearch : '')).toUpperCase().trim();
@@ -578,8 +605,8 @@ export class ShalomController {
       const targetPhone = SHOP_PHONES.includes(rawPhone) || SHOP_PHONES.some(p => rawPhone.endsWith(p)) ? '' : rawPhone;
       const targetName = ['clienta', 'cliente', 'comikids', 'encomi', 'milagros', 'usuario', 'destinatario'].includes(rawName) || rawName.length < 3 ? '' : rawName;
 
-      // 0. INTENTO DIRECTO RÁPIDO (50ms): SOLO si NO hay DNI de clienta a buscar (si hay DNI, es obligatorio buscar el último paquete actualizado)
-      if (!targetDni && /^\d{5,12}$/.test(cleanSearch)) {
+      // 0. INTENTO DIRECTO RÁPIDO (50ms): SOLO si NO hay DNI de clienta a buscar y es un OSE ID numérico real (si hay DNI, es obligatorio buscar el último paquete actualizado)
+      if (!targetDni && isNumericOseId) {
         try {
           const directRes = await axios.get(
             `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(cleanSearch)}/${endpoint}`,
@@ -675,27 +702,20 @@ export class ShalomController {
       };
 
       // 2. Obtener listado sincronizado de órdenes recientes de Shalom Pro
-      let ordersList = await ShalomController.getAllShalomOrders(headers);
+      let ordersList = await ShalomController.getAllShalomOrders(headers, forceRefresh);
 
       // Función de coincidencia ESTRICTA ANTI-ERROR (SIEMPRE retorna la versión más actual / reciente)
       const findMatchingOrder = (list: any[]) => {
         const pool = list.filter(isActiveOrder);
 
         // 1. PRIORIDAD ABSOLUTA: Coincidencia por DNI del destinatario
-        // Toma SIEMPRE el despacho activo MÁS NUEVO de esta clienta (ID más alto y fecha más reciente)
+        // Toma SIEMPRE el despacho activo MÁS NUEVO y actualizado de esta clienta (ID más alto generado)
         if (targetDni && targetDni.length >= 6) {
           const dniMatches = pool.filter((o: any) => getOrderReceiverDni(o) === targetDni);
 
           if (dniMatches.length > 0) {
-            // Ordenar por ID / Fecha descendente (el despacho más nuevo y reciente al inicio)
-            dniMatches.sort((a, b) => {
-              const dateA = new Date(a.created_at || a.fecha_emision || a.fecha || 0).getTime();
-              const dateB = new Date(b.created_at || b.fecha_emision || b.fecha || 0).getTime();
-              if (dateB !== dateA && !isNaN(dateA) && !isNaN(dateB)) {
-                return dateB - dateA;
-              }
-              return Number(b.id || 0) - Number(a.id || 0);
-            });
+            // Ordenar estrictamente por ID descendente (el despacho más nuevo y reciente al inicio)
+            dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 
             // Si el usuario especificó una guía manual exacta, verificarla
             if (targetGuia && targetGuia.length >= 5) {
@@ -705,16 +725,12 @@ export class ShalomController {
                 const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
                 return fullG === cleanG || gOnly === cleanG;
               });
-              if (gMatch && isNameCompatible(gMatch)) return gMatch;
+              if (gMatch) return gMatch;
             }
 
-            // Filtrar por compatibilidad de nombre si fue proporcionado
-            const nameFiltered = dniMatches.filter(isNameCompatible);
-            const bestMatches = nameFiltered.length > 0 ? nameFiltered : dniMatches;
-
-            // Retornar SIEMPRE el despacho más nuevo de esta clienta
-            console.log(`[SHALOM PROXY] ✓ Seleccionado paquete MÁS ACTUALIZADO para DNI ${targetDni}: Orden #${bestMatches[0].id} (Guía: ${bestMatches[0].serie || 'V204'}-${bestMatches[0].guia || bestMatches[0].id})`);
-            return bestMatches[0];
+            // Retornar SIEMPRE el despacho más nuevo y actualizado de esta clienta
+            console.log(`[SHALOM PROXY] ✓ Seleccionado paquete MÁS ACTUALIZADO para DNI ${targetDni}: Orden #${dniMatches[0].id} (Guía: ${dniMatches[0].serie || 'V204'}-${dniMatches[0].guia || dniMatches[0].id})`);
+            return dniMatches[0];
           }
 
           return null;
@@ -790,8 +806,8 @@ export class ShalomController {
         });
       }
 
-      // Validación de Seguridad Nivel Bancario: Verificar que el nombre corresponda a la clienta
-      if (targetNameTokens.length > 0 && !isNameCompatible(matchedOrder)) {
+      // Validación de Seguridad Nivel Bancario: Verificar que el nombre corresponda a la clienta SOLO SI NO HUBO DNI
+      if (!targetDni && targetNameTokens.length > 0 && !isNameCompatible(matchedOrder)) {
         const receiverName = getOrderReceiverName(matchedOrder);
         console.error(`[SHALOM PROXY SECURITY BLOCK] BLOQUEADO: Se solicitó nombre "${targetName}" pero la orden encontrada (#${matchedOrder.id}) pertenece a "${receiverName}".`);
         return reply.code(403).send({
@@ -803,9 +819,9 @@ export class ShalomController {
 
       const cacheKey = `${matchedOrder.id}_${endpoint}`;
 
-      // A. SERVIR DESDE CACHÉ EN MEMORIA RAM (0ms) SI YA SE DESCARGÓ RECIENTEMENTE
+      // A. SERVIR DESDE CACHÉ EN MEMORIA RAM (0ms) SI YA SE DESCARGÓ RECIENTEMENTE (excepto si se solicita refresco forzado)
       const cachedPdf = ShalomController.pdfMemoryCache.get(cacheKey);
-      if (cachedPdf && (Date.now() - cachedPdf.timestamp < 180000)) {
+      if (!forceRefresh && cachedPdf && (Date.now() - cachedPdf.timestamp < 180000)) {
         Object.entries(cachedPdf.headers).forEach(([k, v]) => reply.header(k, v));
         return reply.send(cachedPdf.buffer);
       }

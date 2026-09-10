@@ -26,7 +26,9 @@ import {
   buildWhatsAppNativeUrl,
   getWhatsAppBusinessChatUrl,
   getJoinEncomiWhatsAppUrl,
-  isMobileDevice
+  isMobileDevice,
+  formatFechaConDia,
+  getRelativeDayLabel
 } from '../../services/whatsappService';
 
 import { OrderSuccessAnimation } from './OrderSuccessAnimation';
@@ -632,8 +634,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         setErrorMsg('Por favor ingresa tu DNI o Carnet de Extranjería (CE).');
         return;
       }
+      // Validación estricta: Mínimo 8 dígitos en el recuadro de DNI
+      const dniClean = dniShalom.trim().replace(/\D/g, '');
+      if (dniClean.length < 8) {
+        setErrorMsg('El recuadro de DNI debe contener como mínimo 8 dígitos numéricos.');
+        return;
+      }
       // Validación de CE: 9 dígitos debe empezar con "00"
-      const dniClean = dniShalom.trim();
       if (dniClean.length === 9 && !dniClean.startsWith('00')) {
         setErrorMsg('El Carnet de Extranjería (CE) de 9 dígitos debe comenzar con "00" (ej: 001234567). Por favor corrígelo antes de continuar.');
         return;
@@ -656,8 +663,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         setErrorMsg('Por favor ingresa el DNI o Carnet de Extranjería (CE) de quien recibe.');
         return;
       }
-      // Validación de CE: 9 dígitos debe empezar con "00"
-      const dniOlvaClean = dniShalom.trim();
+      // Validación estricta: Mínimo 8 dígitos en el recuadro de DNI
+      const dniOlvaClean = dniShalom.trim().replace(/\D/g, '');
+      if (dniOlvaClean.length < 8) {
+        setErrorMsg('El recuadro de DNI debe contener como mínimo 8 dígitos numéricos.');
+        return;
+      }
       if (dniOlvaClean.length === 9 && !dniOlvaClean.startsWith('00')) {
         setErrorMsg('El Carnet de Extranjería (CE) de 9 dígitos debe comenzar con "00" (ej: 001234567). Por favor corrígelo antes de continuar.');
         return;
@@ -729,7 +740,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
       setSubmitting(true);
       try {
-        const userIdentifier = (dniShalom.trim().length >= 8 ? dniShalom.trim() : '') || whatsapp.trim();
+        const cleanDocVal = dniShalom.trim().replace(/\D/g, '');
+        const validDni = cleanDocVal.length >= 8 ? cleanDocVal : (currentUser?.dni && currentUser.dni.length >= 8 && !currentUser.dni.startsWith('9') && !currentUser.dni.startsWith('usr-') ? currentUser.dni : '');
+        const userIdentifier = validDni || whatsapp.trim();
         let activeUser: any = null;
 
         // Si el usuario actual es cliente y coincide con este identificador, usarlo
@@ -738,13 +751,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           const userUpdates: any = {
             nombre_completo: nombreCompleto.trim(),
             telefono_default: whatsapp.trim() || activeUser.telefono_default,
-            dni_default: (dniShalom.trim().length >= 8 ? dniShalom.trim() : '') || activeUser.dni_default,
+            dni_default: validDni || activeUser.dni_default,
             email_default: correoCliente.trim() || activeUser.email_default,
             distrito_default: distritoQuery.trim() || activeUser.distrito_default,
             direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || activeUser.direccion_default,
             referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || activeUser.referencia_default,
             olva_modalidad_default: olvaModalidad,
           };
+          if (validDni && (!activeUser.dni || activeUser.dni.length < 8 || activeUser.dni.startsWith('9') || activeUser.dni.startsWith('usr-'))) {
+            userUpdates.dni = validDni;
+          }
           activeUser = { ...activeUser, ...userUpdates };
           ordersService.updateUserProfile(activeUser.id, userUpdates).catch(e => console.warn('User profile update warn:', e));
         } else {
@@ -752,7 +768,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           try {
             const regRes = await ordersService.registerUser(
               nombreCompleto.trim(),
-              userIdentifier,
+              validDni || userIdentifier,
               undefined,
               'incomi2026',
               whatsapp.trim()
@@ -760,7 +776,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             activeUser = regRes.user || null;
             if (activeUser) {
               ordersService.updateUserProfile(activeUser.id, {
-                dni_default: dniShalom.trim().length >= 8 ? dniShalom.trim() : undefined,
+                dni_default: validDni || undefined,
                 email_default: correoCliente.trim() || undefined,
                 distrito_default: distritoQuery.trim() || undefined,
                 direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || undefined,
@@ -779,20 +795,23 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
         if (selectedMethod?.tipo_formulario === 'shalom') {
           const fullAgencyStr = selectedAgencyObject ? formatFullAgencyName(selectedAgencyObject) : 'AGENCIA SHALOM CENTRAL';
-          finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dniShalom.trim()})`;
+          finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${validDni || dniShalom.trim()})`;
         } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
           finalDestinoDetalle = `${distritoQuery.trim()} • ${direccionExacta.trim()}${referencia.trim() ? ` (Ref: ${referencia.trim()})` : ''}`;
         } else if (selectedMethod?.tipo_formulario === 'olva') {
           const modLabel = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
           const refText = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';
-          finalDestinoDetalle = `Olva Courier (${modLabel}): ${olvaDireccion.trim()}${refText} • DNI: ${dniShalom.trim()} • Tel: ${whatsapp.trim()} • Correo: ${correoCliente.trim()}`;
+          finalDestinoDetalle = `Olva Courier (${modLabel}): ${olvaDireccion.trim()}${refText} • DNI: ${validDni || dniShalom.trim()} • Tel: ${whatsapp.trim()} • Correo: ${correoCliente.trim()}`;
         } else {
           finalDestinoDetalle = customDestinoText.trim() || 'Indicaciones de entrega';
         }
 
-        const clientUserData = activeUser || {
+        const clientUserData = activeUser ? {
+          ...activeUser,
+          dni: validDni || (activeUser.dni && activeUser.dni.length >= 8 && !activeUser.dni.startsWith('9') && !activeUser.dni.startsWith('usr-') ? activeUser.dni : (validDni || ''))
+        } : {
           id: 'usr-' + Date.now().toString(36),
-          dni: userIdentifier,
+          dni: validDni || '',
           nombre_completo: nombreCompleto.trim(),
           telefono_default: whatsapp.trim(),
           email: correoCliente.trim() || undefined,
@@ -1045,7 +1064,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">📅 Fecha Deseada de Envío:</span>
-                    <span className="text-cyan-300 font-bold text-sm font-mono">{fechaEnvioDeseada}</span>
+                    <span className="text-cyan-300 font-bold text-sm font-mono">{formatFechaConDia(fechaEnvioDeseada)}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">🚚 Tipo de Despacho:</span>
@@ -1093,7 +1112,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">📅 Fecha Deseada:</span>
-                    <span className="text-cyan-300 font-bold text-xs sm:text-sm font-mono truncate block">{fechaEnvioDeseada}</span>
+                    <span className="text-cyan-300 font-bold text-xs sm:text-sm font-mono truncate block">{formatFechaConDia(fechaEnvioDeseada)}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">📱 Celular:</span>
@@ -1141,7 +1160,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">📅 Fecha Deseada de Envío:</span>
-                    <span className="text-cyan-300 font-bold text-xs sm:text-sm font-mono truncate block">{fechaEnvioDeseada}</span>
+                    <span className="text-cyan-300 font-bold text-xs sm:text-sm font-mono truncate block">{formatFechaConDia(fechaEnvioDeseada)}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px] font-medium">📱 WhatsApp:</span>
@@ -1817,9 +1836,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         placeholder="Número de DNI (8 dígitos) o CE"
                         className="w-full pl-5 pr-20 py-3.5 sm:py-4 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-mono font-bold text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 tracking-wider shadow-inner"
                       />
+                      {dniShalom.length > 0 && dniShalom.length < 8 && (
+                        <div className="absolute right-3 px-2 py-0.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold text-xs tracking-wider shadow-sm animate-fadeIn pointer-events-none">
+                          {dniShalom.length}/8 dígitos
+                        </div>
+                      )}
                       {dniShalom.length === 8 && (
                         <div className="absolute right-3 px-3 py-1 rounded-xl bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-black text-xs tracking-wider shadow-sm animate-fadeIn pointer-events-none">
-                          DNI
+                          DNI ✓
                         </div>
                       )}
                       {dniShalom.length === 9 && dniShalom.startsWith('00') && (
@@ -1838,6 +1862,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </div>
                       )}
                     </div>
+                    {dniShalom.length > 0 && dniShalom.length < 8 && (
+                      <p className="text-xs text-amber-400 font-semibold mt-1.5 flex items-center gap-1.5">
+                        ⚠️ Mínimo 8 dígitos requeridos en el DNI (has ingresado {dniShalom.length}).
+                      </p>
+                    )}
                     {dniShalom.length === 9 && !dniShalom.startsWith('00') && (
                       <p className="text-xs text-rose-400 font-semibold mt-1.5 flex items-center gap-1.5">
                         ⚠️ El CE de 9 dígitos debe comenzar con <span className="font-mono font-black text-rose-300">"00"</span> — ej: <span className="font-mono">001234567</span>
@@ -2356,9 +2385,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             placeholder="Ej. 72345678 o CE"
                             className="w-full pl-4 pr-16 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                           />
+                          {dniShalom.length > 0 && dniShalom.length < 8 && (
+                            <div className="absolute right-2.5 px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/50 text-amber-300 font-bold text-[10px] tracking-wider pointer-events-none animate-fadeIn">
+                              {dniShalom.length}/8 dígitos
+                            </div>
+                          )}
                           {dniShalom.length === 8 && (
                             <div className="absolute right-2.5 px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/50 text-amber-300 font-black text-[11px] tracking-wider pointer-events-none animate-fadeIn">
-                              DNI
+                              DNI ✓
                             </div>
                           )}
                           {dniShalom.length === 9 && dniShalom.startsWith('00') && (
@@ -2377,6 +2411,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             </div>
                           )}
                         </div>
+                        {dniShalom.length > 0 && dniShalom.length < 8 && (
+                          <p className="text-[11px] text-amber-400 font-semibold mt-1 flex items-center gap-1">
+                            ⚠️ Mínimo 8 dígitos requeridos en el DNI (has ingresado {dniShalom.length}).
+                          </p>
+                        )}
                         {dniShalom.length === 9 && !dniShalom.startsWith('00') && (
                           <p className="text-[11px] text-rose-400 font-semibold mt-1 flex items-center gap-1">
                             ⚠️ El CE de 9 dígitos debe comenzar con <span className="font-mono font-black text-rose-300">"00"</span> — ej: <span className="font-mono">001234567</span>
@@ -2556,9 +2595,16 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   {/* Casilla: Fecha Deseada de Envío / Despacho con Restricción de Corte Horario */}
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
-                        📅 Fecha en la que deseas el Envío / Despacho *
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <label className="block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-300">
+                          📅 Fecha en la que deseas el Envío / Despacho *
+                        </label>
+                        {getRelativeDayLabel(fechaEnvioDeseada) && (
+                          <span className="text-xs font-black text-cyan-300 bg-cyan-500/20 px-2 py-0.5 rounded-lg border border-cyan-400/40">
+                            {getRelativeDayLabel(fechaEnvioDeseada)}
+                          </span>
+                        )}
+                      </div>
                       <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border flex items-center gap-1 shrink-0 ${
                         cutoffStatus.isPastCutoff
                           ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
@@ -2582,9 +2628,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             setFechaEnvioDeseada(selected);
                           }
                         }}
-                        className="w-full pl-12 pr-4.5 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-cyan-300 placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner font-mono cursor-pointer"
+                        className="w-full pl-12 pr-28 py-4 sm:py-4.5 bg-white/6 border-2 border-white/15 rounded-2xl text-base sm:text-lg font-bold text-cyan-300 placeholder-slate-400 focus:outline-none focus:border-cyan-400 shadow-inner font-mono cursor-pointer"
                       />
                       <Calendar className="w-5 h-5 text-cyan-400 absolute left-4 pointer-events-none" />
+                      {getRelativeDayLabel(fechaEnvioDeseada) && (
+                        <div className="absolute right-4 px-2.5 py-1 rounded-xl bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 font-bold text-xs pointer-events-none animate-fadeIn">
+                          {getRelativeDayLabel(fechaEnvioDeseada)}
+                        </div>
+                      )}
                     </div>
 
                     {/* Aviso Explicativo del Horario de Corte */}

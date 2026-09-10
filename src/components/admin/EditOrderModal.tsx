@@ -10,6 +10,7 @@ import { DEPARTAMENTOS_OLVA } from '../../data/olvaAgencies';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { DniService } from '../../services/dniService';
 import { getDailyShalomPin } from '../../utils/formatters';
+import { getRelativeDayLabel } from '../../services/whatsappService';
 import {
   X,
   Save,
@@ -493,9 +494,16 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-                Fecha Envío Cliente
+              <label className="text-xs font-bold text-slate-300 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                  Fecha Envío Cliente
+                </span>
+                {getRelativeDayLabel(fechaEnvioCliente) && (
+                  <span className="text-cyan-300 font-black text-xs font-mono">
+                    {getRelativeDayLabel(fechaEnvioCliente)}
+                  </span>
+                )}
               </label>
               <input
                 type="date"

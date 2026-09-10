@@ -47,9 +47,7 @@ def main():
         "cd /opt/app && docker compose up -d --force-recreate backend_api",
         "sleep 4",
         "docker ps | grep backend_api",
-        "curl -i http://127.0.0.1:3000/api/shalom/orders/47311650/label | head -n 15",
-        "curl -i http://127.0.0.1:3000/api/shalom/orders/92644270/label | head -n 15",
-        "curl -i http://127.0.0.1:3000/api/shalom/orders/Rosario/label | head -n 15"
+        "curl -i 'http://127.0.0.1:3000/api/shalom/orders/73070655/voucher?dni=73070655&refresh=1' | head -n 15"
     ]
 
     for c in cmds:

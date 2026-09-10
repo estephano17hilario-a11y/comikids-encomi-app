@@ -32,7 +32,7 @@ export const OrderSuccessAnimation: React.FC<Props> = ({
   onFinished
 }) => {
   const [step, setStep] = useState<number>(1);
-  const [countdown, setCountdown] = useState<number>(2.5);
+  const [countdown, setCountdown] = useState<number>(3.2);
   const isMobile = typeof window !== 'undefined' && isMobileDevice();
   const whatsappUrl = isMobile 
     ? buildWhatsAppNativeUrl(comprobanteData) 
@@ -46,7 +46,7 @@ export const OrderSuccessAnimation: React.FC<Props> = ({
 
     // Cuenta regresiva fluida a 60 FPS
     const startTime = Date.now();
-    const duration = 2500; // 2.5s
+    const duration = 3200; // 3.2s de margen seguro de persistencia HTTP en móviles
 
     const interval = setInterval(() => {
       const elapsed = Date.now() - startTime;

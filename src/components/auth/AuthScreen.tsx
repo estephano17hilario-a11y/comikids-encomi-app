@@ -58,8 +58,9 @@ export const AuthScreen: React.FC = () => {
       }
       setStep(2);
     } else if (step === 2) {
-      if (!dni.trim()) {
-        setErrorMsg('Por favor ingresa tu DNI / Documento de Identidad.');
+      const cleanDni = dni.trim().replace(/\D/g, '');
+      if (!cleanDni || cleanDni.length < 8) {
+        setErrorMsg('El recuadro de DNI debe contener como mínimo 8 dígitos.');
         return;
       }
       setStep(3);

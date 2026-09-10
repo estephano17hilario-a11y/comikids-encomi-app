@@ -50,6 +50,8 @@ import {
   SlidersHorizontal,
   AlertTriangle,
   Layout,
+  Copy,
+  MessageSquare,
 } from 'lucide-react';
 
 const LOGO_PRESETS = [
@@ -62,7 +64,16 @@ const LOGO_PRESETS = [
   { label: 'Carhua Express', url: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=120&auto=format&fit=crop&q=60' },
 ];
 
-const DEFAULT_STANDARD_RECEIPT = (nombreAgencia: string) => `✨ *COMPROBANTE DE ENVÍO - ${nombreAgencia.toUpperCase()}* 📦
+export const DEFAULT_INICIO_RECEIPT = (nombreAgencia: string) =>
+  `✨ *COMPROBANTE DE ENVÍO - ${nombreAgencia ? nombreAgencia.toUpperCase() : 'AGENCIA'}* 📦\n¡Hola! Tu pedido ha sido registrado con éxito.`;
+
+export const DEFAULT_FIN_RECEIPT = () =>
+  `¡Muchas gracias por tu compra! Recuerda acudir con tu DNI físico para recoger tu paquete. 💖✨🙏`;
+
+export const construirMensajeComprobacion = (inicio: string, fin: string, nombreAgencia: string) => {
+  const header = inicio.trim() || DEFAULT_INICIO_RECEIPT(nombreAgencia);
+  const footer = fin.trim();
+  return `${header}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🏷️ *Orden:* {orden}
 👤 *Cliente:* {cliente}
@@ -72,7 +83,37 @@ const DEFAULT_STANDARD_RECEIPT = (nombreAgencia: string) => `✨ *COMPROBANTE DE
 📅 *Fecha de Envío:* {fecha}
 
 📍 *Destino Oficial:*
-{destino}`;
+{destino}
+{campos_adicionales}${footer ? `\n\n${footer}` : ''}`;
+};
+
+export const parsearMensajeComprobante = (mensajeCompleto?: string, nombreAgencia: string = '') => {
+  const defaultInicio = DEFAULT_INICIO_RECEIPT(nombreAgencia);
+  const defaultFin = DEFAULT_FIN_RECEIPT();
+
+  if (!mensajeCompleto || !mensajeCompleto.trim()) {
+    return { inicio: defaultInicio, fin: defaultFin };
+  }
+
+  if (mensajeCompleto.includes('━━━━━━━━━━━━━━━━━━━━━━━━━━━━')) {
+    const parts = mensajeCompleto.split('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    const inicio = parts[0]?.trim() || defaultInicio;
+    const resto = parts.slice(1).join('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    let fin = '';
+    if (resto.includes('{campos_adicionales}')) {
+      fin = resto.substring(resto.indexOf('{campos_adicionales}') + '{campos_adicionales}'.length).trim();
+    } else if (resto.includes('{destino}')) {
+      fin = resto.substring(resto.indexOf('{destino}') + '{destino}'.length).trim();
+    }
+    return { inicio, fin: fin || defaultFin };
+  }
+
+  return { inicio: mensajeCompleto.trim(), fin: defaultFin };
+};
+
+const DEFAULT_STANDARD_RECEIPT = (nombreAgencia: string) =>
+  construirMensajeComprobacion(DEFAULT_INICIO_RECEIPT(nombreAgencia), DEFAULT_FIN_RECEIPT(), nombreAgencia);
 
 export const CompanyAgenciesTab: React.FC = () => {
   const [methods, setMethods] = useState<MetodoEnvio[]>(() => ordersService.getShippingMethods());
@@ -96,6 +137,9 @@ export const CompanyAgenciesTab: React.FC = () => {
   const [fotoUrlMetodo, setFotoUrlMetodo] = useState('');
   const [camposList, setCamposList] = useState<CampoPersonalizadoAgencia[]>([]);
   const [mensajeComprobacion, setMensajeComprobacion] = useState('');
+  const [mensajeInicioComprobante, setMensajeInicioComprobante] = useState('');
+  const [mensajeFinComprobante, setMensajeFinComprobante] = useState('');
+  const [copiedPreviewMsg, setCopiedPreviewMsg] = useState(false);
 
   // ==========================================
   // REQUERIMIENTO 2: DISPONIBILIDAD Y HORARIOS
@@ -178,7 +222,6 @@ export const CompanyAgenciesTab: React.FC = () => {
   const [newCampoComprobante, setNewCampoComprobante] = useState(true);
 
   // Referencias
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Ocultar dock inferior cuando se abre algún modal
@@ -218,8 +261,13 @@ export const CompanyAgenciesTab: React.FC = () => {
     setFotoUrlMetodo(m.foto_url || '');
     setCamposList(m.campos_personalizados || []);
 
-    // Mensaje WhatsApp
-    setMensajeComprobacion(m.mensaje_comprobacion?.trim() || DEFAULT_STANDARD_RECEIPT(m.nombre));
+    // Mensaje WhatsApp / Comprobante
+    const parsed = parsearMensajeComprobante(m.mensaje_comprobacion, m.nombre);
+    const initialInicio = m.mensaje_inicio_comprobante?.trim() || parsed.inicio;
+    const initialFin = m.mensaje_fin_comprobante?.trim() || parsed.fin;
+    setMensajeInicioComprobante(initialInicio);
+    setMensajeFinComprobante(initialFin);
+    setMensajeComprobacion(m.mensaje_comprobacion?.trim() || construirMensajeComprobacion(initialInicio, initialFin, m.nombre));
 
     // Disponibilidad
     const disp = m.disponibilidad;
@@ -291,13 +339,21 @@ export const CompanyAgenciesTab: React.FC = () => {
         .filter(c => c.mostrar_en_rotulado)
         .map(c => c.id);
 
+      const finalComprobante = construirMensajeComprobacion(
+        mensajeInicioComprobante,
+        mensajeFinComprobante,
+        nombreMetodo.trim() || editingMethod.nombre
+      );
+
       ordersService.updateShippingMethod(editingMethod.id, {
         nombre: nombreMetodo.trim() || editingMethod.nombre,
         descripcion: descripcionMetodo.trim(),
         icono: iconoMetodo,
         foto_url: fotoUrlMetodo.trim() || undefined,
         campos_personalizados: camposList,
-        mensaje_comprobacion: mensajeComprobacion.trim() || undefined,
+        mensaje_comprobacion: finalComprobante,
+        mensaje_inicio_comprobante: mensajeInicioComprobante.trim() || undefined,
+        mensaje_fin_comprobante: mensajeFinComprobante.trim() || undefined,
         disponibilidad: {
           dias_semana: diasSemanaHabilitados.length > 0 ? diasSemanaHabilitados : undefined,
           modalidad_horario: modalidadHorario,
@@ -411,6 +467,8 @@ export const CompanyAgenciesTab: React.FC = () => {
           },
         ],
         mensaje_comprobacion: DEFAULT_STANDARD_RECEIPT(nombreMetodo.trim()),
+        mensaje_inicio_comprobante: DEFAULT_INICIO_RECEIPT(nombreMetodo.trim()),
+        mensaje_fin_comprobante: DEFAULT_FIN_RECEIPT(),
         config_rotulado: {
           incluir_campos_personalizados: true,
           campos_visibles: [],
@@ -536,30 +594,6 @@ export const CompanyAgenciesTab: React.FC = () => {
     setBloquesPersonalizados(prev => prev.filter(b => b.id !== id));
   };
 
-  // Inserción de variable en WhatsApp
-  const insertVariableIntoMessage = (varName: string) => {
-    const token = `{${varName}}`;
-    if (!textareaRef.current) {
-      setMensajeComprobacion(prev => prev + ' ' + token);
-      return;
-    }
-    const textarea = textareaRef.current;
-    const start = textarea.selectionStart || 0;
-    const end = textarea.selectionEnd || 0;
-    const currentVal = textarea.value;
-    const before = currentVal.substring(0, start);
-    const after = currentVal.substring(end, currentVal.length);
-    const newVal = before + token + after;
-    setMensajeComprobacion(newVal);
-
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        const newCursorPos = start + token.length;
-        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-      }
-    }, 50);
-  };
 
   // Agregar campo personalizado
   const handleAddCampo = () => {
@@ -1033,8 +1067,15 @@ export const CompanyAgenciesTab: React.FC = () => {
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
-                <Send className="w-3.5 h-3.5" />
-                <span>4. Mensaje WhatsApp</span>
+                <FileText className="w-3.5 h-3.5" />
+                <span>4. Entregar Comprobante</span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-black uppercase tracking-wider ${
+                  activeEditorTab === 'mensaje'
+                    ? 'bg-slate-950/30 text-slate-950'
+                    : 'bg-emerald-500/20 text-emerald-300'
+                }`}>
+                  Fácil
+                </span>
               </button>
 
               <button
@@ -1706,60 +1747,357 @@ export const CompanyAgenciesTab: React.FC = () => {
                 </div>
               )}
 
-              {/* --- TAB 4: MENSAJE WHATSAPP --- */}
+              {/* --- TAB 4: ENTREGAR COMPROBANTE (MODO FÁCIL: INICIO + DATOS AUTOMÁTICOS + FIN + PREVIEW) --- */}
               {activeEditorTab === 'mensaje' && (
-                <div className="space-y-4 animate-fadeIn">
-                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                        <Send className="w-4 h-4 text-emerald-400" />
-                        <span>Mensaje de Comprobante para WhatsApp</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setMensajeComprobacion(DEFAULT_STANDARD_RECEIPT(nombreMetodo || editingMethod.nombre))}
-                        className="text-[10px] text-cyan-400 hover:text-cyan-300 underline font-bold cursor-pointer"
-                      >
-                        Restaurar Plantilla Oficial
-                      </button>
+                <div className="space-y-5 animate-fadeIn">
+                  {/* Encabezado informativo */}
+                  <div className="p-4 rounded-2xl bg-linear-to-r from-emerald-500/10 via-slate-900 to-cyan-500/10 border border-emerald-500/30 flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-lg shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-white flex items-center gap-2">
+                          <span>Entregar Comprobante por WhatsApp</span>
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                            Modo Fácil
+                          </span>
+                        </h4>
+                        <p className="text-xs text-slate-300">
+                          Solo edita el <b>mensaje de inicio</b> y el <b>mensaje final</b>. Los datos del pedido que completa el cliente se insertan automáticamente en el centro.
+                        </p>
+                      </div>
                     </div>
 
-                    {/* Chips de variables */}
-                    <div className="p-3 rounded-2xl bg-slate-900 border border-cyan-500/20 space-y-2">
-                      <div className="text-[10.5px] font-bold text-cyan-300 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Toca una variable para insertarla donde esté tu cursor (sin escribir llaves):</span>
-                      </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const defInicio = DEFAULT_INICIO_RECEIPT(nombreMetodo || editingMethod?.nombre || '');
+                        const defFin = DEFAULT_FIN_RECEIPT();
+                        setMensajeInicioComprobante(defInicio);
+                        setMensajeFinComprobante(defFin);
+                        setMensajeComprobacion(construirMensajeComprobacion(defInicio, defFin, nombreMetodo || editingMethod?.nombre || ''));
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Restaurar Predeterminados</span>
+                    </button>
+                  </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {[
-                          { key: 'cliente', label: '👤 Cliente' },
-                          { key: 'dni', label: '🪪 DNI' },
-                          { key: 'telefono', label: '📱 Teléfono' },
-                          { key: 'modalidad', label: '🚚 Modalidad' },
-                          { key: 'destino', label: '📍 Destino' },
-                          { key: 'fecha', label: '📅 Fecha' },
-                          { key: 'orden', label: '🏷️ Orden' },
-                        ].map((item) => (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Columna Izquierda: Edición directa (Inicio + Datos Automáticos + Final) */}
+                    <div className="lg:col-span-7 space-y-5">
+                      
+                      {/* 1. MENSAJE DE INICIO */}
+                      <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-cyan-500/30 space-y-2.5 shadow-lg">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-black text-white uppercase tracking-wide flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-[10px] font-black">1</span>
+                            <span>Mensaje de Inicio (Encabezado / Saludo)</span>
+                          </label>
+                          <span className="text-[10px] text-cyan-400 font-bold uppercase">Editable</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Este texto aparece arriba del comprobante. Úsalo para el título oficial o un saludo cordial a la clienta.
+                        </p>
+
+                        <textarea
+                          rows={3}
+                          value={mensajeInicioComprobante}
+                          onChange={(e) => {
+                            setMensajeInicioComprobante(e.target.value);
+                            setMensajeComprobacion(construirMensajeComprobacion(e.target.value, mensajeFinComprobante, nombreMetodo || editingMethod?.nombre || ''));
+                          }}
+                          placeholder="Ej: ✨ *COMPROBANTE DE ENVÍO* 📦\n¡Hola! Tu pedido ha sido registrado con éxito."
+                          className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 leading-relaxed transition-colors shadow-inner"
+                        />
+
+                        {/* Botones de sugerencias rápidas para el inicio */}
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          <span className="text-[10px] text-slate-500 self-center">Sugerencias:</span>
                           <button
-                            key={item.key}
                             type="button"
-                            onClick={() => insertVariableIntoMessage(item.key)}
-                            className="px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-500 hover:text-slate-950 text-cyan-200 border border-cyan-500/30 text-[11px] font-mono font-bold transition-all active:scale-95 cursor-pointer"
+                            onClick={() => {
+                              const nuevo = `✨ *COMPROBANTE DE ENVÍO - ${(nombreMetodo || editingMethod?.nombre || 'AGENCIA').toUpperCase()}* 📦\n¡Hola {cliente}! Tu pedido fue registrado exitosamente.`;
+                              setMensajeInicioComprobante(nuevo);
+                              setMensajeComprobacion(construirMensajeComprobacion(nuevo, mensajeFinComprobante, nombreMetodo || editingMethod?.nombre || ''));
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-lg bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 cursor-pointer transition-colors"
                           >
-                            + {item.label}
+                            + Saludo Cordial
                           </button>
-                        ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nuevo = `📦 *COMPROBANTE OFICIAL DE ENTREGA* 🚚\n¡Estimada clienta! Aquí tienes los datos de tu envío:`;
+                              setMensajeInicioComprobante(nuevo);
+                              setMensajeComprobacion(construirMensajeComprobacion(nuevo, mensajeFinComprobante, nombreMetodo || editingMethod?.nombre || ''));
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-lg bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 cursor-pointer transition-colors"
+                          >
+                            + Comprobante Oficial
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 2. DATOS QUE RELLENA EL CLIENTE (FIJO, AUTOMÁTICO) */}
+                      <div className="p-4 sm:p-5 rounded-2xl bg-linear-to-b from-slate-900/95 to-slate-950 border border-emerald-500/30 space-y-3 shadow-lg relative overflow-hidden">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-black">2</span>
+                            <h5 className="text-xs font-black text-white uppercase tracking-wide flex items-center gap-1.5">
+                              <span>Datos del Pedido que Rellena el Cliente</span>
+                            </h5>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                            <Lock className="w-3 h-3" />
+                            <span>100% Automático</span>
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                          Estos datos se insertan <b>automáticamente</b> en el comprobante con la información que el cliente complete al solicitar su pedido. No necesitas escribir códigos ni variables manuales.
+                        </p>
+
+                        <div className="p-3.5 rounded-xl bg-slate-950/90 border border-white/5 space-y-2 text-[11px] font-mono">
+                          <div className="text-slate-400 flex items-center gap-2">
+                            <span className="text-slate-600">━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
+                            <div className="flex items-center gap-1.5">
+                              <span>🏷️</span>
+                              <span className="text-white font-bold">Orden:</span>
+                              <span className="text-cyan-400">#C-061625</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span>👤</span>
+                              <span className="text-white font-bold">Cliente:</span>
+                              <span className="text-cyan-400">Nombre del cliente</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span>🪪</span>
+                              <span className="text-white font-bold">DNI / Doc:</span>
+                              <span className="text-cyan-400">Documento ingresado</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span>📱</span>
+                              <span className="text-white font-bold">WhatsApp:</span>
+                              <span className="text-cyan-400">Teléfono registrado</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span>🚚</span>
+                              <span className="text-white font-bold">Modalidad:</span>
+                              <span className="text-emerald-400 font-bold">{nombreMetodo || editingMethod?.nombre || 'Agencia'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span>📅</span>
+                              <span className="text-white font-bold">Fecha:</span>
+                              <span className="text-cyan-400">Fecha de envío</span>
+                            </div>
+                          </div>
+                          <div className="pt-1 text-slate-300">
+                            <div className="flex items-center gap-1.5">
+                              <span>📍</span>
+                              <span className="text-white font-bold">Destino Oficial:</span>
+                              <span className="text-emerald-300">Sede o dirección seleccionada</span>
+                            </div>
+                          </div>
+
+                          {/* Campos adicionales activos */}
+                          {camposList.filter(c => c.mostrar_en_comprobante).length > 0 && (
+                            <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                              <span className="text-[10px] text-purple-300 uppercase font-bold tracking-wide block">
+                                📋 + Datos adicionales solicitados por esta agencia:
+                              </span>
+                              <div className="flex flex-wrap gap-1">
+                                {camposList
+                                  .filter(c => c.mostrar_en_comprobante)
+                                  .map(c => (
+                                    <span
+                                      key={c.id}
+                                      className="px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-500/30 text-purple-200 text-[10px] flex items-center gap-1"
+                                    >
+                                      <Check className="w-2.5 h-2.5 text-purple-400" />
+                                      <span>{c.label}</span>
+                                    </span>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 3. MENSAJE DE FINAL */}
+                      <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-emerald-500/30 space-y-2.5 shadow-lg">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-black text-white uppercase tracking-wide flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-black">3</span>
+                            <span>Mensaje de Final (Despedida / Instrucciones)</span>
+                          </label>
+                          <span className="text-[10px] text-emerald-400 font-bold uppercase">Editable</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Este texto aparece después de los datos del pedido. Añade recomendaciones de entrega, agradecimiento o pasos a seguir.
+                        </p>
+
+                        <textarea
+                          rows={3}
+                          value={mensajeFinComprobante}
+                          onChange={(e) => {
+                            setMensajeFinComprobante(e.target.value);
+                            setMensajeComprobacion(construirMensajeComprobacion(mensajeInicioComprobante, e.target.value, nombreMetodo || editingMethod?.nombre || ''));
+                          }}
+                          placeholder="Ej: ¡Muchas gracias por tu compra! Recuerda acudir con tu DNI físico para recoger tu paquete."
+                          className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 leading-relaxed transition-colors shadow-inner"
+                        />
+
+                        {/* Botones de sugerencias rápidas para el final */}
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          <span className="text-[10px] text-slate-500 self-center">Sugerencias:</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nuevo = `¡Muchas gracias por tu compra! Recuerda acudir con tu DNI físico para recoger tu paquete. 💖✨🙏`;
+                              setMensajeFinComprobante(nuevo);
+                              setMensajeComprobacion(construirMensajeComprobacion(mensajeInicioComprobante, nuevo, nombreMetodo || editingMethod?.nombre || ''));
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-lg bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-500/30 cursor-pointer transition-colors"
+                          >
+                            + Requisito DNI
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nuevo = `¡Gracias por tu preferencia! Estaremos atentos a cualquier consulta por este chat. ¡Que tengas un excelente día! 🌸✨`;
+                              setMensajeFinComprobante(nuevo);
+                              setMensajeComprobacion(construirMensajeComprobacion(mensajeInicioComprobante, nuevo, nombreMetodo || editingMethod?.nombre || ''));
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-lg bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-500/30 cursor-pointer transition-colors"
+                          >
+                            + Agradecimiento Amable
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    <textarea
-                      ref={textareaRef}
-                      rows={8}
-                      value={mensajeComprobacion}
-                      onChange={e => setMensajeComprobacion(e.target.value)}
-                      className="w-full p-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 leading-relaxed"
-                    />
+                    {/* Columna Derecha: Vista Previa en Vivo Simulador WhatsApp */}
+                    <div className="lg:col-span-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="w-4 h-4 text-emerald-400" />
+                          <h5 className="text-xs font-black text-white uppercase tracking-wide">
+                            Vista Previa WhatsApp Real
+                          </h5>
+                        </div>
+                        <span className="text-[10px] text-slate-400">En tiempo real</span>
+                      </div>
+
+                      <div className="rounded-3xl bg-[#0b141a] border border-slate-800 p-4 shadow-2xl relative overflow-hidden">
+                        {/* Cabecera simulada de chat */}
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-xs">
+                              {(nombreMetodo || editingMethod?.nombre || 'E').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-white leading-tight">
+                                {nombreMetodo || editingMethod?.nombre || 'Agencia'}
+                              </div>
+                              <div className="text-[9px] text-emerald-400 font-medium">Línea Oficial WhatsApp</div>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const demoText = `${mensajeInicioComprobante.trim() || DEFAULT_INICIO_RECEIPT(nombreMetodo || editingMethod?.nombre || '')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏷️ *Orden:* #C-061625
+👤 *Cliente:* Camila Ramos
+🪪 *DNI / Doc:* 72345678
+📱 *WhatsApp:* +51 987 654 321
+🚚 *Modalidad:* ${nombreMetodo || editingMethod?.nombre || 'Agencia'}
+📅 *Fecha de Envío:* 12/09/2026
+
+📍 *Destino Oficial:*
+Agencia Central Av. Arequipa 1420 - Lima${
+  camposList.filter(c => c.mostrar_en_comprobante).length > 0
+    ? '\n' + camposList.filter(c => c.mostrar_en_comprobante).map(c => `📌 *${c.label}:* Ejemplo de dato`).join('\n')
+    : ''
+}${mensajeFinComprobante.trim() ? `\n\n${mensajeFinComprobante.trim()}` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+¿Buscas que tu negocio sea 10x más rápido al entregar pedidos? Entonces buscas a Encomi 🚀
+👉 https://encomi.app/c/comikids
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+¡Muchas gracias por tu preferencia! 💖✨🙏`;
+
+                              navigator.clipboard.writeText(demoText);
+                              setCopiedPreviewMsg(true);
+                              setTimeout(() => setCopiedPreviewMsg(false), 2500);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Copiar texto de prueba"
+                          >
+                            {copiedPreviewMsg ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedPreviewMsg ? '¡Copiado!' : 'Copiar'}</span>
+                          </button>
+                        </div>
+
+                        {/* Burbuja WhatsApp */}
+                        <div className="bg-[#005c4b] text-white p-3.5 rounded-2xl rounded-tr-none text-xs font-sans space-y-2 leading-relaxed shadow-lg max-w-full break-words">
+                          {/* 1. Mensaje de Inicio destacado */}
+                          <div className="whitespace-pre-line text-emerald-100 font-semibold">
+                            {mensajeInicioComprobante.trim() || DEFAULT_INICIO_RECEIPT(nombreMetodo || editingMethod?.nombre || '')}
+                          </div>
+
+                          <div className="text-emerald-300/60 font-mono select-none">
+                            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                          </div>
+
+                          {/* 2. Datos Automáticos del Cliente */}
+                          <div className="space-y-1 text-[11.5px]">
+                            <div>🏷️ <b>Orden:</b> #C-061625</div>
+                            <div>👤 <b>Cliente:</b> Camila Ramos</div>
+                            <div>🪪 <b>DNI / Doc:</b> 72345678</div>
+                            <div>📱 <b>WhatsApp:</b> +51 987 654 321</div>
+                            <div>🚚 <b>Modalidad:</b> {nombreMetodo || editingMethod?.nombre || 'Agencia'}</div>
+                            <div>📅 <b>Fecha de Envío:</b> 12/09/2026</div>
+                            <div className="pt-1">
+                              <div>📍 <b>Destino Oficial:</b></div>
+                              <div className="text-emerald-100">Agencia Central Av. Arequipa 1420 - Lima</div>
+                            </div>
+                            {camposList.filter(c => c.mostrar_en_comprobante).map(c => (
+                              <div key={c.id} className="text-purple-200">
+                                📌 <b>{c.label}:</b> [Dato del cliente]
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* 3. Mensaje Final destacado */}
+                          {mensajeFinComprobante.trim() && (
+                            <div className="pt-1 whitespace-pre-line text-emerald-100 font-medium">
+                              {mensajeFinComprobante.trim()}
+                            </div>
+                          )}
+
+                          {/* Pie oficial de Encomi */}
+                          <div className="pt-2 border-t border-emerald-600/40 text-[10px] text-emerald-200/80 space-y-1">
+                            <div className="text-emerald-300/60 font-mono select-none">━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+                            <div>¿Buscas que tu negocio sea 10x más rápido al entregar pedidos? Entonces buscas a Encomi 🚀</div>
+                            <div className="text-cyan-300 underline font-mono text-[9px]">https://encomi.app/c/comikids</div>
+                            <div>¡Muchas gracias por tu preferencia! 💖✨🙏</div>
+                          </div>
+
+                          {/* Hora y checks de lectura */}
+                          <div className="flex justify-end items-center gap-1 text-[9px] text-emerald-200/70 pt-1">
+                            <span>10:45 AM</span>
+                            <span className="text-cyan-300 font-bold">✓✓</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

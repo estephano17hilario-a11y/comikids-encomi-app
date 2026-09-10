@@ -36,11 +36,48 @@ export const isMobileDevice = (): boolean => {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 };
 
-// Helper para obtener el día de la semana y fecha formateada en español
+// Helper para obtener etiqueta de día relativo (Hoy) o (Mañana) en hora de Perú
+export const getRelativeDayLabel = (dateStr?: string): string => {
+  if (!dateStr) return '';
+  try {
+    const raw = dateStr.split('T')[0].trim();
+    const parts = raw.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const target = new Date(year, month, day, 12, 0, 0);
+
+      // Fecha actual en hora de Perú (UTC-5)
+      const now = new Date();
+      const peruFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Lima',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const peruTodayStr = peruFormatter.format(now); // Formato YYYY-MM-DD
+      const [pYear, pMonth, pDay] = peruTodayStr.split('-').map(Number);
+      const today = new Date(pYear, pMonth - 1, pDay, 12, 0, 0);
+
+      const diffTime = target.getTime() - today.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) return '(Hoy)';
+      if (diffDays === 1) return '(Mañana)';
+    }
+  } catch {
+    // fallback
+  }
+  return '';
+};
+
+// Helper para obtener el día de la semana y fecha formateada en español, agregando (Hoy) o (Mañana) a la derecha
 export const formatFechaConDia = (dateStr?: string): string => {
   if (!dateStr) return 'Programación estándar';
   try {
-    const parts = dateStr.split('-');
+    const cleanDate = dateStr.split('T')[0].trim();
+    const parts = cleanDate.split('-');
     if (parts.length === 3) {
       const year = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
@@ -50,12 +87,15 @@ export const formatFechaConDia = (dateStr?: string): string => {
       const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
       const diaSemana = dias[date.getDay()];
       const mesNombre = meses[date.getMonth()];
-      return `${diaSemana}, ${day} ${mesNombre} ${year}`;
+      const relative = getRelativeDayLabel(cleanDate);
+      const relativeSuffix = relative ? ` ${relative}` : '';
+      return `${diaSemana}, ${day} ${mesNombre} ${year}${relativeSuffix}`;
     }
   } catch {
     // fallback
   }
-  return dateStr;
+  const rel = getRelativeDayLabel(dateStr);
+  return rel ? `${dateStr} ${rel}` : dateStr;
 };
 
 /**

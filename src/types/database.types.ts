@@ -190,7 +190,9 @@ export interface MetodoEnvio {
   orden: number;
   es_sistema?: boolean; // TRUE para Shalom y Olva (no se pueden borrar ni alterar campos base)
   campos_personalizados?: CampoPersonalizadoAgencia[];
-  mensaje_comprobacion?: string; // Plantilla editable por agencia sin el pie de Encomi
+  mensaje_comprobacion?: string; // Plantilla completa con variables para compatibilidad de envíos
+  mensaje_inicio_comprobante?: string; // Mensaje/encabezado de inicio editable (fácil configuración)
+  mensaje_fin_comprobante?: string; // Mensaje/despedida final editable (fácil configuración)
   disponibilidad?: DisponibilidadAgencia; // Configuración inteligente de días y fechas
   config_rotulado?: ConfigRotuladoAgencia;
 }

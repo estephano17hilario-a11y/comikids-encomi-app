@@ -23,8 +23,22 @@ export const OrderLiveTracker: React.FC = () => {
   const [filter, setFilter] = useState<'activos' | 'todos'>('activos');
   const [viewMode, setViewMode] = useState<'lista' | 'calendario'>('lista');
 
+  const userDni = (currentUser?.dni || '').trim().toUpperCase().replace(/\s+/g, '');
+  const userPhone = (currentUser?.telefono_default || '').trim().replace(/\D/g, '');
+
   const clientOrders = pedidos
-    .filter(p => p.usuario_id === currentUser?.id)
+    .filter(p => {
+      if (!currentUser) return false;
+      if (p.usuario_id === currentUser.id) return true;
+      if (userDni && p.usuario?.dni && p.usuario.dni.trim().toUpperCase().replace(/\s+/g, '') === userDni) return true;
+      if (userDni && p.usuario?.dni_default && p.usuario.dni_default.trim().toUpperCase().replace(/\s+/g, '') === userDni) return true;
+      if (userDni && p.destino_detalle && p.destino_detalle.toUpperCase().includes(userDni)) return true;
+      if (userPhone && userPhone.length >= 9) {
+        if (p.usuario?.telefono_default && p.usuario.telefono_default.replace(/\D/g, '').includes(userPhone)) return true;
+        if (p.destino_detalle && p.destino_detalle.includes(userPhone)) return true;
+      }
+      return false;
+    })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   const displayedOrders = filter === 'activos'

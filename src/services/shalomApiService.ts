@@ -489,7 +489,7 @@ export class ShalomApiService {
   public static async fetchVoucherPdfBase64(
     oseId: number | string,
     auth?: ShalomAuthCredentials,
-    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string },
+    clientContext?: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string; refresh?: boolean | string },
     onMetadata?: (meta: { pickupCode?: string; guia?: string; oseId?: string }) => void
   ): Promise<string | null> {
     try {
@@ -506,6 +506,7 @@ export class ShalomApiService {
       if (clientContext?.guia) qParams.set('guia', clientContext.guia);
       if (clientContext?.orderDate) qParams.set('orderDate', clientContext.orderDate);
       if (clientContext?.internalCode) qParams.set('internalCode', clientContext.internalCode);
+      if (clientContext?.refresh) qParams.set('refresh', '1');
       const qStr = qParams.toString() ? `?${qParams.toString()}` : '';
 
       const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/voucher${qStr}`, {
@@ -528,17 +529,22 @@ export class ShalomApiService {
       const returnedName = returnedNameRaw ? decodeURIComponent(returnedNameRaw).toLowerCase() : '';
 
       // 1. Validar DNI con header de seguridad
+      let dniMatchesOk = false;
       if (clientContext?.dni && clientContext.dni.length >= 6 && returnedDni && returnedDni !== 'DNI') {
         const cleanReqDni = clientContext.dni.replace(/\D/g, '');
         const cleanDoc = returnedDni.replace(/\D/g, '');
-        if (cleanReqDni && cleanDoc && cleanReqDni !== cleanDoc) {
-          console.warn(`[SHALOM SECURITY LOCK] Rechazado comprobante de otra clienta. DNI Solicitado: ${cleanReqDni} vs DNI Comprobante: ${cleanDoc}`);
-          return null;
+        if (cleanReqDni && cleanDoc) {
+          if (cleanReqDni !== cleanDoc) {
+            console.warn(`[SHALOM SECURITY LOCK] Rechazado comprobante de otra clienta. DNI Solicitado: ${cleanReqDni} vs DNI Comprobante: ${cleanDoc}`);
+            return null;
+          } else {
+            dniMatchesOk = true;
+          }
         }
       }
 
-      // 2. Validar Nombre con header de seguridad (Zero Falsos Positivos)
-      if (clientContext?.name && returnedName) {
+      // 2. Validar Nombre con header de seguridad (SOLO si NO hubo coincidencia exacta de DNI)
+      if (!dniMatchesOk && clientContext?.name && returnedName) {
         const clientTokens = clientContext.name
           .toLowerCase()
           .replace(/[^a-zñáéíóú\s]/gi, '')

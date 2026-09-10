@@ -83,7 +83,123 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const auditedRef = React.useRef(false);
   const cancelledAuditRef = React.useRef(false);
 
-  // 1. AUDITORÍA AUTOMÁTICA EN SHALOM PRO AL ABRIR EL MODAL (1 sola vez por apertura)
+  // 1. AUDITORÍA AUTOMÁTICA Y REFRESCO DE GUÍAS POST-ENTREGA EN SHALOM PRO
+  const executeAudit = async (targetList: DeliveryOrderProgress[], forceRefresh = false) => {
+    if (isShalomExcelMode) {
+      setIsAuditing(false);
+      setCurrentStepText('Modo Solo EXCEL activo (sin conexión API directa a Shalom).');
+      return;
+    }
+
+    const auth = tallerConfig?.shalom_email ? {
+      email: tallerConfig.shalom_email,
+      password: tallerConfig.shalom_password || '',
+    } : undefined;
+
+    cancelledAuditRef.current = false;
+    const updatedList: DeliveryOrderProgress[] = targetList.map((p) => {
+      const cleanDni = (p.dni || '').replace(/\D/g, '').trim();
+      const hasIdent = Boolean(cleanDni.length >= 6 || p.trackingCode || p.guideNumber || p.manualGuideInput);
+      return {
+        ...p,
+        auditStatus: hasIdent ? 'auditing' : 'not_found',
+      };
+    });
+
+    setProgressList([...updatedList]);
+    const itemsToAudit = updatedList.filter((p) => p.auditStatus === 'auditing');
+
+    if (itemsToAudit.length === 0) {
+      setIsAuditing(false);
+      setCurrentStepText('Listado de pedidos listo para entrega.');
+      return;
+    }
+
+    setIsAuditing(true);
+    setCurrentStepText(
+      forceRefresh
+        ? `Consultando actualización oficial post-entrega en Shalom Pro API (0/${itemsToAudit.length})...`
+        : `Consultando tickets oficiales en Shalom Pro API (0/${itemsToAudit.length})...`
+    );
+
+    const CONCURRENCY = 4;
+    let completedCount = 0;
+
+    const auditSingleItem = async (item: DeliveryOrderProgress) => {
+      if (cancelledAuditRef.current) return;
+      const originalOrder = orders.find((o) => o.id === item.orderId);
+      const cleanDni = (item.dni || '').replace(/\D/g, '').trim();
+      const clientCtx = {
+        dni: cleanDni,
+        phone: item.phone,
+        name: item.customerName,
+        guia: item.manualGuideInput || item.guideNumber,
+        orderDate: originalOrder?.created_at || originalOrder?.fecha_limite,
+        internalCode: item.trackingCode,
+        refresh: forceRefresh,
+      };
+
+      let pdfData: string | null = null;
+      const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
+        if (meta.pickupCode) {
+          item.pickupCode = meta.pickupCode;
+        }
+        if (meta.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-')) {
+          item.guideNumber = meta.guia;
+          item.manualGuideInput = meta.guia;
+          const safeName = item.customerName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
+          item.fileName = `Guia_Shalom_${safeName}_${meta.guia}.pdf`;
+        }
+      };
+
+      // PRIORIDAD ABSOLUTA: Consultar por DNI para asegurar que trae el último paquete registrado y más actualizado post-agencia
+      const primarySearchKey = (cleanDni && cleanDni.length >= 8)
+        ? cleanDni
+        : (originalOrder?.shalom_ose_id ||
+           (item.manualGuideInput?.trim() || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '')) ||
+           item.trackingCode || item.orderId);
+
+      try {
+        pdfData = await ShalomApiService.fetchVoucherPdfBase64(primarySearchKey, auth, clientCtx, handleMeta);
+      } catch (e: any) {
+        console.warn(`[SHALOM AUDIT VOUCHER WITH QR ERROR] #${item.trackingCode}:`, e?.message);
+      }
+
+      if (cancelledAuditRef.current) return;
+
+      if (pdfData && pdfData.length > 100) {
+        item.pdfBase64 = pdfData;
+        item.auditStatus = 'verified_pdf';
+      } else {
+        item.pdfBase64 = undefined;
+        item.auditStatus = 'not_found';
+      }
+
+      completedCount++;
+      if (!cancelledAuditRef.current) {
+        setProgressList([...updatedList]);
+        setCurrentStepText(`Verificando tickets en Shalom Pro API (${completedCount}/${itemsToAudit.length})...`);
+      }
+    };
+
+    // Ejecutar en lotes concurrentes de 4 para máxima velocidad
+    for (let i = 0; i < itemsToAudit.length; i += CONCURRENCY) {
+      if (cancelledAuditRef.current) break;
+      const chunk = itemsToAudit.slice(i, i + CONCURRENCY);
+      await Promise.all(chunk.map(auditSingleItem));
+    }
+
+    if (!cancelledAuditRef.current) {
+      setIsAuditing(false);
+      const verified = updatedList.filter((p) => p.auditStatus === 'verified_pdf').length;
+      setCurrentStepText(
+        verified === updatedList.length
+          ? '✓ Todos los pedidos fueron confirmados en Shalom Pro API (Tickets oficiales con QR listos).'
+          : `${verified} de ${updatedList.length} pedidos confirmados en Shalom Pro API.`
+      );
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) {
       auditedRef.current = false;
@@ -131,107 +247,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     });
 
     setProgressList(initial);
-
-    const runAudit = async () => {
-      if (isShalomExcelMode) {
-        setIsAuditing(false);
-        setCurrentStepText('Modo Solo EXCEL activo (sin conexión API directa a Shalom).');
-        return;
-      }
-
-      const auth = tallerConfig?.shalom_email ? {
-        email: tallerConfig.shalom_email,
-        password: tallerConfig.shalom_password || '',
-      } : undefined;
-
-      const updatedList = [...initial];
-      const itemsToAudit = updatedList.filter(p => p.auditStatus === 'auditing');
-
-      if (itemsToAudit.length === 0) {
-        setIsAuditing(false);
-        setCurrentStepText('Listado de pedidos listo para entrega.');
-        return;
-      }
-
-      setIsAuditing(true);
-      setCurrentStepText(`Consultando tickets oficiales en Shalom Pro API (0/${itemsToAudit.length})...`);
-
-      const CONCURRENCY = 4;
-      let completedCount = 0;
-
-      const auditSingleItem = async (item: DeliveryOrderProgress) => {
-        if (cancelledAuditRef.current) return;
-        const originalOrder = orders.find((o) => o.id === item.orderId);
-        const cleanDni = (item.dni || '').replace(/\D/g, '').trim();
-        const clientCtx = {
-          dni: cleanDni,
-          phone: item.phone,
-          name: item.customerName,
-          guia: item.manualGuideInput || item.guideNumber,
-          orderDate: originalOrder?.created_at || originalOrder?.fecha_limite,
-          internalCode: item.trackingCode,
-        };
-
-        let pdfData: string | null = null;
-        const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
-          if (meta.pickupCode) {
-            item.pickupCode = meta.pickupCode;
-          }
-          if (meta.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-')) {
-            item.guideNumber = meta.guia;
-            item.manualGuideInput = meta.guia;
-            const safeName = item.customerName.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
-            item.fileName = `Guia_Shalom_${safeName}_${meta.guia}.pdf`;
-          }
-        };
-
-        // PRIORIDAD ABSOLUTA: Consultar por DNI para asegurar que trae el último paquete registrado y más actualizado
-        const primarySearchKey = cleanDni || originalOrder?.shalom_ose_id || 
-          (item.manualGuideInput?.trim() || (item.guideNumber && !item.guideNumber.startsWith('SH-') && item.guideNumber !== 'S/G' ? item.guideNumber : '')) || 
-          item.trackingCode || item.orderId;
-
-        try {
-          pdfData = await ShalomApiService.fetchVoucherPdfBase64(primarySearchKey, auth, clientCtx, handleMeta);
-        } catch (e: any) {
-          console.warn(`[SHALOM AUDIT VOUCHER WITH QR ERROR] #${item.trackingCode}:`, e?.message);
-        }
-
-        if (cancelledAuditRef.current) return;
-
-        if (pdfData && pdfData.length > 100) {
-          item.pdfBase64 = pdfData;
-          item.auditStatus = 'verified_pdf';
-        } else {
-          item.pdfBase64 = undefined;
-          item.auditStatus = 'not_found';
-        }
-
-        completedCount++;
-        if (!cancelledAuditRef.current) {
-          setProgressList([...updatedList]);
-          setCurrentStepText(`Verificando tickets en Shalom Pro API (${completedCount}/${itemsToAudit.length})...`);
-        }
-      };
-
-      // Ejecutar en lotes concurrentes de 4 para máxima velocidad
-      for (let i = 0; i < itemsToAudit.length; i += CONCURRENCY) {
-        if (cancelledAuditRef.current) break;
-        const chunk = itemsToAudit.slice(i, i + CONCURRENCY);
-        await Promise.all(chunk.map(auditSingleItem));
-      }
-
-      if (!cancelledAuditRef.current) {
-        setIsAuditing(false);
-        const verified = updatedList.filter((p) => p.auditStatus === 'verified_pdf').length;
-        setCurrentStepText(
-          verified === updatedList.length
-            ? '✓ Todos los pedidos fueron confirmados en Shalom Pro API (Tickets oficiales con QR listos).'
-            : `${verified} de ${updatedList.length} pedidos confirmados en Shalom Pro API.`
-        );
-      }
-    };
-
-    runAudit();
+    executeAudit(initial, false);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -259,7 +275,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const handleManualSearch = async (item: DeliveryOrderProgress) => {
     const cleanDni = (item.dni || '').replace(/\D/g, '').trim();
     const cleanGuide = (item.manualGuideInput || '').trim();
-    const keyToSearch = cleanGuide || cleanDni || item.trackingCode || item.orderId;
+    // Priorizar DNI si tiene al menos 8 dígitos para traer SIEMPRE el voucher más actualizado de esa persona tras entrega en agencia
+    const keyToSearch = (cleanDni && cleanDni.length >= 8) ? cleanDni : (cleanGuide || item.trackingCode || item.orderId);
     if (!keyToSearch) return;
 
     setSearchingId(item.orderId);
@@ -276,6 +293,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       guia: cleanGuide || item.guideNumber,
       orderDate: originalOrder?.created_at || originalOrder?.fecha_limite,
       internalCode: item.trackingCode,
+      refresh: true, // Forzar consulta en vivo para obtener la actualización después de entregar a la agencia
     };
 
     const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
@@ -583,11 +601,24 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
               </div>
             </div>
 
-            {currentStepText && (
-              <div className="text-[11px] font-medium bg-slate-900/80 px-3 py-1.5 rounded-lg border border-white/10 self-start sm:self-auto shrink-0">
-                {currentStepText}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => executeAudit(progressList, true)}
+                disabled={isAuditing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                title="Consulta a Shalom Pro para traer las guías y comprobantes emitidos tras dejar los paquetes en la agencia"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isAuditing ? 'animate-spin' : ''}`} />
+                <span>Refrescar Guías de Agencia</span>
+              </button>
+
+              {currentStepText && (
+                <div className="text-[11px] font-medium bg-slate-900/80 px-3 py-1.5 rounded-lg border border-white/10">
+                  {currentStepText}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Listado de Pedidos */}
@@ -713,6 +744,20 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                       >
                         <Eye className="w-3 h-3" />
                         Ver PDF Oficial
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleManualSearch(item)}
+                        disabled={searchingId === item.orderId}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 px-2 py-1 rounded-lg border border-slate-600/50 cursor-pointer transition-colors"
+                        title="Re-consultar en Shalom Pro para obtener la actualización más reciente emitida tras entrega en agencia"
+                      >
+                        {searchingId === item.orderId ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                        ) : (
+                          <RefreshCw className="w-3 h-3 text-amber-400" />
+                        )}
+                        Re-consultar
                       </button>
                     </div>
                   )}

@@ -75,7 +75,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     try {
       // If empresa, get all orders. If client, get only their orders
       const userId = role === 'empresa' ? undefined : currentUser?.id;
-      const fetched = await ordersService.getPedidos(userId);
+      const userDni = role === 'empresa' ? undefined : currentUser?.dni;
+      const fetched = await ordersService.getPedidos(userId, userDni);
       setPedidos(fetched);
       setShippingMethods(ordersService.getShippingMethods());
       setTallerConfig(ordersService.getTallerConfig());
@@ -138,7 +139,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id, role]);
+  }, [currentUser?.id, currentUser?.dni, role]);
 
 
   useEffect(() => {

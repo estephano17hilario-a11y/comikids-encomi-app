@@ -6,6 +6,7 @@ import { Usuario, Pedido } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
 import { calculateLevel } from '../../data/achievementsList';
 import { yapeReaderService } from '../../services/yapeReaderService';
+import { supabase, isSupabaseConfigured } from '../../services/supabaseClient';
 import {
   Users,
   Search,
@@ -30,21 +31,51 @@ export const ClientDirectory: React.FC = () => {
   const [selectedClient, setSelectedClient] = useState<Usuario | null>(null);
   const [clientToDelete, setClientToDelete] = useState<Usuario | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cloudUsers, setCloudUsers] = useState<Usuario[]>([]);
 
-  // Extract unique clients from orders and stored users
+  React.useEffect(() => {
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('usuarios').select('*').then(({ data, error }) => {
+        if (!error && data) {
+          setCloudUsers(data as Usuario[]);
+        }
+      });
+    }
+  }, []);
+
+  // Extract unique clients from cloud users, stored users, and orders
   const clientsMap = new Map<string, Usuario>();
   
-  // Agregar usuarios registrados
-  const allStoredUsers: Usuario[] = ordersService.getLocalUsers();
-  allStoredUsers.forEach((u: Usuario) => {
+  // 1. Usuarios en Supabase (Nube)
+  cloudUsers.forEach((u: Usuario) => {
     if (u.rol !== 'empresa') {
-      clientsMap.set(u.id, u);
+      const key = u.dni && !u.dni.startsWith('usr-') ? u.dni.toUpperCase().trim() : u.id;
+      clientsMap.set(key, u);
     }
   });
 
+  // 2. Usuarios registrados localmente
+  const allStoredUsers: Usuario[] = ordersService.getLocalUsers();
+  allStoredUsers.forEach((u: Usuario) => {
+    if (u.rol !== 'empresa') {
+      const key = u.dni && !u.dni.startsWith('usr-') ? u.dni.toUpperCase().trim() : u.id;
+      if (!clientsMap.has(key)) {
+        clientsMap.set(key, u);
+      } else {
+        clientsMap.set(key, { ...clientsMap.get(key)!, ...u });
+      }
+    }
+  });
+
+  // 3. Usuarios vinculados a pedidos
   pedidos.forEach(p => {
-    if (p.usuario) {
-      clientsMap.set(p.usuario.id, p.usuario);
+    if (p.usuario && p.usuario.rol !== 'empresa') {
+      const key = p.usuario.dni && !p.usuario.dni.startsWith('usr-') ? p.usuario.dni.toUpperCase().trim() : p.usuario.id;
+      if (!clientsMap.has(key)) {
+        clientsMap.set(key, p.usuario);
+      } else {
+        clientsMap.set(key, { ...clientsMap.get(key)!, ...p.usuario });
+      }
     }
   });
   const clientsList = Array.from(clientsMap.values());

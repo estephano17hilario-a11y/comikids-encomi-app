@@ -6,6 +6,7 @@ import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import { DniService } from '../../services/dniService';
 import { isAgencyDateAllowed, getNextAvailableDateForAgency } from '../../utils/agencyAvailability';
+import { getRelativeDayLabel } from '../../services/whatsappService';
 import {
   X,
   PlusCircle,
@@ -110,7 +111,12 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre.trim() || !dni.trim() || !detallesBordado.trim()) return;
+    const cleanDni = dni.replace(/\D/g, '').trim();
+    if (!nombre.trim() || !cleanDni || !detallesBordado.trim()) return;
+    if (cleanDni.length < 8) {
+      alert('El recuadro de DNI debe contener como mínimo 8 dígitos.');
+      return;
+    }
     const tiktokClean = tiktokUsuario.trim().replace(/^@/, '');
 
     setSubmitting(true);
@@ -301,7 +307,14 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-slate-300">Fecha de Despacho</label>
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <span>Fecha de Despacho</span>
+                  {getRelativeDayLabel(fechaLimite) && (
+                    <span className="text-amber-300 font-black text-[11px]">
+                      {getRelativeDayLabel(fechaLimite)}
+                    </span>
+                  )}
+                </label>
                 {cutoffStatus.isPastCutoff && (
                   <span className="text-[10px] text-amber-400 font-bold">⏰ Corte aplicado</span>
                 )}

@@ -13,17 +13,30 @@ import { ConfirmationModal } from './modules/live/ConfirmationModal';
 import { AnalyticsDashboard } from './modules/analytics/AnalyticsDashboard';
 import { SettingsView } from './modules/inventory/SettingsView';
 import { inventoryService } from './services/inventoryService';
-import { yapeReaderService } from '../../services/yapeReaderService';
 import { liveSessionService, LiveSessionState } from '../../services/liveSessionService';
+import { yapeReaderService } from '../../services/yapeReaderService';
+import { useAuth } from '../../context/AuthContext';
 import { Product, Category, HistoryItem, Session } from './types';
 import { Volume2, Sparkles, Plus, Archive, Radio, BarChart3, Settings as SettingsIcon, Package } from 'lucide-react';
 
 export const ComicInventoryApp: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>(() => inventoryService.getProducts());
-  const [categories, setCategories] = useState<Category[]>(() => inventoryService.getCategories());
-  const [history, setHistory] = useState<HistoryItem[]>(() => inventoryService.getHistory());
-  const [sessions, setSessions] = useState<Session[]>(() => inventoryService.getSessions());
-  const [themeId, setThemeId] = useState<string>(() => inventoryService.getThemePreference());
+  const { currentEmpresa, currentUser } = useAuth();
+  const empresaId = currentEmpresa?.id || currentUser?.id || 'empresa-master-comikids';
+
+  const [products, setProducts] = useState<Product[]>(() => inventoryService.getProducts(empresaId));
+  const [categories, setCategories] = useState<Category[]>(() => inventoryService.getCategories(empresaId));
+  const [history, setHistory] = useState<HistoryItem[]>(() => inventoryService.getHistory(empresaId));
+  const [sessions, setSessions] = useState<Session[]>(() => inventoryService.getSessions(empresaId));
+  const [themeId, setThemeId] = useState<string>(() => inventoryService.getThemePreference(empresaId));
+
+  // Reload data when empresaId changes
+  useEffect(() => {
+    setProducts(inventoryService.getProducts(empresaId));
+    setCategories(inventoryService.getCategories(empresaId));
+    setHistory(inventoryService.getHistory(empresaId));
+    setSessions(inventoryService.getSessions(empresaId));
+    setThemeId(inventoryService.getThemePreference(empresaId));
+  }, [empresaId]);
 
   const [activeTab, setActiveTab] = useState<'inventory' | 'analytics' | 'settings' | 'archived'>('inventory');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -61,20 +74,20 @@ export const ComicInventoryApp: React.FC = () => {
 
   // Save changes
   useEffect(() => {
-    inventoryService.saveProducts(products);
-  }, [products]);
+    inventoryService.saveProducts(products, empresaId);
+  }, [products, empresaId]);
 
   useEffect(() => {
-    inventoryService.saveCategories(categories);
-  }, [categories]);
+    inventoryService.saveCategories(categories, empresaId);
+  }, [categories, empresaId]);
 
   useEffect(() => {
-    inventoryService.saveHistory(history);
-  }, [history]);
+    inventoryService.saveHistory(history, empresaId);
+  }, [history, empresaId]);
 
   useEffect(() => {
-    inventoryService.saveSessions(sessions);
-  }, [sessions]);
+    inventoryService.saveSessions(sessions, empresaId);
+  }, [sessions, empresaId]);
 
   const currentTheme = useMemo(
     () => MESH_THEMES.find((t) => t.id === themeId) || MESH_THEMES[0],
@@ -83,7 +96,7 @@ export const ComicInventoryApp: React.FC = () => {
 
   const handleThemeChange = (id: string) => {
     setThemeId(id);
-    inventoryService.saveThemePreference(id);
+    inventoryService.saveThemePreference(id, empresaId);
   };
 
   const totalStock = useMemo(

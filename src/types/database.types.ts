@@ -199,6 +199,7 @@ export interface MetodoEnvio {
 
 export interface Pedido {
   id: string;
+  empresa_id?: string; // ID de la empresa propietaria del pedido (aislamiento multitenancy)
   codigo_seguimiento: string;
   usuario_id: string;
   usuario?: Usuario;
@@ -242,6 +243,8 @@ export interface HorarioDiaDespacho {
 }
 
 export interface TallerConfig {
+  id?: string;
+  empresa_id?: string;
   nombre_taller: string;
   ruc_dni: string;
   celular_taller: string;

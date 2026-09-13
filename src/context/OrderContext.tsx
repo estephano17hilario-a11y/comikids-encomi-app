@@ -54,13 +54,15 @@ interface OrderContextType {
 const OrderContext = createContext<OrderContextType | undefined>(undefined);
 
 export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { currentUser, role } = useAuth();
+  const { currentUser, role, currentEmpresa, impersonatedEmpresa } = useAuth();
+  const activeEmpresaId = currentEmpresa?.id || (role === 'empresa' ? currentUser?.id : 'empresa-master-comikids');
+
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [shippingMethods, setShippingMethods] = useState<MetodoEnvio[]>(ordersService.getShippingMethods());
-  const [tallerConfig, setTallerConfig] = useState<TallerConfig>(ordersService.getTallerConfig());
-  const [colaboradores, setColaboradores] = useState<Colaborador[]>(ordersService.getColaboradores());
-  const [motorizadoDistricts, setMotorizadoDistricts] = useState<MotorizadoDistrictConfig[]>(ordersService.getMotorizadoDistricts());
-  const [customShalomAgencies, setCustomShalomAgencies] = useState<ShalomAgency[]>(ordersService.getCustomShalomAgencies());
+  const [shippingMethods, setShippingMethods] = useState<MetodoEnvio[]>(() => ordersService.getShippingMethods(activeEmpresaId));
+  const [tallerConfig, setTallerConfig] = useState<TallerConfig>(() => ordersService.getTallerConfig(activeEmpresaId, currentEmpresa));
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>(() => ordersService.getColaboradores(activeEmpresaId));
+  const [motorizadoDistricts, setMotorizadoDistricts] = useState<MotorizadoDistrictConfig[]>(() => ordersService.getMotorizadoDistricts(activeEmpresaId));
+  const [customShalomAgencies, setCustomShalomAgencies] = useState<ShalomAgency[]>(() => ordersService.getCustomShalomAgencies(activeEmpresaId));
   const [masterCode, setMasterCodeState] = useState<string>(ordersService.getMasterCode());
   const [loading, setLoading] = useState<boolean>(true);
   const [latestNewOrder, setLatestNewOrder] = useState<Pedido | null>(null);
@@ -73,16 +75,19 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
   const refreshData = useCallback(async () => {
     try {
-      // If empresa, get all orders. If client, get only their orders
-      const userId = role === 'empresa' ? undefined : currentUser?.id;
-      const userDni = role === 'empresa' ? undefined : currentUser?.dni;
-      const fetched = await ordersService.getPedidos(userId, userDni);
+      // If empresa, get orders for that specific empresa. If client, get only their personal orders
+      const isEmpresaRole = role === 'empresa' || Boolean(impersonatedEmpresa);
+      const userId = isEmpresaRole ? undefined : currentUser?.id;
+      const userDni = isEmpresaRole ? undefined : currentUser?.dni;
+      const empresaFilterId = isEmpresaRole ? activeEmpresaId : undefined;
+
+      const fetched = await ordersService.getPedidos(empresaFilterId, userId, userDni);
       setPedidos(fetched);
-      setShippingMethods(ordersService.getShippingMethods());
-      setTallerConfig(ordersService.getTallerConfig());
-      setColaboradores(ordersService.getColaboradores());
-      setMotorizadoDistricts(ordersService.getMotorizadoDistricts());
-      setCustomShalomAgencies(ordersService.getCustomShalomAgencies());
+      setShippingMethods(ordersService.getShippingMethods(activeEmpresaId));
+      setTallerConfig(ordersService.getTallerConfig(activeEmpresaId, currentEmpresa));
+      setColaboradores(ordersService.getColaboradores(activeEmpresaId));
+      setMotorizadoDistricts(ordersService.getMotorizadoDistricts(activeEmpresaId));
+      setCustomShalomAgencies(ordersService.getCustomShalomAgencies(activeEmpresaId));
       setMasterCodeState(ordersService.getMasterCode());
 
       // Sincronizar Widget Nativo de Android con contadores y tarjetas de pedidos
@@ -131,15 +136,15 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       knownOrderIdsRef.current = new Set(fetched.map(p => p.id));
 
-      // Sincronizar configuración del taller en la nube para todos los dispositivos
-      const remoteTallerConfig = await ordersService.fetchTallerConfig();
+      // Sincronizar configuración del taller en la nube para la empresa activa
+      const remoteTallerConfig = await ordersService.fetchTallerConfig(activeEmpresaId, currentEmpresa);
       if (remoteTallerConfig) {
         setTallerConfig(remoteTallerConfig);
       }
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id, currentUser?.dni, role]);
+  }, [currentUser?.id, currentUser?.dni, role, activeEmpresaId, currentEmpresa, impersonatedEmpresa]);
 
 
   useEffect(() => {
@@ -162,10 +167,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         broadcastChannel = new BroadcastChannel('incomi_orders_sync_channel');
         broadcastChannel.onmessage = async (event) => {
           if (event.data?.type === 'NEW_ORDER') {
-            soundService.playNewOrderAlert();
-            await refreshData();
-            if (event.data?.pedido) {
-              setLatestNewOrder(event.data.pedido);
+            const incomingOrder = event.data?.pedido;
+            // Solo alertar si el pedido pertenece a la empresa activa
+            if (!incomingOrder?.empresa_id || incomingOrder.empresa_id === activeEmpresaId) {
+              soundService.playNewOrderAlert();
+              await refreshData();
+              if (incomingOrder) {
+                setLatestNewOrder(incomingOrder);
+              }
             }
           } else if (event.data?.type === 'UPDATE_ORDER') {
             await refreshData();
@@ -191,16 +200,18 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'pedidos' },
           async (payload) => {
-            soundService.playNewOrderAlert();
-            await refreshData();
-            if (payload.new) {
-              const newP = payload.new as Pedido;
-              setLatestNewOrder(newP);
-              NativeNotificationService.notifyNewOrder(
-                newP.codigo_seguimiento,
-                newP.usuario?.nombre_completo || 'Cliente',
-                newP.destino_detalle || 'Destino'
-              );
+            const newP = payload.new as Pedido;
+            if (!newP?.empresa_id || newP.empresa_id === activeEmpresaId) {
+              soundService.playNewOrderAlert();
+              await refreshData();
+              if (newP) {
+                setLatestNewOrder(newP);
+                NativeNotificationService.notifyNewOrder(
+                  newP.codigo_seguimiento,
+                  newP.usuario?.nombre_completo || 'Cliente',
+                  newP.destino_detalle || 'Destino'
+                );
+              }
             }
           }
         )
@@ -222,7 +233,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           'postgres_changes',
           { event: '*', schema: 'public', table: 'taller_config' },
           async () => {
-            const remoteConfig = await ordersService.fetchTallerConfig();
+            const remoteConfig = await ordersService.fetchTallerConfig(activeEmpresaId, currentEmpresa);
             if (remoteConfig) {
               setTallerConfig(remoteConfig);
             }
@@ -241,10 +252,14 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         supabase.removeChannel(activeChannel);
       }
     };
-  }, [refreshData]);
+  }, [refreshData, activeEmpresaId]);
 
   const handleCreatePedido = async (data: Omit<Pedido, 'id' | 'codigo_seguimiento' | 'created_at' | 'estado_produccion' | 'estado_envio'>) => {
-    const created = await ordersService.createPedido(data);
+    const payloadWithEmpresa = {
+      ...data,
+      empresa_id: data.empresa_id || activeEmpresaId || 'empresa-master-comikids',
+    };
+    const created = await ordersService.createPedido(payloadWithEmpresa);
     soundService.playNewOrderAlert();
     NativeNotificationService.notifyNewOrder(
       created.codigo_seguimiento,
@@ -323,29 +338,29 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const handleAddShippingMethod = (method: Omit<MetodoEnvio, 'id'>) => {
-    const newM = ordersService.addShippingMethod(method);
-    setShippingMethods(ordersService.getShippingMethods());
+    const newM = ordersService.addShippingMethod(method, activeEmpresaId);
+    setShippingMethods(ordersService.getShippingMethods(activeEmpresaId));
     return newM;
   };
 
   const handleUpdateShippingMethod = (id: string, updates: Partial<MetodoEnvio>) => {
-    ordersService.updateShippingMethod(id, updates);
-    setShippingMethods(ordersService.getShippingMethods());
+    ordersService.updateShippingMethod(id, updates, activeEmpresaId);
+    setShippingMethods(ordersService.getShippingMethods(activeEmpresaId));
   };
 
   const handleDeleteShippingMethod = (id: string) => {
-    ordersService.deleteShippingMethod(id);
-    setShippingMethods(ordersService.getShippingMethods());
+    ordersService.deleteShippingMethod(id, activeEmpresaId);
+    setShippingMethods(ordersService.getShippingMethods(activeEmpresaId));
   };
 
   const handleSaveColaborador = (colab: Omit<Colaborador, 'id' | 'created_at'> & { id?: string }) => {
-    ordersService.saveColaborador(colab);
-    setColaboradores(ordersService.getColaboradores());
+    ordersService.saveColaborador(colab, activeEmpresaId);
+    setColaboradores(ordersService.getColaboradores(activeEmpresaId));
   };
 
   const handleDeleteColaborador = (id: string) => {
-    ordersService.deleteColaborador(id);
-    setColaboradores(ordersService.getColaboradores());
+    ordersService.deleteColaborador(id, activeEmpresaId);
+    setColaboradores(ordersService.getColaboradores(activeEmpresaId));
   };
 
   const handleSaveMasterCode = (code: string) => {
@@ -355,22 +370,22 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const handleSaveCustomShalomAgency = (agency: ShalomAgency) => {
-    ordersService.saveCustomShalomAgency(agency);
-    setCustomShalomAgencies(ordersService.getCustomShalomAgencies());
+    ordersService.saveCustomShalomAgency(agency, activeEmpresaId);
+    setCustomShalomAgencies(ordersService.getCustomShalomAgencies(activeEmpresaId));
   };
 
   const handleDeleteCustomShalomAgency = (id: string | number) => {
-    ordersService.deleteCustomShalomAgency(id);
-    setCustomShalomAgencies(ordersService.getCustomShalomAgencies());
+    ordersService.deleteCustomShalomAgency(id, activeEmpresaId);
+    setCustomShalomAgencies(ordersService.getCustomShalomAgencies(activeEmpresaId));
   };
 
   const handleSaveMotorizadoDistrict = (district: MotorizadoDistrictConfig) => {
-    ordersService.saveMotorizadoDistrict(district);
-    setMotorizadoDistricts(ordersService.getMotorizadoDistricts());
+    ordersService.saveMotorizadoDistrict(district, activeEmpresaId);
+    setMotorizadoDistricts(ordersService.getMotorizadoDistricts(activeEmpresaId));
   };
 
   const handleUpdateTallerConfig = async (config: Partial<TallerConfig>) => {
-    const updated = await ordersService.saveTallerConfig(config);
+    const updated = await ordersService.saveTallerConfig(config, activeEmpresaId);
     setTallerConfig(updated);
     await refreshData();
   };

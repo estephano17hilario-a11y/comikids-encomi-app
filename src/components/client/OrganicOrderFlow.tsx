@@ -835,6 +835,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
           fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
           campos_personalizados: finalCustomFields,
+          empresa_id: tallerConfig?.empresa_id || undefined,
         };
 
         // Creación del pedido asegurando que quede persistido en el servidor antes de abrir WhatsApp

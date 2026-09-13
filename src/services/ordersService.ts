@@ -267,6 +267,8 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
 ];
 
 export const DEFAULT_TALLER_CONFIG: TallerConfig = {
+  id: 'config-main',
+  empresa_id: 'empresa-master-comikids',
   nombre_taller: 'Comikids Envíos',
   ruc_dni: '42020312ENCOMI',
   remitente_dni: '42020312',
@@ -289,6 +291,50 @@ export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   logo_url: '/Comikids.png',
   tema_fondo: 'vision-obsidian',
   estilo_rotulo_default: 'estandar_oficial',
+};
+
+export const getDefaultTallerConfigForEmpresa = (empresa?: EmpresaAccount | null): TallerConfig => {
+  if (!empresa || empresa.id === 'empresa-master-comikids') {
+    return { ...DEFAULT_TALLER_CONFIG };
+  }
+  const cleanNombre = empresa.nombre || 'Mi Empresa';
+  const cleanPhone = empresa.telefono_contacto || '';
+  const cleanNum = empresa.numero_entrada || '';
+  const subInst = empresa.config?.vps_instance_name || empresa.sub_instance || `tenant_${cleanNombre.replace(/\s+/g, '')}`;
+
+  return {
+    id: empresa.id,
+    empresa_id: empresa.id,
+    nombre_taller: cleanNombre,
+    ruc_dni: cleanNum,
+    remitente_dni: '',
+    remitente_email: '',
+    remitente_celular: cleanPhone,
+    celular_taller: cleanPhone,
+    whatsapp_pedidos: cleanPhone,
+    direccion_taller: '',
+    ciudad_origen: 'LIMA',
+    agencia_shalom_origen: '',
+    shalom_email: empresa.config?.shalom_email || '',
+    shalom_password: empresa.config?.shalom_password || '',
+    copilot_password: empresa.password_hash || '',
+    copilot_sub_instance: subInst,
+    copilot_owner_phone: cleanPhone,
+    hora_corte_envio_hoy: '18:00',
+    dias_despacho_activos: ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'],
+    despacho_domingo_habilitado: false,
+    mensaje_corte_personalizado: '',
+    logo_url: empresa.logo_url || '',
+    tema_fondo: empresa.tema_fondo || 'vision-obsidian',
+    estilo_rotulo_default: 'estandar_oficial',
+    remitente_default: {
+      nombre: cleanNombre,
+      ruc_dni: cleanNum,
+      celular: cleanPhone,
+      direccion: '',
+      observaciones: ''
+    }
+  };
 };
 
 
@@ -891,12 +937,15 @@ class OrdersService {
 
 
   // --- MÉTODOS DE ENVÍO / DESTINOS (Configurables por la empresa) ---
-  getShippingMethods(): MetodoEnvio[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.SHIPPING_METHODS);
+  getShippingMethods(empresaId?: string): MetodoEnvio[] {
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.SHIPPING_METHODS}_${empresaId}`
+      : STORAGE_KEYS.SHIPPING_METHODS;
+    const raw = localStorage.getItem(key);
     let list: MetodoEnvio[];
     if (!raw) {
       list = JSON.parse(JSON.stringify(DEFAULT_METODOS_ENVIO));
-      localStorage.setItem(STORAGE_KEYS.SHIPPING_METHODS, JSON.stringify(list));
+      localStorage.setItem(key, JSON.stringify(list));
       return list;
     }
     try {
@@ -1018,31 +1067,34 @@ class OrdersService {
     }
 
     if (modified) {
-      this.saveShippingMethods(list);
+      this.saveShippingMethods(list, empresaId);
     }
     return list;
   }
 
-  saveShippingMethods(methods: MetodoEnvio[]) {
-    localStorage.setItem(STORAGE_KEYS.SHIPPING_METHODS, JSON.stringify(methods));
+  saveShippingMethods(methods: MetodoEnvio[], empresaId?: string) {
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.SHIPPING_METHODS}_${empresaId}`
+      : STORAGE_KEYS.SHIPPING_METHODS;
+    localStorage.setItem(key, JSON.stringify(methods));
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('incomi_shipping_methods_updated', { detail: methods }));
     }
   }
 
-  addShippingMethod(method: Omit<MetodoEnvio, 'id'>): MetodoEnvio {
-    const methods = this.getShippingMethods();
+  addShippingMethod(method: Omit<MetodoEnvio, 'id'>, empresaId?: string): MetodoEnvio {
+    const methods = this.getShippingMethods(empresaId);
     const newMethod: MetodoEnvio = {
       ...method,
       id: 'met-' + Date.now().toString(36),
     };
     methods.push(newMethod);
-    this.saveShippingMethods(methods);
+    this.saveShippingMethods(methods, empresaId);
     return newMethod;
   }
 
-  updateShippingMethod(id: string, updates: Partial<MetodoEnvio>): MetodoEnvio | null {
-    const methods = this.getShippingMethods();
+  updateShippingMethod(id: string, updates: Partial<MetodoEnvio>, empresaId?: string): MetodoEnvio | null {
+    const methods = this.getShippingMethods(empresaId);
     const idx = methods.findIndex(m => m.id === id);
     if (idx === -1) return null;
 
@@ -1077,12 +1129,12 @@ class OrdersService {
     }
 
     methods[idx] = { ...existing, ...updates };
-    this.saveShippingMethods(methods);
+    this.saveShippingMethods(methods, empresaId);
     return methods[idx];
   }
 
-  deleteShippingMethod(id: string): boolean {
-    let methods = this.getShippingMethods();
+  deleteShippingMethod(id: string, empresaId?: string): boolean {
+    let methods = this.getShippingMethods(empresaId);
     const target = methods.find(m => m.id === id);
     if (!target) return false;
 
@@ -1093,11 +1145,11 @@ class OrdersService {
     }
 
     methods = methods.filter(m => m.id !== id);
-    this.saveShippingMethods(methods);
+    this.saveShippingMethods(methods, empresaId);
     return true;
   }
 
-  // --- PEDIDOS ---
+  // --- PEDIDOS (Multitenant con aislamiento por empresa) ---
   private getDeletedOrderIds(): Set<string> {
     try {
       const raw = localStorage.getItem('incomi_deleted_order_ids_v1');
@@ -1116,22 +1168,46 @@ class OrdersService {
     } catch {}
   }
 
-  private getLocalOrders(): Pedido[] {
+  public getLocalOrders(empresaId?: string): Pedido[] {
     const raw = localStorage.getItem(STORAGE_KEYS.ORDERS);
     if (!raw) return [];
     try {
       const parsed: Pedido[] = JSON.parse(raw);
       const deletedIds = this.getDeletedOrderIds();
-      return parsed.filter(o => !deletedIds.has(o.id));
+      const nonDeleted = parsed.filter(o => !deletedIds.has(o.id));
+      if (empresaId) {
+        if (empresaId === 'empresa-master-comikids') {
+          return nonDeleted.filter(o => !o.empresa_id || o.empresa_id === 'empresa-master-comikids');
+        }
+        return nonDeleted.filter(o => o.empresa_id === empresaId);
+      }
+      return nonDeleted;
     } catch {
       return [];
     }
   }
 
-  private saveLocalOrders(orders: Pedido[]) {
+  public saveLocalOrders(orders: Pedido[], empresaId?: string) {
     const deletedIds = this.getDeletedOrderIds();
     const clean = orders.filter(o => !deletedIds.has(o.id));
-    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(clean));
+    
+    if (empresaId) {
+      const raw = localStorage.getItem(STORAGE_KEYS.ORDERS);
+      let allExisting: Pedido[] = [];
+      try {
+        if (raw) allExisting = JSON.parse(raw);
+      } catch {}
+      const otherEmpresasOrders = allExisting.filter(o => {
+        if (empresaId === 'empresa-master-comikids') {
+          return o.empresa_id && o.empresa_id !== 'empresa-master-comikids';
+        }
+        return o.empresa_id !== empresaId;
+      });
+      const merged = [...clean, ...otherEmpresasOrders];
+      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(merged));
+    } else {
+      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(clean));
+    }
   }
 
   // Sincronizar usuarios locales a Supabase (los pedidos son administrados por Supabase como fuente única)
@@ -1167,6 +1243,11 @@ class OrdersService {
   private sanitizePedidoForDb(pedido: Partial<Pedido>): Record<string, any> {
     const payload: Record<string, any> = {};
     if (pedido.id !== undefined) payload.id = pedido.id;
+    if (pedido.empresa_id !== undefined) {
+      payload.empresa_id = pedido.empresa_id;
+    } else {
+      payload.empresa_id = 'empresa-master-comikids';
+    }
     if (pedido.codigo_seguimiento !== undefined) payload.codigo_seguimiento = pedido.codigo_seguimiento;
     if (pedido.usuario_id !== undefined) payload.usuario_id = pedido.usuario_id;
     if (pedido.detalles_bordado !== undefined) payload.detalles_bordado = pedido.detalles_bordado;
@@ -1198,8 +1279,10 @@ class OrdersService {
   }
 
 
-  async getPedidos(userId?: string, userDni?: string): Promise<Pedido[]> {
+  async getPedidos(empresaId?: string, userId?: string, userDni?: string): Promise<Pedido[]> {
     this.syncPendingOrders().catch(() => {});
+    const targetEmpresaId = empresaId || (userId ? undefined : 'empresa-master-comikids');
+
     if (isSupabaseConfigured && supabase) {
       try {
         let query = supabase.from('pedidos').select('*').order('created_at', { ascending: false });
@@ -1209,6 +1292,12 @@ class OrdersService {
             query = query.or(`usuario_id.eq.${userId},destino_detalle.ilike.%${cleanDni}%`);
           } else {
             query = query.eq('usuario_id', userId);
+          }
+        } else if (targetEmpresaId) {
+          if (targetEmpresaId === 'empresa-master-comikids') {
+            query = query.or('empresa_id.eq.empresa-master-comikids,empresa_id.is.null');
+          } else {
+            query = query.eq('empresa_id', targetEmpresaId);
           }
         }
         const { data: dbOrders, error: ordersError } = await query;
@@ -1311,12 +1400,13 @@ class OrdersService {
 
               return {
                 ...p,
+                empresa_id: p.empresa_id || 'empresa-master-comikids',
                 usuario: matchedUser
               };
             });
           
           if (!userId) {
-            this.saveLocalOrders(syncedOrders);
+            this.saveLocalOrders(syncedOrders, targetEmpresaId);
           }
           return syncedOrders;
         }
@@ -1324,7 +1414,7 @@ class OrdersService {
         console.warn('Usando pedidos locales por error de red:', err);
       }
     }
-    const all = this.getLocalOrders();
+    const all = this.getLocalOrders(targetEmpresaId);
     if (userId) {
       const cleanDni = (userDni || '').trim().toUpperCase();
       return all.filter(p => 
@@ -1339,10 +1429,12 @@ class OrdersService {
     const trackingCode = generateOrderTrackingCode();
     const newId = 'ped-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
     const now = new Date().toISOString();
+    const targetEmpresaId = pedidoData.empresa_id || 'empresa-master-comikids';
 
     const newPedido: Pedido = {
       ...pedidoData,
       id: newId,
+      empresa_id: targetEmpresaId,
       codigo_seguimiento: trackingCode,
       metodo_envio_nombre: pedidoData.metodo_envio_nombre || (pedidoData.metodo_envio_codigo === 'shalom' ? 'Agencia Shalom Nacional' : 'Motorizado Local Lima'),
       estado_produccion: 'en_cola',
@@ -1352,12 +1444,12 @@ class OrdersService {
     };
 
     // Guardar inmediatamente en localStorage local
-    const orders = this.getLocalOrders();
+    const orders = this.getLocalOrders(targetEmpresaId);
     const updated = [newPedido, ...orders];
-    this.saveLocalOrders(updated);
+    this.saveLocalOrders(updated, targetEmpresaId);
 
     // Contar pedidos previos del usuario para dar XP
-    const allOrders = this.getLocalOrders();
+    const allOrders = this.getLocalOrders(targetEmpresaId);
     const userOrderCount = allOrders.filter(o => o.usuario_id === pedidoData.usuario_id).length;
 
     // PERSISTENCIA INMEDIATA EN LA NUBE SUPABASE (AWAITED):
@@ -1732,9 +1824,15 @@ class OrdersService {
   }
 
   // --- COLABORADORES DE LA EMPRESA ---
-  getColaboradores(): Colaborador[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.COLABORADORES);
+  getColaboradores(empresaId?: string): Colaborador[] {
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.COLABORADORES}_${empresaId}`
+      : STORAGE_KEYS.COLABORADORES;
+    const raw = localStorage.getItem(key);
     if (!raw) {
+      if (empresaId && empresaId !== 'empresa-master-comikids') {
+        return [];
+      }
       const initial: Colaborador[] = [
         {
           id: 'colab-1',
@@ -1762,7 +1860,7 @@ class OrdersService {
           created_at: new Date().toISOString(),
         },
       ];
-      localStorage.setItem(STORAGE_KEYS.COLABORADORES, JSON.stringify(initial));
+      localStorage.setItem(key, JSON.stringify(initial));
       return initial;
     }
     try {
@@ -1772,8 +1870,12 @@ class OrdersService {
     }
   }
 
-  saveColaborador(colab: Omit<Colaborador, 'id' | 'created_at'> & { id?: string }): Colaborador {
-    const current = this.getColaboradores();
+  saveColaborador(colab: Omit<Colaborador, 'id' | 'created_at'> & { id?: string }, empresaId?: string): Colaborador {
+    const current = this.getColaboradores(empresaId);
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.COLABORADORES}_${empresaId}`
+      : STORAGE_KEYS.COLABORADORES;
+
     if (colab.id) {
       const idx = current.findIndex(c => c.id === colab.id);
       if (idx !== -1) {
@@ -1781,7 +1883,7 @@ class OrdersService {
           ...current[idx],
           ...colab,
         };
-        localStorage.setItem(STORAGE_KEYS.COLABORADORES, JSON.stringify(current));
+        localStorage.setItem(key, JSON.stringify(current));
         return current[idx];
       }
     }
@@ -1797,14 +1899,17 @@ class OrdersService {
     };
 
     const updated = [newColab, ...current];
-    localStorage.setItem(STORAGE_KEYS.COLABORADORES, JSON.stringify(updated));
+    localStorage.setItem(key, JSON.stringify(updated));
     return newColab;
   }
 
-  deleteColaborador(id: string): boolean {
-    const current = this.getColaboradores();
+  deleteColaborador(id: string, empresaId?: string): boolean {
+    const current = this.getColaboradores(empresaId);
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.COLABORADORES}_${empresaId}`
+      : STORAGE_KEYS.COLABORADORES;
     const filtered = current.filter(c => c.id !== id);
-    localStorage.setItem(STORAGE_KEYS.COLABORADORES, JSON.stringify(filtered));
+    localStorage.setItem(key, JSON.stringify(filtered));
     return true;
   }
 
@@ -1859,8 +1964,11 @@ class OrdersService {
   }
 
   // --- GESTOR DE AGENCIAS PERSONALIZADAS Y MOTORIZADO ---
-  getCustomShalomAgencies(): ShalomAgency[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES);
+  getCustomShalomAgencies(empresaId?: string): ShalomAgency[] {
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES}_${empresaId}`
+      : STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES;
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     try {
       return JSON.parse(raw);
@@ -1869,27 +1977,36 @@ class OrdersService {
     }
   }
 
-  saveCustomShalomAgency(agency: ShalomAgency): ShalomAgency {
-    const list = this.getCustomShalomAgencies();
+  saveCustomShalomAgency(agency: ShalomAgency, empresaId?: string): ShalomAgency {
+    const list = this.getCustomShalomAgencies(empresaId);
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES}_${empresaId}`
+      : STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES;
     const idx = list.findIndex(a => a.id === agency.id);
     if (idx !== -1) {
       list[idx] = { ...list[idx], ...agency };
     } else {
       list.unshift(agency);
     }
-    localStorage.setItem(STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES, JSON.stringify(list));
+    localStorage.setItem(key, JSON.stringify(list));
     return agency;
   }
 
-  deleteCustomShalomAgency(id: string | number): boolean {
-    const list = this.getCustomShalomAgencies();
+  deleteCustomShalomAgency(id: string | number, empresaId?: string): boolean {
+    const list = this.getCustomShalomAgencies(empresaId);
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES}_${empresaId}`
+      : STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES;
     const filtered = list.filter(a => a.id !== id);
-    localStorage.setItem(STORAGE_KEYS.CUSTOM_SHALOM_AGENCIES, JSON.stringify(filtered));
+    localStorage.setItem(key, JSON.stringify(filtered));
     return true;
   }
 
-  getMotorizadoDistricts(): MotorizadoDistrictConfig[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.MOTORIZADO_CONFIG);
+  getMotorizadoDistricts(empresaId?: string): MotorizadoDistrictConfig[] {
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.MOTORIZADO_CONFIG}_${empresaId}`
+      : STORAGE_KEYS.MOTORIZADO_CONFIG;
+    const raw = localStorage.getItem(key);
     if (!raw) {
       const defaultDistricts: MotorizadoDistrictConfig[] = [
         { id: 'mot-1', distrito: 'La Victoria', zona: 'lima_centro', tiempo_estimado_horas: 2, tarifa_sugerida: 10, activo: true },
@@ -1900,7 +2017,7 @@ class OrdersService {
         { id: 'mot-6', distrito: 'San Juan de Lurigancho', zona: 'lima_este', tiempo_estimado_horas: 4, tarifa_sugerida: 18, activo: true },
         { id: 'mot-7', distrito: 'Callao', zona: 'callao', tiempo_estimado_horas: 5, tarifa_sugerida: 20, activo: true },
       ];
-      localStorage.setItem(STORAGE_KEYS.MOTORIZADO_CONFIG, JSON.stringify(defaultDistricts));
+      localStorage.setItem(key, JSON.stringify(defaultDistricts));
       return defaultDistricts;
     }
     try {
@@ -1910,57 +2027,89 @@ class OrdersService {
     }
   }
 
-  saveMotorizadoDistrict(district: MotorizadoDistrictConfig): void {
-    const list = this.getMotorizadoDistricts();
+  saveMotorizadoDistrict(district: MotorizadoDistrictConfig, empresaId?: string): void {
+    const list = this.getMotorizadoDistricts(empresaId);
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.MOTORIZADO_CONFIG}_${empresaId}`
+      : STORAGE_KEYS.MOTORIZADO_CONFIG;
     const idx = list.findIndex(d => d.id === district.id);
     if (idx !== -1) {
       list[idx] = district;
     } else {
       list.push(district);
     }
-    localStorage.setItem(STORAGE_KEYS.MOTORIZADO_CONFIG, JSON.stringify(list));
+    localStorage.setItem(key, JSON.stringify(list));
   }
 
-  // --- TALLER CONFIG ---
-  getTallerConfig(): TallerConfig {
-    const raw = localStorage.getItem(STORAGE_KEYS.TALLER_CONFIG);
-    if (!raw) return DEFAULT_TALLER_CONFIG;
+  // --- TALLER CONFIG (Multitenant por Empresa) ---
+  getTallerConfig(empresaId?: string, empresaAccount?: EmpresaAccount | null): TallerConfig {
+    const targetEmpId = empresaId || empresaAccount?.id || 'empresa-master-comikids';
+    const key = targetEmpId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.TALLER_CONFIG}_${targetEmpId}`
+      : STORAGE_KEYS.TALLER_CONFIG;
+    const empAcc = empresaAccount || (targetEmpId !== 'empresa-master-comikids' ? this.getEmpresaById(targetEmpId) : null);
+    const defaultConfig = getDefaultTallerConfigForEmpresa(empAcc);
+    const raw = localStorage.getItem(key);
+    if (!raw) return defaultConfig;
     try {
-      return { ...DEFAULT_TALLER_CONFIG, ...JSON.parse(raw) };
+      return { ...defaultConfig, ...JSON.parse(raw) };
     } catch {
-      return DEFAULT_TALLER_CONFIG;
+      return defaultConfig;
     }
   }
 
-  async fetchTallerConfig(): Promise<TallerConfig> {
+  async fetchTallerConfig(empresaId?: string, empresaAccount?: EmpresaAccount | null): Promise<TallerConfig> {
+    const targetEmpId = empresaId || empresaAccount?.id || 'empresa-master-comikids';
+    const key = targetEmpId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.TALLER_CONFIG}_${targetEmpId}`
+      : STORAGE_KEYS.TALLER_CONFIG;
+    const empAcc = empresaAccount || (targetEmpId !== 'empresa-master-comikids' ? this.getEmpresaById(targetEmpId) : null);
+    const defaultConfig = getDefaultTallerConfigForEmpresa(empAcc);
+
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase.from('taller_config').select('*').limit(1).maybeSingle();
+        let query = supabase.from('taller_config').select('*');
+        if (targetEmpId === 'empresa-master-comikids') {
+          query = query.or('id.eq.config-main,empresa_id.eq.empresa-master-comikids,empresa_id.is.null');
+        } else {
+          query = query.or(`id.eq.${targetEmpId},empresa_id.eq.${targetEmpId}`);
+        }
+        const { data, error } = await query.limit(1).maybeSingle();
         if (data && !error) {
           const merged: TallerConfig = {
-            ...DEFAULT_TALLER_CONFIG,
+            ...defaultConfig,
             ...data,
           };
-          localStorage.setItem(STORAGE_KEYS.TALLER_CONFIG, JSON.stringify(merged));
+          localStorage.setItem(key, JSON.stringify(merged));
           return merged;
         }
       } catch (err) {
         console.warn('Error fetching taller_config from Supabase:', err);
       }
     }
-    return this.getTallerConfig();
+    return this.getTallerConfig(targetEmpId, empAcc);
   }
 
-  async saveTallerConfig(config: Partial<TallerConfig>): Promise<TallerConfig> {
-    const current = this.getTallerConfig();
-    const updated: TallerConfig = { ...current, ...config };
-    localStorage.setItem(STORAGE_KEYS.TALLER_CONFIG, JSON.stringify(updated));
+  async saveTallerConfig(config: Partial<TallerConfig>, empresaId?: string): Promise<TallerConfig> {
+    const targetEmpId = empresaId || config.empresa_id || 'empresa-master-comikids';
+    const current = this.getTallerConfig(targetEmpId);
+    const updated: TallerConfig = {
+      ...current,
+      ...config,
+      empresa_id: targetEmpId,
+      id: targetEmpId === 'empresa-master-comikids' ? 'config-main' : targetEmpId
+    };
+    const key = targetEmpId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.TALLER_CONFIG}_${targetEmpId}`
+      : STORAGE_KEYS.TALLER_CONFIG;
+    localStorage.setItem(key, JSON.stringify(updated));
 
     if (isSupabaseConfigured && supabase) {
       try {
         const payloadToSupabase = {
           ...updated,
-          id: 'config-main',
+          id: targetEmpId === 'empresa-master-comikids' ? 'config-main' : targetEmpId,
+          empresa_id: targetEmpId,
         };
         const { error } = await supabase.from('taller_config').upsert(payloadToSupabase);
         if (error) {
@@ -1970,7 +2119,6 @@ class OrdersService {
         console.warn('Error en upsert taller_config:', e);
       }
     }
-
 
     return updated;
   }

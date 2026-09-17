@@ -24,7 +24,8 @@ import {
   CheckCheck,
   AlertCircle,
   RefreshCw,
-  QrCode
+  QrCode,
+  MessageCircle
 } from 'lucide-react';
 
 interface ShalomDeliveryModalProps {
@@ -699,8 +700,20 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Estado de Envío WhatsApp */}
-                  <div className="flex items-center justify-end sm:justify-start shrink-0">
+                  {/* Estado de Envío WhatsApp y Botón Directo */}
+                  <div className="flex items-center gap-2 justify-end sm:justify-start shrink-0">
+                    {item.phone && (
+                      <a
+                        href={`https://wa.me/51${item.phone.slice(-9)}?text=${encodeURIComponent(`¡Hola ${item.customerName}! Te confirmamos que tu paquete fue entregado para despacho por Shalom (${item.agencyName}).\n\n📦 *Guía:* ${item.manualGuideInput || item.guideNumber || item.trackingCode}\n🔑 *Clave Recojo:* ${item.pickupCode || pickupCode}\n\n¡Muchas gracias por tu preferencia! ✨`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white flex items-center gap-1.5 shadow-xs active:scale-95 transition-all cursor-pointer"
+                        title="Enviar mensaje directamente a su WhatsApp personal"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                        <span>WhatsApp Directo</span>
+                      </a>
+                    )}
                     {item.sendStatus === 'sending' && (
                       <span className="px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold bg-purple-500/20 text-purple-300 flex items-center gap-1.5 animate-pulse border border-purple-500/40">
                         <Smartphone className="w-3.5 h-3.5 animate-spin" />
@@ -870,13 +883,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                     </>
                   )}
                 </button>
-              ) : (
-                <div className="text-right">
-                  <span className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-xl font-medium block">
-                    ⚡ Envío VPS WhatsApp desactivado en Matrix
-                  </span>
-                </div>
-              )
+              ) : null
             )}
           </div>
         </div>

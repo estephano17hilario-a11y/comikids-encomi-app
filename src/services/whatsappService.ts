@@ -348,6 +348,7 @@ export interface StatusNotifyParams {
   orderCode: string;
   destination: string;
   statusName: string;
+  companyName?: string;
 }
 
 export function buildWhatsAppStatusNotifyUrl(params: StatusNotifyParams): string {
@@ -357,6 +358,7 @@ export function buildWhatsAppStatusNotifyUrl(params: StatusNotifyParams): string
   const code = params.orderCode || 'Vigente';
   const dest = params.destination || 'Agencia de destino';
   const status = params.statusName || 'En proceso';
+  const company = (params.companyName || 'Encomi Envíos').trim();
 
   let customNote = "Tu pedido está siendo preparado y empaquetado cuidadosamente en nuestro taller para su pronto despacho. ¡Te avisaremos apenas esté en camino! ✨";
   if (status.toLowerCase().includes('shalom') || status.toLowerCase().includes('ruta') || status.toLowerCase().includes('camino')) {
@@ -368,7 +370,7 @@ export function buildWhatsAppStatusNotifyUrl(params: StatusNotifyParams): string
   }
 
   const message = 
-`¡Hola ${name}! 👋✨ Te saluda ComiKids.
+`¡Hola ${name}! 👋✨ Te saluda ${company}.
 
 📦 *ACTUALIZACIÓN DE TU PEDIDO*
 -----------------------------------

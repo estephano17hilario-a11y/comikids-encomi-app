@@ -165,7 +165,9 @@ export const CompanyAccountSettings: React.FC = () => {
   const [colabEmail, setColabEmail] = useState('');
 
   // 7. Estado de Foto de Perfil / Logo Oficial de la Empresa
-  const [companyLogoUrl, setCompanyLogoUrl] = useState(currentEmpresa?.logo_url || tallerConfig.logo_url || '/Comikids.png');
+  const isComikidsAccount = currentEmpresa?.id === 'empresa-master-comikids';
+  const initialLogo = currentEmpresa?.logo_url || tallerConfig.logo_url || (isComikidsAccount ? '/Comikids.png' : '');
+  const [companyLogoUrl, setCompanyLogoUrl] = useState(initialLogo);
   const [logoSuccessMsg, setLogoSuccessMsg] = useState('');
   const logoFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -327,10 +329,12 @@ export const CompanyAccountSettings: React.FC = () => {
                 src={companyLogoUrl}
                 alt={companyName}
                 className="w-full h-full object-contain p-1.5"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
-              <span className="text-3xl">🏢</span>
+              <span className="text-2xl font-black text-cyan-300">
+                {companyName.slice(0, 2).toUpperCase() || '🏢'}
+              </span>
             )}
           </div>
           <div>
@@ -457,12 +461,16 @@ export const CompanyAccountSettings: React.FC = () => {
               <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-slate-950/80 border border-pink-500/30 shadow-inner shrink-0">
                 <span className="text-[10px] text-slate-400 font-bold uppercase pl-2">Vista cliente:</span>
                 <span className="px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-pink-500/25 via-purple-500/25 to-cyan-500/25 text-pink-200 border border-pink-400/40 flex items-center gap-2 shadow-md">
-                  <img
-                    src={companyLogoUrl || '/Comikids.png'}
-                    alt={companyName}
-                    className="w-5 h-5 object-contain rounded"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
-                  />
+                  {companyLogoUrl ? (
+                    <img
+                      src={companyLogoUrl}
+                      alt={companyName}
+                      className="w-5 h-5 object-contain rounded"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <span className="text-xs">🏢</span>
+                  )}
                   <span>{companyName}</span>
                 </span>
               </div>
@@ -475,11 +483,11 @@ export const CompanyAccountSettings: React.FC = () => {
               </label>
               <div className="flex flex-wrap items-center gap-2">
                 {[
-                  { label: 'ComiKids Oficial', url: '/Comikids.png' },
                   { label: 'Encomi Express', url: 'https://cdn-icons-png.flaticon.com/512/2830/2830305.png' },
                   { label: 'Emblema Dorado VIP', url: 'https://cdn-icons-png.flaticon.com/512/1040/1040230.png' },
                   { label: 'Taller Confección', url: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png' },
-                  { label: 'Boutique Kids', url: 'https://cdn-icons-png.flaticon.com/512/10008/10008778.png' },
+                  { label: 'Boutique & Moda', url: 'https://cdn-icons-png.flaticon.com/512/10008/10008778.png' },
+                  ...(isComikidsAccount ? [{ label: 'ComiKids Oficial', url: '/Comikids.png' }] : []),
                 ].map((preset) => (
                   <button
                     key={preset.label}

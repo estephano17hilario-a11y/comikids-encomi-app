@@ -1409,14 +1409,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             <div className="flex items-center gap-2">
               {/* Branding Oficial de la Empresa: Foto y Nombre arriba a la derecha */}
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-cyan-500/20 border border-pink-400/30 text-pink-200 shadow-sm">
-                <img
-                  src={tallerConfig?.logo_url || '/Comikids.png'}
-                  alt={tallerConfig?.nombre_taller || 'Empresa'}
-                  className="w-4 h-4 sm:w-5 sm:h-5 object-contain rounded"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
-                />
+                {tallerConfig?.logo_url ? (
+                  <img
+                    src={tallerConfig.logo_url}
+                    alt={tallerConfig?.nombre_taller || 'Empresa'}
+                    className="w-4 h-4 sm:w-5 sm:h-5 object-contain rounded"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <span className="text-xs">🏢</span>
+                )}
                 <span className="text-[11px] sm:text-xs font-black tracking-tight truncate max-w-[120px] sm:max-w-none">
-                  {tallerConfig?.nombre_taller || 'ComiKids'}
+                  {tallerConfig?.nombre_taller || 'Encomi'}
                 </span>
               </div>
 

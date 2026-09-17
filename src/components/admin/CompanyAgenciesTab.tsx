@@ -57,8 +57,8 @@ import {
 const LOGO_PRESETS = [
   { label: 'Shalom Oficial', url: '/Shalom-Courier-Logo.webp' },
   { label: 'Olva Courier', url: '/Olva-Courier-Logo.svg' },
-  { label: 'Motorizado', url: 'https://cdn-icons-png.flaticon.com/512/2830/2830305.png' },
-  { label: 'ComiKids / Encomi', url: '/Comikids.png' },
+  { label: 'Motorizado Local', url: 'https://cdn-icons-png.flaticon.com/512/2830/2830305.png' },
+  { label: 'Encomi Envíos', url: 'https://cdn-icons-png.flaticon.com/512/7542/7542670.png' },
   { label: 'Transportes Flores', url: 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=120&auto=format&fit=crop&q=60' },
   { label: 'Marvisur Carga', url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=120&auto=format&fit=crop&q=60' },
   { label: 'Carhua Express', url: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=120&auto=format&fit=crop&q=60' },

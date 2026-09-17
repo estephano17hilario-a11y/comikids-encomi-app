@@ -110,6 +110,7 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
     const clientName = order.usuario?.nombre_completo || 'Cliente';
     const destination = order.destino_detalle || 'Destino';
     const phoneToUse = itemState.phone || '';
+    const companyName = currentEmpresa?.nombre || tallerConfig?.nombre_taller || 'Encomi Envíos';
 
     const url = buildWhatsAppStatusNotifyUrl({
       phone: phoneToUse,
@@ -117,6 +118,7 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
       orderCode: order.codigo_seguimiento,
       destination,
       statusName,
+      companyName,
     });
 
     if (typeof window !== 'undefined') {

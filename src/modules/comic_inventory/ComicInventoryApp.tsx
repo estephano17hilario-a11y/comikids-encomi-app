@@ -464,7 +464,11 @@ export const ComicInventoryApp: React.FC = () => {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <img src="/Comikids.png" alt="ComiKids" className="w-5 h-5 object-contain rounded-sm" />
+            {currentEmpresa?.logo_url ? (
+              <img src={currentEmpresa.logo_url} alt="Logo" className="w-5 h-5 object-contain rounded-sm" />
+            ) : (
+              <Package className="w-4 h-4" />
+            )}
             <span>Prendas ({filteredProducts.length})</span>
           </button>
 

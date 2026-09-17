@@ -274,12 +274,12 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         {/* Cabecera Superior: Logo ComiKids / Sender, Subtítulo & Badge Carrier / Tracking */}
         <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-2 shrink-0">
           <div className="flex items-center gap-2">
-            {cfgRotulado?.mostrar_logo_empresa !== false && (
+            {cfgRotulado?.mostrar_logo_empresa !== false && (tallerConfig.logo_url || tallerConfig.empresa_id === 'empresa-master-comikids') && (
               <img
                 src={tallerConfig.logo_url || '/Comikids.png'}
                 alt={senderNombre}
                 className={`w-8 h-8 object-contain shrink-0 ${inkSavingLevel >= 75 ? 'grayscale' : ''}`}
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
             )}
             <div>
@@ -474,12 +474,12 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         {/* Modern Header Banner */}
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
           <div className="flex items-center gap-2.5">
-            {cfgRotulado?.mostrar_logo_empresa !== false && (
+            {cfgRotulado?.mostrar_logo_empresa !== false && (tallerConfig.logo_url || tallerConfig.empresa_id === 'empresa-master-comikids') && (
               <img
                 src={tallerConfig.logo_url || '/Comikids.png'}
                 alt={tallerConfig.nombre_taller || 'Empresa'}
                 className="w-10 h-10 object-contain rounded-xl border border-slate-200 shadow-sm shrink-0"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
             )}
             <div>
@@ -666,12 +666,12 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         {/* Header Eco */}
         <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-2">
           <div className="flex items-center gap-2">
-            {cfgRotulado?.mostrar_logo_empresa !== false && (
+            {cfgRotulado?.mostrar_logo_empresa !== false && (tallerConfig.logo_url || tallerConfig.empresa_id === 'empresa-master-comikids') && (
               <img
                 src={tallerConfig.logo_url || '/Comikids.png'}
                 alt="Logo"
                 className="w-8 h-8 object-contain grayscale shrink-0"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
             )}
             <div>
@@ -829,12 +829,12 @@ export const ShalomLabelPrint: React.FC<Props> = ({
       {/* Top Header ComiKids & Badge con Logo Shalom / Olva / Moto */}
       <div className={`flex items-center justify-between border-b-2 border-dashed ${inkSavingLevel >= 50 ? 'border-slate-400' : 'border-pink-500'} pb-2.5 mb-2.5`}>
         <div className="flex items-center gap-2">
-          {cfgRotulado?.mostrar_logo_empresa !== false && (
+          {cfgRotulado?.mostrar_logo_empresa !== false && (tallerConfig.logo_url || tallerConfig.empresa_id === 'empresa-master-comikids') && (
             <img
               src={tallerConfig.logo_url || '/Comikids.png'}
               alt={senderNombre}
               className={`w-10 h-10 object-contain rounded-xl shadow shrink-0 ${inkSavingLevel >= 75 ? 'grayscale contrast-125' : ''}`}
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/Comikids.png'; }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
           )}
           <div>

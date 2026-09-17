@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 
 export const ClientDirectory: React.FC = () => {
-  const { pedidos, deleteUser } = useOrders();
+  const { pedidos, deleteUser, tallerConfig } = useOrders();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState<Usuario | null>(null);
   const [clientToDelete, setClientToDelete] = useState<Usuario | null>(null);
@@ -172,9 +172,10 @@ export const ClientDirectory: React.FC = () => {
             }
 
             const rawPhone = (displayPhone || '').replace(/\D/g, '');
+            const companyName = tallerConfig?.nombre_taller || 'Encomi';
             const whatsappChatUrl = rawPhone.length >= 9
-              ? `https://wa.me/51${rawPhone.slice(-9)}?text=${encodeURIComponent(`¡Hola ${client.nombre_completo}! 👋 Te saluda ComiKids. ¿Cómo podemos ayudarte hoy con tus pedidos?`)}`
-              : `https://api.whatsapp.com/send?phone=51927781412`;
+              ? `https://wa.me/51${rawPhone.slice(-9)}?text=${encodeURIComponent(`¡Hola ${client.nombre_completo}! 👋 Te saluda ${companyName}. ¿Cómo podemos ayudarte hoy con tus pedidos?`)}`
+              : `https://api.whatsapp.com/send?phone=${tallerConfig?.whatsapp_pedidos || '51927781412'}`;
 
             const hasCompletedSurvey = Boolean(client.datos_adicionales_completados);
             const purchaseReasonLabel = hasCompletedSurvey && client.motivo_compra

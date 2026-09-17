@@ -15,7 +15,7 @@ interface Props {
   onPrintComplete?: (printedOrderIds: string[]) => void;
 }
 
-export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _tallerConfig, onClose, onPrintComplete }) => {
+export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose, onPrintComplete }) => {
   const [printing, setPrinting] = useState(false);
   const [inkSavingLevel, setInkSavingLevel] = useState<InkSavingLevel>(0);
 
@@ -334,19 +334,20 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig: _taller
                           : 'border-2 border-dashed border-black'
                       }`}
                     >
-                      {/* Header: Logo Oficial ComiKids & Badge Shalom / Olva / Moto */}
+                      {/* Header: Logo Oficial & Badge Shalom / Olva / Moto */}
                       <div className="flex items-center justify-between border-b-2 border-black pb-1.5 shrink-0">
                         <div className="flex items-center gap-2">
-                          {cfgRotulado?.mostrar_logo_empresa !== false && (
+                          {cfgRotulado?.mostrar_logo_empresa !== false && (tallerConfig.logo_url || tallerConfig.empresa_id === 'empresa-master-comikids') && (
                             <img 
-                              src="/Comikids.png" 
-                              alt="ComiKids" 
+                              src={tallerConfig.logo_url || '/Comikids.png'} 
+                              alt={tallerConfig.nombre_taller || 'Empresa'} 
                               className={`w-8 h-8 object-contain shrink-0 ${inkSavingLevel >= 75 ? 'grayscale' : ''}`}
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                             />
                           )}
                           <div>
                             <strong className="text-xs sm:text-sm font-black tracking-tight uppercase block leading-none text-black">
-                              ComiKids
+                              {tallerConfig.nombre_taller || 'Encomi Envíos'}
                             </strong>
                             <span className="text-[8.5px] font-black uppercase tracking-widest text-slate-600 block mt-0.5">
                               {cfgRotulado?.subtitulo_cabecera || 'ENCOMI ENVÍOS'}

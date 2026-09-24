@@ -66,7 +66,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 }) => {
   const { empresaConfig, currentEmpresa } = useAuth();
   const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids_tienda';
-  const senderPhone = currentEmpresa?.telefono_contacto || tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '51927781412';
+  const rawSender = currentEmpresa?.telefono_contacto || tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '';
+  const initialSenderPhone = (rawSender && !rawSender.includes('963097546')) ? rawSender : '51927781412';
+  const [senderPhone, setSenderPhone] = useState<string>(initialSenderPhone);
   const isVpsWhatsAppEnabled = empresaConfig?.vps_whatsapp_entregado !== false;
   const isShalomExcelMode = empresaConfig?.shalom_modo === 'excel';
 
@@ -248,8 +250,22 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     });
 
     setProgressList(initial);
-    executeAudit(initial, false);
-  }, [isOpen]);
+    // SEGURIDAD OFICIAL: Forzar siempre forceRefresh = true para asegurar que consulte en vivo la versión oficial de Shalom Pro
+    executeAudit(initial, true);
+
+    // Consultar el teléfono emisor conectado en tiempo real al abrir el modal
+    fetch(`${getApiBaseUrl()}/tenant/${subInstance}/status`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.data?.ownerPhone) {
+          const clean = String(json.data.ownerPhone).replace(/\D/g, '');
+          if (clean && !clean.includes('963097546')) {
+            setSenderPhone(clean);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [isOpen, subInstance]);
 
   if (!isOpen) return null;
 

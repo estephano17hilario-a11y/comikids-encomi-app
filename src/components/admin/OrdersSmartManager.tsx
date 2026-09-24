@@ -243,10 +243,22 @@ export const OrdersSmartManager: React.FC = () => {
   // Mass status updates
   const handleMassStatusUpdate = async (envio: EstadoEnvio, prod?: EstadoProduccion) => {
     if (selectedIds.length === 0) return;
-    setIsProcessing(true);
     const affectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
     const statusName = getStatusLabel(envio, prod);
 
+    // SEGURIDAD OFICIAL: Si se marca como Entregado y hay pedidos de Shalom, abrir ShalomDeliveryModal
+    // para buscar el voucher con QR oficial emitido por Shalom y enviar la clave y PDF por WhatsApp
+    if (envio === 'entregado') {
+      const shalomOrders = affectedOrders.filter(
+        p => p.metodo_envio_codigo === 'shalom' || p.destino_detalle?.toLowerCase().includes('shalom')
+      );
+      if (shalomOrders.length > 0) {
+        setDeliveryTargetOrders(shalomOrders);
+        return;
+      }
+    }
+
+    setIsProcessing(true);
     try {
       await updateMultipleEstados(selectedIds, envio, prod);
       clearSelection();
@@ -275,10 +287,17 @@ export const OrdersSmartManager: React.FC = () => {
   };
 
   const handleSingleOrderMove = async (orderId: string, envio: EstadoEnvio, prod?: EstadoProduccion) => {
-    setIsProcessing(true);
     const targetOrder = pedidos.find(p => p.id === orderId);
     const statusName = getStatusLabel(envio, prod);
 
+    // SEGURIDAD OFICIAL: Si se marca individualmente como Entregado y es de Shalom, abrir ShalomDeliveryModal
+    if (envio === 'entregado' && targetOrder && (targetOrder.metodo_envio_codigo === 'shalom' || targetOrder.destino_detalle?.toLowerCase().includes('shalom'))) {
+      setSwipeTargetOrder(null);
+      setDeliveryTargetOrders([targetOrder]);
+      return;
+    }
+
+    setIsProcessing(true);
     try {
       if (prod) await updateEstadoProduccion(orderId, prod);
       await updateEstadoEnvio(orderId, envio);

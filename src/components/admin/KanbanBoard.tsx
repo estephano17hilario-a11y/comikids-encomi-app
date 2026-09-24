@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { Pedido } from '../../types/database.types';
 import { ShalomLabelModal } from './ShalomLabelModal';
+import { ShalomDeliveryModal } from './ShalomDeliveryModal';
 import {
   Search,
   Clock,
@@ -18,6 +19,7 @@ export const KanbanBoard: React.FC = () => {
   const { pedidos, tallerConfig, updateEstadoProduccion, updateEstadoEnvio } = useOrders();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedShalomOrder, setSelectedShalomOrder] = useState<Pedido | null>(null);
+  const [deliveryShalomOrders, setDeliveryShalomOrders] = useState<Pedido[] | null>(null);
 
   const filteredOrders = pedidos.filter(p => {
     return (
@@ -41,6 +43,10 @@ export const KanbanBoard: React.FC = () => {
     } else if (pedido.estado_produccion === 'completado' && pedido.estado_envio === 'pendiente') {
       await updateEstadoEnvio(pedido.id, 'en_camino');
     } else if (pedido.estado_envio === 'en_camino') {
+      if (pedido.metodo_envio_codigo === 'shalom') {
+        setDeliveryShalomOrders([pedido]);
+        return;
+      }
       await updateEstadoEnvio(pedido.id, 'entregado');
     }
   };
@@ -216,6 +222,21 @@ export const KanbanBoard: React.FC = () => {
           pedido={selectedShalomOrder}
           tallerConfig={tallerConfig}
           onClose={() => setSelectedShalomOrder(null)}
+        />
+      )}
+
+      {deliveryShalomOrders && (
+        <ShalomDeliveryModal
+          isOpen={Boolean(deliveryShalomOrders)}
+          orders={deliveryShalomOrders}
+          tallerConfig={tallerConfig}
+          onClose={() => setDeliveryShalomOrders(null)}
+          onOrdersDelivered={async (deliveredIds) => {
+            for (const id of deliveredIds) {
+              await updateEstadoEnvio(id, 'entregado');
+            }
+            setDeliveryShalomOrders(null);
+          }}
         />
       )}
 

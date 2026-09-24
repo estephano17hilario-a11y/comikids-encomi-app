@@ -261,12 +261,16 @@ export class EvolutionService {
   }
 
   /**
-   * Consulta el estado de conexión de la instancia de una tienda (open, connecting, close).
+   * Consulta el estado de conexión de la instancia de una tienda (open, connecting, close)
+   * y extrae el número de teléfono emisor real (ownerPhone) conectado actualmente.
    */
   public static async getTenantStatus(tenantId: string): Promise<{
     instanceName: string;
     tenantId: string;
     state: string;
+    ownerPhone?: string;
+    ownerJid?: string;
+    profileName?: string;
   }> {
     const instanceName =
       tenantId === 'comikids_whatsapp' ||
@@ -278,11 +282,42 @@ export class EvolutionService {
         : `tenant_${tenantId}`;
 
     try {
+      // 1. Intentar consultar todas las instancias para obtener ownerJid y profileName
+      try {
+        const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
+          headers: this.getHeaders(),
+          timeout: 6000,
+        });
+        const instances = Array.isArray(fetchRes.data) ? fetchRes.data : [];
+        const matched = instances.find((i: any) =>
+          i.name === instanceName ||
+          i.name?.toLowerCase() === instanceName.toLowerCase() ||
+          i.name?.replace(/^tenant_/, '').toLowerCase() === instanceName.replace(/^tenant_/, '').toLowerCase()
+        );
+
+        if (matched) {
+          const state = matched.connectionStatus || 'close';
+          const rawJid = String(matched.ownerJid || '');
+          const cleanPhone = rawJid.split('@')[0].split(':')[0].replace(/\D/g, '');
+          return {
+            instanceName: matched.name || instanceName,
+            tenantId,
+            state,
+            ownerPhone: cleanPhone || undefined,
+            ownerJid: matched.ownerJid || undefined,
+            profileName: matched.profileName || undefined,
+          };
+        }
+      } catch (fErr) {
+        // Fallback a connectionState
+      }
+
+      // 2. Fallback a connectionState directo
       const response = await axios.get(
         `${env.EVOLUTION_API_URL}/instance/connectionState/${instanceName}`,
         {
           headers: this.getHeaders(),
-          timeout: 10000,
+          timeout: 8000,
         }
       );
 

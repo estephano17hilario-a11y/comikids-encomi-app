@@ -70,7 +70,7 @@ export const DEFAULT_EMPRESA_ACCOUNT: EmpresaAccount = {
   numero_entrada: '061625',
   password_hash: '989834969MI',
   activo: true,
-  telefono_contacto: '51963097546',
+  telefono_contacto: '51927781412',
   sub_instance: 'tenant_Comikids',
   created_at: '2026-01-01T00:00:00.000Z',
   ultimo_acceso: new Date().toISOString(),
@@ -556,6 +556,12 @@ class OrdersService {
       if (!parsed.some((e: any) => e.id === 'empresa-master-comikids' || e.numero_entrada === '061625')) {
         parsed.unshift(DEFAULT_EMPRESA_ACCOUNT);
       }
+      // Sanitizar si existía el teléfono obsoleto '51963097546'
+      parsed.forEach((e: any) => {
+        if (e.id === 'empresa-master-comikids' && e.telefono_contacto === '51963097546') {
+          e.telefono_contacto = '51927781412';
+        }
+      });
       // Normalizar configs para todas las cuentas
       const normalized = parsed.map((e: EmpresaAccount) => ({
         ...e,
@@ -576,6 +582,36 @@ class OrdersService {
 
   saveEmpresas(empresas: EmpresaAccount[]): void {
     localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(empresas));
+  }
+
+  syncEmpresaConnectedPhone(subInstanceOrEmpresaId: string, livePhone: string): void {
+    if (!livePhone) return;
+    const cleanPhone = livePhone.replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 8) return;
+
+    const empresas = this.getEmpresas();
+    let updated = false;
+
+    for (const emp of empresas) {
+      const matchInst = emp.sub_instance || emp.config?.vps_instance_name;
+      const cleanInst = (matchInst || '').toLowerCase().replace(/^tenant_/, '');
+      const cleanTarget = (subInstanceOrEmpresaId || '').toLowerCase().replace(/^tenant_/, '');
+
+      if (
+        emp.id === subInstanceOrEmpresaId ||
+        (cleanInst && cleanInst === cleanTarget) ||
+        (cleanTarget.includes('comikids') && emp.id === 'empresa-master-comikids')
+      ) {
+        if (emp.telefono_contacto !== cleanPhone) {
+          emp.telefono_contacto = cleanPhone;
+          updated = true;
+        }
+      }
+    }
+
+    if (updated) {
+      this.saveEmpresas(empresas);
+    }
   }
 
   getEmpresaById(id: string): EmpresaAccount | null {

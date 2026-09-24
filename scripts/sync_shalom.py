@@ -21,11 +21,23 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
+from pathlib import Path
+
+# Cargar variables de .env
+env_vars = {}
+env_file = Path(".env")
+if env_file.exists():
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            env_vars[k.strip()] = v.strip()
+
 # Configuración de Entorno
-API_KEY = os.environ.get("SHALOM_API_KEY", "sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma")
-BASE_URL = os.environ.get("SHALOM_API_URL", "https://api.shalom-api-peru.com").rstrip("/")
-SUPABASE_URL = os.environ.get("VITE_SUPABASE_URL", "https://uwmdjsxwetjvsxsdngko.supabase.co").rstrip("/")
-SUPABASE_KEY = os.environ.get("VITE_SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3bWRqc3h3ZXRqdnN4c2RuZ2tvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2NDE5MTEsImV4cCI6MjEwMjIxNzkxMX0.KaqryIyoe4IDQGTJD_cswZkW-wfgnMcyV9tJoWxHMq8")
+API_KEY = env_vars.get("SHALOM_API_KEY") or os.environ.get("SHALOM_API_KEY", "sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma")
+BASE_URL = (env_vars.get("SHALOM_API_URL") or os.environ.get("SHALOM_API_URL", "https://api.shalom-api-peru.com")).rstrip("/")
+SUPABASE_URL = (env_vars.get("VITE_SUPABASE_URL") or os.environ.get("VITE_SUPABASE_URL", "https://api.89.117.73.97.sslip.io")).rstrip("/")
+SUPABASE_KEY = env_vars.get("VITE_SUPABASE_ANON_KEY") or os.environ.get("VITE_SUPABASE_ANON_KEY", "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4Nzg0OTc2MCwiZXhwIjo0OTQzNTIzMzYwLCJyb2xlIjoiYW5vbiJ9._DvifLx6sViDd5UePak7xswzmT6dQp9FoQZqPnyxeRU")
 
 
 def normalize_agency(raw: dict) -> dict:

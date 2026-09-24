@@ -283,9 +283,9 @@ export interface TallerConfig {
 export interface ShalomAgency {
   id: number | string;
   code?: string | null;
-  departamento: string;
-  provincia: string;
-  distrito: string;
+  departamento?: string;
+  provincia?: string;
+  distrito?: string;
   department?: string;
   province?: string;
   district?: string;
@@ -293,10 +293,10 @@ export interface ShalomAgency {
   dep_id?: number | null;
   prov_id?: number | null;
   dist_id?: number | null;
-  nombre: string;
+  nombre?: string;
   name?: string;
   full_name?: string;
-  direccion: string;
+  direccion?: string;
   address?: string;
   telefono?: string | null;
   phone?: string | null;

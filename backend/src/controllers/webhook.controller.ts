@@ -4,6 +4,8 @@ import { enqueueCopilotQuery } from '../queues/copilot.queue.js';
 import { enqueueIngestionEvent } from '../queues/ingestion.queue.js';
 import { env } from '../config/env.js';
 import { redisClient } from '../config/redis.js';
+import { supabaseAdmin } from '../config/supabase.js';
+import { EvolutionService } from '../services/evolution.service.js';
 
 export class WebhookController {
   /**
@@ -48,14 +50,30 @@ export class WebhookController {
       }
     }
 
-    // Si la conexión se abre exitosamente, limpiar QR en caché
+    // Si la conexión se abre exitosamente, limpiar QR en caché y actualizar teléfono emisor real en Supabase
     if (event === 'connection.update') {
       const state = (data as any)?.state;
       if (state === 'open' && instance) {
         console.log(`[CONNECTION WEBHOOK] ✓ Instancia "${instance}" CONECTADA en modo OPEN`);
         try {
           await redisClient.del(`copilot:qr:${instance}`);
-        } catch {}
+
+          // Consultar el número real que se acaba de conectar / reemplazar
+          const instInfo = await EvolutionService.getTenantStatus(instance);
+          if (instInfo.ownerPhone) {
+            console.log(`[CONNECTION WEBHOOK] ✓ Teléfono emisor actualizado a +${instInfo.ownerPhone} para instancia "${instance}"`);
+            await supabaseAdmin
+              .from('taller_config')
+              .update({
+                copilot_owner_phone: instInfo.ownerPhone,
+                whatsapp_pedidos: instInfo.ownerPhone,
+                celular_taller: `+${instInfo.ownerPhone}`,
+              })
+              .or(`copilot_sub_instance.eq.${instance},copilot_sub_instance.eq.${instance.replace(/^tenant_/, '')}`);
+          }
+        } catch (syncErr) {
+          console.warn('[CONNECTION WEBHOOK SYNC ERROR]', syncErr);
+        }
       }
     }
 

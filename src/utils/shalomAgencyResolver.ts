@@ -242,7 +242,7 @@ export const resolveShalomAgencyDetails = (
   // 1. Si se proporciona ID directo numérico válido
   if (directId && agencyById.has(directId)) {
     const ag = agencyById.get(directId)!;
-    const off = (ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) || ag.distrito || ag.nombre;
+    const off = (ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) || ag.distrito || ag.district || ag.nombre || ag.name || '';
     return {
       terminalId: Number(ag.id),
       code: ag.code || '',
@@ -272,7 +272,7 @@ export const resolveShalomAgencyDetails = (
     const matches = agencyByCode.get(cClean) || [];
     if (matches.length === 1) {
       const ag = matches[0];
-      const off = (ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) || ag.distrito || ag.nombre;
+      const off = (ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) || ag.distrito || ag.district || ag.nombre || ag.name || '';
       return {
         terminalId: Number(ag.id),
         code: ag.code || '',
@@ -294,7 +294,7 @@ export const resolveShalomAgencyDetails = (
         return (depNorm && qNorm.includes(depNorm)) || (distNorm && qNorm.includes(distNorm));
       });
       if (depMatch) {
-        const off = (depMatch.code && SHALOM_CODE_TO_OFFICIAL_MAP[depMatch.code.toUpperCase().trim()]) || depMatch.distrito || depMatch.nombre;
+        const off = (depMatch.code && SHALOM_CODE_TO_OFFICIAL_MAP[depMatch.code.toUpperCase().trim()]) || depMatch.distrito || depMatch.district || depMatch.nombre || depMatch.name || '';
         return {
           terminalId: Number(depMatch.id),
           code: depMatch.code || '',
@@ -371,7 +371,7 @@ export const resolveShalomAgencyDetails = (
   const qCompact = normalizeCompactKey(queryText);
   if (agencyByCompactName.has(qCompact)) {
     const ag = agencyByCompactName.get(qCompact)!;
-    const off = (ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) || ag.distrito || ag.nombre;
+    const off = (ag.code && SHALOM_CODE_TO_OFFICIAL_MAP[ag.code.toUpperCase().trim()]) || ag.distrito || ag.district || ag.nombre || ag.name || '';
     return {
       terminalId: Number(ag.id),
       code: ag.code || '',

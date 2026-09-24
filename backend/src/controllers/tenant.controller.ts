@@ -4,6 +4,7 @@ import { z } from 'zod';
 import axios from 'axios';
 import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
+import { ShalomController } from './shalom.controller.js';
 
 const CreateSubInstanceSchema = z.object({
   tenantId: z.string().min(1, 'tenantId is required'),
@@ -58,17 +59,22 @@ export class TenantController {
       });
 
       const instances = Array.isArray(response.data) ? response.data : [];
-      const formatted = instances.map((inst: any) => ({
-        instanceName: inst.name,
-        isMaster:
-          inst.name === 'tenant_Comikids' ||
-          inst.name === 'main_bot' ||
-          inst.name === 'comikids_whatsapp' ||
-          inst.name === env.EVOLUTION_INSTANCE_NAME,
-        connectionStatus: inst.connectionStatus || 'close',
-        ownerJid: inst.ownerJid,
-        profileName: inst.profileName,
-      }));
+      const formatted = instances.map((inst: any) => {
+        const rawJid = String(inst.ownerJid || '');
+        const ownerPhone = rawJid.split('@')[0].split(':')[0].replace(/\D/g, '');
+        return {
+          instanceName: inst.name,
+          isMaster:
+            inst.name === 'tenant_Comikids' ||
+            inst.name === 'main_bot' ||
+            inst.name === 'comikids_whatsapp' ||
+            inst.name === env.EVOLUTION_INSTANCE_NAME,
+          connectionStatus: inst.connectionStatus || 'close',
+          ownerJid: inst.ownerJid,
+          ownerPhone: ownerPhone || undefined,
+          profileName: inst.profileName,
+        };
+      });
 
       return reply.code(200).send({
         success: true,
@@ -134,6 +140,20 @@ export class TenantController {
           : `tenant_${tenantId}`;
 
       const result = await EvolutionService.getTenantStatus(formattedTenantId);
+
+      // Si la sub-instancia está conectada y tiene un teléfono emisor real, sincronizarlo en la BD
+      if (result.state === 'open' && result.ownerPhone) {
+        try {
+          await supabaseAdmin
+            .from('taller_config')
+            .update({
+              copilot_owner_phone: result.ownerPhone,
+              whatsapp_pedidos: result.ownerPhone,
+              celular_taller: `+${result.ownerPhone}`,
+            })
+            .or(`copilot_sub_instance.eq.${formattedTenantId},copilot_sub_instance.eq.${formattedTenantId.replace(/^tenant_/, '')}`);
+        } catch {}
+      }
 
       return reply.code(200).send({
         success: true,
@@ -542,7 +562,7 @@ export class TenantController {
         const clientDni = String((order as any).dni || (order as any).customerDni || '').replace(/\D/g, '').trim() || safeExtractedDni || '';
 
         const safeClientName = (order.customerName || 'Clienta').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_]/g, '_');
-        const formattedFileName = order.fileName || `Ticket_Shalom_${safeClientName}_${clientDni || phoneClean.slice(-9)}.pdf`;
+        let formattedFileName = order.fileName || `Ticket_Shalom_${safeClientName}_${clientDni || phoneClean.slice(-9)}.pdf`;
         
         // Solo números en el código de orden
         const rawCode = String(order.orderCode || order.trackingCode || '').trim();
@@ -551,18 +571,54 @@ export class TenantController {
         let pdfToSend = order.pdfBase64;
         let individualPickupCode = String((order as any).pickupCode || (order as any).claveRecojo || (order as any).shalom_clave_recojo || '').trim();
 
-        // 1. Búsqueda en vivo de la versión más actualizada del ticket en Shalom Pro API emparejado por DNI estricto
-        const searchKey = clientDni || order.guideNumber || order.trackingCode || phoneClean.slice(-9);
-        if (searchKey && !pdfToSend) {
+        // 1. OBLIGATORIO: Búsqueda en vivo del Ticket/Rótulo OFICIAL emitido y recibido por Shalom Pro (con QR oficial y datos actualizados)
+        const searchKey = clientDni || (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G' ? order.guideNumber : '') || numbersOnly || order.trackingCode || phoneClean.slice(-9);
+        
+        let officialDoc = null;
+        try {
+          console.log(`[DELIVERY VOUCHER FETCH] Consultando Ticket/Rótulo Oficial con QR en Shalom Pro para clienta ${order.customerName} (DNI: "${clientDni}", Key: "${searchKey}")...`);
+          officialDoc = await ShalomController.fetchOfficialOrderPdfDirect({
+            searchKey,
+            dni: clientDni,
+            name: order.customerName,
+            phone: phoneClean,
+            guia: (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G') ? order.guideNumber : undefined,
+            internalCode: numbersOnly,
+            forceRefresh: true, // SIEMPRE traer la versión más actualizada recibida por Shalom
+          });
+        } catch (dirErr: any) {
+          console.warn(`[DELIVERY VOUCHER DIRECT FETCH WARN]`, dirErr?.message);
+        }
+
+        if (officialDoc && officialDoc.pdfBase64) {
+          // Usar EXCLUSIVAMENTE el PDF oficial con el QR emitido por Shalom Pro
+          pdfToSend = officialDoc.pdfBase64;
+          if (officialDoc.filename) {
+            formattedFileName = officialDoc.filename;
+          }
+          if (officialDoc.pickupCode) {
+            individualPickupCode = officialDoc.pickupCode;
+            console.log(`[DELIVERY VOUCHER] ✓ Clave de recojo oficial extraída de Shalom Pro para #${numbersOnly}: "${individualPickupCode}"`);
+          }
+          if (officialDoc.guia) {
+            order.guideNumber = officialDoc.guia;
+            console.log(`[DELIVERY VOUCHER] ✓ Guía oficial más actualizada extraída de Shalom Pro para #${numbersOnly}: "${order.guideNumber}"`);
+          }
+          if (officialDoc.oseId) {
+            (order as any).oseId = officialDoc.oseId;
+          }
+        } else if (searchKey && !pdfToSend) {
+          // Fallback a consulta HTTP si la llamada directa no arrojó documento
           try {
             const qParams = new URLSearchParams();
             if (clientDni) qParams.set('dni', clientDni);
             if (order.customerName) qParams.set('name', order.customerName);
             if (phoneClean) qParams.set('phone', phoneClean);
             if (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G') qParams.set('guia', order.guideNumber);
+            qParams.set('refresh', '1');
 
-            console.log(`[DELIVERY VOUCHER FETCH] Consultando ticket en Shalom Pro para clienta ${order.customerName} (DNI: ${clientDni})...`);
-            const pdfRes = await axios.get(`http://127.0.0.1:3000/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher?${qParams.toString()}`, {
+            console.log(`[DELIVERY VOUCHER FETCH FALLBACK] Consultando ticket en Shalom Pro para clienta ${order.customerName} (DNI: ${clientDni})...`);
+            const pdfRes = await axios.get(`http://127.0.0.1:${env.PORT || 3000}/api/shalom/orders/${encodeURIComponent(searchKey)}/voucher?${qParams.toString()}`, {
               responseType: 'arraybuffer',
               timeout: 12000,
             });
@@ -570,22 +626,16 @@ export class TenantController {
               const returnedDni = (pdfRes.headers['x-shalom-receiver-dni'] as string) || '';
               if (!clientDni || !returnedDni || returnedDni === clientDni) {
                 pdfToSend = Buffer.from(pdfRes.data).toString('base64');
-              } else {
-                console.warn(`[DELIVERY VOUCHER SECURITY LOCK] Comprobante rechazado: DNI devuelto ${returnedDni} no coincide con ${clientDni}`);
               }
               
-              // Extraer la clave de recojo REAL con la que se registró en Shalom Pro
               const shalomLivePin = (pdfRes.headers['x-shalom-pickup-code'] as string) || (pdfRes.headers['X-Shalom-Pickup-Code'] as string);
               if (shalomLivePin && shalomLivePin.trim()) {
                 individualPickupCode = shalomLivePin.trim();
-                console.log(`[DELIVERY VOUCHER] ✓ Clave de recojo oficial extraída en vivo de Shalom Pro para #${numbersOnly}: "${individualPickupCode}"`);
               }
 
-              // Extraer la guía de remisión REAL más actualizada de Shalom Pro
               const shalomLiveGuia = (pdfRes.headers['x-shalom-guia'] as string) || (pdfRes.headers['X-Shalom-Guia'] as string);
               if (shalomLiveGuia && shalomLiveGuia.trim()) {
                 order.guideNumber = shalomLiveGuia.trim();
-                console.log(`[DELIVERY VOUCHER] ✓ Guía oficial más actualizada extraída en vivo de Shalom Pro para #${numbersOnly}: "${order.guideNumber}"`);
               }
               const shalomLiveOseId = (pdfRes.headers['x-shalom-ose-id'] as string) || (pdfRes.headers['X-Shalom-Ose-Id'] as string);
               if (shalomLiveOseId && shalomLiveOseId.trim()) {

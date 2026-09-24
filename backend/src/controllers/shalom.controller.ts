@@ -420,19 +420,6 @@ export class ShalomController {
     }
   }
 
-  /**
-   * Obtiene el PDF del Ticket Oficial / Voucher (Formato Físico POS con QR) de Shalom
-   */
-  public static async getOrderLabel(
-    request: FastifyRequest<{
-      Params: { oseId: string };
-      Querystring: { dni?: string; phone?: string; name?: string; guia?: string };
-      Headers: { [key: string]: string };
-    }>,
-    reply: FastifyReply
-  ) {
-    return ShalomController.fetchOrderPdf(request, reply, 'voucher');
-  }
 
   /**
    * Obtiene el PDF del Ticket Oficial / Voucher (Formato Físico POS con QR) de Shalom
@@ -447,6 +434,226 @@ export class ShalomController {
   ) {
     return ShalomController.fetchOrderPdf(request, reply, 'voucher');
   }
+
+  /**
+   * Obtiene el PDF del Rótulo Oficial de Shalom (Formato con QR de despacho)
+   */
+  public static async getOrderLabel(
+    request: FastifyRequest<{
+      Params: { oseId: string };
+      Querystring: { dni?: string; phone?: string; name?: string; guia?: string };
+      Headers: { [key: string]: string };
+    }>,
+    reply: FastifyReply
+  ) {
+    return ShalomController.fetchOrderPdf(request, reply, 'label');
+  }
+
+  /**
+   * Extracción directa del PDF oficial del Ticket/Rótulo de Shalom Pro con QR y metadatos actualizados.
+   * Utilizado internamente por el despachador de entregas de WhatsApp sin pasar por HTTP proxy loopback.
+   */
+  public static async fetchOfficialOrderPdfDirect(params: {
+    searchKey: string;
+    dni?: string;
+    phone?: string;
+    name?: string;
+    guia?: string;
+    internalCode?: string;
+    forceRefresh?: boolean;
+    customHeaders?: Record<string, any>;
+  }): Promise<{
+    pdfBuffer: Buffer;
+    pdfBase64: string;
+    pickupCode: string;
+    guia: string;
+    oseId: string;
+    receiverDni: string;
+    receiverName: string;
+    filename: string;
+  } | null> {
+    try {
+      const credentials = await ShalomController.getShalomCredentials(params.customHeaders || {});
+      const headers: Record<string, string> = {
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) {
+        headers['X-Shalom-Password'] = credentials.password;
+      }
+
+      const cleanSearch = decodeURIComponent(params.searchKey || '').trim();
+      const SHOP_PHONES = ['927781412', '987654321', '986398000', '989834969', '51927781412', '51987654321'];
+      const SHOP_DNIS = ['42020312', '00000000', '20512528458', '20000000001'];
+
+      const is8DigitDni = /^\d{8}$/.test(cleanSearch);
+      const is11DigitRuc = /^\d{11}$/.test(cleanSearch);
+      const is9DigitPhone = /^9\d{8}$/.test(cleanSearch);
+      const isShalomGuide = /^(V\d{3}|[A-Z]\d{3})[- ]?\d{4,8}$/i.test(cleanSearch);
+      const isInternalCode = cleanSearch.startsWith('CMD-') || cleanSearch.startsWith('SH-') || (/^\d{1,6}$/.test(cleanSearch) && !is8DigitDni);
+      const isNumericOseId = /^\d{1,9}$/.test(cleanSearch) && !is8DigitDni && !is11DigitRuc;
+
+      let rawDni = (params.dni || (is8DigitDni || is11DigitRuc ? cleanSearch : '')).replace(/\D/g, '').trim();
+      let rawPhone = (params.phone || (is9DigitPhone ? cleanSearch : '')).replace(/\D/g, '').trim();
+      let rawName = (params.name || '').toLowerCase().trim();
+      const targetGuia = (params.guia || (isShalomGuide ? cleanSearch : '')).toUpperCase().trim();
+      const targetInternalCode = (params.internalCode || (isInternalCode ? cleanSearch : '')).toUpperCase().trim();
+
+      const targetDni = SHOP_DNIS.includes(rawDni) ? '' : rawDni;
+      const targetPhone = SHOP_PHONES.includes(rawPhone) || SHOP_PHONES.some(p => rawPhone.endsWith(p)) ? '' : rawPhone;
+
+      // Obtener lista fresca de órdenes recientes de Shalom Pro
+      let ordersList = await ShalomController.getAllShalomOrders(headers, params.forceRefresh !== false);
+
+      const getOrderReceiverDni = (o: any): string => {
+        return String(
+          o.receiver?.document || 
+          o.receiver?.document_number || 
+          o.destinatario?.documento || 
+          o.destinatario?.document_number ||
+          o.receiver?.doc || 
+          o.receiver?.dni ||
+          o.receiver_document || 
+          o.document_number ||
+          o.request?.receiver?.document ||
+          o.data?.receiver?.document ||
+          ''
+        ).replace(/\D/g, '').trim();
+      };
+
+      const getOrderInternalCode = (o: any): string => {
+        return String(
+          o.internal_code || 
+          o.request?.internal_code || 
+          o.codigo || 
+          o.tracking_code || 
+          o.codigo_seguimiento || 
+          ''
+        ).toUpperCase().trim();
+      };
+
+      const isActiveOrder = (o: any): boolean => {
+        const st = String(o.status || o.estado || '').toLowerCase();
+        return !['annulled', 'cancelled', 'anulado', 'cancelado'].includes(st) && !o.anulado && !o.is_annulled;
+      };
+
+      const pool = ordersList.filter(isActiveOrder);
+      let matchedOrder: any = null;
+
+      // 1. DNI
+      if (targetDni && targetDni.length >= 6) {
+        const dniMatches = pool.filter((o: any) => getOrderReceiverDni(o) === targetDni);
+        if (dniMatches.length > 0) {
+          dniMatches.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+          if (targetGuia && targetGuia.length >= 5) {
+            const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
+            const gMatch = dniMatches.find((o: any) => {
+              const fullG = `${o.serie || ''}${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+              const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+              return fullG === cleanG || gOnly === cleanG;
+            });
+            if (gMatch) matchedOrder = gMatch;
+          }
+          if (!matchedOrder) matchedOrder = dniMatches[0];
+        }
+      }
+
+      // 2. Internal Code
+      if (!matchedOrder && targetInternalCode) {
+        const cleanTargetCode = targetInternalCode.replace(/[^A-Z0-9]/g, '');
+        const byInternal = pool.filter((o: any) => {
+          const code = getOrderInternalCode(o).replace(/[^A-Z0-9]/g, '');
+          return code && code === cleanTargetCode;
+        });
+        if (byInternal.length > 0) {
+          byInternal.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+          matchedOrder = byInternal[0];
+        }
+      }
+
+      // 3. Guía
+      if (!matchedOrder && targetGuia && targetGuia.length >= 5) {
+        const cleanG = targetGuia.replace(/[^A-Z0-9]/g, '');
+        const gMatch = pool.find((o: any) => {
+          const fullG = `${o.serie || ''}${o.guia || ''}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const gOnly = String(o.guia || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return fullG === cleanG || gOnly === cleanG;
+        });
+        if (gMatch) matchedOrder = gMatch;
+      }
+
+      // 4. OSE ID
+      if (!matchedOrder && isNumericOseId) {
+        const byId = pool.find((o: any) => String(o.id) === cleanSearch);
+        if (byId) matchedOrder = byId;
+      }
+
+      // 5. Phone
+      if (!matchedOrder && targetPhone && targetPhone.length >= 7) {
+        const cleanP = targetPhone.slice(-9);
+        const byPhone = pool.filter((o: any) => {
+          const oPhone = String(o.receiver?.phone || o.destinatario?.telefono || o.phone || '').replace(/\D/g, '');
+          return oPhone.includes(cleanP);
+        });
+        if (byPhone.length > 0) {
+          byPhone.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+          matchedOrder = byPhone[0];
+        }
+      }
+
+      if (!matchedOrder) {
+        console.warn(`[SHALOM DIRECT FETCH] No se encontró orden en Shalom Pro para "${cleanSearch}" (DNI: ${targetDni})`);
+        return null;
+      }
+
+      // Descargar PDF del voucher (y fallback a label con QR si voucher no responde)
+      let docRes: any = null;
+      for (const endpoint of ['voucher', 'label']) {
+        try {
+          docRes = await axios.get(
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${endpoint}`,
+            {
+              headers,
+              responseType: 'arraybuffer',
+              timeout: 15000,
+            }
+          );
+          if (docRes.status === 200 && docRes.data && docRes.data.length > 100) {
+            break;
+          }
+        } catch (e: any) {
+          console.warn(`[SHALOM DIRECT FETCH ${endpoint} WARN] #${matchedOrder.id}:`, e?.message);
+        }
+      }
+
+      if (!docRes || !docRes.data || docRes.data.length < 100) {
+        return null;
+      }
+
+      const clientCleanDni = getOrderReceiverDni(matchedOrder) || targetDni || 'DNI';
+      const realPickupCode = String(matchedOrder.pickup_code || matchedOrder.request?.pickup_code || '').trim();
+      const fullGuia = `${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}`;
+      const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
+      const filename = `Ticket_Oficial_Shalom_${matchedOrder.serie || 'V204'}_${matchedOrder.guia || matchedOrder.id}_${clientCleanDni}.pdf`;
+
+      console.log(`[SHALOM DIRECT FETCH SUCCESS] ✓ Obtenido PDF Oficial de Shalom con QR para Orden #${matchedOrder.id} (${docRes.data.length} bytes, Guía: ${fullGuia}, Clave: ${realPickupCode})`);
+
+      return {
+        pdfBuffer: Buffer.from(docRes.data),
+        pdfBase64: Buffer.from(docRes.data).toString('base64'),
+        pickupCode: realPickupCode,
+        guia: fullGuia,
+        oseId: String(matchedOrder.id),
+        receiverDni: clientCleanDni,
+        receiverName: receiverFullName,
+        filename,
+      };
+    } catch (err: any) {
+      console.error('[SHALOM DIRECT FETCH EXCEPTION]', err?.message || err);
+      return null;
+    }
+  }
+
 
   private static cachedAllOrders: any[] = [];
   private static lastAllOrdersFetch: number = 0;
@@ -732,8 +939,6 @@ export class ShalomController {
             console.log(`[SHALOM PROXY] ✓ Seleccionado paquete MÁS ACTUALIZADO para DNI ${targetDni}: Orden #${dniMatches[0].id} (Guía: ${dniMatches[0].serie || 'V204'}-${dniMatches[0].guia || dniMatches[0].id})`);
             return dniMatches[0];
           }
-
-          return null;
         }
 
 
@@ -769,6 +974,19 @@ export class ShalomController {
           const byId = pool.find((o: any) => String(o.id) === cleanSearch);
           if (byId && isDniCompatible(byId) && isNameCompatible(byId)) {
             return byId;
+          }
+        }
+
+        // 5. PRIORIDAD: Teléfono del destinatario
+        if (targetPhone && targetPhone.length >= 7) {
+          const cleanP = targetPhone.slice(-9);
+          const byPhone = pool.filter((o: any) => {
+            const oPhone = String(o.receiver?.phone || o.destinatario?.telefono || o.phone || '').replace(/\D/g, '');
+            return oPhone.includes(cleanP);
+          });
+          if (byPhone.length > 0) {
+            byPhone.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+            return byPhone[0];
           }
         }
 
@@ -826,22 +1044,31 @@ export class ShalomController {
         return reply.send(cachedPdf.buffer);
       }
 
-      // B. Descargar EXCLUSIVAMENTE el Ticket Oficial POS con QR físico (/voucher) del pedido verificado
-      let docRes;
-      try {
-        docRes = await axios.get(
-          `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${endpoint}`,
-          {
-            headers,
-            responseType: 'arraybuffer',
-            timeout: 15000,
+      // B. Descargar el documento oficial con QR desde Shalom Pro (con fallback entre voucher y label)
+      let docRes: any = null;
+      const endpointsToTry = [endpoint, endpoint === 'voucher' ? 'label' : 'voucher'];
+      for (const ep of endpointsToTry) {
+        try {
+          docRes = await axios.get(
+            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${ep}`,
+            {
+              headers,
+              responseType: 'arraybuffer',
+              timeout: 15000,
+            }
+          );
+          if (docRes.status === 200 && docRes.data && docRes.data.length > 100) {
+            break;
           }
-        );
-      } catch (dlErr: any) {
-        console.error(`[SHALOM PROXY DOWNLOAD ERROR] Falló la descarga del ${endpoint} para orden #${matchedOrder.id}:`, dlErr?.message);
-        return reply.code(502).send({
+        } catch (dlErr: any) {
+          console.warn(`[SHALOM PROXY DOWNLOAD WARN] Endpoint ${ep} para orden #${matchedOrder.id}:`, dlErr?.message);
+        }
+      }
+
+      if (!docRes || !docRes.data || docRes.data.length < 100) {
+        return reply.code(404).send({
           success: false,
-          error: `Error descargando ${endpoint} oficial con QR desde Shalom Pro: ${dlErr?.message}`,
+          error: `Error descargando documento oficial con QR desde Shalom Pro para orden #${matchedOrder.id}.`,
         });
       }
 

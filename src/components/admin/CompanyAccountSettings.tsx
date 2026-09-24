@@ -46,9 +46,11 @@ import {
   ShieldCheck,
   Smartphone,
   QrCode,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { getApiBaseUrl } from '../../config/api';
+import { ordersService } from '../../services/ordersService';
 
 const DIAS_SEMANA_ORDEN: HorarioDiaDespacho['dia'][] = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
 
@@ -80,15 +82,109 @@ export const CompanyAccountSettings: React.FC = () => {
 
   // Sub-QR de WhatsApp de la cuenta de empresa
   const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids_tienda';
-  const senderPhone = currentEmpresa?.telefono_contacto || tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '51927781412';
+  const initialPhone = (currentEmpresa?.telefono_contacto && currentEmpresa.telefono_contacto !== '51963097546')
+    ? currentEmpresa.telefono_contacto
+    : (tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '51927781412');
+  const [liveSenderPhone, setLiveSenderPhone] = useState<string>(initialPhone);
+  const [connectionState, setConnectionState] = useState<'open' | 'connecting' | 'close'>('close');
+  const [isVerifyingPhone, setIsVerifyingPhone] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [qrSuccessMsg, setQrSuccessMsg] = useState('');
+
+  const verifyLivePhoneStatus = async (silent = false) => {
+    if (!silent) setIsVerifyingPhone(true);
+    try {
+      // 1. Consultar estado directo de la sub-instancia
+      const res = await fetch(`${getApiBaseUrl()}/tenant/${subInstance}/status`);
+      const json = await res.json().catch(() => ({}));
+      if (json.success && json.data) {
+        const state = json.data.state || 'close';
+        setConnectionState(state);
+        const ownerPhone = json.data.ownerPhone;
+        if (ownerPhone) {
+          setLiveSenderPhone(ownerPhone);
+          if (currentEmpresa?.id) {
+            ordersService.syncEmpresaConnectedPhone(subInstance, ownerPhone);
+          }
+          if (tallerConfig.copilot_owner_phone !== ownerPhone) {
+            updateTallerConfig({
+              copilot_owner_phone: ownerPhone,
+              whatsapp_pedidos: ownerPhone,
+              celular_taller: `+${ownerPhone}`,
+            });
+          }
+          return { state, ownerPhone };
+        }
+      }
+
+      // 2. Fallback a lista de instancias
+      const listRes = await fetch(`${getApiBaseUrl()}/tenant/instances`);
+      const listJson = await listRes.json().catch(() => ({}));
+      if (listJson.success && Array.isArray(listJson.data)) {
+        const target = listJson.data.find((inst: any) =>
+          inst.instanceName === subInstance ||
+          inst.instanceName?.toLowerCase() === subInstance.toLowerCase() ||
+          inst.instanceName?.replace(/^tenant_/, '').toLowerCase() === subInstance.replace(/^tenant_/, '').toLowerCase() ||
+          (subInstance.toLowerCase().includes('comikids') && inst.instanceName?.toLowerCase().includes('comikids'))
+        );
+        if (target) {
+          const st = target.connectionStatus || 'close';
+          setConnectionState(st);
+          if (target.ownerPhone) {
+            setLiveSenderPhone(target.ownerPhone);
+            if (currentEmpresa?.id) {
+              ordersService.syncEmpresaConnectedPhone(subInstance, target.ownerPhone);
+            }
+            if (tallerConfig.copilot_owner_phone !== target.ownerPhone) {
+              updateTallerConfig({
+                copilot_owner_phone: target.ownerPhone,
+                whatsapp_pedidos: target.ownerPhone,
+                celular_taller: `+${target.ownerPhone}`,
+              });
+            }
+            return { state: st, ownerPhone: target.ownerPhone };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[VERIFY LIVE PHONE ERROR]', e);
+    } finally {
+      if (!silent) setIsVerifyingPhone(false);
+    }
+    return null;
+  };
+
+  // Verificar teléfono en vivo al montar
+  useEffect(() => {
+    verifyLivePhoneStatus(true);
+  }, [subInstance]);
+
+  // Polling automático mientras el modal de QR esté abierto (cierra al conectar y actualiza teléfono)
+  useEffect(() => {
+    if (!showQrModal) return;
+
+    const interval = setInterval(async () => {
+      const res = await verifyLivePhoneStatus(true);
+      if (res?.state === 'open' && res?.ownerPhone) {
+        clearInterval(interval);
+        setQrSuccessMsg(`¡WhatsApp vinculado con éxito al número +${res.ownerPhone}!`);
+        setTimeout(() => {
+          setShowQrModal(false);
+          setQrSuccessMsg('');
+        }, 1800);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [showQrModal, subInstance]);
 
   const handleOpenQrModal = async () => {
     setQrLoading(true);
     setShowQrModal(true);
     setQrBase64(null);
+    setQrSuccessMsg('');
     try {
       const res = await fetch(`${getApiBaseUrl()}/tenant/${subInstance}/qr`);
       const json = await res.json().catch(() => ({}));
@@ -720,8 +816,31 @@ export const CompanyAccountSettings: React.FC = () => {
                 <span className="text-xs font-mono font-bold text-emerald-300">{subInstance}</span>
               </div>
               <div className="p-3 rounded-2xl bg-slate-950/80 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Teléfono Emisor Oficial</span>
-                <span className="text-xs font-mono font-bold text-emerald-300">+{senderPhone}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Teléfono Emisor Oficial</span>
+                  <button
+                    type="button"
+                    onClick={() => verifyLivePhoneStatus(false)}
+                    disabled={isVerifyingPhone}
+                    className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold cursor-pointer disabled:opacity-50"
+                    title="Actualizar / Verificar teléfono emisor en vivo"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isVerifyingPhone ? 'animate-spin' : ''}`} />
+                    <span>Verificar</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs font-mono font-bold text-emerald-300">+{liveSenderPhone || initialPhone}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                    connectionState === 'open'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : connectionState === 'connecting'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                  }`}>
+                    {connectionState === 'open' ? '🟢 Conectado' : connectionState === 'connecting' ? '🟡 Conectando' : '🔴 Desconectado'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1459,12 +1578,20 @@ export const CompanyAccountSettings: React.FC = () => {
             </div>
 
             <div className="text-center py-2">
-              <p className="text-xs text-slate-300">
-                Escanea este QR desde el WhatsApp de la empresa (+{senderPhone}) para que todos los envíos con 1 clic salgan directamente desde este número.
-              </p>
-              <div className="text-[11px] font-mono text-emerald-400 font-bold mt-1">
-                Instancia: {subInstance}
-              </div>
+              {qrSuccessMsg ? (
+                <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold animate-pulse">
+                  {qrSuccessMsg}
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-300">
+                    Escanea este QR desde el WhatsApp de la empresa para vincularlo o reemplazarlo. El sistema detectará y actualizará automáticamente el nuevo número emisor.
+                  </p>
+                  <div className="text-[11px] font-mono text-emerald-400 font-bold mt-1">
+                    Instancia: {subInstance} • Línea: +{liveSenderPhone || initialPhone}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex justify-center p-4 bg-white rounded-2xl min-h-[220px] items-center">

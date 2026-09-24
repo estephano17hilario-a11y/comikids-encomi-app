@@ -88,52 +88,28 @@ export function formatShalomPin(pin?: string): string {
  * Pool de claves de recojo fáciles de recordar y válidas ante Shalom Pro.
  * Nunca repite consecutivamente la clave del día anterior.
  */
-export const SAFE_SHALOM_PINS = ['0909', '0707', '0505', '0303', '0606', '0404', '0202', '0808'];
+export const SAFE_SHALOM_PINS = ['0808', '0707', '0505', '0303', '0606', '0404', '0202', '0909'];
 
 /**
- * Obtiene la clave de recojo predeterminada para el día actual.
- * Garantiza que la clave sea diferente a la usada ayer.
+ * Obtiene la clave de recojo predeterminada (0808).
  */
 export function getDailyShalomPin(): string {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  const diff = now.getTime() - start.getTime();
-  const oneDay = 1000 * 60 * 60 * 24;
-  const dayOfYear = Math.floor(diff / oneDay);
-
-  // Rotación determinista por día del año (módulo 8)
-  const defaultRotatingPin = SAFE_SHALOM_PINS[dayOfYear % SAFE_SHALOM_PINS.length];
-
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem('incomi_last_used_shalom_pin');
-      const storedDate = localStorage.getItem('incomi_last_used_shalom_pin_date');
-      const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-
-      // Si ayer se usó una clave y hoy la rotación coincide con esa, avanzar al siguiente
-      if (stored && storedDate !== todayStr && defaultRotatingPin === stored) {
-        const nextIdx = (SAFE_SHALOM_PINS.indexOf(stored) + 1) % SAFE_SHALOM_PINS.length;
-        return SAFE_SHALOM_PINS[nextIdx];
-      }
-    } catch {}
-  }
-
-  return defaultRotatingPin || '0808';
+  return '0808';
 }
 
 /**
  * Avanza al siguiente PIN seguro en caso de que Shalom rechace el actual.
  */
 export function getNextShalomPin(currentPin?: string): string {
-  if (!currentPin) return '0909';
+  if (!currentPin) return '0808';
   const clean = currentPin.trim();
   const idx = SAFE_SHALOM_PINS.indexOf(clean);
   if (idx === -1) {
-    return clean === '0808' ? '0909' : '0707';
+    return clean === '0808' ? '0707' : '0808';
   }
   const nextIdx = (idx + 1) % SAFE_SHALOM_PINS.length;
   const next = SAFE_SHALOM_PINS[nextIdx];
-  return next === clean ? '0909' : next;
+  return next === clean ? '0707' : next;
 }
 
 /**

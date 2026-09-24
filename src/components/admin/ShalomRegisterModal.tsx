@@ -647,7 +647,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                     maxLength={4}
                     value={pickupCode}
                     onChange={(e) => setPickupCode(formatShalomPin(e.target.value))}
-                    placeholder={pickupCode || '0909'}
+                    placeholder={pickupCode || '0808'}
                     className={`w-20 px-2.5 py-1.5 rounded-xl bg-slate-950 border font-mono font-bold text-center text-sm focus:outline-none transition-all shadow-inner ${
                       validateShalomPin(pickupCode).isValid
                         ? 'border-amber-500/50 text-amber-300 focus:border-amber-400 focus:ring-1 focus:ring-amber-400'

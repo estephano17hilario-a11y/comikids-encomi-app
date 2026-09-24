@@ -811,7 +811,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                       maxLength={6}
                       value={claveRecojo}
                       onChange={e => setClaveRecojo(e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
-                      placeholder={getDailyShalomPin() || '0909'}
+                      placeholder={claveRecojo || '0808'}
                       className="w-full px-3 py-2 bg-slate-900 border border-amber-500/50 rounded-xl text-xs font-mono font-bold text-amber-300 text-center focus:outline-none focus:border-amber-400"
                     />
                   </div>

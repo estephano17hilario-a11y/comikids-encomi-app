@@ -633,28 +633,29 @@ export class ShalomController {
       const clientCleanDni = getOrderReceiverDni(matchedOrder) || targetDni || 'DNI';
       const fullGuia = `${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}`;
 
-      let realPickupCode = String(
-        matchedOrder.pickup_code || 
-        matchedOrder.request?.pickup_code || 
-        matchedOrder.data?.pickup_code || 
-        matchedOrder.order?.pickup_code || 
-        ''
-      ).trim();
+      let realPickupCode = '';
+      // 1. PRIORIDAD ABSOLUTA: Buscar en Supabase la clave registrada para este pedido (ej: 0808)
+      try {
+        const { data: dbOrder } = await supabaseAdmin
+          .from('pedidos')
+          .select('shalom_clave_recojo')
+          .or(`shalom_ose_id.eq.${matchedOrder.id},shalom_numero_guia.eq.${fullGuia}${clientCleanDni && clientCleanDni !== 'DNI' ? `,destino_detalle.ilike.%${clientCleanDni}%` : ''}`)
+          .limit(1)
+          .maybeSingle();
 
-      // Si Shalom Pro no devolvió la clave en el payload, buscar en Supabase la clave registrada para este pedido
+        if (dbOrder && dbOrder.shalom_clave_recojo && dbOrder.shalom_clave_recojo.trim()) {
+          realPickupCode = dbOrder.shalom_clave_recojo.trim();
+        }
+      } catch {}
+
       if (!realPickupCode) {
-        try {
-          const { data: dbOrder } = await supabaseAdmin
-            .from('pedidos')
-            .select('shalom_clave_recojo')
-            .or(`shalom_ose_id.eq.${matchedOrder.id},shalom_numero_guia.eq.${fullGuia}${clientCleanDni && clientCleanDni !== 'DNI' ? `,destino_detalle.ilike.%${clientCleanDni}%` : ''}`)
-            .limit(1)
-            .maybeSingle();
-
-          if (dbOrder && dbOrder.shalom_clave_recojo) {
-            realPickupCode = dbOrder.shalom_clave_recojo.trim();
-          }
-        } catch {}
+        realPickupCode = String(
+          matchedOrder.pickup_code || 
+          matchedOrder.request?.pickup_code || 
+          matchedOrder.data?.pickup_code || 
+          matchedOrder.order?.pickup_code || 
+          '0808'
+        ).trim();
       }
 
       const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
@@ -1100,28 +1101,29 @@ export class ShalomController {
         const clientCleanDni = matchedOrderDni || targetDni || 'DNI';
         const filename = `${filePrefix}_${matchedOrder.serie || 'V204'}_${matchedOrder.guia || matchedOrder.id}_${clientCleanDni}.pdf`;
         const fullGuia = `${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}`;
-        let realPickupCode = String(
-          matchedOrder.pickup_code || 
-          matchedOrder.request?.pickup_code || 
-          matchedOrder.data?.pickup_code || 
-          matchedOrder.order?.pickup_code || 
-          ''
-        ).trim();
+        let realPickupCode = '';
+        // 1. PRIORIDAD ABSOLUTA: Buscar en Supabase la clave registrada para este pedido (ej: 0808)
+        try {
+          const { data: dbOrder } = await supabaseAdmin
+            .from('pedidos')
+            .select('shalom_clave_recojo')
+            .or(`shalom_ose_id.eq.${matchedOrder.id},shalom_numero_guia.eq.${fullGuia}${clientCleanDni && clientCleanDni !== 'DNI' ? `,destino_detalle.ilike.%${clientCleanDni}%` : ''}`)
+            .limit(1)
+            .maybeSingle();
 
-        // Si Shalom Pro no devolvió la clave en el payload, buscar en Supabase la clave registrada para este pedido
+          if (dbOrder && dbOrder.shalom_clave_recojo && dbOrder.shalom_clave_recojo.trim()) {
+            realPickupCode = dbOrder.shalom_clave_recojo.trim();
+          }
+        } catch {}
+
         if (!realPickupCode) {
-          try {
-            const { data: dbOrder } = await supabaseAdmin
-              .from('pedidos')
-              .select('shalom_clave_recojo')
-              .or(`shalom_ose_id.eq.${matchedOrder.id},shalom_numero_guia.eq.${fullGuia}${clientCleanDni && clientCleanDni !== 'DNI' ? `,destino_detalle.ilike.%${clientCleanDni}%` : ''}`)
-              .limit(1)
-              .maybeSingle();
-
-            if (dbOrder && dbOrder.shalom_clave_recojo) {
-              realPickupCode = dbOrder.shalom_clave_recojo.trim();
-            }
-          } catch {}
+          realPickupCode = String(
+            matchedOrder.pickup_code || 
+            matchedOrder.request?.pickup_code || 
+            matchedOrder.data?.pickup_code || 
+            matchedOrder.order?.pickup_code || 
+            '0808'
+          ).trim();
         }
         const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
 

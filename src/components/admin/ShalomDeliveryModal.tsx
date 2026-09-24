@@ -147,9 +147,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
       let pdfData: string | null = null;
       const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
-        if (meta.pickupCode) {
+        if (meta.pickupCode && (!item.pickupCode || item.pickupCode === '0909')) {
           item.pickupCode = meta.pickupCode;
-          if (orders.length === 1 || !pickupCode) {
+          if (orders.length === 1 || !pickupCode || pickupCode === '0909') {
             setPickupCode(meta.pickupCode);
           }
         }
@@ -325,7 +325,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     };
 
     const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
-      if (meta.pickupCode) {
+      if (meta.pickupCode && (!item.pickupCode || item.pickupCode === '0909')) {
         item.pickupCode = meta.pickupCode;
       }
       if (meta.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-')) {

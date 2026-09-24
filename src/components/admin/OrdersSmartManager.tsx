@@ -408,14 +408,14 @@ export const OrdersSmartManager: React.FC = () => {
       <div
         key={order.id}
         onClick={() => toggleSelect(order.id)}
-        className={`p-4 sm:p-5 rounded-3xl border transition-all space-y-3 cursor-pointer select-none relative ${
+        className={`p-4 sm:p-5 rounded-3xl border transition-all space-y-3 cursor-pointer select-none relative backdrop-blur-xl ${
           isSelected
             ? 'bg-cyan-950/40 border-cyan-400/80 shadow-lg shadow-cyan-500/10'
             : isReadyForPickup
-            ? 'bg-linear-to-b from-teal-950/40 via-slate-900/90 to-slate-900 border-teal-500/50 hover:border-teal-400 shadow-md shadow-teal-500/10'
+            ? 'bg-linear-to-b from-teal-950/40 via-slate-900/40 to-slate-950/40 border-teal-500/50 hover:border-teal-400 shadow-md shadow-teal-500/10'
             : isDuplicateOrSimultaneous
-            ? 'bg-slate-900/90 border-amber-500/50 hover:border-amber-400 shadow-md shadow-amber-500/5'
-            : 'bg-slate-900/80 border-white/10 hover:border-white/20 hover:bg-slate-900/95 shadow-md'
+            ? 'bg-slate-950/40 border-amber-500/50 hover:border-amber-400 shadow-md shadow-amber-500/5'
+            : 'bg-slate-950/40 border-white/10 hover:border-white/20 hover:bg-slate-900/40 shadow-md'
         }`}
       >
         
@@ -1035,14 +1035,14 @@ export const OrdersSmartManager: React.FC = () => {
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 placeholder="Buscar por cliente, DNI, teléfono, código..."
-                className="w-full pl-9 pr-3 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                className="w-full pl-9 pr-3 py-2 bg-slate-950/40 border border-white/10 backdrop-blur-xl rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
               />
             </div>
             <button
               onClick={handleManualRefresh}
               disabled={isRefreshing}
               title="Sincronizar y actualizar pedidos desde la nube"
-              className="px-2.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 rounded-xl flex items-center gap-1 text-xs font-bold transition-all cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
+              className="px-2.5 py-2 bg-slate-950/40 hover:bg-slate-900/60 text-slate-300 hover:text-white border border-white/10 backdrop-blur-xl rounded-xl flex items-center gap-1 text-xs font-bold transition-all cursor-pointer shadow-xs disabled:opacity-50 shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span className="hidden md:inline text-[11px]">Sincronizar</span>
@@ -1050,7 +1050,7 @@ export const OrdersSmartManager: React.FC = () => {
           </div>
 
           {/* Status Tabs */}
-          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 overflow-x-auto text-[11px] font-bold">
+          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-950/40 backdrop-blur-xl p-1 rounded-xl border border-white/10 overflow-x-auto text-[11px] font-bold">
             <button
               onClick={() => setStatusFilter('all')}
               className={`flex-1 py-1.5 px-2 rounded-lg transition-all cursor-pointer whitespace-nowrap ${statusFilter === 'all' ? 'bg-cyan-500 text-slate-950 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
@@ -1084,7 +1084,7 @@ export const OrdersSmartManager: React.FC = () => {
           </div>
 
           {/* Transport Method Filter con conteos entre paréntesis */}
-          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-[11px] font-bold overflow-x-auto">
+          <div className="col-span-1 sm:col-span-1 flex items-center bg-slate-950/40 backdrop-blur-xl p-1 rounded-xl border border-white/10 text-[11px] font-bold overflow-x-auto">
             <button
               onClick={() => setTransportFilter('all')}
               className={`flex-1 py-1.5 px-2 rounded-lg transition-all cursor-pointer whitespace-nowrap ${transportFilter === 'all' ? 'bg-white/15 text-white font-black shadow-md' : 'text-slate-400 hover:text-white'}`}

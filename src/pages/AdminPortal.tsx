@@ -6,6 +6,7 @@ import { OrdersSmartManager } from '../components/admin/OrdersSmartManager';
 import { ClientDirectory } from '../components/admin/ClientDirectory';
 import { VisionAnalyticsDashboard } from '../components/admin/VisionAnalyticsDashboard';
 import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettings';
+import { CompanyAgenciesTab } from '../components/admin/CompanyAgenciesTab';
 import { CompanyAchievementsTab } from '../components/admin/CompanyAchievementsTab';
 import { ComicInventoryApp } from '../modules/comic_inventory/ComicInventoryApp';
 import { liveSessionService, LiveSessionState } from '../services/liveSessionService';
@@ -28,10 +29,11 @@ import {
   Plus,
   X,
   Trophy,
-  Sliders
+  Sliders,
+  Truck
 } from 'lucide-react';
 
-export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'inventario' | 'hitos' | 'ajustes' | 'encomi_ai';
+export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'inventario' | 'agencias' | 'hitos' | 'ajustes' | 'encomi_ai';
 
 export const AdminPortal: React.FC = () => {
   const { pedidos, masterCode, tallerConfig, refreshData } = useOrders();
@@ -40,7 +42,7 @@ export const AdminPortal: React.FC = () => {
 
   // Aplicar tema futurista guardado para la empresa
   useEffect(() => {
-    const savedTheme = currentEmpresa?.tema_fondo || tallerConfig.tema_fondo || localStorage.getItem('incomi_futuristic_theme') || 'vision-obsidian';
+    const savedTheme = currentEmpresa?.tema_fondo || tallerConfig.tema_fondo || localStorage.getItem('incomi_futuristic_theme') || 'nspace';
     applyFuturisticTheme(savedTheme);
   }, [currentEmpresa?.tema_fondo, tallerConfig.tema_fondo]);
 
@@ -50,6 +52,7 @@ export const AdminPortal: React.FC = () => {
     agendas: true,
     estadisticas: true,
     inventario: true,
+    agencias: true,
     hitos: true,
     ajustes: true,
     encomi_ai: true,
@@ -77,10 +80,10 @@ export const AdminPortal: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-transparent text-slate-100 selection:bg-cyan-500 selection:text-white">
       
-      {/* Top Vision Header */}
-      <header className="w-full bg-slate-950/90 border-b border-white/8 px-3.5 sm:px-8 pt-8 pb-3 sm:pt-9 sm:pb-3.5 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl" data-no-print="true">
+      {/* Top Vision Header con 40% Opacidad y Desenfoque */}
+      <header className="w-full bg-slate-950/40 border-b border-white/10 px-3.5 sm:px-8 pt-8 pb-3 sm:pt-9 sm:pb-3.5 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl" data-no-print="true">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5 sm:gap-4">
           
           {/* Brand */}
@@ -177,6 +180,11 @@ export const AdminPortal: React.FC = () => {
               <ComicInventoryApp />
             </div>
           )}
+          {activeTab === 'agencias' && sec.agencias !== false && (
+            <div className="max-w-6xl mx-auto space-y-4 animate-fadeIn">
+              <CompanyAgenciesTab />
+            </div>
+          )}
           {activeTab === 'hitos' && sec.hitos !== false && <CompanyAchievementsTab />}
           {activeTab === 'ajustes' && sec.ajustes !== false && <CompanyAccountSettings />}
           {activeTab === 'encomi_ai' && sec.encomi_ai !== false && <EncomiAiSection isAdmin={true} />}
@@ -185,8 +193,8 @@ export const AdminPortal: React.FC = () => {
       </main>
 
       {/* --- FLOATING APPLE VISION BOTTOM DOCK --- */}
-      <div className="fixed bottom-3 sm:bottom-6 left-0 right-0 mx-auto z-40 w-[calc(100%-1.25rem)] sm:w-11/12 max-w-2xl animate-slideUp print:hidden admin-floating-dock" data-no-print="true">
-        <div className="p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl bg-slate-900/95 border border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-between gap-1 overflow-x-auto">
+      <div className="fixed bottom-3 sm:bottom-6 left-0 right-0 mx-auto z-40 w-[calc(100%-1.25rem)] sm:w-11/12 max-w-3xl animate-slideUp print:hidden admin-floating-dock" data-no-print="true">
+        <div className="p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl bg-slate-950/75 border border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-between gap-1 overflow-x-auto">
           
           {/* 1. Pedidos To-Do */}
           {sec.pedidos !== false && (
@@ -261,9 +269,22 @@ export const AdminPortal: React.FC = () => {
             </button>
           )}
 
+          {/* 5. Agencias de Envío (Shalom, Olva, Motorizado, etc.) */}
+          {sec.agencias !== false && (
+            <button
+              onClick={() => setActiveTab('agencias')}
+              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
+                activeTab === 'agencias'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Truck className="w-4 h-4 shrink-0" />
+              <span className="truncate max-w-full">Agencias</span>
+            </button>
+          )}
 
-
-          {/* 6. Ajustes de la Empresa (Reformulada) */}
+          {/* 6. Ajustes de la Empresa */}
           {sec.ajustes !== false && (
             <button
               onClick={() => setActiveTab('ajustes')}

@@ -35,7 +35,7 @@ export const ClientPortal: React.FC = () => {
   const myOrdersCount = pedidos.filter(p => p.usuario_id === currentUser?.id).length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-transparent text-slate-100 selection:bg-cyan-500 selection:text-white">
       
       {/* Top Header / Player HUD */}
       {currentUser ? (

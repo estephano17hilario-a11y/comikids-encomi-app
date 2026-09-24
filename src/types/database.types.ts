@@ -16,6 +16,7 @@ export interface EmpresaSeccionesActivas {
   agendas: boolean;
   estadisticas: boolean;
   inventario: boolean;
+  agencias?: boolean;
   encomi_ai: boolean;
   hitos: boolean;
   ajustes: boolean;

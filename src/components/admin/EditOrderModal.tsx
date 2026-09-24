@@ -221,7 +221,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   // Otros campos
   const [detallesBordado, setDetallesBordado] = useState(pedido.detalles_bordado || '');
   const [observaciones, setObservaciones] = useState(pedido.observaciones_cliente || '');
-  const [claveRecojo, setClaveRecojo] = useState(pedido.shalom_clave_recojo || getDailyShalomPin());
+  const [claveRecojo, setClaveRecojo] = useState(pedido.shalom_clave_recojo || '0808');
   const [estadoEnvio, setEstadoEnvio] = useState<EstadoEnvio>(pedido.estado_envio);
   const [estadoProduccion, setEstadoProduccion] = useState<EstadoProduccion>(pedido.estado_produccion);
   const [saving, setSaving] = useState(false);
@@ -366,7 +366,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
         detalles_bordado: updatedDetalles,
         observaciones_cliente: observaciones.trim(),
         fecha_limite: fechaEnvioCliente || undefined,
-        shalom_clave_recojo: claveRecojo.trim() || getDailyShalomPin(),
+        shalom_clave_recojo: claveRecojo.trim() || pedido.shalom_clave_recojo || '0808',
         estado_envio: estadoEnvio,
         estado_produccion: estadoProduccion,
         usuario: {

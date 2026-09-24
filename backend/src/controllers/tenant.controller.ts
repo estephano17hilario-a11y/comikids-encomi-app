@@ -726,16 +726,27 @@ export class TenantController {
 
           // Persistir estado entregado y datos oficiales más actualizados en Supabase
           try {
-            await supabaseAdmin
-              .from('pedidos')
-              .update({
-                estado_envio: 'entregado',
-                registrado_shalom: true,
-                ...(order.guideNumber && order.guideNumber !== 'S/G' && !order.guideNumber.startsWith('SH-') ? { shalom_numero_guia: order.guideNumber } : {}),
-                ...(individualPickupCode ? { shalom_clave_recojo: individualPickupCode } : {}),
-                ...((order as any).oseId ? { shalom_ose_id: String((order as any).oseId) } : {}),
-              })
-              .or(`codigo_seguimiento.eq.${numbersOnly},codigo_seguimiento.eq.${rawCode},id.eq.${rawCode}`);
+            const rawId = String((order as any).pedidoId || (order as any).orderId || (order as any).id || '').trim();
+            const fullTracking = String(order.trackingCode || '').trim();
+            const updateFilters: string[] = [];
+            if (rawId) updateFilters.push(`id.eq.${rawId}`);
+            if (fullTracking) updateFilters.push(`codigo_seguimiento.eq.${fullTracking}`);
+            if (rawCode) updateFilters.push(`codigo_seguimiento.eq.${rawCode}`);
+            if (numbersOnly) updateFilters.push(`codigo_seguimiento.eq.${numbersOnly}`);
+            if (numbersOnly && numbersOnly.length >= 4) updateFilters.push(`codigo_seguimiento.ilike.%${numbersOnly}%`);
+
+            if (updateFilters.length > 0) {
+              await supabaseAdmin
+                .from('pedidos')
+                .update({
+                  estado_envio: 'entregado',
+                  registrado_shalom: true,
+                  ...(order.guideNumber && order.guideNumber !== 'S/G' && !order.guideNumber.startsWith('SH-') ? { shalom_numero_guia: order.guideNumber } : {}),
+                  ...(individualPickupCode ? { shalom_clave_recojo: individualPickupCode } : {}),
+                  ...((order as any).oseId ? { shalom_ose_id: String((order as any).oseId) } : {}),
+                })
+                .or(updateFilters.join(','));
+            }
           } catch (supErr: any) {
             console.warn('[DELIVERY VOUCHER SUPABASE UPDATE WARN]', supErr?.message);
           }

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export const KanbanBoard: React.FC = () => {
-  const { pedidos, shippingMethods, tallerConfig, updateEstadoProduccion, updateEstadoEnvio } = useOrders();
+  const { pedidos, shippingMethods, tallerConfig, updateEstadoProduccion, updateEstadoEnvio, updatePedido } = useOrders();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedShalomOrder, setSelectedShalomOrder] = useState<Pedido | null>(null);
   const [deliveryShalomOrders, setDeliveryShalomOrders] = useState<Pedido[] | null>(null);
@@ -266,9 +266,17 @@ export const KanbanBoard: React.FC = () => {
           orders={deliveryShalomOrders}
           tallerConfig={tallerConfig}
           onClose={() => setDeliveryShalomOrders(null)}
-          onOrdersDelivered={async (deliveredIds) => {
+          onOrdersDelivered={async (deliveredIds, updatedMeta) => {
             for (const id of deliveredIds) {
-              await updateEstadoEnvio(id, 'entregado');
+              const meta = updatedMeta?.[id];
+              const isRealGuia = meta?.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-');
+              await updatePedido(id, {
+                estado_envio: 'entregado',
+                registrado_shalom: true,
+                ...(isRealGuia ? { shalom_numero_guia: meta.guia } : {}),
+                ...(meta?.pickupCode ? { shalom_clave_recojo: meta.pickupCode } : {}),
+                ...(meta?.oseId ? { shalom_ose_id: meta.oseId } : {}),
+              });
             }
             setDeliveryShalomOrders(null);
           }}

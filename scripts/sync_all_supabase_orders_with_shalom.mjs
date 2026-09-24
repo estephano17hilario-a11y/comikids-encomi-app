@@ -71,7 +71,9 @@ async function syncAll() {
       const newestShalomOrder = shalomOrders[0];
       const fullGuia = `${newestShalomOrder.serie || ''}-${newestShalomOrder.guia || ''}`;
       const oseId = String(newestShalomOrder.id);
-      const pin = newestShalomOrder.pickup_code || newestShalomOrder.codigo || null;
+      const pin = (newestShalomOrder.pickup_code && String(newestShalomOrder.pickup_code).trim().replace(/\D/g, '').length === 4)
+        ? String(newestShalomOrder.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
+        : null;
 
       // Verificar si necesita actualización
       const needsUpdate = 
@@ -82,16 +84,21 @@ async function syncAll() {
       if (needsUpdate) {
         console.log(`[+] Actualizando Pedido #${pedido.codigo_seguimiento} (DNI ${dni}):`);
         console.log(`    Antiguo: OSE=${pedido.shalom_ose_id} | Guía=${pedido.shalom_numero_guia}`);
-        console.log(`    NUEVO (Más Reciente): OSE=${oseId} | Guía=${fullGuia} | PIN=${pin}`);
+        console.log(`    NUEVO (Más Reciente): OSE=${oseId} | Guía=${fullGuia} | PIN=${pedido.shalom_clave_recojo || pin}`);
+
+        const updateData = {
+          shalom_ose_id: oseId,
+          shalom_numero_guia: fullGuia,
+          registrado_shalom: true,
+        };
+        // Preservar la clave de recojo que ya tenía el pedido
+        if (!pedido.shalom_clave_recojo && pin) {
+          updateData.shalom_clave_recojo = pin;
+        }
 
         const { error: updErr } = await supabase
           .from('pedidos')
-          .update({
-            shalom_ose_id: oseId,
-            shalom_numero_guia: fullGuia,
-            ...(pin ? { shalom_clave_recojo: pin } : {}),
-            registrado_shalom: true,
-          })
+          .update(updateData)
           .eq('id', pedido.id);
 
         if (updErr) {

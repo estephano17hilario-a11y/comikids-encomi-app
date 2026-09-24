@@ -596,7 +596,7 @@ export class TenantController {
           if (officialDoc.filename) {
             formattedFileName = officialDoc.filename;
           }
-          if (officialDoc.pickupCode) {
+          if (!individualPickupCode && officialDoc.pickupCode) {
             individualPickupCode = officialDoc.pickupCode;
             console.log(`[DELIVERY VOUCHER] ✓ Clave de recojo oficial extraída de Shalom Pro para #${numbersOnly}: "${individualPickupCode}"`);
           }
@@ -629,7 +629,7 @@ export class TenantController {
               }
               
               const shalomLivePin = (pdfRes.headers['x-shalom-pickup-code'] as string) || (pdfRes.headers['X-Shalom-Pickup-Code'] as string);
-              if (shalomLivePin && shalomLivePin.trim()) {
+              if (!individualPickupCode && shalomLivePin && shalomLivePin.trim()) {
                 individualPickupCode = shalomLivePin.trim();
               }
 
@@ -728,24 +728,20 @@ export class TenantController {
           try {
             const rawId = String((order as any).pedidoId || (order as any).orderId || (order as any).id || '').trim();
             const fullTracking = String(order.trackingCode || '').trim();
-            const updateFilters: string[] = [];
-            if (rawId) updateFilters.push(`id.eq.${rawId}`);
-            if (fullTracking) updateFilters.push(`codigo_seguimiento.eq.${fullTracking}`);
-            if (rawCode) updateFilters.push(`codigo_seguimiento.eq.${rawCode}`);
-            if (numbersOnly) updateFilters.push(`codigo_seguimiento.eq.${numbersOnly}`);
-            if (numbersOnly && numbersOnly.length >= 4) updateFilters.push(`codigo_seguimiento.ilike.%${numbersOnly}%`);
+            const updatePayload: any = {
+              estado_envio: 'entregado',
+              registrado_shalom: true,
+              ...(order.guideNumber && order.guideNumber !== 'S/G' && !order.guideNumber.startsWith('SH-') ? { shalom_numero_guia: order.guideNumber } : {}),
+              ...(individualPickupCode ? { shalom_clave_recojo: individualPickupCode } : {}),
+              ...((order as any).oseId ? { shalom_ose_id: String((order as any).oseId) } : {}),
+            };
 
-            if (updateFilters.length > 0) {
-              await supabaseAdmin
-                .from('pedidos')
-                .update({
-                  estado_envio: 'entregado',
-                  registrado_shalom: true,
-                  ...(order.guideNumber && order.guideNumber !== 'S/G' && !order.guideNumber.startsWith('SH-') ? { shalom_numero_guia: order.guideNumber } : {}),
-                  ...(individualPickupCode ? { shalom_clave_recojo: individualPickupCode } : {}),
-                  ...((order as any).oseId ? { shalom_ose_id: String((order as any).oseId) } : {}),
-                })
-                .or(updateFilters.join(','));
+            if (rawId) {
+              await supabaseAdmin.from('pedidos').update(updatePayload).eq('id', rawId);
+            } else if (fullTracking) {
+              await supabaseAdmin.from('pedidos').update(updatePayload).eq('codigo_seguimiento', fullTracking);
+            } else if (numbersOnly) {
+              await supabaseAdmin.from('pedidos').update(updatePayload).eq('codigo_seguimiento', numbersOnly);
             }
           } catch (supErr: any) {
             console.warn('[DELIVERY VOUCHER SUPABASE UPDATE WARN]', supErr?.message);

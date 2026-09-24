@@ -147,9 +147,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
       let pdfData: string | null = null;
       const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
-        if (meta.pickupCode && (!item.pickupCode || item.pickupCode === '0909')) {
+        // SEGURIDAD CRÍTICA: La clave con la cual se registró el pedido TIENE QUE PREVALECER.
+        // NUNCA sobreescribir item.pickupCode si el pedido ya tiene su clave registrada.
+        if (meta.pickupCode && !item.pickupCode) {
           item.pickupCode = meta.pickupCode;
-          if (orders.length === 1 || !pickupCode || pickupCode === '0909') {
+          if (!pickupCode) {
             setPickupCode(meta.pickupCode);
           }
         }
@@ -325,7 +327,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     };
 
     const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
-      if (meta.pickupCode && (!item.pickupCode || item.pickupCode === '0909')) {
+      // Preservar la clave de recojo que ya tenía el paquete
+      if (meta.pickupCode && !item.pickupCode) {
         item.pickupCode = meta.pickupCode;
       }
       if (meta.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-')) {
@@ -472,10 +475,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
     const metaMap: Record<string, { guia?: string; pickupCode?: string; oseId?: string }> = {};
     for (const item of updatedList) {
-      if (item.guideNumber || item.manualGuideInput || item.pickupCode) {
+      const pinToSave = item.pickupCode || pickupCode || undefined;
+      if (item.guideNumber || item.manualGuideInput || pinToSave) {
         metaMap[item.orderId] = {
           guia: item.manualGuideInput || item.guideNumber || undefined,
-          pickupCode: item.pickupCode || undefined,
+          pickupCode: pinToSave,
         };
       }
     }
@@ -489,10 +493,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     setIsAuditing(false);
     const metaMap: Record<string, { guia?: string; pickupCode?: string; oseId?: string }> = {};
     for (const item of progressList) {
-      if (item.guideNumber || item.manualGuideInput || item.pickupCode) {
+      const pinToSave = item.pickupCode || pickupCode || undefined;
+      if (item.guideNumber || item.manualGuideInput || pinToSave) {
         metaMap[item.orderId] = {
           guia: item.manualGuideInput || (item.guideNumber && item.guideNumber !== 'S/G' && !item.guideNumber.startsWith('SH-') ? item.guideNumber : undefined),
-          pickupCode: item.pickupCode || undefined,
+          pickupCode: pinToSave,
         };
       }
     }

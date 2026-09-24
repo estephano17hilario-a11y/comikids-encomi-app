@@ -233,6 +233,7 @@ export class ShalomController {
     }>,
     reply: FastifyReply
   ) {
+    let pickupCode = '';
     try {
       const { order, auth } = request.body || {};
       const credentials = await ShalomController.getShalomCredentials({
@@ -296,8 +297,8 @@ export class ShalomController {
       const rawPhone = String(order.receiver?.phone || order.destinatario?.telefono || '999999999').replace(/\D/g, '');
       const phoneInt = parseInt(rawPhone.slice(-9), 10) || 900000000;
 
-      let pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '0808').trim().replace(/\D/g, '').slice(0, 4);
-      if (pickupCode.length !== 4 || pickupCode === '1234' || (Number(pickupCode) >= 2010 && Number(pickupCode) <= 2026)) {
+      pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '').trim().replace(/\D/g, '').slice(0, 4);
+      if (pickupCode.length !== 4) {
         pickupCode = '0808';
       }
 
@@ -371,8 +372,12 @@ export class ShalomController {
       const rawGuia = rawResData.guia || rawResData.guide_number || rawResData.numero_guia || response?.data?.guia;
       // NUNCA generar guías sintéticas como 'SH-OK' o 'V204-ID'. Solo usar guía oficial si fue asignada
       const fullGuia = rawGuia ? (serie && !String(rawGuia).includes('-') ? `${serie}-${rawGuia}` : String(rawGuia)) : null;
-      const trackingCode = rawResData.codigo || rawResData.tracking_code || rawResData.pickup_code || String(oseId);
-      const confirmedPin = rawResData.pickup_code || rawResData.codigo || pickupCode;
+      const trackingCode = rawResData.codigo || rawResData.tracking_code || String(oseId);
+      // CRÍTICO: El PIN confirmado es SIEMPRE la clave que el usuario envió (pickupCode).
+      // Solo si Shalom devuelve explícitamente un pickup_code de 4 dígitos (NUNCA usar rawResData.codigo ya que es el código de envío/guía)
+      const confirmedPin = (rawResData.pickup_code && String(rawResData.pickup_code).trim().replace(/\D/g, '').length === 4)
+        ? String(rawResData.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
+        : pickupCode;
 
       const normalizedData = {
         ...rawResData,
@@ -409,13 +414,16 @@ export class ShalomController {
       if (errData?.error?.code === 'shalom_login_unavailable' || errMsg.includes('autenticar') || errMsg.includes('login')) {
         errMsg = 'No se pudo autenticar la cuenta contra Shalom Pro en este momento. El servidor de Shalom está ocupado o con verificación de seguridad. Reintenta en unos minutos.';
       } else if (errMsg.includes('clave del d') || errMsg.includes('clave de ayer') || errMsg.includes('dia anterior') || errMsg.includes('reutilizar claves')) {
-        errMsg = `Shalom Pro: No puede usar la clave del día anterior. La clave se ha rotado automáticamente a una nueva. Reintenta con la nueva clave.`;
+        errMsg = `Shalom Pro rechazó la clave '${pickupCode}' (fue usada el día anterior). Por favor cambia la clave para reintentar.`;
+      } else if (errMsg.toLowerCase().includes('clave') || errMsg.toLowerCase().includes('pin') || errMsg.toLowerCase().includes('pickup_code')) {
+        errMsg = `Shalom Pro rechazó la clave '${pickupCode}': ${errMsg}. Por favor cambia la clave para reintentar.`;
       } else if (error.code === 'ECONNABORTED' || errMsg.includes('timeout')) {
         errMsg = 'Tiempo de espera agotado al conectar con Shalom Pro (el servidor de Shalom tardó más de 25s en responder).';
       }
       return reply.code(200).send({
         success: false,
         error: errMsg,
+        pickup_code_rejected: pickupCode,
       });
     }
   }
@@ -654,7 +662,7 @@ export class ShalomController {
           matchedOrder.request?.pickup_code || 
           matchedOrder.data?.pickup_code || 
           matchedOrder.order?.pickup_code || 
-          '0808'
+          ''
         ).trim();
       }
 
@@ -1122,7 +1130,7 @@ export class ShalomController {
             matchedOrder.request?.pickup_code || 
             matchedOrder.data?.pickup_code || 
             matchedOrder.order?.pickup_code || 
-            '0808'
+            ''
           ).trim();
         }
         const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();

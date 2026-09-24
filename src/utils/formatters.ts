@@ -60,18 +60,11 @@ export function cleanPhoneNumber(phone: string): string {
  */
 export function validateShalomPin(pin?: string): { isValid: boolean; error?: string } {
   if (!pin) {
-    return { isValid: false, error: 'El PIN es obligatorio' };
+    return { isValid: false, error: 'La clave de recojo es obligatoria' };
   }
   const clean = String(pin).trim().replace(/\D/g, '');
   if (clean.length !== 4) {
-    return { isValid: false, error: 'El PIN debe tener exactamente 4 dígitos numéricos' };
-  }
-  if (clean === '1234') {
-    return { isValid: false, error: 'La clave 1234 está prohibida por seguridad' };
-  }
-  const numVal = parseInt(clean, 10);
-  if (numVal >= 2010 && numVal <= 2026) {
-    return { isValid: false, error: `No se permiten años entre 2010 y 2026 como PIN (${clean})` };
+    return { isValid: false, error: 'La clave de recojo debe tener exactamente 4 dígitos numéricos' };
   }
   return { isValid: true };
 }

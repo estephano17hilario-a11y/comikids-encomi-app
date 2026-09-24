@@ -195,14 +195,13 @@ export class ShalomTrackingListenerService {
    * Obtiene la clave alfabética oficial de la boleta de Shalom
    */
   public static resolveShalomSecurityKey(orderShalomMatch: any, pedido: Pedido): string {
-    if (orderShalomMatch?.codigo && typeof orderShalomMatch.codigo === 'string' && orderShalomMatch.codigo.trim().length >= 2) {
-      return orderShalomMatch.codigo.trim().toUpperCase();
-    }
-    if (orderShalomMatch?.pickup_code && typeof orderShalomMatch.pickup_code === 'string' && orderShalomMatch.pickup_code.trim()) {
-      return orderShalomMatch.pickup_code.trim().toUpperCase();
-    }
+    // 1. PRIORIDAD ABSOLUTA: La clave con la cual se registró el pedido en el sistema
     if (pedido.shalom_clave_recojo && pedido.shalom_clave_recojo.trim()) {
       return pedido.shalom_clave_recojo.trim().toUpperCase();
+    }
+    // 2. Clave de 4 dígitos si Shalom la devuelve explícitamente en pickup_code
+    if (orderShalomMatch?.pickup_code && typeof orderShalomMatch.pickup_code === 'string' && orderShalomMatch.pickup_code.trim().length === 4) {
+      return orderShalomMatch.pickup_code.trim().toUpperCase();
     }
     return '0808';
   }
@@ -441,7 +440,11 @@ export class ShalomTrackingListenerService {
           // Auto-Sincronizar metadatos del despacho si estaban incompletos en Supabase
           const fullGuia = `${shalomMatch.serie || 'V204'}-${shalomMatch.guia || shalomMatch.id}`;
           const oseId = String(shalomMatch.id);
-          const pin = shalomMatch.codigo || shalomMatch.pickup_code || p.shalom_clave_recojo || '0808';
+          const pin = (p.shalom_clave_recojo && p.shalom_clave_recojo.trim())
+            ? p.shalom_clave_recojo.trim()
+            : ((shalomMatch.pickup_code && String(shalomMatch.pickup_code).trim().length === 4)
+                ? String(shalomMatch.pickup_code).trim()
+                : '0808');
 
           const metadataNeedsUpdate =
             !p.shalom_numero_guia ||
@@ -451,17 +454,21 @@ export class ShalomTrackingListenerService {
             !p.registrado_shalom;
 
           if (metadataNeedsUpdate) {
-            await supabaseAdmin.from('pedidos').update({
+            const updateData: any = {
               shalom_numero_guia: fullGuia,
               shalom_ose_id: oseId,
-              shalom_clave_recojo: pin,
               registrado_shalom: true,
               updated_at: new Date().toISOString()
-            }).eq('id', p.id);
+            };
+            if (!p.shalom_clave_recojo) {
+              updateData.shalom_clave_recojo = pin;
+              p.shalom_clave_recojo = pin;
+            }
+
+            await supabaseAdmin.from('pedidos').update(updateData).eq('id', p.id);
 
             p.shalom_numero_guia = fullGuia;
             p.shalom_ose_id = oseId;
-            p.shalom_clave_recojo = pin;
             p.registrado_shalom = true;
           }
         }

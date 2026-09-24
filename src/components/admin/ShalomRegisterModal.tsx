@@ -73,7 +73,13 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   // Clave de recojo para Shalom (prioriza la clave registrada en el pedido o 0808)
   const registeredDefaultPin = pedidos.find(p => p.shalom_clave_recojo && p.shalom_clave_recojo.trim())?.shalom_clave_recojo?.trim() || '0808';
   const [pickupCode, setPickupCode] = useState(() => registeredDefaultPin);
-  const [pinYesterdayError, setPinYesterdayError] = useState<{ oldPin: string; newPin: string } | null>(null);
+  const [pinErrorState, setPinErrorState] = useState<{
+    oldPin: string;
+    suggestedPin: string;
+    errorMessage: string;
+    failedOrderId?: string;
+  } | null>(null);
+  const [customPinInput, setCustomPinInput] = useState<string>('');
 
   // Modo tradicional Excel fallback
   const [isExportingExcel, setIsExportingExcel] = useState(false);
@@ -120,12 +126,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           dni: extractShalomDni(p) || '',
           phone: extractShalomPhone(p) || '',
           name: p.usuario?.nombre_completo || 'Cliente',
-          pickupCode: p.shalom_clave_recojo || undefined,
+          pickupCode: p.shalom_clave_recojo?.trim() || registeredDefaultPin,
         };
       }
       setEditedData(initial);
     }
-  }, [pedidos]);
+  }, [pedidos, registeredDefaultPin]);
 
 
   const origen = extractShalomOrigen(tallerConfig) || 'AV MEXICO CO';
@@ -187,10 +193,43 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     }));
   };
 
+  // Aplicar nueva clave personalizada o sugerida y reintentar todo en 1 clic
+  const handleApplyNewPinAndRetryAll = (newPinToApply: string) => {
+    const pin = formatShalomPin(newPinToApply);
+    const check = validateShalomPin(pin);
+    if (!check.isValid) {
+      alert(`Clave inválida: ${check.error}`);
+      return;
+    }
+    setPickupCode(pin);
+    setEditedData(prev => {
+      const next = { ...prev };
+      for (const p of pedidos) {
+        next[p.id] = {
+          ...(next[p.id] || { dni: '', phone: '', name: '' }),
+          pickupCode: pin,
+        };
+      }
+      return next;
+    });
+    setPinErrorState(null);
+    setCustomPinInput('');
+    setTimeout(() => {
+      handleStartApiDispatch();
+    }, 50);
+  };
+
   // Reintento individual para un paquete específico con clave personalizada
   const handleRetrySingleOrder = async (pedidoId: string) => {
     const row = auditedRows.find(r => r.pedido.id === pedidoId);
     if (!row) return;
+
+    const rowPickupCode = formatShalomPin(row.data.pickupCode || pickupCode);
+    const pinCheck = validateShalomPin(rowPickupCode);
+    if (!pinCheck.isValid) {
+      alert(`Clave de recojo inválida para este paquete: ${pinCheck.error}`);
+      return;
+    }
 
     setRetryingIds(prev => ({ ...prev, [pedidoId]: true }));
 
@@ -198,8 +237,6 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       email: tallerConfig.shalom_email || 'milagrosjanetamis@gmail.com',
       password: tallerConfig.shalom_password || '986398Mi$',
     };
-
-    const rowPickupCode = row.data.pickupCode || pickupCode;
 
     const remitenteDoc = (tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312').replace(/\D/g, '') || '42020312';
     const remitenteTel = (tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412').replace(/\D/g, '') || '927781412';
@@ -268,6 +305,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           console.warn('[ON REGISTERED RETRY WARN]', onRegErr);
         }
 
+        saveUsedShalomPin(rowPickupCode);
+        handleDataChange(pedidoId, 'pickupCode', rowPickupCode);
       }
 
       setDispatchResults(prev => ({ ...prev, [pedidoId]: res }));
@@ -301,7 +340,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       return;
     }
 
-    setPinYesterdayError(null);
+    setPinErrorState(null);
     setIsDispatching(true);
     setActiveTab('dispatching');
     setProgressIndex(0);
@@ -325,6 +364,12 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       }
 
       const rowPickupCode = formatShalomPin(row.data.pickupCode || pickupCode);
+      if (rowPickupCode.length !== 4) {
+        alert(`La clave de recojo para el pedido #${row.pedido.codigo_seguimiento} debe tener exactamente 4 dígitos.`);
+        setIsDispatching(false);
+        setActiveTab('audit');
+        return;
+      }
 
       const remitenteDoc = (tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312').replace(/\D/g, '') || '42020312';
       const remitenteTel = (tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412').replace(/\D/g, '') || '927781412';
@@ -368,28 +413,33 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
         resultsMap[row.pedido.id] = res;
 
-        // Si Shalom Pro reporta error por clave usada ayer o indisponibilidad de autenticación, detener el lote inmediatamente
+        // Si Shalom Pro reporta error por clave usada ayer, clave rechazada o autenticación, detener el lote inmediatamente
         if (!res.success) {
           const errStr = String(typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || '')).toLowerCase();
           
-          // Detección de regla de clave del día anterior de Shalom Pro
-          const isPinYesterday = errStr.includes('clave del d') || errStr.includes('clave de ayer') || errStr.includes('dia anterior') || errStr.includes('reutilizar claves');
-          if (isPinYesterday) {
+          // Detección de regla de clave de Shalom Pro (usada ayer, no permitida, etc.)
+          const isPinError = errStr.includes('clave') || errStr.includes('pin') || errStr.includes('dia anterior') || errStr.includes('día anterior') || errStr.includes('reutilizar') || errStr.includes('pickup_code');
+          if (isPinError) {
             const nextPin = getNextShalomPin(rowPickupCode);
-            setPickupCode(nextPin);
-            setPinYesterdayError({ oldPin: rowPickupCode, newPin: nextPin });
-            console.warn(`[SHALOM PIN AUTO-RECOVERY] Clave ${rowPickupCode} rechazada por Shalom (usada ayer). Rotada automáticamente a ${nextPin}. Deteniendo lote para reintento en 1 clic.`);
+            setCustomPinInput(nextPin);
+            setPinErrorState({
+              oldPin: rowPickupCode,
+              suggestedPin: nextPin,
+              errorMessage: typeof res.errorMessage === 'string' ? res.errorMessage : 'Shalom Pro rechazó la clave indicada.',
+              failedOrderId: row.pedido.id,
+            });
+            console.warn(`[SHALOM PIN ERROR] Clave ${rowPickupCode} rechazada por Shalom. Sugerida: ${nextPin}. Deteniendo lote para reintento.`);
             for (let j = i + 1; j < auditedRows.length; j++) {
               const remRow = auditedRows[j];
               resultsMap[remRow.pedido.id] = {
                 pedidoId: remRow.pedido.id,
                 codigoSeguimiento: remRow.pedido.codigo_seguimiento,
                 success: false,
-                errorMessage: `Shalom Pro no permite la clave '${rowPickupCode}' (fue la usada ayer). Nueva clave lista: '${nextPin}'. Presiona 'Reintentar todo en 1-Clic'.`,
+                errorMessage: `Shalom Pro no permitió la clave '${rowPickupCode}'. Cambia la clave por otra para que prevalezca y reintenta.`,
                 customerPhone: remRow.data.phone,
                 customerName: remRow.data.name,
                 agencyName: remRow.destino,
-                pickupCode: nextPin,
+                pickupCode: rowPickupCode,
               };
             }
             break;
@@ -646,7 +696,20 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                     type="text"
                     maxLength={4}
                     value={pickupCode}
-                    onChange={(e) => setPickupCode(formatShalomPin(e.target.value))}
+                    onChange={(e) => {
+                      const newPin = formatShalomPin(e.target.value);
+                      setPickupCode(newPin);
+                      setEditedData(prev => {
+                        const next = { ...prev };
+                        for (const p of pedidos) {
+                          next[p.id] = {
+                            ...(next[p.id] || { dni: '', phone: '', name: '' }),
+                            pickupCode: newPin,
+                          };
+                        }
+                        return next;
+                      });
+                    }}
                     placeholder={pickupCode || '0808'}
                     className={`w-20 px-2.5 py-1.5 rounded-xl bg-slate-950 border font-mono font-bold text-center text-sm focus:outline-none transition-all shadow-inner ${
                       validateShalomPin(pickupCode).isValid
@@ -816,9 +879,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                       </label>
                       <input
                         type="text"
-                        maxLength={6}
-                        value={row.data.pickupCode || ''}
-                        onChange={e => handleDataChange(row.pedido.id, 'pickupCode', e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
+                        maxLength={4}
+                        value={row.data.pickupCode !== undefined ? row.data.pickupCode : pickupCode}
+                        onChange={e => handleDataChange(row.pedido.id, 'pickupCode', formatShalomPin(e.target.value))}
                         placeholder={pickupCode}
                         className="w-full px-2.5 py-1 bg-slate-900 border border-amber-500/40 rounded-lg text-xs font-mono font-bold text-amber-300 focus:outline-none focus:border-amber-400 text-center"
                       />
@@ -915,49 +978,64 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               )}
             </div>
 
-            {/* Banner de Recuperación Inmediata en 1-Clic si la clave fue rechazada por ser la de ayer */}
-            {pinYesterdayError && (
-              <div className="p-4 rounded-2xl bg-amber-500/20 border-2 border-amber-500/50 text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn shadow-lg shadow-amber-950/40">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/30 flex items-center justify-center text-amber-300 shrink-0 font-bold">
-                    <KeyRound className="w-5 h-5" />
+            {/* Banner de Recuperación Inmediata con Nueva Clave si fue rechazada por Shalom */}
+            {pinErrorState && (
+              <div className="p-4 rounded-2xl bg-amber-500/15 border-2 border-amber-500/50 text-amber-200 flex flex-col gap-3 animate-fadeIn shadow-lg shadow-amber-950/40">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 font-bold mt-0.5">
+                      <KeyRound className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                        <span>Clave '{pinErrorState.oldPin}' rechazada por Shalom Pro</span>
+                        <span className="text-[10px] bg-amber-500/30 px-2 py-0.5 rounded-full text-amber-200 border border-amber-500/40 font-mono font-bold">
+                          Sugerida: {pinErrorState.suggestedPin}
+                        </span>
+                      </h4>
+                      <p className="text-xs text-amber-300/90 mt-1">
+                        <strong>Motivo Shalom:</strong> {pinErrorState.errorMessage}
+                      </p>
+                      <p className="text-[11px] text-slate-300 mt-1">
+                        Elige la clave que deseas que prevalezca. Se actualizará en la base de datos, en las etiquetas y en los mensajes a clientes.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                      <span>Clave '{pinYesterdayError.oldPin}' fue la usada ayer en Shalom Pro</span>
-                      <span className="text-[10px] bg-amber-500/30 px-2 py-0.5 rounded-full text-amber-200 border border-amber-500/40 font-mono font-bold">
-                        Nueva: {pinYesterdayError.newPin}
-                      </span>
-                    </h4>
-                    <p className="text-xs text-amber-300/90 mt-0.5">
-                      Shalom Pro exige no repetir la clave del día anterior. Hemos rotado automáticamente la clave a <strong className="text-white font-mono">{pinYesterdayError.newPin}</strong>.
-                    </p>
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setPinErrorState(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Actualizar todas las filas editadas con el nuevo PIN y reintentar inmediatamente en 1 clic
-                    const updatedEdited: Record<string, { dni: string; phone: string; name: string; pickupCode?: string }> = {};
-                    for (const p of pedidos) {
-                      updatedEdited[p.id] = {
-                        ...(editedData[p.id] || { dni: '', phone: '', name: '' }),
-                        pickupCode: pinYesterdayError.newPin,
-                      };
-                    }
-                    setEditedData(updatedEdited);
-                    setPickupCode(pinYesterdayError.newPin);
-                    setPinYesterdayError(null);
-                    setTimeout(() => {
-                      handleStartApiDispatch();
-                    }, 50);
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>⚡ Reintentar todo en 1-Clic con PIN {pinYesterdayError.newPin}</span>
-                </button>
+                <div className="pt-2 border-t border-amber-500/30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-white shrink-0">Nueva Clave:</label>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      value={customPinInput}
+                      onChange={(e) => setCustomPinInput(formatShalomPin(e.target.value))}
+                      placeholder={pinErrorState.suggestedPin}
+                      className="w-24 px-3 py-1.5 rounded-xl bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-sm focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                    />
+                    <span className="text-[11px] text-slate-400">4 dígitos numéricos</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleApplyNewPinAndRetryAll(customPinInput || pinErrorState.suggestedPin)}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>⚡ Aplicar Clave {customPinInput || pinErrorState.suggestedPin} y Reintentar Todo</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1057,9 +1135,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                         </span>
                         <input
                           type="text"
-                          maxLength={6}
-                          value={editedData[res.pedidoId]?.pickupCode || ''}
-                          onChange={(e) => handleDataChange(res.pedidoId, 'pickupCode', e.target.value.replace(/[^0-9A-Za-z]/g, ''))}
+                          maxLength={4}
+                          value={editedData[res.pedidoId]?.pickupCode !== undefined ? editedData[res.pedidoId]?.pickupCode : (res.pickupCode || pickupCode)}
+                          onChange={(e) => handleDataChange(res.pedidoId, 'pickupCode', formatShalomPin(e.target.value))}
                           placeholder={pickupCode}
                           className="w-20 px-2 py-1 rounded-lg bg-slate-950 border border-amber-500/50 text-amber-300 font-mono font-bold text-center text-xs focus:outline-none focus:border-amber-400"
                         />

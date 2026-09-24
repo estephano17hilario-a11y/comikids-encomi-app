@@ -246,9 +246,9 @@ export class ShalomApiService {
           success: true,
           oseId: String(oseId),
           guideNumber: guideNumber || undefined,
-          trackingCode,
-          pickupCode: data.pickup_code || payload.pickup_code,
-          customerPhone: payload.destinatario.telefono,
+          pickupCode: (data.pickup_code && String(data.pickup_code).trim().replace(/\D/g, '').length === 4 && String(data.pickup_code) !== String(data.codigo))
+            ? String(data.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
+            : payload.pickup_code,
           customerName: payload.destinatario.nombre,
           agencyName: confirmedAgency,
           agencyFullName: confirmedFullName,

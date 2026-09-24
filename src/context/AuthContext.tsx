@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Usuario, UserRole, EmpresaAccount, EmpresaConfig } from '../types/database.types';
-import { ordersService, DEFAULT_EMPRESA_CONFIG } from '../services/ordersService';
+import { ordersService, DEFAULT_EMPRESA_CONFIG, DEFAULT_EMPRESA_ACCOUNT } from '../services/ordersService';
 import confetti from 'canvas-confetti';
 
 interface AuthContextType {
@@ -69,14 +69,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ? 'empresa'
     : (currentUser?.rol || null);
 
+  // Sincronizar empresas desde la nube al cargar la app para multi-dispositivos
+  useEffect(() => {
+    ordersService.fetchEmpresasOnline().catch(() => {});
+  }, []);
+
   // Determinar la empresa activa (modo impersonación o login de empresa)
   const currentEmpresa: EmpresaAccount | null = impersonatedEmpresa || (
     effectiveRole === 'empresa' && currentUser
-      ? (ordersService.getEmpresaById(currentUser.id) || ordersService.getEmpresaByNumero(currentUser.dni) || ordersService.getEmpresas()[0] || null)
+      ? (
+          ordersService.getEmpresaById(currentUser.id) ||
+          ordersService.getEmpresaByNumero(currentUser.dni) ||
+          (currentUser.id === 'empresa-master-comikids' || currentUser.dni === '061625'
+            ? DEFAULT_EMPRESA_ACCOUNT
+            : {
+                id: currentUser.id,
+                nombre: currentUser.nombre_completo || 'Empresa',
+                numero_entrada: currentUser.dni,
+                password_hash: currentUser.password_hash || '',
+                activo: true,
+                telefono_contacto: currentUser.telefono_default || undefined,
+                sub_instance: `tenant_${(currentUser.nombre_completo || '').replace(/\s+/g, '')}`,
+                created_at: currentUser.created_at || new Date().toISOString(),
+                total_ingresos: 0,
+                historial_accesos: [],
+                config: { ...DEFAULT_EMPRESA_CONFIG }
+              })
+        )
       : null
   );
 
-  const empresaConfig: EmpresaConfig = currentEmpresa?.config || ordersService.getEmpresas()[0]?.config || DEFAULT_EMPRESA_CONFIG;
+  const empresaConfig: EmpresaConfig = currentEmpresa?.config || (effectiveRole === 'empresa' ? DEFAULT_EMPRESA_CONFIG : (ordersService.getEmpresas()[0]?.config || DEFAULT_EMPRESA_CONFIG));
 
   const updateCurrentEmpresaConfig = (updates: Partial<EmpresaConfig>) => {
     if (!currentEmpresa) return;

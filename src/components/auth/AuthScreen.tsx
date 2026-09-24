@@ -124,18 +124,24 @@ export const AuthScreen: React.FC = () => {
 
       <div className="relative w-full max-w-md rounded-3xl glass-panel p-6 sm:p-8 border border-cyan-500/30 shadow-2xl shadow-cyan-500/10 transition-all duration-300">
         
-        {/* Brand Header */}
+        {/* Neutral Clean Header (Sin logos ni nombres de empresas) */}
         <div className="text-center mb-6">
-          <div className="relative inline-flex items-center justify-center w-14 h-14 rounded-3xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 p-0.5 shadow-xl shadow-cyan-500/30 mb-2.5">
-            <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center text-2xl">
-              📦
+          <div className="relative inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 p-0.5 shadow-lg shadow-cyan-500/10 mb-2">
+            <div className="w-full h-full bg-slate-950/80 rounded-[14px] flex items-center justify-center">
+              {isRegisterMode ? (
+                <UserPlus className="w-5 h-5 text-cyan-400" />
+              ) : (
+                <LogIn className="w-5 h-5 text-cyan-400" />
+              )}
             </div>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight bg-linear-to-r from-cyan-400 via-sky-300 to-pink-300 bg-clip-text text-transparent">
-            Encomi
+          <h1 className="text-2xl font-black tracking-tight text-white">
+            {isRegisterMode ? 'Crear Cuenta' : 'Iniciar Sesión'}
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Despacho y Envío de Mercadería (Shalom & Motorizado) • ComiKids
+          <p className="text-xs text-slate-400 mt-1">
+            {isRegisterMode 
+              ? 'Regístrate paso a paso para gestionar tus despachos' 
+              : 'Ingresa tu documento o número de acceso'}
           </p>
         </div>
 

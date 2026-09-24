@@ -30,7 +30,10 @@ import {
   Trophy,
   Sparkles,
   Package,
-  CheckSquare
+  CheckSquare,
+  Share2,
+  ExternalLink,
+  MessageSquare
 } from 'lucide-react';
 
 export const MatrixPortal: React.FC = () => {
@@ -44,6 +47,10 @@ export const MatrixPortal: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingEmpresa, setEditingEmpresa] = useState<EmpresaAccount | null>(null);
   const [auditEmpresa, setAuditEmpresa] = useState<EmpresaAccount | null>(null);
+  const [shareEmpresa, setShareEmpresa] = useState<EmpresaAccount | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [showSharePassword, setShowSharePassword] = useState(false);
+  const [loadingEmpresas, setLoadingEmpresas] = useState(false);
 
   // Modal de Configuración de Funciones y Secciones
   const [configEmpresa, setConfigEmpresa] = useState<EmpresaAccount | null>(null);
@@ -71,9 +78,18 @@ export const MatrixPortal: React.FC = () => {
   const [formActivo, setFormActivo] = useState(true);
   const [formError, setFormError] = useState('');
 
-  const loadEmpresas = () => {
-    const list = ordersService.getEmpresas();
-    setEmpresas(list);
+  const loadEmpresas = async () => {
+    setLoadingEmpresas(true);
+    try {
+      // 1. Carga rápida desde memoria local
+      const list = ordersService.getEmpresas();
+      setEmpresas(list);
+      // 2. Sincronización en la nube con Supabase (dispositivos cruzados PC/celular)
+      const synced = await ordersService.fetchEmpresasOnline();
+      setEmpresas(synced);
+    } finally {
+      setLoadingEmpresas(false);
+    }
   };
 
   useEffect(() => {
@@ -88,6 +104,44 @@ export const MatrixPortal: React.FC = () => {
     navigator.clipboard.writeText(text);
     setCopiedKey(id);
     setTimeout(() => setCopiedKey(null), 1800);
+  };
+
+  const getShareMessageForEmpresa = (emp: EmpresaAccount): string => {
+    const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://comikids-encomi-app.vercel.app';
+    return `🏢 *ACCESO OFICIAL AL SISTEMA ENCOMI*
+
+¡Hola *${emp.nombre}*! Tu cuenta ya está lista y configurada. Aquí tienes tus datos de acceso:
+
+━━━━━━━━━━━━━━━━━━━━━
+🔢 *Número / Usuario de Entrada:* \`${emp.numero_entrada}\`
+🔑 *Contraseña:* \`${emp.password_hash}\`
+🌐 *Enlace de Acceso:* ${origin}
+━━━━━━━━━━━━━━━━━━━━━
+
+📋 *PASO A PASO PARA INGRESAR (FÁCIL Y RÁPIDO):*
+1️⃣ Abre este enlace en tu celular o computadora: ${origin}
+2️⃣ En el recuadro principal, escribe tu número de entrada: *${emp.numero_entrada}*
+3️⃣ Ingresa tu contraseña: *${emp.password_hash}* y haz clic en *Ingresar*.
+4️⃣ ¡Listo! Ya estás dentro de tu panel para gestionar tus despachos, rotulado Shalom, inventario y más.
+
+💡 *Consejo:* Guarda este mensaje para tener siempre a la mano tus credenciales.`;
+  };
+
+  const handleCopyShareMessage = (emp: EmpresaAccount) => {
+    const msg = getShareMessageForEmpresa(emp);
+    navigator.clipboard.writeText(msg);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2200);
+  };
+
+  const handleSendWhatsAppShare = (emp: EmpresaAccount) => {
+    const msg = getShareMessageForEmpresa(emp);
+    const cleanPhone = emp.telefono_contacto ? emp.telefono_contacto.replace(/\D/g, '') : '';
+    const target = cleanPhone ? (cleanPhone.startsWith('51') ? cleanPhone : `51${cleanPhone}`) : '';
+    const url = target
+      ? `https://api.whatsapp.com/send?phone=${target}&text=${encodeURIComponent(msg)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
   };
 
   const openCreateModal = () => {
@@ -112,13 +166,14 @@ export const MatrixPortal: React.FC = () => {
     setShowCreateModal(true);
   };
 
-  const handleSaveEmpresa = (e: React.FormEvent) => {
+  const handleSaveEmpresa = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
     try {
+      let savedEmp: EmpresaAccount | null = null;
       if (editingEmpresa) {
-        ordersService.updateEmpresa(editingEmpresa.id, {
+        savedEmp = ordersService.updateEmpresa(editingEmpresa.id, {
           nombre: formNombre.trim(),
           numero_entrada: formNumero.trim(),
           password_hash: formPassword.trim(),
@@ -126,7 +181,7 @@ export const MatrixPortal: React.FC = () => {
           activo: formActivo
         });
       } else {
-        ordersService.createEmpresa({
+        savedEmp = await ordersService.createEmpresa({
           nombre: formNombre.trim(),
           numero_entrada: formNumero.trim(),
           password_hash: formPassword.trim(),
@@ -134,8 +189,13 @@ export const MatrixPortal: React.FC = () => {
           activo: formActivo
         });
       }
-      loadEmpresas();
+      await loadEmpresas();
       setShowCreateModal(false);
+
+      // Si fue creación nueva, abrir automáticamente el modal para compartir / mandar datos
+      if (!editingEmpresa && savedEmp) {
+        setShareEmpresa(savedEmp);
+      }
     } catch (err: any) {
       setFormError(err.message || 'Error al guardar la empresa');
     }
@@ -549,15 +609,28 @@ export const MatrixPortal: React.FC = () => {
                 </div>
 
                 {/* Acciones Rápidas */}
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-2 pt-1 flex-wrap">
                   {/* Entrar como esta empresa (Impersonar) */}
                   <button
                     type="button"
                     onClick={() => impersonateEmpresa(emp)}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-950/40 active:scale-98 transition-all cursor-pointer"
+                    className="flex-1 min-w-[130px] py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-950/40 active:scale-98 transition-all cursor-pointer"
                     title={`Abrir panel operativo de ${emp.nombre}`}
                   >
-                    <span>⚡ Entrar a esta Empresa</span>
+                    <span>⚡ Entrar a Empresa</span>
+                  </button>
+
+                  {/* Compartir / Enviar Datos y Acceso */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShareEmpresa(emp);
+                      setShowSharePassword(false);
+                    }}
+                    className="p-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 transition-colors cursor-pointer"
+                    title="Enviar o copiar credenciales e instrucciones de acceso"
+                  >
+                    <Share2 className="w-4 h-4" />
                   </button>
 
                   <button
@@ -1079,6 +1152,164 @@ export const MatrixPortal: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL COMPARTIR / ENVIAR CREDENCIALES E INSTRUCCIONES DE ACCESO */}
+      {shareEmpresa && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-cyan-500/40 p-6 sm:p-7 shadow-2xl shadow-cyan-950/60 space-y-5 max-h-[92vh] overflow-y-auto">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500/20 to-emerald-500/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <span>Acceso para {shareEmpresa.nombre}</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">Credenciales e instrucciones de ingreso paso a paso</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShareEmpresa(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Credentials Summary Card */}
+            <div className="p-4 rounded-2xl bg-slate-950/90 border border-cyan-500/20 space-y-3">
+              <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Credenciales Principales</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                {/* Número de entrada */}
+                <div className="p-3 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Número de Entrada:</span>
+                    <strong className="font-mono font-black text-cyan-300 text-sm">{shareEmpresa.numero_entrada}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(shareEmpresa.numero_entrada, `share-num-${shareEmpresa.id}`)}
+                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                    title="Copiar número"
+                  >
+                    {copiedKey === `share-num-${shareEmpresa.id}` ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Contraseña */}
+                <div className="p-3 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Contraseña:</span>
+                    <strong className="font-mono font-bold text-amber-300 text-sm">
+                      {showSharePassword ? shareEmpresa.password_hash : '••••••••'}
+                    </strong>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowSharePassword(!showSharePassword)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                      title={showSharePassword ? 'Ocultar' : 'Ver'}
+                    >
+                      {showSharePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(shareEmpresa.password_hash, `share-pass-${shareEmpresa.id}`)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                      title="Copiar contraseña"
+                    >
+                      {copiedKey === `share-pass-${shareEmpresa.id}` ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Enlace de Acceso */}
+              <div className="p-3 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-between gap-2 text-xs">
+                <div className="truncate">
+                  <span className="text-[10px] text-slate-400 block font-medium">Link de Acceso:</span>
+                  <span className="text-slate-200 font-mono text-[11px] truncate block">
+                    {typeof window !== 'undefined' ? window.location.origin : 'https://comikids-encomi-app.vercel.app'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(typeof window !== 'undefined' ? window.location.origin : 'https://comikids-encomi-app.vercel.app', `share-link-${shareEmpresa.id}`)}
+                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+                  title="Copiar link"
+                >
+                  {copiedKey === `share-link-${shareEmpresa.id}` ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Formatted WhatsApp Message Preview */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Mensaje con Instrucciones Paso a Paso:</span>
+              </label>
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-line max-h-48 overflow-y-auto select-all">
+                {getShareMessageForEmpresa(shareEmpresa)}
+              </div>
+            </div>
+
+            {/* Action Buttons: WhatsApp & Copy */}
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsAppShare(shareEmpresa)}
+                  className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Enviar por WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleCopyShareMessage(shareEmpresa)}
+                  className={`py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer border ${
+                    shareCopied
+                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                      : 'bg-cyan-600 hover:bg-cyan-500 text-white border-cyan-500/40 shadow-lg shadow-cyan-950/50'
+                  }`}
+                >
+                  {shareCopied ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span>¡Instrucciones Copiadas!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>Copiar Instrucciones</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShareEmpresa(null)}
+                className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs font-bold transition-colors cursor-pointer text-center"
+              >
+                Cerrar
+              </button>
+            </div>
+
           </div>
         </div>
       )}

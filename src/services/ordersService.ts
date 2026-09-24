@@ -539,49 +539,200 @@ class OrdersService {
     return { user: newUser };
   }
 
-  // --- GESTIÓN DE EMPRESAS (MATRIX MASTER CONTROL) ---
+  // --- GESTIÓN DE EMPRESAS (MATRIX MASTER CONTROL & CLOUD SYNC) ---
   getEmpresas(): EmpresaAccount[] {
     const raw = localStorage.getItem(STORAGE_KEYS.EMPRESAS);
-    if (!raw) {
-      const initial = [DEFAULT_EMPRESA_ACCOUNT];
-      localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(initial));
-      return initial;
-    }
-    try {
-      let parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        return [DEFAULT_EMPRESA_ACCOUNT];
+    let parsed: any[] = [];
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = [];
       }
-      // Garantizar que la cuenta histórica de ComiKids siempre esté presente
-      if (!parsed.some((e: any) => e.id === 'empresa-master-comikids' || e.numero_entrada === '061625')) {
-        parsed.unshift(DEFAULT_EMPRESA_ACCOUNT);
-      }
-      // Sanitizar si existía el teléfono obsoleto '51963097546'
-      parsed.forEach((e: any) => {
-        if (e.id === 'empresa-master-comikids' && e.telefono_contacto === '51963097546') {
-          e.telefono_contacto = '51927781412';
-        }
-      });
-      // Normalizar configs para todas las cuentas
-      const normalized = parsed.map((e: EmpresaAccount) => ({
-        ...e,
-        config: {
-          ...DEFAULT_EMPRESA_CONFIG,
-          ...(e.config || {}),
-          secciones_activas: {
-            ...DEFAULT_EMPRESA_CONFIG.secciones_activas,
-            ...(e.config?.secciones_activas || {})
-          }
-        }
-      }));
-      return normalized;
-    } catch {
-      return [DEFAULT_EMPRESA_ACCOUNT];
     }
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      parsed = [DEFAULT_EMPRESA_ACCOUNT];
+      localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(parsed));
+    }
+
+    // Garantizar que la cuenta histórica de ComiKids siempre esté presente
+    if (!parsed.some((e: any) => e.id === 'empresa-master-comikids' || e.numero_entrada === '061625')) {
+      parsed.unshift(DEFAULT_EMPRESA_ACCOUNT);
+    }
+
+    // Normalizar configs para todas las cuentas
+    const normalized = parsed.map((e: EmpresaAccount) => ({
+      ...e,
+      activo: e.activo !== false,
+      config: {
+        ...DEFAULT_EMPRESA_CONFIG,
+        ...(e.config || {}),
+        secciones_activas: {
+          ...DEFAULT_EMPRESA_CONFIG.secciones_activas,
+          ...(e.config?.secciones_activas || {})
+        }
+      }
+    }));
+    return normalized;
   }
 
   saveEmpresas(empresas: EmpresaAccount[]): void {
     localStorage.setItem(STORAGE_KEYS.EMPRESAS, JSON.stringify(empresas));
+  }
+
+  // Sincronizar todas las empresas desde Supabase a LocalStorage para garantizar sincronización entre dispositivos (PC, celular, etc.)
+  async fetchEmpresasOnline(): Promise<EmpresaAccount[]> {
+    const local = this.getEmpresas();
+    if (!isSupabaseConfigured || !supabase) {
+      return local;
+    }
+
+    try {
+      const { data: dbEmpresas, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('rol', 'empresa');
+
+      if (!error && dbEmpresas && dbEmpresas.length > 0) {
+        const localMap = new Map<string, EmpresaAccount>();
+        local.forEach(e => localMap.set(e.id, e));
+
+        dbEmpresas.forEach((u: any) => {
+          let parsedConfig: Partial<EmpresaConfig> = {};
+          if (u.direccion_default) {
+            try {
+              parsedConfig = JSON.parse(u.direccion_default);
+            } catch {}
+          }
+
+          let extraMeta: any = {};
+          if (u.referencia_default) {
+            try {
+              extraMeta = JSON.parse(u.referencia_default);
+            } catch {
+              extraMeta = { sub_instance: u.referencia_default };
+            }
+          }
+
+          const existing = localMap.get(u.id);
+          const isBase = u.id === 'empresa-master-comikids' || u.dni === '061625';
+
+          const empAccount: EmpresaAccount = {
+            id: u.id,
+            nombre: isBase ? 'ComiKids' : (u.nombre_completo || 'Empresa'),
+            numero_entrada: isBase ? '061625' : u.dni,
+            password_hash: isBase ? (u.password_hash || '989834969MI') : (u.password_hash || ''),
+            activo: true,
+            telefono_contacto: u.telefono_default || existing?.telefono_contacto || undefined,
+            sub_instance: extraMeta.sub_instance || (isBase ? 'tenant_Comikids' : `tenant_${(u.nombre_completo || '').replace(/\s+/g, '')}`),
+            created_at: u.created_at || existing?.created_at || new Date().toISOString(),
+            ultimo_acceso: extraMeta.ultimo_acceso || existing?.ultimo_acceso || undefined,
+            total_ingresos: extraMeta.total_ingresos ?? existing?.total_ingresos ?? 0,
+            historial_accesos: Array.isArray(extraMeta.historial_accesos) ? extraMeta.historial_accesos : (existing?.historial_accesos || []),
+            config: {
+              ...DEFAULT_EMPRESA_CONFIG,
+              ...(existing?.config || {}),
+              ...(parsedConfig || {}),
+              secciones_activas: {
+                ...DEFAULT_EMPRESA_CONFIG.secciones_activas,
+                ...(existing?.config?.secciones_activas || {}),
+                ...(parsedConfig?.secciones_activas || {})
+              }
+            }
+          };
+
+          localMap.set(u.id, empAccount);
+        });
+
+        if (!localMap.has('empresa-master-comikids')) {
+          localMap.set('empresa-master-comikids', DEFAULT_EMPRESA_ACCOUNT);
+        }
+
+        const mergedList = Array.from(localMap.values());
+        this.saveEmpresas(mergedList);
+        return mergedList;
+      }
+    } catch (err) {
+      console.warn('Aviso: No se pudo sincronizar empresas con Supabase:', err);
+    }
+
+    return local;
+  }
+
+  // Buscar empresa por número en Supabase en tiempo real (para nuevo dispositivo o celular sin recargar)
+  async fetchEmpresaByNumeroOnline(numero: string): Promise<EmpresaAccount | null> {
+    const clean = numero.trim().toUpperCase().replace(/\s+/g, '');
+    if (!clean) return null;
+
+    // Primero revisar local
+    const localEmp = this.getEmpresaByNumero(clean);
+    if (localEmp) return localEmp;
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('usuarios')
+          .select('*')
+          .eq('rol', 'empresa')
+          .or(`dni.eq.${clean},id.eq.${clean}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (data && !error) {
+          let parsedConfig: Partial<EmpresaConfig> = {};
+          if (data.direccion_default) {
+            try {
+              parsedConfig = JSON.parse(data.direccion_default);
+            } catch {}
+          }
+
+          let extraMeta: any = {};
+          if (data.referencia_default) {
+            try {
+              extraMeta = JSON.parse(data.referencia_default);
+            } catch {
+              extraMeta = { sub_instance: data.referencia_default };
+            }
+          }
+
+          const empAccount: EmpresaAccount = {
+            id: data.id,
+            nombre: data.nombre_completo || 'Empresa',
+            numero_entrada: data.dni,
+            password_hash: data.password_hash || '',
+            activo: true,
+            telefono_contacto: data.telefono_default || undefined,
+            sub_instance: extraMeta.sub_instance || `tenant_${(data.nombre_completo || '').replace(/\s+/g, '')}`,
+            created_at: data.created_at || new Date().toISOString(),
+            ultimo_acceso: extraMeta.ultimo_acceso || undefined,
+            total_ingresos: extraMeta.total_ingresos ?? 0,
+            historial_accesos: Array.isArray(extraMeta.historial_accesos) ? extraMeta.historial_accesos : [],
+            config: {
+              ...DEFAULT_EMPRESA_CONFIG,
+              ...(parsedConfig || {}),
+              secciones_activas: {
+                ...DEFAULT_EMPRESA_CONFIG.secciones_activas,
+                ...(parsedConfig?.secciones_activas || {})
+              }
+            }
+          };
+
+          const currentList = this.getEmpresas();
+          const existingIdx = currentList.findIndex(e => e.id === empAccount.id);
+          if (existingIdx !== -1) {
+            currentList[existingIdx] = empAccount;
+          } else {
+            currentList.push(empAccount);
+          }
+          this.saveEmpresas(currentList);
+          return empAccount;
+        }
+      } catch (err) {
+        console.warn('Error consultando empresa remota:', err);
+      }
+    }
+
+    return null;
   }
 
   syncEmpresaConnectedPhone(subInstanceOrEmpresaId: string, livePhone: string): void {
@@ -622,14 +773,36 @@ class OrdersService {
   getEmpresaByNumero(numero: string): EmpresaAccount | null {
     const clean = numero.trim().toUpperCase().replace(/\s+/g, '');
     const empresas = this.getEmpresas();
-    return empresas.find(e => 
+    const foundInEmpresas = empresas.find(e => 
       e.numero_entrada.toUpperCase() === clean || 
       (clean === '061625' && e.id === 'empresa-master-comikids') ||
       (clean === '42020312COMIKIDS' && e.id === 'empresa-master-comikids')
-    ) || null;
+    );
+    if (foundInEmpresas) return foundInEmpresas;
+
+    // Buscar también en la lista de usuarios con rol empresa por si está en caché
+    const users = this.getUsers();
+    const uEmp = users.find(u => u.rol === 'empresa' && u.dni.toUpperCase().replace(/\s+/g, '') === clean);
+    if (uEmp) {
+      return {
+        id: uEmp.id,
+        nombre: uEmp.nombre_completo,
+        numero_entrada: uEmp.dni,
+        password_hash: uEmp.password_hash || '',
+        activo: true,
+        telefono_contacto: uEmp.telefono_default || undefined,
+        sub_instance: `tenant_${uEmp.nombre_completo.replace(/\s+/g, '')}`,
+        created_at: uEmp.created_at || new Date().toISOString(),
+        total_ingresos: 0,
+        historial_accesos: [],
+        config: { ...DEFAULT_EMPRESA_CONFIG }
+      };
+    }
+
+    return null;
   }
 
-  createEmpresa(data: {
+  async createEmpresa(data: {
     nombre: string;
     numero_entrada: string;
     password_hash: string;
@@ -637,7 +810,7 @@ class OrdersService {
     sub_instance?: string;
     activo?: boolean;
     config?: Partial<EmpresaConfig>;
-  }): EmpresaAccount {
+  }): Promise<EmpresaAccount> {
     const empresas = this.getEmpresas();
     const cleanNum = data.numero_entrada.trim().replace(/\s+/g, '');
     const cleanPass = data.password_hash.trim();
@@ -687,29 +860,49 @@ class OrdersService {
 
     // Guardar también en la lista de usuarios para compatibilidad total
     const users = this.getUsers();
-    if (!users.some(u => u.dni.toUpperCase() === cleanNum.toUpperCase())) {
-      const uEmp: Usuario = {
-        id: newEmpresa.id,
-        dni: newEmpresa.numero_entrada,
-        nombre_completo: newEmpresa.nombre,
-        password_hash: newEmpresa.password_hash,
-        rol: 'empresa',
-        avatar_url: `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(newEmpresa.nombre)}&backgroundColor=06b6d4,3b82f6`,
-        puntos_xp: 5000,
-        nivel: 10,
-        created_at: newEmpresa.created_at
-      };
-      users.push(uEmp);
-      this.saveUsers(users);
+    const uEmp: Usuario = {
+      id: newEmpresa.id,
+      dni: newEmpresa.numero_entrada,
+      nombre_completo: newEmpresa.nombre,
+      password_hash: newEmpresa.password_hash,
+      rol: 'empresa',
+      avatar_url: `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(newEmpresa.nombre)}&backgroundColor=06b6d4,3b82f6`,
+      puntos_xp: 5000,
+      nivel: 10,
+      telefono_default: newEmpresa.telefono_contacto || undefined,
+      direccion_default: JSON.stringify(mergedConfig),
+      referencia_default: JSON.stringify({
+        sub_instance: newEmpresa.sub_instance,
+        ultimo_acceso: newEmpresa.ultimo_acceso,
+        total_ingresos: 0,
+        historial_accesos: []
+      }),
+      created_at: newEmpresa.created_at
+    };
 
-      if (isSupabaseConfigured && supabase) {
-        (async () => {
-          try {
-            await supabase.from('usuarios').upsert(uEmp);
-          } catch (e) {
-            console.warn(e);
-          }
-        })();
+    const existingUserIdx = users.findIndex(u => u.dni.toUpperCase() === cleanNum.toUpperCase() || u.id === newEmpresa.id);
+    if (existingUserIdx !== -1) {
+      users[existingUserIdx] = uEmp;
+    } else {
+      users.push(uEmp);
+    }
+    this.saveUsers(users);
+
+    // Persistencia en Supabase
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('usuarios').upsert(uEmp);
+        // Crear configuración inicial de taller limpia para la empresa
+        await supabase.from('taller_config').upsert({
+          id: newEmpresa.id,
+          empresa_id: newEmpresa.id,
+          nombre_taller: newEmpresa.nombre,
+          celular_taller: newEmpresa.telefono_contacto || '',
+          whatsapp_pedidos: newEmpresa.telefono_contacto || '',
+          copilot_sub_instance: newEmpresa.sub_instance || ''
+        });
+      } catch (e) {
+        console.warn('Error guardando nueva empresa en Supabase:', e);
       }
     }
 
@@ -733,6 +926,19 @@ class OrdersService {
 
     empresas[idx].config = updatedConfig;
     this.saveEmpresas(empresas);
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('usuarios').update({
+            direccion_default: JSON.stringify(updatedConfig)
+          }).eq('id', id);
+        } catch (e) {
+          console.warn('Error sincronizando config en Supabase:', e);
+        }
+      })();
+    }
+
     return empresas[idx];
   }
 
@@ -752,23 +958,31 @@ class OrdersService {
         ...users[uIdx],
         nombre_completo: empresas[idx].nombre,
         password_hash: empresas[idx].password_hash,
-        dni: empresas[idx].numero_entrada
+        dni: empresas[idx].numero_entrada,
+        telefono_default: empresas[idx].telefono_contacto || users[uIdx].telefono_default
       };
       this.saveUsers(users);
+    }
 
-      if (isSupabaseConfigured && supabase) {
-        (async () => {
-          try {
-            await supabase.from('usuarios').update({
-              nombre_completo: empresas[idx].nombre,
-              password_hash: empresas[idx].password_hash,
-              dni: empresas[idx].numero_entrada
-            }).eq('id', users[uIdx].id);
-          } catch (e) {
-            console.warn(e);
-          }
-        })();
-      }
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('usuarios').update({
+            nombre_completo: empresas[idx].nombre,
+            password_hash: empresas[idx].password_hash,
+            dni: empresas[idx].numero_entrada,
+            telefono_default: empresas[idx].telefono_contacto || null,
+            referencia_default: JSON.stringify({
+              sub_instance: empresas[idx].sub_instance,
+              ultimo_acceso: empresas[idx].ultimo_acceso,
+              total_ingresos: empresas[idx].total_ingresos,
+              historial_accesos: empresas[idx].historial_accesos
+            })
+          }).eq('id', id);
+        } catch (e) {
+          console.warn('Error actualizando empresa en Supabase:', e);
+        }
+      })();
     }
 
     return empresas[idx];
@@ -782,6 +996,23 @@ class OrdersService {
     const filtered = empresas.filter(e => e.id !== id);
     if (filtered.length === empresas.length) return false;
     this.saveEmpresas(filtered);
+
+    const users = this.getUsers();
+    const filteredUsers = users.filter(u => u.id !== id);
+    this.saveUsers(filteredUsers);
+
+    if (isSupabaseConfigured && supabase) {
+      (async () => {
+        try {
+          await supabase.from('pedidos').delete().eq('empresa_id', id);
+          await supabase.from('taller_config').delete().eq('empresa_id', id);
+          await supabase.from('usuarios').delete().eq('id', id);
+        } catch (e) {
+          console.warn('Error eliminando empresa en Supabase:', e);
+        }
+      })();
+    }
+
     return true;
   }
 
@@ -803,13 +1034,19 @@ class OrdersService {
     }
 
     // 2. Verificación de Cuentas de Empresas (ComiKids y empresas registradas en Matrix)
-    const empresas = this.getEmpresas();
-    const matchedEmpresa = empresas.find(e => 
+    let empresas = this.getEmpresas();
+    let matchedEmpresa = empresas.find(e => 
       e.numero_entrada.toUpperCase() === cleanDni || 
       (cleanDni === '061625' && e.numero_entrada === '061625') ||
       (cleanDni === '42020312COMIKIDS' && e.numero_entrada === '061625') ||
       (cleanDni === 'ADMIN' && e.id === 'empresa-master-comikids')
     );
+
+    // Si no está en memoria local (ej. creado desde otro dispositivo), buscar en Supabase
+    if (!matchedEmpresa && isSupabaseConfigured && supabase) {
+      matchedEmpresa = (await this.fetchEmpresaByNumeroOnline(cleanDni)) || undefined;
+      empresas = this.getEmpresas();
+    }
 
     if (matchedEmpresa) {
       if (!matchedEmpresa.activo) {
@@ -849,6 +1086,24 @@ class OrdersService {
       if (matchedEmpresa.historial_accesos.length > 50) matchedEmpresa.historial_accesos = matchedEmpresa.historial_accesos.slice(0, 50);
       this.saveEmpresas(empresas);
 
+      // Sincronizar métricas de auditoría en Supabase
+      if (isSupabaseConfigured && supabase) {
+        (async () => {
+          try {
+            await supabase.from('usuarios').update({
+              referencia_default: JSON.stringify({
+                sub_instance: matchedEmpresa.sub_instance,
+                ultimo_acceso: matchedEmpresa.ultimo_acceso,
+                total_ingresos: matchedEmpresa.total_ingresos,
+                historial_accesos: matchedEmpresa.historial_accesos
+              })
+            }).eq('id', matchedEmpresa.id);
+          } catch (e) {
+            console.warn('Error actualizando auditoría de login en Supabase:', e);
+          }
+        })();
+      }
+
       const empresaUser: Usuario = {
         id: matchedEmpresa.id,
         dni: matchedEmpresa.numero_entrada,
@@ -858,6 +1113,7 @@ class OrdersService {
         avatar_url: `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(matchedEmpresa.nombre)}&backgroundColor=06b6d4,3b82f6`,
         puntos_xp: 5000,
         nivel: 10,
+        telefono_default: matchedEmpresa.telefono_contacto || undefined,
         created_at: matchedEmpresa.created_at,
       };
 

@@ -10,7 +10,7 @@ import { PlacesMapPicker } from './PlacesMapPicker';
 import { ShalomAgenciesMap } from './ShalomAgenciesMap';
 import { OlvaAgenciesMap } from './OlvaAgenciesMap';
 import { EncomiAiChatModal } from './EncomiAiChatModal';
-import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido, CampoPersonalizadoAgencia } from '../../types/database.types';
+import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido, CampoPersonalizadoAgencia, EmpresaAccount } from '../../types/database.types';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import {
@@ -56,7 +56,9 @@ import {
   Calendar,
   Loader2,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 
@@ -423,6 +425,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   // Secret Empresa Prompt
   const [isEmpresaUnlock, setIsEmpresaUnlock] = useState(false);
   const [empresaPassword, setEmpresaPassword] = useState('');
+  const [showEmpresaPassword, setShowEmpresaPassword] = useState(false);
   const [unlockTarget, setUnlockTarget] = useState<{
     type: 'matrix' | 'empresa';
     identifier: string;
@@ -519,7 +522,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
     const clean = whatsapp.trim().replace(/\s+/g, '');
     if (!clean) {
-      setErrorMsg('Por favor ingresa tu número de WhatsApp.');
+      setErrorMsg('Por favor ingresa tu número de WhatsApp o código de empresa.');
       return;
     }
 
@@ -532,17 +535,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       });
       setIsEmpresaUnlock(true);
       setEmpresaPassword('');
+      setShowEmpresaPassword(false);
       setErrorMsg('');
       return;
     }
 
-    // 2. Acceso Cuentas de Empresa (ComiKids u otras empresas creadas)
-    const empresas = ordersService.getEmpresas();
-    const matchedEmp = empresas.find(
-      emp => emp.numero_entrada.toUpperCase() === clean.toUpperCase() ||
-      (clean === '061625' && emp.id === 'empresa-master-comikids') ||
-      (clean.toUpperCase() === '42020312COMIKIDS' && emp.id === 'empresa-master-comikids')
-    );
+    // 2. Acceso Cuentas de Empresa (ComiKids, Jotaimport u otras empresas creadas)
+    let matchedEmp: EmpresaAccount | null = ordersService.getEmpresaByNumero(clean) || ordersService.getEmpresaById(clean) || null;
+    
+    // Si no está en memoria local, buscar en Supabase en tiempo real
+    if (!matchedEmp) {
+      matchedEmp = await ordersService.fetchEmpresaByNumeroOnline(clean);
+    }
 
     if (matchedEmp) {
       setUnlockTarget({
@@ -552,12 +556,13 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       });
       setIsEmpresaUnlock(true);
       setEmpresaPassword('');
+      setShowEmpresaPassword(false);
       setErrorMsg('');
       return;
     }
 
     if (clean.length < 8) {
-      setErrorMsg('Por favor ingresa un número de WhatsApp válido.');
+      setErrorMsg('Por favor ingresa un número de WhatsApp válido (mínimo 8 dígitos) o tu código de empresa registrado.');
       return;
     }
 
@@ -1321,17 +1326,27 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           </div>
 
           <form onSubmit={handleEmpresaLogin} className="space-y-4">
-            <input
-              type="password"
-              autoFocus
-              required
-              value={empresaPassword}
-              onChange={e => setEmpresaPassword(e.target.value)}
-              placeholder="Contraseña de acceso..."
-              className="big-input text-center text-lg"
-            />
+            <div className="relative flex items-center">
+              <input
+                type={showEmpresaPassword ? 'text' : 'password'}
+                autoFocus
+                required
+                value={empresaPassword}
+                onChange={e => setEmpresaPassword(e.target.value)}
+                placeholder="Contraseña de acceso..."
+                className="big-input text-center text-lg pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowEmpresaPassword(!showEmpresaPassword)}
+                className="absolute right-3.5 p-2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title={showEmpresaPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+              >
+                {showEmpresaPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
             {errorMsg && (
-              <p className="text-xs text-rose-400 text-center font-semibold bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20">
+              <p className="text-xs text-rose-400 text-center font-semibold bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20 animate-shake">
                 {errorMsg}
               </p>
             )}
@@ -1342,6 +1357,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   setIsEmpresaUnlock(false);
                   setUnlockTarget(null);
                   setEmpresaPassword('');
+                  setShowEmpresaPassword(false);
                   setErrorMsg('');
                 }}
                 className="big-btn-secondary w-1/3"

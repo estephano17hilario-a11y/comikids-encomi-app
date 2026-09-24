@@ -20,9 +20,18 @@ export interface DatosComprobante {
   remitenteDni?: string;
   remitenteEmail?: string;
   remitenteCelular?: string;
+  whatsappReceptor?: string;
   camposPersonalizados?: Record<string, any>;
   plantillaMensajeAgencia?: string;
 }
+
+export const resolveTargetWhatsAppPhone = (datos?: DatosComprobante): string => {
+  const raw = (datos?.whatsappReceptor || datos?.remitenteCelular || NUMERO_WHATSAPP_RECEPTOR).replace(/\D/g, '');
+  if (!raw) return NUMERO_WHATSAPP_RECEPTOR;
+  if (raw.startsWith('51')) return raw;
+  if (raw.length === 9) return '51' + raw;
+  return raw;
+};
 
 // URL oficial del Funnel Interactivo Encomi
 export const ENCOMI_FUNNEL_URL = "https://comikids-encomi-app.vercel.app/?funnel=encomi";
@@ -250,21 +259,24 @@ ${lineaRef}${lineaMaps}${lineasCamposExtra}${bloqueEncomi}`;
 export const buildWhatsAppComprobanteUrl = (datos: DatosComprobante, preferNative: boolean = false): string => {
   const message = buildWhatsAppComprobanteMessage(datos);
   const textoCodificado = encodeURIComponent(message);
+  const targetPhone = resolveTargetWhatsAppPhone(datos);
   
   if (preferNative || (typeof window !== 'undefined' && isMobileDevice())) {
-    return `whatsapp://send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${textoCodificado}`;
+    return `whatsapp://send?phone=${targetPhone}&text=${textoCodificado}`;
   }
-  return `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${textoCodificado}`;
+  return `https://api.whatsapp.com/send?phone=${targetPhone}&text=${textoCodificado}`;
 };
 
 export const buildWhatsAppNativeUrl = (datos: DatosComprobante): string => {
   const message = buildWhatsAppComprobanteMessage(datos);
-  return `whatsapp://send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${encodeURIComponent(message)}`;
+  const targetPhone = resolveTargetWhatsAppPhone(datos);
+  return `whatsapp://send?phone=${targetPhone}&text=${encodeURIComponent(message)}`;
 };
 
 export const buildWhatsAppWebUrl = (datos: DatosComprobante): string => {
   const message = buildWhatsAppComprobanteMessage(datos);
-  return `https://api.whatsapp.com/send?phone=${NUMERO_WHATSAPP_RECEPTOR}&text=${encodeURIComponent(message)}`;
+  const targetPhone = resolveTargetWhatsAppPhone(datos);
+  return `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(message)}`;
 };
 
 /**
@@ -272,7 +284,8 @@ export const buildWhatsAppWebUrl = (datos: DatosComprobante): string => {
  */
 export const enviarComprobanteAWhatsapp = (datos: DatosComprobante): string => {
   const message = buildWhatsAppComprobanteMessage(datos);
-  openWhatsAppChat(NUMERO_WHATSAPP_RECEPTOR, message);
+  const targetPhone = resolveTargetWhatsAppPhone(datos);
+  openWhatsAppChat(targetPhone, message);
   return buildWhatsAppComprobanteUrl(datos);
 };
 

@@ -74,7 +74,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ordersService.fetchEmpresasOnline().catch(() => {});
   }, []);
 
-  // Determinar la empresa activa (modo impersonación o login de empresa)
+  // Determinar la empresa activa (modo impersonación, login de empresa o parámetro URL para clientes)
+  const getUrlEmpresaCode = (): string | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get('empresa');
+      if (fromUrl) {
+        sessionStorage.setItem('incomi_client_company_code', fromUrl.trim());
+        return fromUrl.trim();
+      }
+      return sessionStorage.getItem('incomi_client_company_code');
+    } catch {
+      return null;
+    }
+  };
+
+  const urlEmpresaCode = getUrlEmpresaCode();
+  const matchedUrlEmpresa = urlEmpresaCode
+    ? (ordersService.getEmpresaByNumero(urlEmpresaCode) ||
+       ordersService.getEmpresaById(urlEmpresaCode) ||
+       ordersService.getEmpresas().find(e => e.nombre.toLowerCase() === urlEmpresaCode.toLowerCase()))
+    : null;
+
   const currentEmpresa: EmpresaAccount | null = impersonatedEmpresa || (
     effectiveRole === 'empresa' && currentUser
       ? (
@@ -96,7 +118,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 config: { ...DEFAULT_EMPRESA_CONFIG }
               })
         )
-      : null
+      : (matchedUrlEmpresa || null)
   );
 
   const empresaConfig: EmpresaConfig = currentEmpresa?.config || (effectiveRole === 'empresa' ? DEFAULT_EMPRESA_CONFIG : (ordersService.getEmpresas()[0]?.config || DEFAULT_EMPRESA_CONFIG));

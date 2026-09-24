@@ -647,19 +647,33 @@ export class TenantController {
           }
         }
 
-        // 2. Si aún no tenemos PIN o es '0808' default, buscar directamente en la BD Supabase
-        if (!individualPickupCode || individualPickupCode === '0808') {
+        // 2. Si aún no tenemos PIN, buscar directamente en la BD Supabase la clave registrada para este pedido
+        if (!individualPickupCode) {
           try {
-            const { data: dbOrder } = await supabaseAdmin
-              .from('pedidos')
-              .select('shalom_clave_recojo')
-              .or(`codigo_seguimiento.eq.${numbersOnly},codigo_seguimiento.eq.${rawCode},id.eq.${rawCode}`)
-              .limit(1)
-              .maybeSingle();
+            const rawId = String((order as any).pedidoId || (order as any).orderId || order.id || '').trim();
+            const fullTracking = String(order.trackingCode || '').trim();
+            const guiaNum = String(order.guideNumber || '').trim();
+            const orFilters: string[] = [];
 
-            if (dbOrder && dbOrder.shalom_clave_recojo) {
-              individualPickupCode = dbOrder.shalom_clave_recojo;
-              console.log(`[DELIVERY VOUCHER] ✓ Clave de recojo específica recuperada de BD para pedido #${numbersOnly}: "${individualPickupCode}"`);
+            if (rawId) orFilters.push(`id.eq.${rawId}`);
+            if (fullTracking) orFilters.push(`codigo_seguimiento.eq.${fullTracking}`);
+            if (rawCode) orFilters.push(`codigo_seguimiento.eq.${rawCode}`);
+            if (numbersOnly && numbersOnly.length >= 4) orFilters.push(`codigo_seguimiento.ilike.%${numbersOnly}%`);
+            if (guiaNum && guiaNum !== 'S/G' && !guiaNum.startsWith('SH-')) orFilters.push(`shalom_numero_guia.eq.${guiaNum}`);
+            if (clientDni && clientDni.length >= 6) orFilters.push(`destino_detalle.ilike.%${clientDni}%`);
+
+            if (orFilters.length > 0) {
+              const { data: dbOrder } = await supabaseAdmin
+                .from('pedidos')
+                .select('shalom_clave_recojo')
+                .or(orFilters.join(','))
+                .limit(1)
+                .maybeSingle();
+
+              if (dbOrder && dbOrder.shalom_clave_recojo) {
+                individualPickupCode = dbOrder.shalom_clave_recojo.trim();
+                console.log(`[DELIVERY VOUCHER] ✓ Clave de recojo específica recuperada de BD para pedido #${numbersOnly}: "${individualPickupCode}"`);
+              }
             }
           } catch (dbErr: any) {
             console.warn(`[DELIVERY VOUCHER DB PIN FETCH WARN]`, dbErr?.message);
@@ -667,7 +681,7 @@ export class TenantController {
         }
 
         if (!individualPickupCode) {
-          individualPickupCode = (request.body as any)?.pickupCode || '0909';
+          individualPickupCode = (request.body as any)?.pickupCode || '0808';
         }
 
         // 3. Armar el Mensaje Oficial Conciso para WhatsApp

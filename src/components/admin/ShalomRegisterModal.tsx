@@ -70,8 +70,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const [downloadingPdfIds, setDownloadingPdfIds] = useState<Record<string, boolean>>({});
   const [downloadingAll, setDownloadingAll] = useState(false);
 
-  // Clave de recojo temporal para Shalom (rotación diaria automática anti-errores)
-  const [pickupCode, setPickupCode] = useState(() => getDailyShalomPin());
+  // Clave de recojo para Shalom (prioriza la clave registrada en el pedido o 0808)
+  const registeredDefaultPin = pedidos.find(p => p.shalom_clave_recojo && p.shalom_clave_recojo.trim())?.shalom_clave_recojo?.trim() || '0808';
+  const [pickupCode, setPickupCode] = useState(() => registeredDefaultPin);
   const [pinYesterdayError, setPinYesterdayError] = useState<{ oldPin: string; newPin: string } | null>(null);
 
   // Modo tradicional Excel fallback
@@ -119,6 +120,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           dni: extractShalomDni(p) || '',
           phone: extractShalomPhone(p) || '',
           name: p.usuario?.nombre_completo || 'Cliente',
+          pickupCode: p.shalom_clave_recojo || undefined,
         };
       }
       setEditedData(initial);

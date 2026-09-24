@@ -115,15 +115,10 @@ export function getDailyShalomPin(): string {
         const nextIdx = (SAFE_SHALOM_PINS.indexOf(stored) + 1) % SAFE_SHALOM_PINS.length;
         return SAFE_SHALOM_PINS[nextIdx];
       }
-
-      // Proteger activamente contra 0808 si fue la clave usada ayer
-      if (defaultRotatingPin === '0808' || stored === '0808') {
-        return '0909';
-      }
     } catch {}
   }
 
-  return defaultRotatingPin === '0808' ? '0909' : defaultRotatingPin;
+  return defaultRotatingPin || '0808';
 }
 
 /**

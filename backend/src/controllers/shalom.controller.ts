@@ -296,9 +296,9 @@ export class ShalomController {
       const rawPhone = String(order.receiver?.phone || order.destinatario?.telefono || '999999999').replace(/\D/g, '');
       const phoneInt = parseInt(rawPhone.slice(-9), 10) || 900000000;
 
-      let pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '0909').trim().replace(/\D/g, '').slice(0, 4);
-      if (pickupCode.length !== 4 || pickupCode === '1234' || (Number(pickupCode) >= 2010 && Number(pickupCode) <= 2026) || pickupCode === '0808') {
-        pickupCode = '0909';
+      let pickupCode = String(order.pickup_code || order.pickupCode || order.clave_recojo || order.pickup_code_custom || '0808').trim().replace(/\D/g, '').slice(0, 4);
+      if (pickupCode.length !== 4 || pickupCode === '1234' || (Number(pickupCode) >= 2010 && Number(pickupCode) <= 2026)) {
+        pickupCode = '0808';
       }
 
       const orderToCreate = {
@@ -631,8 +631,32 @@ export class ShalomController {
       }
 
       const clientCleanDni = getOrderReceiverDni(matchedOrder) || targetDni || 'DNI';
-      const realPickupCode = String(matchedOrder.pickup_code || matchedOrder.request?.pickup_code || '').trim();
       const fullGuia = `${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}`;
+
+      let realPickupCode = String(
+        matchedOrder.pickup_code || 
+        matchedOrder.request?.pickup_code || 
+        matchedOrder.data?.pickup_code || 
+        matchedOrder.order?.pickup_code || 
+        ''
+      ).trim();
+
+      // Si Shalom Pro no devolvió la clave en el payload, buscar en Supabase la clave registrada para este pedido
+      if (!realPickupCode) {
+        try {
+          const { data: dbOrder } = await supabaseAdmin
+            .from('pedidos')
+            .select('shalom_clave_recojo')
+            .or(`shalom_ose_id.eq.${matchedOrder.id},shalom_numero_guia.eq.${fullGuia}${clientCleanDni && clientCleanDni !== 'DNI' ? `,destino_detalle.ilike.%${clientCleanDni}%` : ''}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (dbOrder && dbOrder.shalom_clave_recojo) {
+            realPickupCode = dbOrder.shalom_clave_recojo.trim();
+          }
+        } catch {}
+      }
+
       const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
       const filename = `Ticket_Oficial_Shalom_${matchedOrder.serie || 'V204'}_${matchedOrder.guia || matchedOrder.id}_${clientCleanDni}.pdf`;
 
@@ -1075,8 +1099,30 @@ export class ShalomController {
       if (docRes.data && docRes.data.length > 100) {
         const clientCleanDni = matchedOrderDni || targetDni || 'DNI';
         const filename = `${filePrefix}_${matchedOrder.serie || 'V204'}_${matchedOrder.guia || matchedOrder.id}_${clientCleanDni}.pdf`;
-        const realPickupCode = String(matchedOrder.pickup_code || matchedOrder.request?.pickup_code || '').trim();
         const fullGuia = `${matchedOrder.serie || 'V204'}-${matchedOrder.guia || matchedOrder.id}`;
+        let realPickupCode = String(
+          matchedOrder.pickup_code || 
+          matchedOrder.request?.pickup_code || 
+          matchedOrder.data?.pickup_code || 
+          matchedOrder.order?.pickup_code || 
+          ''
+        ).trim();
+
+        // Si Shalom Pro no devolvió la clave en el payload, buscar en Supabase la clave registrada para este pedido
+        if (!realPickupCode) {
+          try {
+            const { data: dbOrder } = await supabaseAdmin
+              .from('pedidos')
+              .select('shalom_clave_recojo')
+              .or(`shalom_ose_id.eq.${matchedOrder.id},shalom_numero_guia.eq.${fullGuia}${clientCleanDni && clientCleanDni !== 'DNI' ? `,destino_detalle.ilike.%${clientCleanDni}%` : ''}`)
+              .limit(1)
+              .maybeSingle();
+
+            if (dbOrder && dbOrder.shalom_clave_recojo) {
+              realPickupCode = dbOrder.shalom_clave_recojo.trim();
+            }
+          } catch {}
+        }
         const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
 
         const headersToSet: Record<string, string> = {

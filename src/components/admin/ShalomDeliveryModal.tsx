@@ -79,7 +79,10 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const [overallSuccess, setOverallSuccess] = useState(false);
   const [currentStepText, setCurrentStepText] = useState('');
   const [searchingId, setSearchingId] = useState<string | null>(null);
-  const [pickupCode, setPickupCode] = useState(() => getDailyShalomPin());
+  const registeredPin = orders.find(o => o.shalom_clave_recojo && o.shalom_clave_recojo.trim())?.shalom_clave_recojo?.trim()
+    || (orders[0] as any)?.clave_recojo
+    || '0808';
+  const [pickupCode, setPickupCode] = useState<string>(() => registeredPin);
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
@@ -146,6 +149,9 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const handleMeta = (meta: { pickupCode?: string; guia?: string; oseId?: string }) => {
         if (meta.pickupCode) {
           item.pickupCode = meta.pickupCode;
+          if (orders.length === 1 || !pickupCode) {
+            setPickupCode(meta.pickupCode);
+          }
         }
         if (meta.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-')) {
           item.guideNumber = meta.guia;
@@ -214,6 +220,11 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     auditedRef.current = true;
     cancelledAuditRef.current = false;
 
+    const initialFoundPin = orders.find(o => o.shalom_clave_recojo && o.shalom_clave_recojo.trim())?.shalom_clave_recojo?.trim()
+      || (orders[0] as any)?.clave_recojo
+      || '0808';
+    setPickupCode(initialFoundPin);
+
     const initial: DeliveryOrderProgress[] = orders.map((o) => {
       const clientName = o.usuario?.nombre_completo || (o as any).nombre_cliente || 'Clienta';
       const cleanPhone = extractShalomPhone(o) || (o.usuario?.telefono_default || (o as any).telefono_contacto || (o.usuario as any)?.telefono || '').replace(/[^0-9]/g, '');
@@ -228,7 +239,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const isRealShalomGuide = Boolean(o.shalom_numero_guia && o.shalom_numero_guia !== 'S/G' && !o.shalom_numero_guia.startsWith('SH-'));
       const guideNumber = isRealShalomGuide ? o.shalom_numero_guia! : (o.codigo_seguimiento || 'S/G');
       const manualGuideInput = isRealShalomGuide ? o.shalom_numero_guia! : '';
-      const orderPickupCode = o.shalom_clave_recojo || (o as any).clave_recojo || formatShalomPin(pickupCode);
+      const orderPickupCode = o.shalom_clave_recojo || (o as any).clave_recojo || initialFoundPin;
       
       const cleanDni = dni.replace(/\D/g, '').trim();
       const hasIdent = Boolean(cleanDni.length >= 6 || o.codigo_seguimiento || o.shalom_numero_guia || o.shalom_ose_id);
@@ -376,6 +387,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
     const updatedList = [...progressList];
     const payloadForWhatsApp: Array<{
+      orderId?: string;
+      pedidoId?: string;
       phone: string;
       customerName: string;
       dni: string;
@@ -398,10 +411,12 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const itemPickupCode = item.pickupCode || pickupCode;
 
       payloadForWhatsApp.push({
+        orderId: item.orderId,
+        pedidoId: item.orderId,
         phone: item.phone,
         customerName: item.customerName,
         dni: item.dni,
-        trackingCode: numbersOnly,
+        trackingCode: item.trackingCode || numbersOnly || '',
         guideNumber: item.manualGuideInput || item.guideNumber || item.trackingCode || '',
         agencyName: item.agencyName || 'Agencia Shalom',
         orderCode: numbersOnly,
@@ -562,8 +577,12 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                   type="text"
                   maxLength={4}
                   value={pickupCode}
-                  onChange={(e) => setPickupCode(formatShalomPin(e.target.value))}
-                  placeholder={pickupCode || '0909'}
+                  onChange={(e) => {
+                    const val = formatShalomPin(e.target.value);
+                    setPickupCode(val);
+                    setProgressList(prev => prev.map(p => ({ ...p, pickupCode: val })));
+                  }}
+                  placeholder={pickupCode || '0808'}
                   className={`w-20 px-2.5 py-1.5 rounded-xl bg-slate-950 border font-mono font-bold text-center text-sm focus:outline-none transition-all shadow-inner ${
                     validateShalomPin(pickupCode).isValid
                       ? 'border-amber-500/50 text-amber-300 focus:border-amber-400 focus:ring-1 focus:ring-amber-400'

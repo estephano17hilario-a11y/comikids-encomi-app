@@ -112,6 +112,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     activo: true,
     orden: 1,
     es_sistema: true,
+    color_borde: '#ef4444',
     campos_personalizados: [
       {
         id: 'c-shalom-dni',
@@ -153,6 +154,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     activo: true,
     orden: 2,
     es_sistema: false,
+    color_borde: '#3b82f6',
     campos_personalizados: [
       {
         id: 'c-mot-nombre',
@@ -224,6 +226,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     activo: true,
     orden: 3,
     es_sistema: true,
+    color_borde: '#f59e0b',
     campos_personalizados: [
       {
         id: 'c-olva-dni',
@@ -1365,6 +1368,23 @@ class OrdersService {
       }
 
       olva.campos_personalizados = mergedFields;
+    }
+
+    // 3. REQUERIMIENTO: Asegurar colores de borde oficiales (Shalom -> Rojo, Motorizado -> Azul, Olva -> Amarillo)
+    const shalomItem = list.find(m => m.codigo === 'shalom' || m.id === 'met-shalom');
+    if (shalomItem && !shalomItem.color_borde) {
+      shalomItem.color_borde = '#ef4444';
+      modified = true;
+    }
+    const motorizadoItem = list.find(m => m.codigo === 'motorizado' || m.id === 'met-motorizado');
+    if (motorizadoItem && !motorizadoItem.color_borde) {
+      motorizadoItem.color_borde = '#3b82f6';
+      modified = true;
+    }
+    const olvaItem = list.find(m => m.codigo === 'olva' || m.id === 'met-olva');
+    if (olvaItem && !olvaItem.color_borde) {
+      olvaItem.color_borde = '#f59e0b';
+      modified = true;
     }
 
     if (modified) {

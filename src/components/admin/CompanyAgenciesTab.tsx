@@ -135,6 +135,7 @@ export const CompanyAgenciesTab: React.FC = () => {
   const [descripcionMetodo, setDescripcionMetodo] = useState('');
   const [iconoMetodo, setIconoMetodo] = useState('Truck');
   const [fotoUrlMetodo, setFotoUrlMetodo] = useState('');
+  const [colorBordeMetodo, setColorBordeMetodo] = useState<string>('#06b6d4');
   const [camposList, setCamposList] = useState<CampoPersonalizadoAgencia[]>([]);
   const [mensajeComprobacion, setMensajeComprobacion] = useState('');
   const [mensajeInicioComprobante, setMensajeInicioComprobante] = useState('');
@@ -262,6 +263,8 @@ export const CompanyAgenciesTab: React.FC = () => {
     setIconoMetodo(m.icono || 'Truck');
     setFotoUrlMetodo(m.foto_url || '');
     setCamposList(m.campos_personalizados || []);
+    const defaultColor = m.codigo === 'shalom' ? '#ef4444' : m.codigo === 'motorizado' ? '#3b82f6' : m.codigo === 'olva' ? '#f59e0b' : '#06b6d4';
+    setColorBordeMetodo(m.color_borde || defaultColor);
 
     // Mensaje WhatsApp / Comprobante
     const parsed = parsearMensajeComprobante(m.mensaje_comprobacion, m.nombre);
@@ -354,6 +357,7 @@ export const CompanyAgenciesTab: React.FC = () => {
         descripcion: descripcionMetodo.trim(),
         icono: iconoMetodo,
         foto_url: fotoUrlMetodo.trim() || undefined,
+        color_borde: colorBordeMetodo,
         campos_personalizados: camposList,
         mensaje_comprobacion: finalComprobante,
         mensaje_inicio_comprobante: mensajeInicioComprobante.trim() || undefined,
@@ -437,6 +441,7 @@ export const CompanyAgenciesTab: React.FC = () => {
         icono: iconoMetodo,
         foto_url: fotoUrlMetodo.trim() || undefined,
         tipo_formulario: 'personalizado',
+        color_borde: colorBordeMetodo,
         activo: true,
         orden: methods.length + 1,
         es_sistema: false,
@@ -810,6 +815,7 @@ export const CompanyAgenciesTab: React.FC = () => {
               setDescripcionMetodo('');
               setIconoMetodo('Truck');
               setFotoUrlMetodo('');
+              setColorBordeMetodo('#06b6d4');
               setShowCreateModal(true);
             }}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-950/40 transition-all active:scale-95 cursor-pointer"
@@ -841,13 +847,18 @@ export const CompanyAgenciesTab: React.FC = () => {
           const totalCampos = m.campos_personalizados?.length || 0;
           const totalRotulado = m.campos_personalizados?.filter(c => c.mostrar_en_rotulado)?.length || 0;
           const daysSummary = getAgencyDaysSummary(m);
+          const agencyColor = m.color_borde || (m.codigo === 'shalom' ? '#ef4444' : m.codigo === 'motorizado' ? '#3b82f6' : m.codigo === 'olva' ? '#f59e0b' : '#06b6d4');
 
           return (
             <div
               key={m.id}
-              className={`p-5 rounded-3xl border transition-all space-y-4 relative flex flex-col justify-between ${
+              style={{
+                borderColor: m.activo ? agencyColor : undefined,
+                boxShadow: m.activo ? `0 0 16px ${agencyColor}25` : undefined,
+              }}
+              className={`p-5 rounded-3xl border-2 transition-all space-y-4 relative flex flex-col justify-between ${
                 m.activo
-                  ? 'bg-slate-900/80 border-white/10 hover:border-cyan-500/50 shadow-lg'
+                  ? 'bg-slate-900/80 shadow-lg hover:brightness-105'
                   : 'bg-slate-950/80 border-white/5 opacity-60'
               }`}
             >
@@ -869,9 +880,16 @@ export const CompanyAgenciesTab: React.FC = () => {
                       )}
                     </div>
                     <div>
-                      <h3 className="font-black text-white text-base leading-tight">
-                        {m.nombre}
-                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-xs"
+                          style={{ backgroundColor: agencyColor }}
+                          title={`Color de borde: ${agencyColor}`}
+                        />
+                        <h3 className="font-black text-white text-base leading-tight">
+                          {m.nombre}
+                        </h3>
+                      </div>
                       <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
                         {m.descripcion || 'Sin descripción'}
                       </p>
@@ -1190,6 +1208,58 @@ export const CompanyAgenciesTab: React.FC = () => {
                         className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400"
                       />
                     </div>
+                  </div>
+
+                  {/* Selector de Color Identificador de la Agencia */}
+                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2.5">
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <span className="w-3.5 h-3.5 rounded-full inline-block border border-white/40 shadow-xs" style={{ backgroundColor: colorBordeMetodo }} />
+                        <span>Color de Borde del Paquete e Identificación</span>
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-md font-black" style={{ backgroundColor: `${colorBordeMetodo}25`, color: colorBordeMetodo }}>
+                        {colorBordeMetodo}
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-3 pt-1">
+                      <div className="flex items-center gap-2 flex-wrap flex-1">
+                        {[
+                          { name: 'Rojo Shalom', hex: '#ef4444' },
+                          { name: 'Azul Motorizado', hex: '#3b82f6' },
+                          { name: 'Amarillo Olva', hex: '#f59e0b' },
+                          { name: 'Esmeralda', hex: '#10b981' },
+                          { name: 'Cian Neón', hex: '#06b6d4' },
+                          { name: 'Morado Space', hex: '#a855f7' },
+                          { name: 'Rosa Vibrante', hex: '#ec4899' },
+                          { name: 'Naranja Glow', hex: '#f97316' },
+                        ].map(preset => (
+                          <button
+                            key={preset.hex}
+                            type="button"
+                            onClick={() => setColorBordeMetodo(preset.hex)}
+                            className={`w-7 h-7 rounded-full border-2 transition-all cursor-pointer ${
+                              colorBordeMetodo.toLowerCase() === preset.hex.toLowerCase()
+                                ? 'scale-125 border-white ring-2 ring-cyan-400 shadow-md shadow-white/20'
+                                : 'border-white/20 hover:scale-110 opacity-70 hover:opacity-100'
+                            }`}
+                            style={{ backgroundColor: preset.hex }}
+                            title={preset.name}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0 pl-3 border-l border-white/10">
+                        <input
+                          type="color"
+                          value={colorBordeMetodo}
+                          onChange={e => setColorBordeMetodo(e.target.value)}
+                          className="w-8 h-8 rounded-xl border border-white/20 bg-transparent cursor-pointer p-0.5"
+                          title="Elegir color personalizado"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10.5px] text-slate-400 leading-tight">
+                      Los pedidos asignados a esta agencia mostrarán este color en su borde exterior con nitidez en el Gestor de Envíos y Tablero Kanban.
+                    </p>
                   </div>
                 </div>
               )}
@@ -3075,6 +3145,55 @@ Agencia Central Av. Arequipa 1420 - Lima${
                   >
                     <Upload className="w-4 h-4" />
                   </button>
+                </div>
+              </div>
+
+              {/* Selector de Color Identificador de la Agencia */}
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full inline-block border border-white/40 shadow-xs" style={{ backgroundColor: colorBordeMetodo }} />
+                    <span>Color de Borde del Paquete *</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md font-black" style={{ backgroundColor: `${colorBordeMetodo}25`, color: colorBordeMetodo }}>
+                    {colorBordeMetodo}
+                  </span>
+                </label>
+                <div className="flex items-center gap-2.5 pt-0.5">
+                  <div className="flex items-center gap-2 flex-wrap flex-1">
+                    {[
+                      { name: 'Rojo Shalom', hex: '#ef4444' },
+                      { name: 'Azul Motorizado', hex: '#3b82f6' },
+                      { name: 'Amarillo Olva', hex: '#f59e0b' },
+                      { name: 'Esmeralda', hex: '#10b981' },
+                      { name: 'Cian Neón', hex: '#06b6d4' },
+                      { name: 'Morado Space', hex: '#a855f7' },
+                      { name: 'Rosa Vibrante', hex: '#ec4899' },
+                      { name: 'Naranja Glow', hex: '#f97316' },
+                    ].map(preset => (
+                      <button
+                        key={preset.hex}
+                        type="button"
+                        onClick={() => setColorBordeMetodo(preset.hex)}
+                        className={`w-7 h-7 rounded-full border-2 transition-all cursor-pointer ${
+                          colorBordeMetodo.toLowerCase() === preset.hex.toLowerCase()
+                            ? 'scale-125 border-white ring-2 ring-cyan-400 shadow-md shadow-white/20'
+                            : 'border-white/20 hover:scale-110 opacity-70 hover:opacity-100'
+                        }`}
+                        style={{ backgroundColor: preset.hex }}
+                        title={preset.name}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 pl-2.5 border-l border-white/10">
+                    <input
+                      type="color"
+                      value={colorBordeMetodo}
+                      onChange={e => setColorBordeMetodo(e.target.value)}
+                      className="w-8 h-8 rounded-xl border border-white/20 bg-transparent cursor-pointer p-0.5"
+                      title="Elegir color personalizado"
+                    />
+                  </div>
                 </div>
               </div>
 

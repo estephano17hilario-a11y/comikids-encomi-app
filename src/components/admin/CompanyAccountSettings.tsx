@@ -120,6 +120,20 @@ export const CompanyAccountSettings: React.FC = () => {
   const [qrLoading, setQrLoading] = useState(false);
   const [qrSuccessMsg, setQrSuccessMsg] = useState('');
 
+  const isFloatingModalOpen = Boolean(activeModal);
+
+  // Sincronizar body con has-active-modal para ocultar el selector de secciones (dock flotante) al abrir la ventana flotante
+  useEffect(() => {
+    if (isFloatingModalOpen || showChangePasswordModal || showQrModal) {
+      document.body.classList.add('has-active-modal');
+    } else {
+      document.body.classList.remove('has-active-modal');
+    }
+    return () => {
+      document.body.classList.remove('has-active-modal');
+    };
+  }, [isFloatingModalOpen, showChangePasswordModal, showQrModal]);
+
   const verifyLivePhoneStatus = async (silent = false) => {
     if (!silent) setIsVerifyingPhone(true);
     try {
@@ -491,59 +505,61 @@ export const CompanyAccountSettings: React.FC = () => {
       {/* =========================================================================
           TOP BANNER: INDICADOR PRÓXIMO PAGO & SELECTOR DE PESTAÑA PRINCIPAL
           ========================================================================= */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-3xl bg-slate-950/40 border border-white/10 backdrop-blur-2xl shadow-2xl">
-        
-        {/* Switch Principal: Personalizar Empresa vs Cuenta & Seguridad */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-950/60 rounded-2xl border border-white/5 shrink-0">
-          <button
-            type="button"
-            onClick={() => setMainTab('empresa')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 transition-all cursor-pointer ${
-              mainTab === 'empresa'
-                ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/25 scale-[1.02]'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Personalizar Empresa</span>
-          </button>
+      {!isFloatingModalOpen && (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-3xl bg-slate-950/40 border border-white/10 backdrop-blur-2xl shadow-2xl">
+          
+          {/* Switch Principal: Personalizar Empresa vs Cuenta & Seguridad */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-950/60 rounded-2xl border border-white/5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setMainTab('empresa')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 transition-all cursor-pointer ${
+                mainTab === 'empresa'
+                  ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/25 scale-[1.02]'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Personalizar Empresa</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setMainTab('cuenta')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 transition-all cursor-pointer ${
-              mainTab === 'cuenta'
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25 scale-[1.02]'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Cuenta & Seguridad</span>
-          </button>
-        </div>
-
-        {/* Indicador Superior de Próximo Pago */}
-        <div className="flex items-center justify-between sm:justify-end gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-950/50 border border-emerald-500/30 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <div className="text-left leading-tight">
-              <span className="text-[10px] uppercase font-black tracking-widest text-emerald-400 block">
-                🗓️ Próximo Pago
-              </span>
-              <strong className="text-xs font-bold text-white tracking-tight">
-                {proximoPagoDisplay}
-              </strong>
-            </div>
+            <button
+              type="button"
+              onClick={() => setMainTab('cuenta')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 transition-all cursor-pointer ${
+                mainTab === 'cuenta'
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25 scale-[1.02]'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Cuenta & Seguridad</span>
+            </button>
           </div>
-          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-            {planDisplay}
-          </span>
-        </div>
 
-      </div>
+          {/* Indicador Superior de Próximo Pago */}
+          <div className="flex items-center justify-between sm:justify-end gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-950/50 border border-emerald-500/30 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <div className="text-left leading-tight">
+                <span className="text-[10px] uppercase font-black tracking-widest text-emerald-400 block">
+                  🗓️ Próximo Pago
+                </span>
+                <strong className="text-xs font-bold text-white tracking-tight">
+                  {proximoPagoDisplay}
+                </strong>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+              {planDisplay}
+            </span>
+          </div>
+
+        </div>
+      )}
 
       {/* =========================================================================
           PESTAÑA 1: PERSONALIZAR EMPRESA (HUD MODULAR FLOTANTE)
@@ -552,7 +568,9 @@ export const CompanyAccountSettings: React.FC = () => {
         <div className="space-y-6 animate-fadeIn">
           
           {/* 🎮 HUD DE JUGADOR (CON OPACIDAD 40% Y MODALES FLOTANTES EN EL MEDIO) */}
-          <div className="glass-panel p-4 sm:p-6 rounded-3xl border border-cyan-500/30 bg-slate-950/40 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
+          {!isFloatingModalOpen && (
+            <>
+              <div className="glass-panel p-4 sm:p-6 rounded-3xl border border-cyan-500/30 bg-slate-950/40 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
             
             {/* Top Row: Avatar + Nombre Clickable (Abre Ventana Flotante) + Recuadro de Link Distintivo */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pb-5 border-b border-white/10 items-center">
@@ -849,6 +867,8 @@ export const CompanyAccountSettings: React.FC = () => {
               </span>
             </div>
           </div>
+            </>
+          )}
 
           {/* =========================================================================
               VENTANAS FLOTANTES EN EL MEDIO DE LA PANTALLA (MODALES MODULARES)

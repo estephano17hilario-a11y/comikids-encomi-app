@@ -61,6 +61,7 @@ export const getCleanClientPhone = (order: Pedido): string => {
 export const OrdersSmartManager: React.FC = () => {
   const {
     pedidos,
+    shippingMethods,
     tallerConfig,
     updateMultipleEstados,
     deleteMultiplePedidos,
@@ -404,18 +405,51 @@ export const OrdersSmartManager: React.FC = () => {
     const isDuplicateOrSimultaneous = Boolean(dupInfo && dupInfo.count >= 2);
     const isReadyForPickup = order.estado_envio === 'listo_para_recojo';
 
+    // Detección de agencia y color identificador oficial
+    const isOlva = order.metodo_envio_codigo === 'olva' || order.destino_detalle?.toLowerCase().includes('olva');
+    const isShalom = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');
+    const isMotorizado = order.metodo_envio_codigo === 'motorizado' || order.destino_detalle?.toLowerCase().includes('motorizado');
+
+    const matchedMethod = (shippingMethods || []).find(m =>
+      m.codigo === order.metodo_envio_codigo ||
+      m.id === order.metodo_envio_codigo ||
+      (order.metodo_envio_nombre && m.nombre.toLowerCase() === order.metodo_envio_nombre.toLowerCase())
+    );
+
+    let agencyColor = matchedMethod?.color_borde;
+    if (!agencyColor) {
+      if (isShalom) agencyColor = '#ef4444'; // Rojo vivo oficial Shalom
+      else if (isMotorizado) agencyColor = '#3b82f6'; // Azul vivo oficial Motorizado
+      else if (isOlva) agencyColor = '#f59e0b'; // Amarillo / Ámbar oficial Olva
+      else agencyColor = '#06b6d4'; // Cian por defecto
+    }
+
+    const agencyBadgeLabel = isShalom
+      ? '📦 Shalom'
+      : isMotorizado
+      ? '🛵 Motorizado'
+      : isOlva
+      ? '🏢 Olva'
+      : (matchedMethod?.nombre || order.metodo_envio_nombre || 'Agencia');
+
     return (
       <div
         key={order.id}
         onClick={() => toggleSelect(order.id)}
-        className={`p-4 sm:p-5 rounded-3xl border transition-all space-y-3 cursor-pointer select-none relative backdrop-blur-xl ${
+        style={{
+          borderColor: isSelected ? '#22d3ee' : agencyColor,
+          boxShadow: isSelected
+            ? '0 0 25px rgba(34, 211, 238, 0.35)'
+            : `0 0 16px ${agencyColor}28`,
+        }}
+        className={`p-4 sm:p-5 rounded-3xl border-2 transition-all space-y-3 cursor-pointer select-none relative backdrop-blur-xl ${
           isSelected
-            ? 'bg-cyan-950/40 border-cyan-400/80 shadow-lg shadow-cyan-500/10'
+            ? 'bg-cyan-950/40 ring-2 ring-cyan-400'
             : isReadyForPickup
-            ? 'bg-linear-to-b from-teal-950/40 via-slate-900/40 to-slate-950/40 border-teal-500/50 hover:border-teal-400 shadow-md shadow-teal-500/10'
+            ? 'bg-gradient-to-b from-teal-950/40 via-slate-900/40 to-slate-950/40 hover:brightness-110'
             : isDuplicateOrSimultaneous
-            ? 'bg-slate-950/40 border-amber-500/50 hover:border-amber-400 shadow-md shadow-amber-500/5'
-            : 'bg-slate-950/40 border-white/10 hover:border-white/20 hover:bg-slate-900/40 shadow-md'
+            ? 'bg-slate-950/40 hover:brightness-110'
+            : 'bg-slate-950/40 hover:bg-slate-900/40 hover:brightness-110'
         }`}
       >
         
@@ -440,21 +474,16 @@ export const OrdersSmartManager: React.FC = () => {
             </span>
           </div>
 
-          {(() => {
-            const isOlva = order.metodo_envio_codigo === 'olva' || order.destino_detalle?.toLowerCase().includes('olva');
-            const isShalom = order.metodo_envio_codigo === 'shalom' || order.destino_detalle?.toLowerCase().includes('shalom');
-            return (
-              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                isOlva
-                  ? 'bg-yellow-400/20 text-yellow-300 border border-yellow-400/30'
-                  : isShalom
-                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                  : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-              }`}>
-                {isOlva ? '🏢 Olva' : isShalom ? '📦 Shalom' : '🛵 Motorizado'}
-              </span>
-            );
-          })()}
+          <span
+            className="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 border shadow-xs"
+            style={{
+              backgroundColor: `${agencyColor}22`,
+              borderColor: `${agencyColor}60`,
+              color: agencyColor === '#ffffff' ? '#ffffff' : agencyColor,
+            }}
+          >
+            {agencyBadgeLabel}
+          </span>
         </div>
 
         {/* Insignia de Pedido Duplicado / Simultáneo */}
@@ -1093,21 +1122,21 @@ export const OrdersSmartManager: React.FC = () => {
             </button>
             <button
               onClick={() => setTransportFilter('shalom')}
-              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'shalom' ? 'bg-rose-500/25 border border-rose-500/40 text-rose-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'shalom' ? 'bg-red-500/25 border border-red-500/50 text-red-300 font-black shadow-md shadow-red-500/20' : 'text-slate-400 hover:text-white'}`}
             >
               <span>📦</span>
               <span>Shalom ({counts.shalom})</span>
             </button>
             <button
               onClick={() => setTransportFilter('olva')}
-              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'olva' ? 'bg-yellow-500/25 border border-yellow-500/40 text-yellow-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'olva' ? 'bg-yellow-500/25 border border-yellow-500/40 text-yellow-300 font-black shadow-md shadow-yellow-500/20' : 'text-slate-400 hover:text-white'}`}
             >
               <span>🏢</span>
               <span>Olva ({counts.olva})</span>
             </button>
             <button
               onClick={() => setTransportFilter('motorizado')}
-              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'motorizado' ? 'bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-black shadow-md' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 px-2 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${transportFilter === 'motorizado' ? 'bg-blue-500/25 border border-blue-500/50 text-blue-300 font-black shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white'}`}
             >
               <span>🛵</span>
               <span>Motorizado ({counts.motorizado})</span>

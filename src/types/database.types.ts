@@ -201,6 +201,7 @@ export interface MetodoEnvio {
   mensaje_fin_comprobante?: string; // Mensaje/despedida final editable (fácil configuración)
   disponibilidad?: DisponibilidadAgencia; // Configuración inteligente de días y fechas
   config_rotulado?: ConfigRotuladoAgencia;
+  color_borde?: string; // Color personalizado de borde/etiqueta para los pedidos de esta agencia (hex, ej: '#ef4444')
 }
 
 export interface Pedido {

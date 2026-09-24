@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export const KanbanBoard: React.FC = () => {
-  const { pedidos, tallerConfig, updateEstadoProduccion, updateEstadoEnvio } = useOrders();
+  const { pedidos, shippingMethods, tallerConfig, updateEstadoProduccion, updateEstadoEnvio } = useOrders();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedShalomOrder, setSelectedShalomOrder] = useState<Pedido | null>(null);
   const [deliveryShalomOrders, setDeliveryShalomOrders] = useState<Pedido[] | null>(null);
@@ -63,12 +63,40 @@ export const KanbanBoard: React.FC = () => {
 
   const renderOrderCard = (pedido: Pedido) => {
     const action = getActionBtn(pedido);
-    const isShalom = pedido.metodo_envio_codigo === 'shalom';
+    const isShalom = pedido.metodo_envio_codigo === 'shalom' || pedido.destino_detalle?.toLowerCase().includes('shalom');
+    const isMotorizado = pedido.metodo_envio_codigo === 'motorizado' || pedido.destino_detalle?.toLowerCase().includes('motorizado');
+    const isOlva = pedido.metodo_envio_codigo === 'olva' || pedido.destino_detalle?.toLowerCase().includes('olva');
+
+    const matchedMethod = (shippingMethods || []).find(m =>
+      m.codigo === pedido.metodo_envio_codigo ||
+      m.id === pedido.metodo_envio_codigo ||
+      (pedido.metodo_envio_nombre && m.nombre.toLowerCase() === pedido.metodo_envio_nombre.toLowerCase())
+    );
+
+    let agencyColor = matchedMethod?.color_borde;
+    if (!agencyColor) {
+      if (isShalom) agencyColor = '#ef4444';
+      else if (isMotorizado) agencyColor = '#3b82f6';
+      else if (isOlva) agencyColor = '#f59e0b';
+      else agencyColor = '#06b6d4';
+    }
+
+    const badgeLabel = isShalom
+      ? '📦 Shalom'
+      : isMotorizado
+      ? '🛵 Motorizado'
+      : isOlva
+      ? '🏢 Olva'
+      : (matchedMethod?.nombre || pedido.metodo_envio_nombre || 'Agencia');
 
     return (
       <div
         key={pedido.id}
-        className="minimal-card p-5 space-y-4 hover:border-cyan-500/40 transition-all shadow-lg"
+        style={{
+          borderColor: agencyColor,
+          boxShadow: `0 0 16px ${agencyColor}25`,
+        }}
+        className="minimal-card p-5 space-y-4 border-2 transition-all shadow-lg backdrop-blur-xl"
       >
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -76,8 +104,15 @@ export const KanbanBoard: React.FC = () => {
               <span className="font-mono text-sm font-black text-cyan-400">
                 #{pedido.codigo_seguimiento}
               </span>
-              <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-white/[0.06] text-slate-200 border border-white/10">
-                {pedido.metodo_envio_nombre}
+              <span
+                className="px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase border"
+                style={{
+                  backgroundColor: `${agencyColor}22`,
+                  borderColor: `${agencyColor}60`,
+                  color: agencyColor === '#ffffff' ? '#ffffff' : agencyColor,
+                }}
+              >
+                {badgeLabel}
               </span>
             </div>
             <h4 className="text-base font-black text-white mt-1.5">

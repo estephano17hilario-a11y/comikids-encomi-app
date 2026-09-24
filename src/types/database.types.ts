@@ -45,6 +45,9 @@ export interface EmpresaAccount {
   sub_instance?: string;
   logo_url?: string;
   tema_fondo?: string;
+  proximo_pago?: string; // Fecha de próximo pago o vencimiento (ej. "28/10/2026")
+  plan_suscripcion?: string; // Ej: "Plan Pro Unlimited 2026"
+  estado_pago?: 'al_dia' | 'por_vencer' | 'vencido';
   created_at: string;
   ultimo_acceso?: string;
   total_ingresos: number;
@@ -97,10 +100,12 @@ export interface HorarioDia {
 }
 
 export interface DisponibilidadAgencia {
+  modo_horario?: 'predeterminado' | 'personalizado'; // 'predeterminado' usa el horario de la empresa, 'personalizado' día x día
   dias_semana?: DiaSemana[]; // Días específicos de la semana habilitados para despacho
   modalidad_horario?: 'uno_para_todos' | 'individual_por_dia';
   horario_global?: HorarioDia;
   horarios_por_dia?: Partial<Record<DiaSemana, HorarioDia>>;
+  mensajes_por_dia?: Partial<Record<DiaSemana, string>>;
   usar_rango_fechas?: boolean; // Mantenido opcional por compatibilidad
   fecha_inicio?: string; // YYYY-MM-DD
   fecha_fin?: string; // YYYY-MM-DD

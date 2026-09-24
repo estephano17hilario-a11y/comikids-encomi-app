@@ -33,7 +33,8 @@ import {
   CheckSquare,
   Share2,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  Calendar
 } from 'lucide-react';
 
 export const MatrixPortal: React.FC = () => {
@@ -75,6 +76,8 @@ export const MatrixPortal: React.FC = () => {
   const [formNumero, setFormNumero] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formTelefono, setFormTelefono] = useState('');
+  const [formProximoPago, setFormProximoPago] = useState('28/10/2026');
+  const [formPlan, setFormPlan] = useState('Plan Pro Empresa 2026');
   const [formActivo, setFormActivo] = useState(true);
   const [formError, setFormError] = useState('');
 
@@ -150,6 +153,8 @@ export const MatrixPortal: React.FC = () => {
     setFormNumero('');
     setFormPassword('');
     setFormTelefono('');
+    setFormProximoPago('28/10/2026');
+    setFormPlan('Plan Pro Empresa 2026');
     setFormActivo(true);
     setFormError('');
     setShowCreateModal(true);
@@ -161,6 +166,8 @@ export const MatrixPortal: React.FC = () => {
     setFormNumero(emp.numero_entrada);
     setFormPassword(emp.password_hash);
     setFormTelefono(emp.telefono_contacto || '');
+    setFormProximoPago(emp.proximo_pago || '28/10/2026');
+    setFormPlan(emp.plan_suscripcion || 'Plan Pro Empresa 2026');
     setFormActivo(emp.activo);
     setFormError('');
     setShowCreateModal(true);
@@ -178,6 +185,8 @@ export const MatrixPortal: React.FC = () => {
           numero_entrada: formNumero.trim(),
           password_hash: formPassword.trim(),
           telefono_contacto: formTelefono.trim() || undefined,
+          proximo_pago: formProximoPago.trim() || '28/10/2026',
+          plan_suscripcion: formPlan.trim() || 'Plan Pro Empresa 2026',
           activo: formActivo
         });
       } else {
@@ -186,6 +195,8 @@ export const MatrixPortal: React.FC = () => {
           numero_entrada: formNumero.trim(),
           password_hash: formPassword.trim(),
           telefono_contacto: formTelefono.trim() || undefined,
+          proximo_pago: formProximoPago.trim() || '28/10/2026',
+          plan_suscripcion: formPlan.trim() || 'Plan Pro Empresa 2026',
           activo: formActivo
         });
       }
@@ -754,6 +765,38 @@ export const MatrixPortal: React.FC = () => {
                   placeholder="Ej. 51927781412"
                   className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-mono text-white focus:outline-none focus:border-emerald-500 transition-colors"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                    Fecha de Próximo Pago / Vencimiento
+                  </label>
+                  <input
+                    type="text"
+                    value={formProximoPago}
+                    onChange={e => setFormProximoPago(e.target.value)}
+                    placeholder="Ej. 28 de Octubre, 2026"
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-bold text-emerald-300 focus:outline-none focus:border-emerald-500 transition-colors"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Se muestra en el banner superior de la empresa</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                    Plan de Suscripción
+                  </label>
+                  <input
+                    type="text"
+                    value={formPlan}
+                    onChange={e => setFormPlan(e.target.value)}
+                    placeholder="Ej. Plan Pro Empresa 2026"
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm font-bold text-purple-300 focus:outline-none focus:border-emerald-500 transition-colors"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">Etiqueta del plan contratado</p>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-1">

@@ -625,6 +625,11 @@ class OrdersService {
             activo: true,
             telefono_contacto: u.telefono_default || existing?.telefono_contacto || undefined,
             sub_instance: extraMeta.sub_instance || (isBase ? 'tenant_Comikids' : `tenant_${(u.nombre_completo || '').replace(/\s+/g, '')}`),
+            logo_url: u.avatar_url || extraMeta.logo_url || existing?.logo_url || (isBase ? '/Comikids.png' : ''),
+            tema_fondo: extraMeta.tema_fondo || existing?.tema_fondo || 'nspace',
+            proximo_pago: extraMeta.proximo_pago || existing?.proximo_pago || '28/10/2026',
+            plan_suscripcion: extraMeta.plan_suscripcion || existing?.plan_suscripcion || 'Plan Pro Empresa 2026',
+            estado_pago: extraMeta.estado_pago || existing?.estado_pago || 'al_dia',
             created_at: u.created_at || existing?.created_at || new Date().toISOString(),
             ultimo_acceso: extraMeta.ultimo_acceso || existing?.ultimo_acceso || undefined,
             total_ingresos: extraMeta.total_ingresos ?? existing?.total_ingresos ?? 0,
@@ -808,6 +813,8 @@ class OrdersService {
     password_hash: string;
     telefono_contacto?: string;
     sub_instance?: string;
+    proximo_pago?: string;
+    plan_suscripcion?: string;
     activo?: boolean;
     config?: Partial<EmpresaConfig>;
   }): Promise<EmpresaAccount> {
@@ -849,6 +856,8 @@ class OrdersService {
       activo: data.activo !== false,
       telefono_contacto: data.telefono_contacto?.trim() || undefined,
       sub_instance: data.sub_instance?.trim() || `tenant_${cleanNombre.replace(/\s+/g, '')}`,
+      proximo_pago: data.proximo_pago?.trim() || '28 de Octubre, 2026',
+      plan_suscripcion: data.plan_suscripcion?.trim() || 'Plan Pro Empresa 2026',
       created_at: new Date().toISOString(),
       total_ingresos: 0,
       historial_accesos: [],
@@ -2396,6 +2405,21 @@ class OrdersService {
       : STORAGE_KEYS.TALLER_CONFIG;
     localStorage.setItem(key, JSON.stringify(updated));
 
+    // Sincronizar en cache de empresas
+    try {
+      const empresas = this.getEmpresas();
+      const empIdx = empresas.findIndex(e => e.id === targetEmpId || (targetEmpId === 'empresa-master-comikids' && e.numero_entrada === '061625'));
+      if (empIdx !== -1) {
+        if (config.logo_url !== undefined) empresas[empIdx].logo_url = config.logo_url;
+        if (config.tema_fondo !== undefined) empresas[empIdx].tema_fondo = config.tema_fondo;
+        if (config.nombre_taller !== undefined) empresas[empIdx].nombre = config.nombre_taller;
+        if (config.celular_taller !== undefined) empresas[empIdx].telefono_contacto = config.celular_taller;
+        this.saveEmpresas(empresas);
+      }
+    } catch (e) {
+      console.warn('Error sincronizando cache empresa:', e);
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         const payloadToSupabase = {
@@ -2407,8 +2431,16 @@ class OrdersService {
         if (error) {
           console.error('[SUPABASE TALLER CONFIG UPSERT ERROR]', error);
         }
+
+        // Si se actualizó el logo o nombre, persistir también en usuarios (avatar_url)
+        if (config.logo_url !== undefined || config.nombre_taller !== undefined) {
+          const userUpdates: any = {};
+          if (config.logo_url !== undefined) userUpdates.avatar_url = config.logo_url;
+          if (config.nombre_taller !== undefined) userUpdates.nombre_completo = config.nombre_taller;
+          await supabase.from('usuarios').update(userUpdates).eq('id', targetEmpId);
+        }
       } catch (e) {
-        console.warn('Error en upsert taller_config:', e);
+        console.warn('Error en upsert taller_config / usuarios:', e);
       }
     }
 

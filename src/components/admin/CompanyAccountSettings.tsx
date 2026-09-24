@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { Colaborador, HorarioDiaDespacho } from '../../types/database.types';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { CompanyAgenciesTab } from './CompanyAgenciesTab';
-import { CompanyAchievementsTab } from './CompanyAchievementsTab';
 import {
   evaluateShippingCutoff,
   formatFriendlyTime,
@@ -13,7 +12,6 @@ import {
 } from '../../utils/shippingCutoff';
 import {
   FUTURISTIC_THEMES,
-  THEME_CATEGORIES,
   applyFuturisticTheme,
   getThemeById
 } from '../../data/futuristicThemes';
@@ -27,7 +25,7 @@ import {
   X,
   Clock,
   Calendar,
-  Link,
+  Link as LinkIcon,
   Copy,
   Megaphone,
   Save,
@@ -47,7 +45,17 @@ import {
   Smartphone,
   QrCode,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Camera,
+  Truck,
+  HelpCircle,
+  ExternalLink,
+  CreditCard,
+  Zap,
+  Info,
+  BadgeAlert
 } from 'lucide-react';
 import { getApiBaseUrl } from '../../config/api';
 import { ordersService } from '../../services/ordersService';
@@ -64,12 +72,22 @@ export const CompanyAccountSettings: React.FC = () => {
     masterCode,
     saveMasterCode,
     pedidos,
+    shippingMethods,
   } = useOrders();
 
   const { currentUser, currentEmpresa } = useAuth();
 
-  // Subpestañas requeridas: Agencias | Ajustes | Logros
-  const [activeSubTab, setActiveSubTab] = useState<'agencias' | 'ajustes' | 'logros'>('agencias');
+  // Partición Principal Requerida: "Personalizar Empresa" vs "Personalizar Cuenta y Seguridad"
+  const [mainTab, setMainTab] = useState<'empresa' | 'cuenta'>('empresa');
+
+  // Sección desplegable activa dentro de Personalizar Empresa (HUD de Jugador)
+  const [activeAccordion, setActiveAccordion] = useState<
+    'remitente' | 'rotulo' | 'horario' | 'anuncio' | 'temas' | 'agencias' | 'whatsapp' | null
+  >('remitente');
+
+  const toggleAccordion = (section: 'remitente' | 'rotulo' | 'horario' | 'anuncio' | 'temas' | 'agencias' | 'whatsapp') => {
+    setActiveAccordion(prev => (prev === section ? null : section));
+  };
 
   // Nombre y código de entrada de la empresa
   const companyName = currentEmpresa?.nombre || tallerConfig.nombre_taller || 'ComiKids';
@@ -79,6 +97,17 @@ export const CompanyAccountSettings: React.FC = () => {
   const [newMasterCode, setNewMasterCode] = useState(companyCode);
   const [codeSuccessMsg, setCodeSuccessMsg] = useState('');
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+
+  // Verificación de cuenta Matrix Maestra (Solo matrix4012 / 963097777 ve la sección de sub-QR)
+  const isMainMatrixAccount = Boolean(
+    currentUser?.dni === '963097777' ||
+    currentUser?.dni === '061625' ||
+    currentUser?.rol === 'matrix' ||
+    currentEmpresa?.numero_entrada === '963097777' ||
+    currentEmpresa?.telefono_contacto === '963097777' ||
+    currentEmpresa?.telefono_contacto === '51963097777' ||
+    currentUser?.nombre_completo?.toLowerCase().includes('matrix4012')
+  );
 
   // Sub-QR de WhatsApp de la cuenta de empresa
   const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids_tienda';
@@ -96,7 +125,6 @@ export const CompanyAccountSettings: React.FC = () => {
   const verifyLivePhoneStatus = async (silent = false) => {
     if (!silent) setIsVerifyingPhone(true);
     try {
-      // 1. Consultar estado directo de la sub-instancia
       const res = await fetch(`${getApiBaseUrl()}/tenant/${subInstance}/status`);
       const json = await res.json().catch(() => ({}));
       if (json.success && json.data) {
@@ -118,36 +146,6 @@ export const CompanyAccountSettings: React.FC = () => {
           return { state, ownerPhone };
         }
       }
-
-      // 2. Fallback a lista de instancias
-      const listRes = await fetch(`${getApiBaseUrl()}/tenant/instances`);
-      const listJson = await listRes.json().catch(() => ({}));
-      if (listJson.success && Array.isArray(listJson.data)) {
-        const target = listJson.data.find((inst: any) =>
-          inst.instanceName === subInstance ||
-          inst.instanceName?.toLowerCase() === subInstance.toLowerCase() ||
-          inst.instanceName?.replace(/^tenant_/, '').toLowerCase() === subInstance.replace(/^tenant_/, '').toLowerCase() ||
-          (subInstance.toLowerCase().includes('comikids') && inst.instanceName?.toLowerCase().includes('comikids'))
-        );
-        if (target) {
-          const st = target.connectionStatus || 'close';
-          setConnectionState(st);
-          if (target.ownerPhone) {
-            setLiveSenderPhone(target.ownerPhone);
-            if (currentEmpresa?.id) {
-              ordersService.syncEmpresaConnectedPhone(subInstance, target.ownerPhone);
-            }
-            if (tallerConfig.copilot_owner_phone !== target.ownerPhone) {
-              updateTallerConfig({
-                copilot_owner_phone: target.ownerPhone,
-                whatsapp_pedidos: target.ownerPhone,
-                celular_taller: `+${target.ownerPhone}`,
-              });
-            }
-            return { state: st, ownerPhone: target.ownerPhone };
-          }
-        }
-      }
     } catch (e) {
       console.warn('[VERIFY LIVE PHONE ERROR]', e);
     } finally {
@@ -156,14 +154,15 @@ export const CompanyAccountSettings: React.FC = () => {
     return null;
   };
 
-  // Verificar teléfono en vivo al montar
   useEffect(() => {
-    verifyLivePhoneStatus(true);
-  }, [subInstance]);
+    if (isMainMatrixAccount) {
+      verifyLivePhoneStatus(true);
+    }
+  }, [subInstance, isMainMatrixAccount]);
 
-  // Polling automático mientras el modal de QR esté abierto (cierra al conectar y actualiza teléfono)
+  // Polling automático mientras el modal de QR esté abierto
   useEffect(() => {
-    if (!showQrModal) return;
+    if (!showQrModal || !isMainMatrixAccount) return;
 
     const interval = setInterval(async () => {
       const res = await verifyLivePhoneStatus(true);
@@ -178,7 +177,7 @@ export const CompanyAccountSettings: React.FC = () => {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [showQrModal, subInstance]);
+  }, [showQrModal, subInstance, isMainMatrixAccount]);
 
   const handleOpenQrModal = async () => {
     setQrLoading(true);
@@ -219,7 +218,7 @@ export const CompanyAccountSettings: React.FC = () => {
   );
   const [rotuloSuccessMsg, setRotuloSuccessMsg] = useState('');
 
-  // 3. Estado para Horario Límite y Días de Despacho POR DÍA
+  // 3. Estado para Horario Límite y Días de Despacho PREDETERMINADOS (Global de Empresa)
   const [horaCorteGeneral, setHoraCorteGeneral] = useState(tallerConfig.hora_corte_envio_hoy || '18:00');
   const [mensajeCorteGeneral, setMensajeCorteGeneral] = useState(tallerConfig.mensaje_corte_personalizado || '');
   const [cutoffSuccessMsg, setCutoffSuccessMsg] = useState('');
@@ -260,28 +259,43 @@ export const CompanyAccountSettings: React.FC = () => {
   const [colabTelefono, setColabTelefono] = useState('');
   const [colabEmail, setColabEmail] = useState('');
 
-  // 7. Estado de Foto de Perfil / Logo Oficial de la Empresa
+  // 7. Estado de Foto de Perfil / Logo Oficial de la Empresa (1 SOLO BOTÓN Y PERSISTENCIA REAL EN DB)
   const isComikidsAccount = currentEmpresa?.id === 'empresa-master-comikids';
   const initialLogo = currentEmpresa?.logo_url || tallerConfig.logo_url || (isComikidsAccount ? '/Comikids.png' : '');
   const [companyLogoUrl, setCompanyLogoUrl] = useState(initialLogo);
   const [logoSuccessMsg, setLogoSuccessMsg] = useState('');
-  const logoFileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const logoFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 8. Estado de Temas Futuristas Categorizados
+  // 8. Estado de 4 Temas Exclusivos
   const [currentThemeId, setCurrentThemeId] = useState<string>(() => {
-    return currentEmpresa?.tema_fondo || tallerConfig.tema_fondo || (typeof localStorage !== 'undefined' ? localStorage.getItem('incomi_futuristic_theme') : '') || 'vision-obsidian';
+    return currentEmpresa?.tema_fondo || tallerConfig.tema_fondo || (typeof localStorage !== 'undefined' ? localStorage.getItem('incomi_futuristic_theme') : '') || 'nspace';
   });
-  const [selectedThemeCategory, setSelectedThemeCategory] = useState<string>('all');
   const [themeSuccessMsg, setThemeSuccessMsg] = useState('');
 
-  const handleSaveLogo = (newUrl: string) => {
+  // Sincronización del tema actual al cargar
+  useEffect(() => {
+    const saved = currentEmpresa?.tema_fondo || tallerConfig.tema_fondo || localStorage.getItem('incomi_futuristic_theme') || 'nspace';
+    setCurrentThemeId(saved);
+    applyFuturisticTheme(saved);
+  }, [currentEmpresa?.tema_fondo, tallerConfig.tema_fondo]);
+
+  // Guardar Foto de Perfil / Logo de forma persistente
+  const handleSaveLogo = async (newUrl: string) => {
+    setIsUploadingLogo(true);
     const trimmed = newUrl.trim();
     setCompanyLogoUrl(trimmed);
-    updateTallerConfig({ logo_url: trimmed });
+    
+    // 1. Actualizar configuración en estado global y Supabase
+    await updateTallerConfig({ logo_url: trimmed });
+    
+    // 2. Actualizar objeto de empresa actual
     if (currentEmpresa) {
       currentEmpresa.logo_url = trimmed;
     }
-    setLogoSuccessMsg('¡Foto de perfil / logo oficial actualizado con éxito!');
+    
+    setIsUploadingLogo(false);
+    setLogoSuccessMsg('¡Foto de perfil / logo oficial guardado exitosamente en base de datos!');
     setTimeout(() => setLogoSuccessMsg(''), 4000);
   };
 
@@ -289,8 +303,8 @@ export const CompanyAccountSettings: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('La imagen no debe superar los 2MB.');
+    if (file.size > 3 * 1024 * 1024) {
+      alert('La imagen no debe superar los 3MB.');
       return;
     }
 
@@ -302,40 +316,41 @@ export const CompanyAccountSettings: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleSelectTheme = (themeId: string) => {
+  const handleApplyTheme = async (themeId: 'nspace' | 'modern-black' | 'modern-white' | 'pink-space') => {
     setCurrentThemeId(themeId);
     applyFuturisticTheme(themeId);
-    updateTallerConfig({ tema_fondo: themeId });
+    await updateTallerConfig({ tema_fondo: themeId });
     if (currentEmpresa) {
       currentEmpresa.tema_fondo = themeId;
     }
-    setThemeSuccessMsg('¡Tema futurista aplicado en tiempo real!');
+    setThemeSuccessMsg(`¡Tema "${getThemeById(themeId).name}" aplicado con éxito a toda la web!`);
     setTimeout(() => setThemeSuccessMsg(''), 3500);
   };
 
-  const deliveredCount = pedidos.filter(p => p.estado_envio === 'entregado').length;
-
-  const publicOrderUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/?action=nuevo_envio`
-    : 'https://comikids-encomi.web.app/?action=nuevo_envio';
-
-  const handleCopyLink = () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(publicOrderUrl);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 3000);
+  const handleSaveMasterCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMasterCode.trim()) return;
+    try {
+      await saveMasterCode(newMasterCode.trim());
+      if (currentEmpresa) {
+        currentEmpresa.numero_entrada = newMasterCode.trim();
+      }
+      setCodeSuccessMsg('¡Código de acceso / entrada de la empresa actualizado correctamente!');
+      setTimeout(() => setCodeSuccessMsg(''), 3500);
+    } catch (err: any) {
+      alert(err.message || 'Error al guardar código');
     }
   };
 
-  const handleSaveRemitente = (e: React.FormEvent) => {
+  const handleSaveRemitente = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateTallerConfig({
+    await updateTallerConfig({
       nombre_taller: remitenteNombre.trim(),
-      remitente_dni: remitenteDni.trim(),
       ruc_dni: remitenteDni.trim(),
+      celular_taller: remitenteCelular.trim(),
+      remitente_dni: remitenteDni.trim(),
       remitente_email: remitenteEmail.trim(),
       remitente_celular: remitenteCelular.trim(),
-      celular_taller: remitenteCelular.trim(),
       direccion_taller: remitenteDireccion.trim(),
       remitente_default: {
         nombre: remitenteNombre.trim(),
@@ -345,61 +360,54 @@ export const CompanyAccountSettings: React.FC = () => {
         observaciones: remitenteObservaciones.trim(),
       }
     });
-    setRemitenteSuccessMsg('¡Datos de remitente guardados exitosamente para todas las agencias y rótulos!');
-    setTimeout(() => setRemitenteSuccessMsg(''), 4000);
+
+    if (currentEmpresa) {
+      currentEmpresa.nombre = remitenteNombre.trim();
+    }
+
+    setRemitenteSuccessMsg('¡Datos de remitente oficial guardados con éxito!');
+    setTimeout(() => setRemitenteSuccessMsg(''), 3500);
   };
 
-  const handleSaveEstiloRotulo = (style: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving') => {
-    setEstiloRotuloDefault(style);
-    updateTallerConfig({
-      estilo_rotulo_default: style
-    });
-    const styleName =
-      style === 'estandar_oficial' ? 'Estándar Oficial Encomi' :
-      style === 'vision_modern' ? 'Moderno Minimalista Vision' :
-      'Compacto Eco Ultra-Ahorro';
-    setRotuloSuccessMsg(`¡Estilo predeterminado de rótulos cambiado a "${styleName}"!`);
-    setTimeout(() => setRotuloSuccessMsg(''), 4000);
+  const handleSaveEstiloRotulo = async (estilo: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving') => {
+    setEstiloRotuloDefault(estilo);
+    await updateTallerConfig({ estilo_rotulo_default: estilo });
+    setRotuloSuccessMsg('¡Estilo predeterminado de rótulos actualizado!');
+    setTimeout(() => setRotuloSuccessMsg(''), 3000);
   };
 
-  const handleSaveCutoffSettings = (e: React.FormEvent) => {
+  const handleSaveCutoff = async (e: React.FormEvent) => {
     e.preventDefault();
-    const activeDays = DIAS_SEMANA_ORDEN.filter(d => horariosPorDia[d]?.activo);
-    updateTallerConfig({
+    const diasActivos = Object.entries(horariosPorDia)
+      .filter(([_, conf]) => conf.activo)
+      .map(([dia]) => dia);
+
+    await updateTallerConfig({
       hora_corte_envio_hoy: horaCorteGeneral,
-      dias_despacho_activos: activeDays,
-      despacho_domingo_habilitado: activeDays.includes('domingo'),
+      dias_despacho_activos: diasActivos,
+      despacho_domingo_habilitado: horariosPorDia['domingo']?.activo || false,
       mensaje_corte_personalizado: mensajeCorteGeneral.trim() || undefined,
       horarios_por_dia: horariosPorDia,
     });
-    setCutoffSuccessMsg('¡Horarios de despacho por día y mensajes personalizados guardados con éxito!');
-    setTimeout(() => setCutoffSuccessMsg(''), 4000);
+    setCutoffSuccessMsg('¡Horario de despacho predeterminado guardado con éxito!');
+    setTimeout(() => setCutoffSuccessMsg(''), 3500);
   };
 
-  const handleSaveAnuncio = (e: React.FormEvent) => {
+  const handleSaveAnuncio = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateTallerConfig({
-      anuncio_publico_clientes: anuncioTexto.trim() || undefined
+    await updateTallerConfig({
+      anuncio_publico_clientes: anuncioTexto.trim() || undefined,
     });
-    setAnuncioSuccessMsg('¡Mensaje de aviso guardado y visible en el formulario de clientes!');
-    setTimeout(() => setAnuncioSuccessMsg(''), 4000);
+    setAnuncioSuccessMsg('¡Anuncio público para clientes actualizado con éxito!');
+    setTimeout(() => setAnuncioSuccessMsg(''), 3500);
   };
 
-  const handleUpdateMasterCode = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMasterCode.trim()) return;
-    const ok = saveMasterCode(newMasterCode.trim());
-    if (ok) {
-      setCodeSuccessMsg('¡Código de acceso actualizado exitosamente!');
-      setTimeout(() => setCodeSuccessMsg(''), 4000);
-    }
-  };
-
-  const handleSaveColaborador = (e: React.FormEvent) => {
+  const handleAddColaboradorSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!colabNombre.trim()) return;
 
     saveColaborador({
+      id: 'colab_' + Date.now().toString(36),
       nombre: colabNombre.trim(),
       rol: colabRol,
       telefono: colabTelefono.trim() || undefined,
@@ -413,994 +421,1088 @@ export const CompanyAccountSettings: React.FC = () => {
     setShowAddColab(false);
   };
 
+  const originUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://comikids-encomi-app.vercel.app';
+  const publicOrderUrl = isComikidsAccount
+    ? originUrl
+    : `${originUrl}/?empresa=${encodeURIComponent(companyCode)}`;
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(publicOrderUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2200);
+  };
+
+  // Información de Facturación / Próximo Pago
+  const proximoPagoDisplay = currentEmpresa?.proximo_pago || '28 de Octubre, 2026';
+  const planDisplay = currentEmpresa?.plan_suscripcion || 'Plan Pro Empresa 2026';
+
+  const activeTheme = getThemeById(currentThemeId);
+  const activeAgenciesCount = shippingMethods.filter(m => m.activo).length;
+
   return (
-    <div className="space-y-6 animate-fadeIn pb-24 text-slate-100 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto pb-16 animate-fadeIn">
       
-      {/* Header Perfil de la Empresa */}
-      <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/15 backdrop-blur-2xl shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-3xl bg-slate-900 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-xl shadow-cyan-500/25 shrink-0">
-            {companyLogoUrl ? (
-              <img
-                src={companyLogoUrl}
-                alt={companyName}
-                className="w-full h-full object-contain p-1.5"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-              />
-            ) : (
-              <span className="text-2xl font-black text-cyan-300">
-                {companyName.slice(0, 2).toUpperCase() || '🏢'}
+      {/* =========================================================================
+          TOP BANNER: INDICADOR PRÓXIMO PAGO & SELECTOR DE PESTAÑA PRINCIPAL
+          ========================================================================= */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-3xl bg-slate-900/90 border border-white/10 backdrop-blur-2xl shadow-2xl">
+        
+        {/* Switch Principal: Personalizar Empresa vs Cuenta & Seguridad */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-950/80 rounded-2xl border border-white/5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMainTab('empresa')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 transition-all cursor-pointer ${
+              mainTab === 'empresa'
+                ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/25 scale-[1.02]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>Personalizar Empresa</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMainTab('cuenta')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 transition-all cursor-pointer ${
+              mainTab === 'cuenta'
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25 scale-[1.02]'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Cuenta & Seguridad</span>
+          </button>
+        </div>
+
+        {/* Indicador Superior de Próximo Pago (Configurable desde Matrix) */}
+        <div className="flex items-center justify-between sm:justify-end gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-950/60 border border-emerald-500/30 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <div className="text-left leading-tight">
+              <span className="text-[10px] uppercase font-black tracking-widest text-emerald-400 block">
+                🗓️ Próximo Pago
               </span>
-            )}
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-xl sm:text-2xl font-black text-white">
-                {companyName}
-              </h2>
-              <span className="px-3 py-1 rounded-xl text-[10px] font-black uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                Ajustes de Empresa
-              </span>
+              <strong className="text-xs font-bold text-white tracking-tight">
+                {proximoPagoDisplay}
+              </strong>
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Código de Entrada: <strong className="font-mono text-cyan-300">{companyCode}</strong> • {tallerConfig.ciudad_origen || 'LIMA'}
-            </p>
           </div>
+          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            {planDisplay}
+          </span>
         </div>
 
-        <div className="flex items-center gap-3 bg-slate-950/80 p-3.5 rounded-2xl border border-white/10 shrink-0">
-          <div className="text-right">
-            <span className="text-[10px] text-slate-400 uppercase font-bold block">Despachos Entregados</span>
-            <strong className="text-lg font-black text-emerald-400 font-mono">{deliveredCount.toLocaleString()}</strong>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center text-lg font-bold">
-            📦
-          </div>
-        </div>
       </div>
 
-      {/* 3 ESPACIOS EXCLUSIVOS: AGENCIAS | AJUSTES | LOGROS */}
-      <div className="p-1.5 rounded-3xl bg-slate-950/90 border border-white/15 backdrop-blur-2xl shadow-2xl flex items-center gap-2 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('agencias')}
-          className={`flex-1 min-w-[150px] py-3.5 px-5 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2.5 cursor-pointer ${
-            activeSubTab === 'agencias'
-              ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-xl shadow-cyan-500/30 border border-cyan-400'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          <Building2 className="w-4 h-4 shrink-0" />
-          <span>🏢 Agencias y Motorizado</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('ajustes')}
-          className={`flex-1 min-w-[150px] py-3.5 px-5 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2.5 cursor-pointer ${
-            activeSubTab === 'ajustes'
-              ? 'bg-linear-to-r from-amber-400 to-yellow-500 text-slate-950 shadow-xl shadow-amber-400/30 border border-amber-300'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          <Sliders className="w-4 h-4 shrink-0" />
-          <span>⚙️ Ajustes de Cuenta</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('logros')}
-          className={`flex-1 min-w-[150px] py-3.5 px-5 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2.5 cursor-pointer ${
-            activeSubTab === 'logros'
-              ? 'bg-linear-to-r from-pink-500 to-purple-600 text-white shadow-xl shadow-pink-500/30 border border-pink-400'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 shrink-0" />
-          <span>🏆 Logros e Hitos</span>
-        </button>
-      </div>
-
-      {/* --- SUBTAB 1: AGENCIAS Y MOTORIZADO --- */}
-      {activeSubTab === 'agencias' && (
-        <div className="animate-fadeIn">
-          <CompanyAgenciesTab />
-        </div>
-      )}
-
-      {/* --- SUBTAB 3: LOGROS E HITOS --- */}
-      {activeSubTab === 'logros' && (
-        <div className="animate-fadeIn">
-          <CompanyAchievementsTab />
-        </div>
-      )}
-
-      {/* --- SUBTAB 2: AJUSTES DE CUENTA (LAS 7 SECCIONES) --- */}
-      {activeSubTab === 'ajustes' && (
-        <div className="space-y-6 animate-fadeIn">
+      {/* =========================================================================
+          PESTAÑA 1: PERSONALIZAR EMPRESA (HUD DE JUGADOR & CARDS PLEGABLES)
+          ========================================================================= */}
+      {mainTab === 'empresa' && (
+        <div className="space-y-5 animate-fadeIn">
           
-          {/* ALERTA DE ÉXITO GENERAL */}
-          {logoSuccessMsg && (
-            <div className="p-3.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2 animate-fadeIn">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{logoSuccessMsg}</span>
-            </div>
-          )}
-          {themeSuccessMsg && (
-            <div className="p-3.5 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs font-bold flex items-center gap-2 animate-fadeIn">
-              <Sparkles className="w-4 h-4 shrink-0" />
-              <span>{themeSuccessMsg}</span>
-            </div>
-          )}
+          {/* 🎮 HUD DE JUGADOR (MOBILE-FIRST EXECUTIVE DASHBOARD) */}
+          <div className="glass-panel p-4 sm:p-6 rounded-3xl border border-cyan-500/40 bg-slate-950/80 backdrop-blur-2xl shadow-2xl relative overflow-hidden hud-glow-pulse">
+            
+            {/* Top Row: Avatar de Empresa (1-Click Upload) + Nombre & Link */}
+            <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 pb-4 border-b border-white/10">
+              
+              {/* Avatar y Botón de Subida */}
+              <div className="flex items-center gap-4">
+                <div className="relative group shrink-0">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-slate-900 border-2 border-cyan-400/60 p-1 shadow-lg shadow-cyan-500/20 overflow-hidden flex items-center justify-center relative">
+                    {companyLogoUrl ? (
+                      <img
+                        src={companyLogoUrl}
+                        alt="Logo Empresa"
+                        className="w-full h-full object-contain rounded-xl sm:rounded-2xl"
+                        onError={() => setCompanyLogoUrl('')}
+                      />
+                    ) : (
+                      <div className="w-full h-full rounded-xl bg-linear-to-tr from-cyan-500 to-pink-500 flex items-center justify-center text-white text-2xl font-black">
+                        {companyName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    {isUploadingLogo && (
+                      <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+                        <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+                      </div>
+                    )}
+                  </div>
 
-          {/* 1. FOTO DE PERFIL Y LOGO OFICIAL DE LA EMPRESA */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-pink-500/30 bg-pink-950/15 backdrop-blur-2xl space-y-5 shadow-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold text-xl shrink-0">
-                  <ImageIcon className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white flex items-center gap-2">
-                    <span>Foto de Perfil y Logo Oficial de la Empresa</span>
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-pink-500/20 text-pink-300 border border-pink-500/30">
-                      Branding en Link
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-300">
-                    Aparecerá en la esquina superior derecha del link personalizado de tus clientes y en tus rótulos de despacho.
-                  </p>
-                </div>
-              </div>
-
-              {/* Previsualización en vivo cómo lo ve el cliente */}
-              <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-slate-950/80 border border-pink-500/30 shadow-inner shrink-0">
-                <span className="text-[10px] text-slate-400 font-bold uppercase pl-2">Vista cliente:</span>
-                <span className="px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-pink-500/25 via-purple-500/25 to-cyan-500/25 text-pink-200 border border-pink-400/40 flex items-center gap-2 shadow-md">
-                  {companyLogoUrl ? (
-                    <img
-                      src={companyLogoUrl}
-                      alt={companyName}
-                      className="w-5 h-5 object-contain rounded"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ) : (
-                    <span className="text-xs">🏢</span>
-                  )}
-                  <span>{companyName}</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Presets rápidos */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-400 mb-1.5">
-                Logos y emblemas recomendados:
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-                {[
-                  { label: 'Encomi Express', url: 'https://cdn-icons-png.flaticon.com/512/2830/2830305.png' },
-                  { label: 'Emblema Dorado VIP', url: 'https://cdn-icons-png.flaticon.com/512/1040/1040230.png' },
-                  { label: 'Taller Confección', url: 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png' },
-                  { label: 'Boutique & Moda', url: 'https://cdn-icons-png.flaticon.com/512/10008/10008778.png' },
-                  ...(isComikidsAccount ? [{ label: 'ComiKids Oficial', url: '/Comikids.png' }] : []),
-                ].map((preset) => (
+                  {/* Botón Overlay para Cambiar Foto con 1 Click */}
                   <button
-                    key={preset.label}
                     type="button"
-                    onClick={() => handleSaveLogo(preset.url)}
-                    className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                      companyLogoUrl === preset.url
-                        ? 'bg-pink-500/20 border-pink-400 text-pink-200 shadow-md'
-                        : 'bg-slate-900 border-white/10 text-slate-300 hover:bg-white/5'
-                    }`}
+                    onClick={() => logoFileInputRef.current?.click()}
+                    disabled={isUploadingLogo}
+                    className="absolute -bottom-1.5 -right-1.5 p-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md shadow-cyan-500/40 transition-all cursor-pointer hover:scale-110 active:scale-95 flex items-center justify-center"
+                    title="Subir o Cambiar Foto de Perfil / Logo Oficial"
                   >
-                    <img src={preset.url} alt={preset.label} className="w-4 h-4 object-contain rounded" />
-                    <span>{preset.label}</span>
+                    <Camera className="w-3.5 h-3.5 stroke-[2.5]" />
                   </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Subir imagen propia o URL */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                  Subir logo desde tu dispositivo:
-                </label>
-                <input
-                  type="file"
-                  ref={logoFileInputRef}
-                  accept="image/*"
-                  onChange={handleLogoFileUpload}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => logoFileInputRef.current?.click()}
-                  className="w-full py-2.5 px-4 rounded-xl bg-slate-900 border border-white/10 hover:border-pink-400 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <Upload className="w-4 h-4 text-pink-400" />
-                  <span>Subir Foto de Perfil o Logo</span>
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                  O pegar enlace directo URL del logo:
-                </label>
-                <div className="flex gap-2">
                   <input
-                    type="url"
-                    value={companyLogoUrl}
-                    onChange={e => setCompanyLogoUrl(e.target.value)}
-                    placeholder="https://ejemplo.com/mi-logo.png"
-                    className="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-pink-400"
+                    ref={logoFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoFileUpload}
+                    className="hidden"
                   />
+                </div>
+
+                <div className="text-left">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                      {companyName}
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                      ID: {companyCode}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">
+                    Panel de Control Multitenancy 2026
+                  </p>
+                  
+                  {/* Botón Directo para Subir Foto si prefiere botón textual */}
                   <button
                     type="button"
-                    onClick={() => handleSaveLogo(companyLogoUrl)}
-                    className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer shrink-0"
+                    onClick={() => logoFileInputRef.current?.click()}
+                    className="mt-1.5 text-[11px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition-colors"
                   >
-                    Guardar
+                    <Upload className="w-3 h-3" />
+                    <span>{companyLogoUrl ? 'Cambiar logo oficial' : 'Subir logo oficial'}</span>
                   </button>
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* 2. CATÁLOGO DE TEMAS DE FONDO FUTURISTAS (CATEGORIZADOS) */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-purple-500/30 bg-purple-950/15 backdrop-blur-2xl space-y-5 shadow-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xl shrink-0">
-                  <Palette className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white flex items-center gap-2">
-                    <span>Temas de Fondo Futuristas para tu Empresa</span>
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      En Vivo 60 FPS
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-300">
-                    Elige el estilo visual moderno que más te guste. Se aplica inmediatamente a toda la aplicación.
-                  </p>
-                </div>
+              {/* Botón Rápido: Copiar Link Oficial */}
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="w-full sm:w-auto py-2 px-3.5 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/30 transition-all cursor-pointer active:scale-95"
+                >
+                  {copiedLink ? <Check className="w-4 h-4 text-slate-950" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedLink ? '¡Link Copiado!' : 'Copiar Link Clientes'}</span>
+                </button>
+                <a
+                  href={publicOrderUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors"
+                  title="Abrir formulario en nueva pestaña"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
               </div>
 
-              <span className="text-xs font-bold text-purple-300 bg-purple-500/10 border border-purple-500/30 px-3 py-1.5 rounded-xl self-start sm:self-auto">
-                Tema Actual: <strong className="text-white">{getThemeById(currentThemeId).name}</strong>
-              </span>
             </div>
 
-            {/* Filtro por Categorías */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              {THEME_CATEGORIES.map((cat) => (
+            {/* Banner de Éxito de Logo si se acaba de guardar */}
+            {logoSuccessMsg && (
+              <div className="mt-3 p-2.5 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-xs font-bold flex items-center gap-2 animate-slideDownSmooth">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{logoSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* 🕹️ HUD TOUCH STATS GRID (TOCA CUALQUIER ITEM PARA DESPLEGAR SU CONFIGURACIÓN) */}
+            <div className="pt-3">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">
+                ⚡ Toca un módulo del HUD para desplegar y editar:
+              </span>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                
+                {/* 1. Badge Remitente */}
                 <button
-                  key={cat.id}
                   type="button"
-                  onClick={() => setSelectedThemeCategory(cat.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 ${
-                    selectedThemeCategory === cat.id
-                      ? 'bg-purple-600 text-white shadow-md font-black shadow-purple-950/50'
-                      : 'bg-slate-900 border border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
+                  onClick={() => toggleAccordion('remitente')}
+                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                    activeAccordion === 'remitente'
+                      ? 'bg-amber-500/25 border-amber-400 shadow-md shadow-amber-500/20 scale-[1.02]'
+                      : 'bg-slate-900/70 hover:bg-slate-900 border-white/10 hover:border-amber-400/40'
                   }`}
                 >
-                  {cat.label}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">🏢</span>
+                    <span className="text-[9px] font-bold uppercase text-amber-400">Remitente</span>
+                  </div>
+                  <div>
+                    <strong className="text-xs text-white block truncate">{remitenteNombre}</strong>
+                    <span className="text-[10px] text-slate-400 font-mono block truncate">Doc: {remitenteDni}</span>
+                  </div>
                 </button>
-              ))}
-            </div>
 
-            {/* Grid de Temas */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
-              {FUTURISTIC_THEMES
-                .filter(t => selectedThemeCategory === 'all' || t.category === selectedThemeCategory)
-                .map((theme) => {
-                  const isSelected = currentThemeId === theme.id;
-                  return (
-                    <div
-                      key={theme.id}
-                      onClick={() => handleSelectTheme(theme.id)}
-                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 relative group overflow-hidden ${
-                        isSelected
-                          ? 'bg-slate-900 border-2 border-purple-400 shadow-xl shadow-purple-950/60 scale-[1.02]'
-                          : 'bg-slate-950/80 border-white/10 hover:border-white/20 hover:bg-slate-900/60'
-                      }`}
-                    >
-                      {/* Preview Swatch */}
-                      <div
-                        className="h-16 rounded-xl border border-white/10 relative overflow-hidden flex items-center justify-center shadow-inner"
-                        style={{ background: theme.previewGradient }}
-                      >
-                        {isSelected && (
-                          <span className="px-2.5 py-1 rounded-full bg-slate-950/90 text-purple-300 border border-purple-400 font-black text-[10px] uppercase flex items-center gap-1 shadow-lg">
-                            <Check className="w-3 h-3 text-purple-400" />
-                            <span>Tema Activo</span>
-                          </span>
-                        )}
-                      </div>
+                {/* 2. Badge Estilo de Rótulo */}
+                <button
+                  type="button"
+                  onClick={() => toggleAccordion('rotulo')}
+                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                    activeAccordion === 'rotulo'
+                      ? 'bg-pink-500/25 border-pink-400 shadow-md shadow-pink-500/20 scale-[1.02]'
+                      : 'bg-slate-900/70 hover:bg-slate-900 border-white/10 hover:border-pink-400/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">🏷️</span>
+                    <span className="text-[9px] font-bold uppercase text-pink-400">Rótulo</span>
+                  </div>
+                  <div>
+                    <strong className="text-xs text-white block truncate">
+                      {estiloRotuloDefault === 'estandar_oficial' ? 'Estándar A4' : estiloRotuloDefault === 'vision_modern' ? 'Vision Modern' : 'Eco Ahorro'}
+                    </strong>
+                    <span className="text-[10px] text-slate-400 block truncate">Estilo Predet.</span>
+                  </div>
+                </button>
 
-                      <div>
-                        <div className="flex items-center justify-between gap-1 mb-1">
-                          <h4 className="font-black text-white text-xs leading-tight group-hover:text-purple-300 transition-colors">
-                            {theme.name}
-                          </h4>
-                          {theme.badge && (
-                            <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
-                              {theme.badge}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">
-                          {theme.description}
-                        </p>
-                      </div>
+                {/* 3. Badge Horario Base */}
+                <button
+                  type="button"
+                  onClick={() => toggleAccordion('horario')}
+                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                    activeAccordion === 'horario'
+                      ? 'bg-cyan-500/25 border-cyan-400 shadow-md shadow-cyan-500/20 scale-[1.02]'
+                      : 'bg-slate-900/70 hover:bg-slate-900 border-white/10 hover:border-cyan-400/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">⏰</span>
+                    <span className="text-[9px] font-bold uppercase text-cyan-400">Horario Base</span>
+                  </div>
+                  <div>
+                    <strong className="text-xs text-white block truncate">Corte: {horaCorteGeneral} hrs</strong>
+                    <span className="text-[10px] text-slate-400 block truncate">Modo Predeterminado</span>
+                  </div>
+                </button>
 
-                      <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[9px] text-slate-500 font-mono">
-                        <span>{theme.categoryLabel}</span>
-                        <span className={`font-bold ${isSelected ? 'text-purple-400 font-sans' : 'text-slate-400 font-sans'}`}>
-                          {isSelected ? '✓ Aplicado' : 'Toca para aplicar'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
+                {/* 4. Badge Anuncio Público */}
+                <button
+                  type="button"
+                  onClick={() => toggleAccordion('anuncio')}
+                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                    activeAccordion === 'anuncio'
+                      ? 'bg-rose-500/25 border-rose-400 shadow-md shadow-rose-500/20 scale-[1.02]'
+                      : 'bg-slate-900/70 hover:bg-slate-900 border-white/10 hover:border-rose-400/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">📢</span>
+                    <span className="text-[9px] font-bold uppercase text-rose-400">Anuncio</span>
+                  </div>
+                  <div>
+                    <strong className="text-xs text-white block truncate">
+                      {anuncioTexto ? 'Activo' : 'Sin Aviso'}
+                    </strong>
+                    <span className="text-[10px] text-slate-400 block truncate">Banner Clientes</span>
+                  </div>
+                </button>
 
-          {/* 3. LINK OFICIAL PARA CLIENTES */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-cyan-500/30 bg-cyan-950/20 backdrop-blur-2xl space-y-4 shadow-xl">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xl">
-                  <Link className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white">Link Oficial para Clientes</h3>
-                  <p className="text-xs text-slate-300">
-                    Comparte este link único. Tus clientes irán directo a registrar su nuevo pedido o envío
-                  </p>
-                </div>
+                {/* 5. Badge Tema Visual */}
+                <button
+                  type="button"
+                  onClick={() => toggleAccordion('temas')}
+                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                    activeAccordion === 'temas'
+                      ? 'bg-purple-500/25 border-purple-400 shadow-md shadow-purple-500/20 scale-[1.02]'
+                      : 'bg-slate-900/70 hover:bg-slate-900 border-white/10 hover:border-purple-400/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">🎨</span>
+                    <span className="text-[9px] font-bold uppercase text-purple-400">4 Temas</span>
+                  </div>
+                  <div>
+                    <strong className="text-xs text-white block truncate">{activeTheme.name}</strong>
+                    <span className="text-[10px] text-slate-400 block truncate">Estilo Global</span>
+                  </div>
+                </button>
+
+                {/* 6. Badge Agencias Hub */}
+                <button
+                  type="button"
+                  onClick={() => toggleAccordion('agencias')}
+                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                    activeAccordion === 'agencias'
+                      ? 'bg-emerald-500/25 border-emerald-400 shadow-md shadow-emerald-500/20 scale-[1.02]'
+                      : 'bg-slate-900/70 hover:bg-slate-900 border-white/10 hover:border-emerald-400/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">🚚</span>
+                    <span className="text-[9px] font-bold uppercase text-emerald-400">Agencias</span>
+                  </div>
+                  <div>
+                    <strong className="text-xs text-white block truncate">{activeAgenciesCount} Activas</strong>
+                    <span className="text-[10px] text-slate-400 block truncate">Gestión Envíos</span>
+                  </div>
+                </button>
+
               </div>
-
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="py-2.5 px-4 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-cyan-500/30 transition-all cursor-pointer"
-              >
-                {copiedLink ? <Check className="w-4 h-4 text-emerald-950" /> : <Copy className="w-4 h-4" />}
-                <span>{copiedLink ? '¡Link Copiado!' : 'Copiar Link Oficial'}</span>
-              </button>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-cyan-500/30 flex items-center justify-between gap-3 text-xs font-mono text-cyan-300 overflow-x-auto">
-              <span className="truncate">{publicOrderUrl}</span>
-              <span className="text-[10px] text-slate-500 shrink-0 font-sans uppercase font-bold">Enlace Activo</span>
-            </div>
           </div>
 
-          {/* 1.5. LÍNEA WHATSAPP SUB CÓDIGO QR DE LA EMPRESA (ENVÍOS A 1 CLICK) */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-emerald-500/30 bg-emerald-950/15 backdrop-blur-2xl space-y-4 shadow-xl">
-            <div className="flex items-center justify-between flex-wrap gap-3">
+          {/* =========================================================================
+              SECCIONES PLEGABLES / ACCORDIONS (MÁXIMA INTUICIÓN Y CERO DESORDEN)
+              ========================================================================= */}
+
+          {/* 1. ACCORDION: DATOS DE REMITENTE OFICIAL */}
+          <div className="rounded-3xl border border-amber-500/30 bg-slate-900/80 backdrop-blur-2xl shadow-xl overflow-hidden transition-all">
+            <button
+              type="button"
+              onClick={() => toggleAccordion('remitente')}
+              className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors cursor-pointer"
+            >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl">
-                  <Smartphone className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl shrink-0">
+                  🏢
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white flex items-center gap-2">
-                    <span>Línea WhatsApp Oficial / Sub Código QR</span>
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                      Mensajes a 1 Click
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                    <span>Datos de Empresa y Remitente Oficial</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                      Quién Envía
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-300">
-                    Número vinculado para enviar comprobantes, guías de despacho y estados automáticos a los clientes (¡nunca desde el bot maestro!).
+                  <p className="text-xs text-slate-400">
+                    Nombre comercial, RUC/DNI, celular y dirección oficial de despacho
                   </p>
                 </div>
               </div>
-
-              <button
-                type="button"
-                onClick={handleOpenQrModal}
-                className="py-2.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/30 transition-all cursor-pointer"
-              >
-                <QrCode className="w-4 h-4" />
-                <span>Escanear / Vincular Sub QR</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-500/20">
-              <div className="p-3 rounded-2xl bg-slate-950/80 border border-emerald-500/20">
-                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Sub-Instancia Asignada</span>
-                <span className="text-xs font-mono font-bold text-emerald-300">{subInstance}</span>
+              <div className="p-2 rounded-xl bg-white/5 text-slate-300">
+                {activeAccordion === 'remitente' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
               </div>
-              <div className="p-3 rounded-2xl bg-slate-950/80 border border-emerald-500/20">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Teléfono Emisor Oficial</span>
-                  <button
-                    type="button"
-                    onClick={() => verifyLivePhoneStatus(false)}
-                    disabled={isVerifyingPhone}
-                    className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold cursor-pointer disabled:opacity-50"
-                    title="Actualizar / Verificar teléfono emisor en vivo"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${isVerifyingPhone ? 'animate-spin' : ''}`} />
-                    <span>Verificar</span>
-                  </button>
+            </button>
+
+            {activeAccordion === 'remitente' && (
+              <div className="p-4 sm:p-6 border-t border-amber-500/20 bg-slate-950/70 space-y-4 animate-slideDownSmooth">
+                
+                {/* 💡 RECUADRO EXPLICATIVO REQUERIDO */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-xs text-amber-200 flex items-start gap-3">
+                  <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <strong className="block font-black text-amber-300">
+                      Información de Despacho y Rótulos:
+                    </strong>
+                    <p className="text-[11.5px] leading-relaxed text-amber-100/90">
+                      Esta información se registrará como tus datos oficiales de remitente. Según la configuración de cada agencia de envío (Shalom, Olva, Motorizado, etc.), puedes elegir qué campos específicos se imprimirán en tus rótulos de despacho a tu elección (Nombre comercial, RUC/DNI, Celular y Origen).
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs font-mono font-bold text-emerald-300">+{liveSenderPhone || initialPhone}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                    connectionState === 'open'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : connectionState === 'connecting'
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                  }`}>
-                    {connectionState === 'open' ? '🟢 Conectado' : connectionState === 'connecting' ? '🟡 Conectando' : '🔴 Desconectado'}
-                  </span>
-                </div>
+
+                <form onSubmit={handleSaveRemitente} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                        Nombre Comercial / Remitente
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={remitenteNombre}
+                        onChange={e => setRemitenteNombre(e.target.value)}
+                        placeholder="Ej: ComiKids Store"
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white font-bold focus:outline-none focus:border-amber-400 shadow-inner"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                        🪪 DNI / RUC del Remitente
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={remitenteDni}
+                        onChange={e => setRemitenteDni(e.target.value)}
+                        placeholder="DNI o RUC"
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-400 shadow-inner"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                        📧 Correo Electrónico Remitente
+                      </label>
+                      <input
+                        type="email"
+                        value={remitenteEmail}
+                        onChange={e => setRemitenteEmail(e.target.value)}
+                        placeholder="contacto@tuempresa.com"
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white font-mono focus:outline-none focus:border-amber-400 shadow-inner"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                        📱 Teléfono / Celular de Despacho
+                      </label>
+                      <input
+                        type="tel"
+                        required
+                        value={remitenteCelular}
+                        onChange={e => setRemitenteCelular(e.target.value)}
+                        placeholder="9 dígitos"
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white font-mono font-bold focus:outline-none focus:border-amber-400 shadow-inner"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                        📍 Dirección de Origen / Taller
+                      </label>
+                      <input
+                        type="text"
+                        value={remitenteDireccion}
+                        onChange={e => setRemitenteDireccion(e.target.value)}
+                        placeholder="Av. Principal 123, Distrito, Ciudad"
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-amber-400 shadow-inner"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="submit"
+                      className="py-2.5 px-6 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-amber-500/25 transition-all cursor-pointer"
+                    >
+                      <Save className="w-4 h-4 text-slate-950" />
+                      <span>Guardar Datos de Remitente</span>
+                    </button>
+                    {remitenteSuccessMsg && (
+                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                        <Check className="w-4 h-4" />
+                        {remitenteSuccessMsg}
+                      </span>
+                    )}
+                  </div>
+                </form>
+
               </div>
-            </div>
-          </div>
-
-          {/* 2. DATOS DE REMITENTE OFICIAL OLVA COURIER SHALOM Y RÓTULOS */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-yellow-500/30 bg-yellow-950/15 backdrop-blur-2xl space-y-4 shadow-xl">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-yellow-500/20 text-yellow-400 flex items-center justify-center text-xl">
-                🏢
-              </div>
-              <div>
-                <h3 className="text-base font-black text-white flex items-center gap-2">
-                  <span>Datos de Remitente Oficial (Olva Courier, Shalom & Rótulos)</span>
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-yellow-400/20 text-yellow-300 border border-yellow-400/30">
-                    Quién Envía • 100% Personalizable
-                  </span>
-                </h3>
-                <p className="text-xs text-slate-300">
-                  Datos oficiales de quien envía que se sincronizan con las guías, comprobantes y rótulos de despacho de todas las agencias.
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveRemitente} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
-                    Nombre Comercial / Remitente
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={remitenteNombre}
-                    onChange={e => setRemitenteNombre(e.target.value)}
-                    placeholder="Nombre del Remitente"
-                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white font-bold focus:outline-none focus:border-yellow-400 shadow-inner"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
-                    🪪 DNI / RUC del Remitente
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={remitenteDni}
-                    onChange={e => setRemitenteDni(e.target.value)}
-                    placeholder="DNI o RUC"
-                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-yellow-300 font-mono font-bold focus:outline-none focus:border-yellow-400 shadow-inner"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
-                    📧 Correo Electrónico Remitente
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={remitenteEmail}
-                    onChange={e => setRemitenteEmail(e.target.value)}
-                    placeholder="correo@ejemplo.com"
-                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white font-semibold focus:outline-none focus:border-yellow-400 shadow-inner"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
-                    📱 Celular / Teléfono Remitente
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={remitenteCelular}
-                    onChange={e => setRemitenteCelular(e.target.value)}
-                    placeholder="999 999 999"
-                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-yellow-300 font-mono font-bold focus:outline-none focus:border-yellow-400 shadow-inner"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
-                    📍 Dirección de Origen / Taller
-                  </label>
-                  <input
-                    type="text"
-                    value={remitenteDireccion}
-                    onChange={e => setRemitenteDireccion(e.target.value)}
-                    placeholder="Ej. Jr. Gamarra 1234, La Victoria, Lima"
-                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-yellow-400 shadow-inner"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
-                    📝 Observaciones / Notas Predeterminadas en Rótulos
-                  </label>
-                  <input
-                    type="text"
-                    value={remitenteObservaciones}
-                    onChange={e => setRemitenteObservaciones(e.target.value)}
-                    placeholder="Ej. Paquete Frágil - Entregar con Cuidado"
-                    className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-yellow-400 shadow-inner"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
-                <span className="text-[11px] text-slate-400">
-                  ✓ Estos datos se usan como remitente predeterminado en todas tus agencias y rótulos térmicos/A4.
-                </span>
-
-                <button
-                  type="submit"
-                  className="py-2.5 px-6 rounded-2xl bg-yellow-400 hover:bg-yellow-300 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-yellow-400/20 transition-all cursor-pointer"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Datos de Remitente</span>
-                </button>
-              </div>
-            </form>
-
-            {remitenteSuccessMsg && (
-              <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn">
-                ✓ {remitenteSuccessMsg}
-              </p>
             )}
           </div>
 
-          {/* 2.5 SELECTOR DE ESTILO PREDETERMINADO DE RÓTULOS (TÉRMICA / A4) */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-emerald-500/30 bg-emerald-950/15 backdrop-blur-2xl space-y-4 shadow-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* 2. ACCORDION: ESTILO PREDETERMINADO DE RÓTULOS */}
+          <div className="rounded-3xl border border-pink-500/30 bg-slate-900/80 backdrop-blur-2xl shadow-xl overflow-hidden transition-all">
+            <button
+              type="button"
+              onClick={() => toggleAccordion('rotulo')}
+              className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors cursor-pointer"
+            >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl shrink-0">
-                  <Printer className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-2xl bg-pink-500/20 text-pink-400 flex items-center justify-center text-xl shrink-0">
+                  🏷️
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white flex items-center gap-2">
-                    <span>Estilo Predeterminado de Rótulos de Despacho</span>
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                      Impresión Térmica & A4
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                    <span>Estilo Predeterminado de Rótulos de Envío</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-pink-400/20 text-pink-300 border border-pink-400/30">
+                      Impresión 60FPS
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-300">
-                    Elige el diseño visual que se usará para imprimir los rótulos de paquetes. Cada agencia puede heredar este estilo o usar uno propio.
+                  <p className="text-xs text-slate-400">
+                    Selecciona el formato visual predeterminado para imprimir etiquetas de paquetes
                   </p>
                 </div>
               </div>
+              <div className="p-2 rounded-xl bg-white/5 text-slate-300">
+                {activeAccordion === 'rotulo' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              </div>
+            </button>
 
-              <span className="text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 rounded-xl self-start sm:self-auto">
-                Estilo Activo: <strong className="text-white">
-                  {estiloRotuloDefault === 'estandar_oficial' ? 'Estándar Oficial Encomi' : estiloRotuloDefault === 'vision_modern' ? 'Moderno Minimalista Vision' : 'Compacto Eco Ultra-Ahorro'}
-                </strong>
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-              {[
-                {
-                  id: 'estandar_oficial' as const,
-                  title: '🏷️ Estándar Oficial Encomi',
-                  badge: 'Recomendado',
-                  badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-                  desc: 'Diseño corporativo con código de barras legible, recuadros contrastados claros y orden oficial para couriers peruanos.',
-                  previewBg: 'bg-slate-900 border-emerald-500/40'
-                },
-                {
-                  id: 'vision_modern' as const,
-                  title: '✨ Moderno Minimalista Vision',
-                  badge: 'Diseño Premium',
-                  badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-                  desc: 'Esquinas redondeadas, tipografía moderna con badges destacados y acentos visuales limpios de alta estética.',
-                  previewBg: 'bg-slate-900 border-cyan-500/40'
-                },
-                {
-                  id: 'eco_ink_saving' as const,
-                  title: '🌱 Compacto Eco Ultra-Ahorro',
-                  badge: 'Ahorro Tinta',
-                  badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-                  desc: 'Bordes finos de 1px sin rellenos pesados ni fondos oscuros. Máxima velocidad y vida útil para cabezales térmicos.',
-                  previewBg: 'bg-slate-900 border-amber-500/40'
-                }
-              ].map((style) => {
-                const isSelected = estiloRotuloDefault === style.id;
-                return (
+            {activeAccordion === 'rotulo' && (
+              <div className="p-4 sm:p-6 border-t border-pink-500/20 bg-slate-950/70 space-y-4 animate-slideDownSmooth">
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  
+                  {/* Opción 1: Estándar Oficial */}
                   <div
-                    key={style.id}
-                    onClick={() => handleSaveEstiloRotulo(style.id)}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 relative group overflow-hidden ${
-                      isSelected
-                        ? 'bg-slate-900 border-2 border-emerald-400 shadow-xl shadow-emerald-950/60 scale-[1.02]'
-                        : 'bg-slate-950/80 border-white/10 hover:border-white/25 hover:bg-slate-900/60'
+                    onClick={() => handleSaveEstiloRotulo('estandar_oficial')}
+                    className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                      estiloRotuloDefault === 'estandar_oficial'
+                        ? 'bg-pink-500/20 border-pink-400 shadow-xl shadow-pink-500/20 scale-[1.02]'
+                        : 'bg-slate-900 border-white/10 hover:border-white/20'
                     }`}
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-1 mb-2">
-                        <h4 className="font-black text-white text-xs leading-tight group-hover:text-emerald-300 transition-colors">
-                          {style.title}
-                        </h4>
-                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border shrink-0 ${style.badgeClass}`}>
-                          {style.badge}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-black text-white uppercase tracking-wider">
+                          1. Estándar Oficial A4
                         </span>
+                        {estiloRotuloDefault === 'estandar_oficial' && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-pink-500 text-slate-950">
+                            Activo
+                          </span>
+                        )}
                       </div>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
-                        {style.desc}
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        Formato apaisado horizontal tradicional, óptimo para 6 rótulos por hoja A4 en Shalom y Olva.
                       </p>
                     </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px]">
-                      <span className="text-slate-500 font-mono">Formato Térmica 80mm / A4</span>
-                      <span className={`font-bold flex items-center gap-1 ${isSelected ? 'text-emerald-400' : 'text-slate-400'}`}>
-                        {isSelected ? (
-                          <>
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Predeterminado</span>
-                          </>
-                        ) : (
-                          'Toca para elegir'
-                        )}
-                      </span>
+                    <div className="h-14 bg-white rounded-xl p-2 border border-slate-400 flex flex-col justify-between text-[8px] text-black font-sans">
+                      <div className="flex justify-between font-bold border-b pb-0.5">
+                        <span>{remitenteNombre}</span>
+                        <span>SHALOM</span>
+                      </div>
+                      <div className="font-mono font-bold text-center text-[10px]">🪪 DNI RECOJO: 42020312</div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
 
-            {rotuloSuccessMsg && (
-              <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{rotuloSuccessMsg}</span>
-              </p>
+                  {/* Opción 2: Apple Vision Modern */}
+                  <div
+                    onClick={() => handleSaveEstiloRotulo('vision_modern')}
+                    className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                      estiloRotuloDefault === 'vision_modern'
+                        ? 'bg-purple-500/20 border-purple-400 shadow-xl shadow-purple-500/20 scale-[1.02]'
+                        : 'bg-slate-900 border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-black text-white uppercase tracking-wider">
+                          2. Apple Vision Modern
+                        </span>
+                        {estiloRotuloDefault === 'vision_modern' && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-purple-500 text-white">
+                            Activo
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        Formato vertical moderno de alto impacto visual, bordes curvos y tipografía jerárquica limpia.
+                      </p>
+                    </div>
+                    <div className="h-14 bg-slate-950 text-white rounded-xl p-2 border border-purple-400 flex flex-col justify-between text-[8px]">
+                      <div className="flex justify-between font-black text-cyan-300">
+                        <span>VISION DISPATCH</span>
+                        <span>#061625</span>
+                      </div>
+                      <div className="bg-purple-900/60 text-center rounded py-0.5 text-[9px] font-bold">DESTINO OFICIAL</div>
+                    </div>
+                  </div>
+
+                  {/* Opción 3: Eco Ink Saving */}
+                  <div
+                    onClick={() => handleSaveEstiloRotulo('eco_ink_saving')}
+                    className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                      estiloRotuloDefault === 'eco_ink_saving'
+                        ? 'bg-emerald-500/20 border-emerald-400 shadow-xl shadow-emerald-500/20 scale-[1.02]'
+                        : 'bg-slate-900 border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-black text-white uppercase tracking-wider">
+                          3. Eco Ultra-Ahorro
+                        </span>
+                        {estiloRotuloDefault === 'eco_ink_saving' && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500 text-slate-950">
+                            Activo
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        Diseño 100% lineal sin fondos negros ni rellenos pesados. Maximiza el ahorro de tinta al 75%.
+                      </p>
+                    </div>
+                    <div className="h-14 bg-white text-black rounded-xl p-2 border-2 border-dashed border-black flex flex-col justify-between text-[8px] font-mono">
+                      <div className="flex justify-between font-black">
+                        <span>[ECO DESPACHO]</span>
+                        <span>#ENV-2026</span>
+                      </div>
+                      <div className="border border-black text-center py-0.5 font-black text-[9px]">DNI: 42020312</div>
+                    </div>
+                  </div>
+
+                </div>
+
+                {rotuloSuccessMsg && (
+                  <div className="p-2.5 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-xs font-bold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{rotuloSuccessMsg}</span>
+                  </div>
+                )}
+
+              </div>
             )}
           </div>
 
-          {/* 3. HORARIO LÍMITE DE ENVÍO HOY Y DÍAS DE DESPACHO (CONFIGURACIÓN POR DÍA) */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-indigo-500/30 bg-indigo-950/10 backdrop-blur-2xl space-y-5 shadow-xl">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+          {/* 3. ACCORDION: HORARIO LÍMITE Y DESPACHO PREDETERMINADO (GLOBAL DE EMPRESA) */}
+          <div className="rounded-3xl border border-cyan-500/30 bg-slate-900/80 backdrop-blur-2xl shadow-xl overflow-hidden transition-all">
+            <button
+              type="button"
+              onClick={() => toggleAccordion('horario')}
+              className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors cursor-pointer"
+            >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                  <Clock className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xl shrink-0">
+                  ⏰
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Horario Límite de Envío Hoy & Días de Despacho (Por Día)</h3>
-                  <p className="text-xs text-slate-300">
-                    Configura la hora de corte de despacho POR CADA DÍA y añade mensajes personalizados opcionales
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                    <span>Horario Límite y Despacho Predeterminado</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-cyan-400/20 text-cyan-300 border border-cyan-400/30">
+                      Horario Base Empresa
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Hora de corte diaria y días en que realizas envíos que heredarán las agencias
                   </p>
                 </div>
               </div>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                Reglas por Día
-              </span>
-            </div>
+              <div className="p-2 rounded-xl bg-white/5 text-slate-300">
+                {activeAccordion === 'horario' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              </div>
+            </button>
 
-            <form onSubmit={handleSaveCutoffSettings} className="space-y-5">
-              
-              {/* Lista Dinámica por Día */}
-              <div className="space-y-3">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                  📅 Horario de Corte y Mensaje Específico para Cada Día
-                </label>
+            {activeAccordion === 'horario' && (
+              <div className="p-4 sm:p-6 border-t border-cyan-500/20 bg-slate-950/70 space-y-4 animate-slideDownSmooth">
+                
+                {/* ℹ️ CALLOUT DE SINERGIA CON AGENCIAS */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 text-xs text-cyan-200 flex items-start gap-3">
+                  <Clock className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <strong className="block font-black text-cyan-300">
+                      Sinergia con el Catálogo de Agencias:
+                    </strong>
+                    <p className="text-[11.5px] leading-relaxed text-cyan-100/90">
+                      Este es el horario base de tu empresa. Todas las agencias de envío que configures en <strong>"Modo Horario Predeterminado"</strong> usarán automáticamente estos días y horas de corte. Si necesitas horarios o días específicos para alguna agencia (por ejemplo agencias con corte especial a las 2:00 PM), puedes personalizarlo directamente en la pestaña de Agencias.
+                    </p>
+                  </div>
+                </div>
 
-                <div className="space-y-2.5">
-                  {DIAS_SEMANA_ORDEN.map(diaKey => {
-                    const diaInfo = horariosPorDia[diaKey] || {
-                      dia: diaKey,
-                      activo: true,
-                      hora_corte: '18:00',
-                      mensaje_personalizado: '',
-                    };
-                    const diaNombre = DIAS_SEMANA_NOMBRES[diaKey] || diaKey;
+                <form onSubmit={handleSaveCutoff} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                        Hora Límite de Corte de Hoy (Predeterminada)
+                      </label>
+                      <input
+                        type="time"
+                        value={horaCorteGeneral}
+                        onChange={e => setHoraCorteGeneral(e.target.value)}
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-sm font-mono font-bold text-cyan-300 focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
 
-                    const toggleDay = () => {
-                      setHorariosPorDia(prev => ({
-                        ...prev,
-                        [diaKey]: {
-                          ...diaInfo,
-                          activo: !diaInfo.activo,
-                        }
-                      }));
-                    };
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wide">
+                        Mensaje Informativo de Corte (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={mensajeCorteGeneral}
+                        onChange={e => setMensajeCorteGeneral(e.target.value)}
+                        placeholder="Ej: Pedidos confirmados después de las 6:00 PM salen mañana"
+                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                  </div>
 
-                    const updateHora = (val: string) => {
-                      setHorariosPorDia(prev => ({
-                        ...prev,
-                        [diaKey]: {
-                          ...diaInfo,
-                          hora_corte: val,
-                        }
-                      }));
-                    };
+                  {/* Días de Despacho Activos */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-2 uppercase tracking-wide">
+                      Días Habilitados para Despacho General:
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                      {DIAS_SEMANA_ORDEN.map(dia => {
+                        const isActivo = horariosPorDia[dia]?.activo;
+                        return (
+                          <button
+                            key={dia}
+                            type="button"
+                            onClick={() => {
+                              setHorariosPorDia(prev => ({
+                                ...prev,
+                                [dia]: {
+                                  ...prev[dia],
+                                  activo: !prev[dia]?.activo,
+                                  hora_corte: prev[dia]?.hora_corte || horaCorteGeneral,
+                                }
+                              }));
+                            }}
+                            className={`p-2.5 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                              isActivo
+                                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-950/40'
+                                : 'bg-slate-900/60 border-white/5 text-slate-500 hover:text-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-black uppercase">{dia.slice(0, 3)}</span>
+                            <span className={`w-2 h-2 rounded-full ${isActivo ? 'bg-cyan-400' : 'bg-slate-700'}`} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-                    const updateMensaje = (val: string) => {
-                      setHorariosPorDia(prev => ({
-                        ...prev,
-                        [diaKey]: {
-                          ...diaInfo,
-                          mensaje_personalizado: val,
-                        }
-                      }));
-                    };
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="submit"
+                      className="py-2.5 px-6 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-cyan-500/25 transition-all cursor-pointer"
+                    >
+                      <Save className="w-4 h-4 text-slate-950" />
+                      <span>Guardar Horario Predeterminado</span>
+                    </button>
+                    {cutoffSuccessMsg && (
+                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                        <Check className="w-4 h-4" />
+                        {cutoffSuccessMsg}
+                      </span>
+                    )}
+                  </div>
+                </form>
 
+              </div>
+            )}
+          </div>
+
+          {/* 4. ACCORDION: AVISO Y ANUNCIO PÚBLICO PARA CLIENTES */}
+          <div className="rounded-3xl border border-rose-500/30 bg-slate-900/80 backdrop-blur-2xl shadow-xl overflow-hidden transition-all">
+            <button
+              type="button"
+              onClick={() => toggleAccordion('anuncio')}
+              className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl shrink-0">
+                  📢
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                    <span>Aviso y Anuncio Público para Clientes</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-400/20 text-rose-300 border border-rose-400/30">
+                      Banner Superior
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Mensaje destacado que verán tus clientes al ingresar al formulario de envíos
+                  </p>
+                </div>
+              </div>
+              <div className="p-2 rounded-xl bg-white/5 text-slate-300">
+                {activeAccordion === 'anuncio' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              </div>
+            </button>
+
+            {activeAccordion === 'anuncio' && (
+              <div className="p-4 sm:p-6 border-t border-rose-500/20 bg-slate-950/70 space-y-4 animate-slideDownSmooth">
+                <form onSubmit={handleSaveAnuncio} className="space-y-3">
+                  <textarea
+                    rows={3}
+                    value={anuncioTexto}
+                    onChange={e => setAnuncioTexto(e.target.value)}
+                    placeholder="Ej: 🚀 ¡Envíos gratis por compras mayores a S/ 150! Los pedidos de hoy salen a las 6:00 PM puntual."
+                    className="w-full p-3.5 bg-slate-900 border border-slate-700 rounded-2xl text-xs sm:text-sm text-white focus:outline-none focus:border-rose-400"
+                  />
+
+                  {anuncioTexto && (
+                    <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-xs text-rose-200">
+                      <span className="text-[10px] uppercase font-bold text-rose-400 block mb-1">Vista Previa para tus Clientes:</span>
+                      <p className="font-medium">{anuncioTexto}</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="submit"
+                      className="py-2.5 px-6 rounded-2xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-rose-500/25 transition-all cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Guardar Anuncio</span>
+                    </button>
+                    {anuncioSuccessMsg && (
+                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                        <Check className="w-4 h-4" />
+                        {anuncioSuccessMsg}
+                      </span>
+                    )}
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+
+          {/* 5. ACCORDION: PERSONALIZACIÓN DE TEMAS (EXACTAMENTE 4 TEMAS REALES) */}
+          <div className="rounded-3xl border border-purple-500/30 bg-slate-900/80 backdrop-blur-2xl shadow-xl overflow-hidden transition-all">
+            <button
+              type="button"
+              onClick={() => toggleAccordion('temas')}
+              className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center text-xl shrink-0">
+                  🎨
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                    <span>Personalización de Temas (4 Estilos Oficiales)</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-purple-400/20 text-purple-300 border border-purple-400/30">
+                      Transformación Visual
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Cambia la atmósfera de tu aplicación entre los 4 estilos exclusivos: NSpace, Modern Black, Modern White y Rosado Space
+                  </p>
+                </div>
+              </div>
+              <div className="p-2 rounded-xl bg-white/5 text-slate-300">
+                {activeAccordion === 'temas' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              </div>
+            </button>
+
+            {activeAccordion === 'temas' && (
+              <div className="p-4 sm:p-6 border-t border-purple-500/20 bg-slate-950/70 space-y-4 animate-slideDownSmooth">
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {FUTURISTIC_THEMES.map(theme => {
+                    const isCurrent = currentThemeId === theme.id;
                     return (
                       <div
-                        key={diaKey}
-                        className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${
-                          diaInfo.activo
-                            ? 'bg-slate-950/80 border-indigo-500/30 shadow-md'
-                            : 'bg-slate-950/40 border-white/5 opacity-60'
+                        key={theme.id}
+                        onClick={() => handleApplyTheme(theme.id)}
+                        className={`p-4 rounded-3xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                          isCurrent
+                            ? 'bg-purple-500/20 border-cyan-400 shadow-xl shadow-cyan-500/25 scale-[1.03]'
+                            : 'bg-slate-900/80 border-white/10 hover:border-white/30 hover:scale-[1.01]'
                         }`}
                       >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={toggleDay}
-                              className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs transition-all cursor-pointer shrink-0 ${
-                                diaInfo.activo
-                                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                                  : 'bg-slate-800 text-slate-500'
-                              }`}
-                              title={diaInfo.activo ? 'Desactivar este día' : 'Activar este día'}
-                            >
-                              {diaInfo.activo ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                            </button>
-
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-black text-white capitalize">{diaNombre}</span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                  diaInfo.activo
-                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                    : 'bg-rose-500/15 text-rose-300 border border-rose-500/20'
-                                }`}>
-                                  {diaInfo.activo ? 'Despacho Habilitado' : 'No se Despacha'}
-                                </span>
-                              </div>
-                              <span className="text-[11px] text-slate-400 block mt-0.5">
-                                {diaInfo.activo
-                                  ? `Hora límite de corte: ${formatFriendlyTime(diaInfo.hora_corte || '18:00')}`
-                                  : 'Los clientes no podrán programar envíos para este día.'}
-                              </span>
-                            </div>
+                        <div>
+                          <div
+                            className="h-16 rounded-2xl w-full mb-3 shadow-inner flex items-center justify-center text-xl relative overflow-hidden"
+                            style={{ background: theme.previewGradient }}
+                          >
+                            <span className="relative z-10 font-black text-white drop-shadow-md text-sm">
+                              {theme.badge || 'Tema'}
+                            </span>
                           </div>
-
-                          {diaInfo.activo && (
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <label className="text-xs text-slate-400 font-bold">Límite:</label>
-                              <input
-                                type="time"
-                                value={diaInfo.hora_corte || '18:00'}
-                                onChange={e => updateHora(e.target.value)}
-                                className="px-3 py-1.5 bg-slate-900 border border-indigo-500/40 rounded-xl text-xs font-mono font-bold text-indigo-200 focus:outline-none focus:border-indigo-400 shadow-inner cursor-pointer"
-                              />
-
-                              <div className="flex items-center gap-1">
-                                {['12:00', '14:00', '16:00', '18:00', '20:00'].map(preset => (
-                                  <button
-                                    key={preset}
-                                    type="button"
-                                    onClick={() => updateHora(preset)}
-                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold font-mono transition-all cursor-pointer ${
-                                      diaInfo.hora_corte === preset
-                                        ? 'bg-indigo-600 text-white shadow-xs'
-                                        : 'bg-white/5 hover:bg-white/10 text-slate-400'
-                                    }`}
-                                  >
-                                    {preset}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                          <div className="flex items-center justify-between mb-1">
+                            <strong className="text-sm text-white font-black">{theme.name}</strong>
+                            {isCurrent && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-cyan-400 text-slate-950">
+                                Activo
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-snug">
+                            {theme.description}
+                          </p>
                         </div>
 
-                        {diaInfo.activo && (
-                          <div className="mt-2.5 pt-2.5 border-t border-white/5 space-y-1">
-                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              💬 Mensaje personalizado opcional para los {diaNombre}:
-                            </label>
-                            <input
-                              type="text"
-                              value={diaInfo.mensaje_personalizado || ''}
-                              onChange={e => updateMensaje(e.target.value)}
-                              placeholder={`Ej. ¡Los ${diaNombre} despachamos express antes de las ${diaInfo.hora_corte || '18:00'}!`}
-                              className="w-full px-3.5 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 shadow-inner"
-                            />
-                          </div>
-                        )}
+                        <button
+                          type="button"
+                          className={`w-full py-2 rounded-xl text-xs font-black transition-all ${
+                            isCurrent
+                              ? 'bg-cyan-400 text-slate-950 shadow-md'
+                              : 'bg-white/5 hover:bg-white/10 text-slate-300'
+                          }`}
+                        >
+                          {isCurrent ? '✓ Tema Seleccionado' : 'Activar Tema'}
+                        </button>
                       </div>
                     );
                   })}
                 </div>
-              </div>
 
-              {/* Banner de Estado de Corte en Vivo */}
-              {(() => {
-                const cutoffEval = evaluateShippingCutoff(tallerConfig);
-                return (
-                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-indigo-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-3 h-3 rounded-full ${cutoffEval.isPastCutoff ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
-                      <div>
-                        <span className="text-xs font-bold text-white block">
-                          {cutoffEval.isPastCutoff ? 'Plazo de Hoy Finalizado' : 'Envíos para Hoy Disponibles'}
-                        </span>
-                        <span className="text-[11px] text-slate-400">
-                          Hora actual en Perú: <strong className="text-indigo-300 font-mono">{cutoffEval.currentTimeStr}</strong> • Corte: <strong className="text-amber-300 font-mono">{formatFriendlyTime(cutoffEval.cutoffTime)}</strong>
+                {themeSuccessMsg && (
+                  <div className="p-2.5 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-xs font-bold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{themeSuccessMsg}</span>
+                  </div>
+                )}
+
+              </div>
+            )}
+          </div>
+
+          {/* 6. ACCORDION: AGENCIAS DE ENVÍO Y DESPACHO */}
+          <div className="rounded-3xl border border-emerald-500/30 bg-slate-900/80 backdrop-blur-2xl shadow-xl overflow-hidden transition-all">
+            <button
+              type="button"
+              onClick={() => toggleAccordion('agencias')}
+              className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl shrink-0">
+                  🚚
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                    <span>Agencias de Envío y Despacho</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                      {activeAgenciesCount} Agencias Activas
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Administra Shalom, Olva Courier, Motorizado y transportes personalizados
+                  </p>
+                </div>
+              </div>
+              <div className="p-2 rounded-xl bg-white/5 text-slate-300">
+                {activeAccordion === 'agencias' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              </div>
+            </button>
+
+            {activeAccordion === 'agencias' && (
+              <div className="p-2 sm:p-4 border-t border-emerald-500/20 bg-slate-950/70 animate-slideDownSmooth">
+                <CompanyAgenciesTab />
+              </div>
+            )}
+          </div>
+
+          {/* 7. ACCORDION: WHATSAPP OFICIAL SUB-QR (SOLO VISIBLE PARA MAIN MATRIX 963097777) */}
+          {isMainMatrixAccount && (
+            <div className="rounded-3xl border border-emerald-500/30 bg-emerald-950/20 backdrop-blur-2xl shadow-xl overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleAccordion('whatsapp')}
+                className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl shrink-0">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                      <span>Línea WhatsApp Oficial / Sub Código QR</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                        Solo Master Matrix4012
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Gestión exclusiva de sub-instancia de WhatsApp para envíos a 1 click
+                    </p>
+                  </div>
+                </div>
+                <div className="p-2 rounded-xl bg-white/5 text-slate-300">
+                  {activeAccordion === 'whatsapp' ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </div>
+              </button>
+
+              {activeAccordion === 'whatsapp' && (
+                <div className="p-4 sm:p-6 border-t border-emerald-500/20 bg-slate-950/70 space-y-4 animate-slideDownSmooth">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <p className="text-xs text-slate-300">
+                        Número vinculado para enviar comprobantes y estados automáticos.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenQrModal}
+                      className="py-2.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/30 transition-all cursor-pointer"
+                    >
+                      <QrCode className="w-4 h-4" />
+                      <span>Escanear / Vincular Sub QR</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-500/20">
+                    <div className="p-3 rounded-2xl bg-slate-950/80 border border-emerald-500/20">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Sub-Instancia Asignada</span>
+                      <span className="text-xs font-mono font-bold text-emerald-300">{subInstance}</span>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-slate-950/80 border border-emerald-500/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Teléfono Emisor Oficial</span>
+                        <button
+                          type="button"
+                          onClick={() => verifyLivePhoneStatus(false)}
+                          disabled={isVerifyingPhone}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isVerifyingPhone ? 'animate-spin' : ''}`} />
+                          <span>Verificar</span>
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs font-mono font-bold text-emerald-300">+{liveSenderPhone || initialPhone}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                          connectionState === 'open'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : connectionState === 'connecting'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                        }`}>
+                          {connectionState === 'open' ? '🟢 Conectado' : connectionState === 'connecting' ? '🟡 Conectando' : '🔴 Desconectado'}
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-3 py-1 rounded-full font-bold text-xs ${
-                        cutoffEval.isPastCutoff
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                      }`}>
-                        Próximo Despacho: {formatFriendlyDate(cutoffEval.minAvailableDateYMD)}
-                      </span>
-                    </div>
                   </div>
-                );
-              })()}
-
-              <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
-                <span className="text-[11px] text-slate-400">
-                  ✓ El formulario público de clientes respetará la hora límite de cada día.
-                </span>
-
-                <button
-                  type="submit"
-                  className="py-2.5 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Horarios por Día</span>
-                </button>
-              </div>
-            </form>
-
-            {cutoffSuccessMsg && (
-              <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn">
-                ✓ {cutoffSuccessMsg}
-              </p>
-            )}
-          </div>
-
-          {/* 4. AVISO / ANUNCIO PÚBLICO */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-amber-500/30 bg-amber-950/10 backdrop-blur-2xl space-y-4 shadow-xl">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                <Megaphone className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-black text-white">Aviso / Anuncio Público para Clientes</h3>
-                <p className="text-xs text-slate-300">
-                  Personaliza el mensaje destacado que ven tus clientes al abrir el formulario de despacho
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveAnuncio} className="space-y-3">
-              <textarea
-                rows={3}
-                value={anuncioTexto}
-                onChange={e => setAnuncioTexto(e.target.value)}
-                placeholder="Ej. ¡Atención! Recuerda que todos los pedidos registrados antes de las 4:00 PM salen en el despacho de hoy 🚚✨"
-                className="w-full p-3.5 bg-slate-950/90 border border-slate-800 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors shadow-inner"
-              />
-
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="text-[11px] text-slate-400">
-                  {anuncioTexto.trim() ? '✓ Anuncio activo para tus clientes' : 'Sin anuncio personalizado'}
-                </span>
-
-                <div className="flex gap-2">
-                  {anuncioTexto.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAnuncioTexto('');
-                        updateTallerConfig({ anuncio_publico_clientes: undefined });
-                        setAnuncioSuccessMsg('Anuncio eliminado.');
-                        setTimeout(() => setAnuncioSuccessMsg(''), 3000);
-                      }}
-                      className="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-rose-400 text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      Quitar Aviso
-                    </button>
-                  )}
-
-                  <button
-                    type="submit"
-                    className="py-2.5 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Guardar Mensaje de Aviso</span>
-                  </button>
                 </div>
-              </div>
-            </form>
+              )}
+            </div>
+          )}
 
-            {anuncioSuccessMsg && (
-              <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn">
-                ✓ {anuncioSuccessMsg}
-              </p>
-            )}
-          </div>
+        </div>
+      )}
 
-          {/* 5. NÚMERO CÓDIGO DE ACCESO A LA EMPRESA */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-white/10 backdrop-blur-2xl space-y-4 shadow-xl">
+      {/* =========================================================================
+          PESTAÑA 2: PERSONALIZAR CUENTA Y SEGURIDAD (CÓDIGO, EQUIPO, CLAVE)
+          ========================================================================= */}
+      {mainTab === 'cuenta' && (
+        <div className="space-y-5 animate-fadeIn">
+          
+          {/* 1. CÓDIGO DE ENTRADA / ACCESO DE LA EMPRESA */}
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-purple-500/30 bg-purple-950/20 backdrop-blur-2xl space-y-4 shadow-xl">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center text-xl">
                 <KeyRound className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-black text-white">Número / Código de Acceso a la Empresa</h3>
-                <p className="text-xs text-slate-400">
-                  Número de entrada para iniciar sesión directamente en este panel desde la pantalla principal
+                <h3 className="text-base font-black text-white flex items-center gap-2">
+                  <span>Código / Número de Acceso de la Empresa</span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-purple-400/20 text-purple-300 border border-purple-400/30">
+                    ID Exclusivo
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-300">
+                  Tu número de entrada al sistema y el código con el que tus clientes acceden a tu enlace.
                 </p>
               </div>
             </div>
 
-            <form onSubmit={handleUpdateMasterCode} className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-              <div className="relative w-full sm:w-72">
+            <form onSubmit={handleSaveMasterCode} className="space-y-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                 <input
                   type="text"
                   required
                   value={newMasterCode}
                   onChange={e => setNewMasterCode(e.target.value)}
-                  placeholder="Ej. 061625"
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-sm font-mono text-cyan-300 font-black text-center focus:outline-none focus:border-amber-500 tracking-widest"
+                  placeholder="Número de Entrada"
+                  className="flex-1 p-3.5 bg-slate-950 border border-slate-700 rounded-2xl text-base font-mono font-bold text-purple-300 focus:outline-none focus:border-purple-400"
                 />
+                <button
+                  type="submit"
+                  className="py-3.5 px-6 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Actualizar Código</span>
+                </button>
               </div>
-
-              <button
-                type="submit"
-                className="w-full sm:w-auto py-3 px-6 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
-              >
-                Actualizar Código de Entrada
-              </button>
+              {codeSuccessMsg && (
+                <div className="p-2.5 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{codeSuccessMsg}</span>
+                </div>
+              )}
             </form>
-
-            {codeSuccessMsg && (
-              <p className="text-xs text-emerald-400 font-bold bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20 animate-fadeIn">
-                ✓ {codeSuccessMsg}
-              </p>
-            )}
           </div>
 
-          {/* 6. SEGURIDAD Y CONTRASEÑA DE LA CUENTA */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-pink-500/30 bg-pink-950/10 backdrop-blur-2xl space-y-4 shadow-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* 2. SEGURIDAD Y CAMBIO DE CONTRASEÑA */}
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-white/10 bg-slate-900/80 backdrop-blur-2xl space-y-4 shadow-xl">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-pink-500/20 text-pink-400 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-2xl bg-white/10 text-white flex items-center justify-center text-xl">
                   <Lock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Seguridad & Contraseña de la Cuenta</h3>
-                  <p className="text-xs text-slate-300">
-                    Cambia la contraseña maestra de acceso para la cuenta de administración
+                  <h3 className="text-base font-black text-white">Seguridad y Contraseña</h3>
+                  <p className="text-xs text-slate-400">
+                    Cambia la contraseña maestra de acceso para este panel empresarial
                   </p>
                 </div>
               </div>
@@ -1408,224 +1510,182 @@ export const CompanyAccountSettings: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowChangePasswordModal(true)}
-                className="py-2.5 px-5 rounded-2xl bg-linear-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-pink-600/25 transition-all active:scale-95 cursor-pointer shrink-0"
+                className="py-2.5 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white text-xs font-black flex items-center gap-2 border border-white/15 transition-all cursor-pointer"
               >
-                <KeyRound className="w-4 h-4" />
+                <Lock className="w-4 h-4" />
                 <span>Cambiar Contraseña</span>
               </button>
             </div>
           </div>
 
-          {/* 7. EQUIPO Y COLABORADORES DE TALLER */}
-          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-white/10 backdrop-blur-2xl space-y-6 shadow-xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* 3. GESTIÓN DE EQUIPO Y COLABORADORES */}
+          <div className="glass-panel p-6 sm:p-7 rounded-3xl border border-white/10 bg-slate-900/80 backdrop-blur-2xl space-y-4 shadow-xl">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-500/15 text-purple-400 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xl">
                   <Users className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Equipo y Colaboradores de Taller</h3>
+                  <h3 className="text-base font-black text-white">Equipo y Colaboradores ({colaboradores.length})</h3>
                   <p className="text-xs text-slate-400">
-                    Personal autorizado para gestionar embalaje, despachos y atención
+                    Asigna miembros del taller para embalaje, bordado o gestión de envíos
                   </p>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowAddColab(true)}
-                className="py-2.5 px-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-purple-600/20 transition-all cursor-pointer"
+                className="py-2.5 px-4 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black flex items-center gap-2 shadow-lg shadow-cyan-500/30 transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>Agregar Colaborador</span>
+                <span>Añadir Colaborador</span>
               </button>
             </div>
 
-            {/* Caja para Añadir Colaborador */}
-            {showAddColab && (
-              <div className="p-6 rounded-3xl bg-slate-900 border border-purple-500/30 shadow-2xl space-y-4 animate-slideDown">
-                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <h4 className="text-sm font-black text-white">Nuevo Miembro del Taller</h4>
-                  <button onClick={() => setShowAddColab(false)} className="text-slate-400 hover:text-white">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleSaveColaborador} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Nombre Completo</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej. Valeria Gómez"
-                      value={colabNombre}
-                      onChange={e => setColabNombre(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Rol / Función</label>
-                    <select
-                      value={colabRol}
-                      onChange={e => setColabRol(e.target.value as any)}
-                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500"
-                    >
-                      <option value="embalaje">📦 Embalaje & Despacho</option>
-                      <option value="atencion">💬 Atención a Clientes</option>
-                      <option value="motorizado">🛵 Motorizado Local</option>
-                      <option value="administrador">🛡️ Administrador</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Teléfono (Opcional)</label>
-                    <input
-                      type="tel"
-                      placeholder="987 654 321"
-                      value={colabTelefono}
-                      onChange={e => setColabTelefono(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-3 flex justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddColab(false)}
-                      className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-bold cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black shadow-lg shadow-purple-600/30 cursor-pointer"
-                    >
-                      Guardar Colaborador
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {/* Lista de Colaboradores */}
             {colaboradores.length === 0 ? (
-              <div className="p-8 rounded-3xl bg-slate-950/60 border border-white/5 text-center space-y-2">
-                <p className="text-xs text-slate-500">No hay colaboradores registrados aún.</p>
-                <button
-                  onClick={() => setShowAddColab(true)}
-                  className="text-xs text-purple-400 hover:underline font-bold cursor-pointer"
-                >
-                  + Agregar el primer miembro
-                </button>
+              <div className="p-6 rounded-2xl bg-slate-950/60 border border-white/5 text-center text-slate-500 text-xs">
+                No hay colaboradores registrados aún. Añade tu equipo para asignar tareas de producción.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {colaboradores.map(c => (
                   <div
                     key={c.id}
-                    className="p-4 rounded-2xl bg-slate-950/70 border border-white/5 flex items-center justify-between gap-3 hover:border-purple-500/30 transition-all shadow-md"
+                    className="p-3.5 rounded-2xl bg-slate-950/80 border border-white/10 flex items-center justify-between gap-3"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-linear-to-tr from-purple-500/20 to-indigo-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 font-black text-sm shrink-0">
-                        {c.nombre.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <h5 className="text-xs font-bold text-white truncate">{c.nombre}</h5>
-                        <span className="text-[10px] font-semibold text-purple-400 capitalize block">
-                          {c.rol === 'embalaje' ? '📦 Embalaje' : c.rol === 'atencion' ? '💬 Atención' : c.rol === 'motorizado' ? '🛵 Motorizado' : '🛡️ Admin'}
-                        </span>
-                        {c.telefono && (
-                          <span className="text-[10px] font-mono text-slate-400 block">{c.telefono}</span>
-                        )}
-                      </div>
+                    <div>
+                      <strong className="text-xs font-bold text-white block">{c.nombre}</strong>
+                      <span className="text-[10px] uppercase font-black px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 inline-block mt-0.5">
+                        {c.rol}
+                      </span>
                     </div>
-
                     <button
+                      type="button"
                       onClick={() => deleteColaborador(c.id)}
-                      className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
+                      className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-colors cursor-pointer"
                       title="Eliminar colaborador"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
         </div>
       )}
 
-      {/* Modal de Cambio de Contraseña */}
+      {/* MODAL DE CAMBIO DE CONTRASEÑA */}
       {showChangePasswordModal && (
         <ChangePasswordModal onClose={() => setShowChangePasswordModal(false)} />
       )}
 
-      {/* Modal Sub Código QR */}
-      {showQrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <QrCode className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-sm font-black text-white">Sub Código QR WhatsApp</h3>
+      {/* MODAL PARA AGREGAR COLABORADOR */}
+      {showAddColab && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md rounded-3xl bg-slate-950 border border-white/10 p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <h3 className="text-sm font-black text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-cyan-400" />
+                <span>Nuevo Colaborador</span>
+              </h3>
+              <button
+                onClick={() => setShowAddColab(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddColaboradorSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Nombre Completo</label>
+                <input
+                  type="text"
+                  required
+                  value={colabNombre}
+                  onChange={e => setColabNombre(e.target.value)}
+                  placeholder="Ej: Carlos Sánchez"
+                  className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
+                />
               </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">Rol / Cargo</label>
+                <select
+                  value={colabRol}
+                  onChange={e => setColabRol(e.target.value as any)}
+                  className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
+                >
+                  <option value="embalaje">Embalaje y Despacho</option>
+                  <option value="bordado">Costura y Bordado</option>
+                  <option value="atencion">Atención al Cliente</option>
+                  <option value="administrador">Administrador</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddColab(false)}
+                  className="px-4 py-2 rounded-xl bg-white/5 text-slate-300 text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-cyan-500 text-slate-950 text-xs font-black"
+                >
+                  Guardar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CÓDIGO QR WHATSAPP (SOLO MATRIX) */}
+      {showQrModal && isMainMatrixAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-sm rounded-3xl bg-slate-950 border border-emerald-500/40 p-5 space-y-4 shadow-2xl text-center">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <h3 className="text-sm font-black text-white flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-emerald-400" />
+                <span>Escanear WhatsApp QR</span>
+              </h3>
               <button
                 onClick={() => setShowQrModal(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="text-center py-2">
-              {qrSuccessMsg ? (
-                <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold animate-pulse">
-                  {qrSuccessMsg}
+            {qrLoading ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
+                <span className="text-xs text-slate-300">Generando código QR...</span>
+              </div>
+            ) : qrBase64 ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-white rounded-2xl inline-block shadow-xl">
+                  <img src={qrBase64} alt="QR WhatsApp" className="w-52 h-52 object-contain" />
                 </div>
-              ) : (
-                <>
-                  <p className="text-xs text-slate-300">
-                    Escanea este QR desde el WhatsApp de la empresa para vincularlo o reemplazarlo. El sistema detectará y actualizará automáticamente el nuevo número emisor.
-                  </p>
-                  <div className="text-[11px] font-mono text-emerald-400 font-bold mt-1">
-                    Instancia: {subInstance} • Línea: +{liveSenderPhone || initialPhone}
-                  </div>
-                </>
-              )}
-            </div>
+                <p className="text-xs text-slate-400">
+                  Abre WhatsApp en tu teléfono &gt; Dispositivos vinculados &gt; Vincular un dispositivo
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-rose-400 py-6">No se pudo cargar el código QR.</p>
+            )}
 
-            <div className="flex justify-center p-4 bg-white rounded-2xl min-h-[220px] items-center">
-              {qrLoading ? (
-                <div className="flex flex-col items-center gap-2 text-slate-800">
-                  <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-                  <span className="text-xs font-bold">Generando Sub QR...</span>
-                </div>
-              ) : qrBase64 ? (
-                <img src={qrBase64} alt="Sub QR Code" className="w-56 h-56 object-contain" />
-              ) : (
-                <div className="text-xs text-slate-500 font-medium text-center">
-                  No se pudo cargar el código QR.<br />Presiona reintentar.
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleOpenQrModal}
-                disabled={qrLoading}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
-              >
-                Recargar QR
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowQrModal(false)}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition-all cursor-pointer"
-              >
-                Listo / Cerrar
-              </button>
-            </div>
+            {qrSuccessMsg && (
+              <div className="p-2.5 rounded-xl bg-emerald-950 border border-emerald-500 text-emerald-300 text-xs font-bold">
+                {qrSuccessMsg}
+              </div>
+            )}
           </div>
         </div>
       )}

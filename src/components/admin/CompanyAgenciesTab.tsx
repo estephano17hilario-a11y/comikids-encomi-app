@@ -142,12 +142,14 @@ export const CompanyAgenciesTab: React.FC = () => {
   const [copiedPreviewMsg, setCopiedPreviewMsg] = useState(false);
 
   // ==========================================
-  // REQUERIMIENTO 2: DISPONIBILIDAD Y HORARIOS
+  // REQUERIMIENTO 2: DISPONIBILIDAD Y HORARIOS (SINERGIA EMPRESA VS PERSONALIZADO)
   // ==========================================
+  const [modoHorario, setModoHorario] = useState<'predeterminado' | 'personalizado'>('predeterminado');
   const [diasSemanaHabilitados, setDiasSemanaHabilitados] = useState<DiaSemana[]>([]);
   const [modalidadHorario, setModalidadHorario] = useState<'uno_para_todos' | 'individual_por_dia'>('uno_para_todos');
   const [horarioGlobal, setHorarioGlobal] = useState<HorarioDia>({ es_24_horas: true, hora_inicio: '08:30', hora_fin: '18:30' });
   const [horariosPorDia, setHorariosPorDia] = useState<Partial<Record<DiaSemana, HorarioDia>>>({});
+  const [mensajesPorDia, setMensajesPorDia] = useState<Partial<Record<DiaSemana, string>>>({});
   const [ocultarSiNoDisponible, setOcultarSiNoDisponible] = useState(false);
   const [restringirFechaEnvio, setRestringirFechaEnvio] = useState(true);
   const [mensajeDisponibilidad, setMensajeDisponibilidad] = useState('');
@@ -271,10 +273,12 @@ export const CompanyAgenciesTab: React.FC = () => {
 
     // Disponibilidad
     const disp = m.disponibilidad;
+    setModoHorario(disp?.modo_horario || (disp?.dias_semana && disp.dias_semana.length > 0 ? 'personalizado' : 'predeterminado'));
     setDiasSemanaHabilitados(disp?.dias_semana || []);
     setModalidadHorario(disp?.modalidad_horario || 'uno_para_todos');
     setHorarioGlobal(disp?.horario_global || { es_24_horas: true, hora_inicio: '08:30', hora_fin: '18:30' });
     setHorariosPorDia(disp?.horarios_por_dia || {});
+    setMensajesPorDia(disp?.mensajes_por_dia || {});
     setOcultarSiNoDisponible(Boolean(disp?.ocultar_si_no_disponible));
     setRestringirFechaEnvio(disp?.restringir_fecha_envio !== false);
     setMensajeDisponibilidad(disp?.mensaje_disponibilidad || '');
@@ -355,10 +359,12 @@ export const CompanyAgenciesTab: React.FC = () => {
         mensaje_inicio_comprobante: mensajeInicioComprobante.trim() || undefined,
         mensaje_fin_comprobante: mensajeFinComprobante.trim() || undefined,
         disponibilidad: {
-          dias_semana: diasSemanaHabilitados.length > 0 ? diasSemanaHabilitados : undefined,
+          modo_horario: modoHorario,
+          dias_semana: modoHorario === 'personalizado' ? (diasSemanaHabilitados.length > 0 ? diasSemanaHabilitados : undefined) : undefined,
           modalidad_horario: modalidadHorario,
           horario_global: horarioGlobal,
           horarios_por_dia: modalidadHorario === 'individual_por_dia' ? horariosPorDia : undefined,
+          mensajes_por_dia: modoHorario === 'personalizado' ? mensajesPorDia : undefined,
           ocultar_si_no_disponible: ocultarSiNoDisponible,
           restringir_fecha_envio: restringirFechaEnvio,
           mensaje_disponibilidad: mensajeDisponibilidad.trim() || undefined,
@@ -1188,338 +1194,376 @@ export const CompanyAgenciesTab: React.FC = () => {
                 </div>
               )}
 
-              {/* --- TAB 2: DISPONIBILIDAD INTELIGENTE (DÍAS Y FECHAS) --- */}
+              {/* --- TAB 2: DISPONIBILIDAD Y HORARIOS (SINERGIA EMPRESA VS PERSONALIZADO) --- */}
               {activeEditorTab === 'disponibilidad' && (
                 <div className="space-y-5 animate-fadeIn">
                   
-                  {/* Card 1: Días de la semana habilitados */}
-                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="font-bold text-amber-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
-                          <Calendar className="w-4 h-4 text-amber-400" />
-                          <span>Días de la Semana Habilitados para Despacho</span>
-                        </span>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Configura qué días opera o sale encomienda por esta agencia.
+                  {/* Selector de Modo de Horario */}
+                  <div className="p-4 sm:p-5 rounded-3xl bg-slate-950/90 border border-cyan-500/30 space-y-3 shadow-xl">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="font-bold text-white uppercase tracking-wider text-xs flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-cyan-400" />
+                        <span>Modo de Horario de Despacho</span>
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {/* Opción 1: Horario Predeterminado */}
+                      <div
+                        onClick={() => setModoHorario('predeterminado')}
+                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          modoHorario === 'predeterminado'
+                            ? 'bg-cyan-500/20 border-cyan-400 shadow-lg shadow-cyan-500/20 scale-[1.02]'
+                            : 'bg-slate-900 border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <strong className="text-xs font-black text-white flex items-center gap-1.5">
+                            <span>🟢 Modo Horario Predeterminado</span>
+                          </strong>
+                          {modoHorario === 'predeterminado' && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-cyan-400 text-slate-950">
+                              Activo
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug">
+                          Hereda automáticamente el horario de corte general y los días de despacho configurados en los Ajustes de la Empresa.
                         </p>
                       </div>
 
-                      {/* Presets de selección rápida de días */}
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setDiasSemanaHabilitados([])}
-                          className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold border transition-all cursor-pointer ${
-                            diasSemanaHabilitados.length === 0
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-400/40 font-black'
-                              : 'bg-slate-900 border-white/5 text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          Todos los días
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDiasSemanaHabilitados(['lunes', 'martes', 'miercoles', 'jueves', 'viernes'])}
-                          className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-slate-900 border border-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
-                        >
-                          Lun a Vie
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDiasSemanaHabilitados(['miercoles', 'sabado'])}
-                          className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-slate-900 border border-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
-                        >
-                          Mié y Sáb
-                        </button>
+                      {/* Opción 2: Horario Personalizado */}
+                      <div
+                        onClick={() => setModoHorario('personalizado')}
+                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                          modoHorario === 'personalizado'
+                            ? 'bg-purple-500/20 border-purple-400 shadow-lg shadow-purple-500/20 scale-[1.02]'
+                            : 'bg-slate-900 border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <strong className="text-xs font-black text-white flex items-center gap-1.5">
+                            <span>🟣 Modo Horario Personalizado</span>
+                          </strong>
+                          {modoHorario === 'personalizado' && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-purple-400 text-white">
+                              Activo
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug">
+                          Configura días específicos, horas de corte independientes y mensajes personalizados por día para esta agencia.
+                        </p>
                       </div>
-                    </div>
-
-                    {/* Botones de Días de la semana */}
-                    <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 pt-1">
-                      {DIAS_SEMANA_ORDEN.map((dia) => {
-                        const isSelected = diasSemanaHabilitados.length === 0 || diasSemanaHabilitados.includes(dia);
-                        return (
-                          <button
-                            key={dia}
-                            type="button"
-                            onClick={() => {
-                              if (diasSemanaHabilitados.length === 0) {
-                                // Si estaban todos seleccionados por defecto, desmarcar solo este día
-                                setDiasSemanaHabilitados(DIAS_SEMANA_ORDEN.filter(d => d !== dia));
-                              } else if (diasSemanaHabilitados.includes(dia)) {
-                                setDiasSemanaHabilitados(prev => prev.filter(d => d !== dia));
-                              } else {
-                                setDiasSemanaHabilitados(prev => [...prev, dia]);
-                              }
-                            }}
-                            className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                              isSelected
-                                ? 'bg-amber-500/20 border-amber-400 text-amber-200 shadow-md shadow-amber-950/40'
-                                : 'bg-slate-900/60 border-white/5 text-slate-500 hover:text-slate-300'
-                            }`}
-                          >
-                            <span className="text-xs font-black uppercase">{DIAS_SEMANA_ABREV[dia]}</span>
-                            <span className="text-[9.5px] font-medium">{DIAS_SEMANA_LABELS[dia]}</span>
-                            <span className={`w-2 h-2 rounded-full mt-0.5 ${isSelected ? 'bg-amber-400' : 'bg-slate-700'}`} />
-                          </button>
-                        );
-                      })}
                     </div>
                   </div>
 
-                  {/* Card 2: Rango de Horario (Personalizado por día o uno para todos, con opción 24 horas) */}
-                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-cyan-500/30 space-y-4 shadow-xl">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
-                      <div>
-                        <span className="font-bold text-cyan-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
-                          <Clock className="w-4 h-4 text-cyan-400" />
-                          <span>Rango de Horario de Despacho & Atención</span>
-                        </span>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Personaliza las horas de operación: define un horario para todos los días o configúralo individualmente con opción 24 horas.
+                  {/* Banner Explicativo de Modo Predeterminado */}
+                  {modoHorario === 'predeterminado' && (
+                    <div className="p-4 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 text-cyan-200 text-xs flex items-start gap-3 animate-fadeIn">
+                      <Clock className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <strong className="block font-black text-cyan-300">
+                          Horario Predeterminado de la Empresa en Uso:
+                        </strong>
+                        <p className="text-[11.5px] leading-relaxed text-cyan-100/90">
+                          Esta agencia operará con la hora de corte general (<strong>{tallerConfig.hora_corte_envio_hoy || '18:00'} hrs</strong>) y los días habilitados de la empresa. Si actualizas los horarios en los Ajustes de Empresa, se reflejarán aquí sin necesidad de configurar nada más.
                         </p>
                       </div>
-
-                      {/* Selector de Modalidad: Uno para todos vs Individual por día */}
-                      <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-white/10">
-                        <button
-                          type="button"
-                          onClick={() => setModalidadHorario('uno_para_todos')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                            modalidadHorario === 'uno_para_todos'
-                              ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20'
-                              : 'text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          <span>🌐</span>
-                          <span>Uno solo para todos</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setModalidadHorario('individual_por_dia')}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                            modalidadHorario === 'individual_por_dia'
-                              ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20'
-                              : 'text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          <span>📅</span>
-                          <span>Individual por día</span>
-                        </button>
-                      </div>
                     </div>
+                  )}
 
-                    {/* MODALIDAD 1: UNO SOLO PARA TODOS */}
-                    {modalidadHorario === 'uno_para_todos' && (
-                      <div className="space-y-3.5 pt-1 animate-fadeIn">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 border border-white/5">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-xl">🕒</span>
-                            <div>
-                              <strong className="text-xs text-white block">Atención Continua 24 Horas</strong>
-                              <span className="text-[10.5px] text-slate-400 block">
-                                La agencia opera todo el día sin restricción de horario de inicio ni fin.
-                              </span>
-                            </div>
-                          </div>
-
-                          <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 px-3 py-1.5 rounded-xl border border-cyan-500/30">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(horarioGlobal.es_24_horas)}
-                              onChange={e => setHorarioGlobal(prev => ({ ...prev, es_24_horas: e.target.checked }))}
-                              className="w-4 h-4 rounded text-cyan-500 cursor-pointer"
-                            />
-                            <span className="text-xs font-bold text-cyan-300">
-                              {horarioGlobal.es_24_horas ? '⚡ Activado (Todo el día)' : 'Desactivado (Fijar horas)'}
+                  {/* Configuración Detallada para Modo Personalizado */}
+                  {modoHorario === 'personalizado' && (
+                    <div className="space-y-4 animate-slideDownSmooth">
+                      
+                      {/* Días de la semana habilitados */}
+                      <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <span className="font-bold text-amber-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                              <Calendar className="w-4 h-4 text-amber-400" />
+                              <span>Días Habilitados para esta Agencia</span>
                             </span>
-                          </label>
-                        </div>
-
-                        {!horarioGlobal.es_24_horas && (
-                          <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-3 animate-fadeIn">
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                              <span className="text-[11px] font-bold text-slate-300">Ventana Horaria para todos los días:</span>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-[10px] text-slate-400 font-bold">Presets:</span>
-                                {[
-                                  { label: '08:00 - 18:00', start: '08:00', end: '18:00' },
-                                  { label: '08:30 - 18:30', start: '08:30', end: '18:30' },
-                                  { label: '09:00 - 19:00', start: '09:00', end: '19:00' },
-                                  { label: '09:00 - 13:00 (Mañanas)', start: '09:00', end: '13:00' },
-                                ].map((p, idx) => (
-                                  <button
-                                    key={idx}
-                                    type="button"
-                                    onClick={() => setHorarioGlobal({ es_24_horas: false, hora_inicio: p.start, hora_fin: p.end })}
-                                    className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-mono transition-all cursor-pointer"
-                                  >
-                                    {p.label}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                              <div>
-                                <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                                  Hora de Inicio / Apertura:
-                                </label>
-                                <input
-                                  type="time"
-                                  value={horarioGlobal.hora_inicio || '08:30'}
-                                  onChange={e => setHorarioGlobal(prev => ({ ...prev, hora_inicio: e.target.value }))}
-                                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                                  Hora de Fin / Cierre:
-                                </label>
-                                <input
-                                  type="time"
-                                  value={horarioGlobal.hora_fin || '18:30'}
-                                  onChange={e => setHorarioGlobal(prev => ({ ...prev, hora_fin: e.target.value }))}
-                                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
-                                />
-                              </div>
-                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Selecciona los días específicos en que sale encomienda por esta agencia.
+                            </p>
                           </div>
-                        )}
-                      </div>
-                    )}
 
-                    {/* MODALIDAD 2: INDIVIDUAL POR DÍA */}
-                    {modalidadHorario === 'individual_por_dia' && (
-                      <div className="space-y-2.5 pt-1 animate-fadeIn">
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 pb-1">
-                          <span>Configura el horario específico para cada día de la semana:</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const all24: Partial<Record<DiaSemana, HorarioDia>> = {};
-                              DIAS_SEMANA_ORDEN.forEach(d => { all24[d] = { es_24_horas: true }; });
-                              setHorariosPorDia(all24);
-                            }}
-                            className="text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
-                          >
-                            ⚡ Poner todos en 24 Horas
-                          </button>
+                          {/* Presets de selección rápida de días */}
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setDiasSemanaHabilitados([])}
+                              className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold border transition-all cursor-pointer ${
+                                diasSemanaHabilitados.length === 0
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-400/40 font-black'
+                                  : 'bg-slate-900 border-white/5 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              Todos los días
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDiasSemanaHabilitados(['lunes', 'martes', 'miercoles', 'jueves', 'viernes'])}
+                              className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-slate-900 border border-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+                            >
+                              Lun a Vie
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDiasSemanaHabilitados(['miercoles', 'sabado'])}
+                              className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-slate-900 border border-white/5 text-slate-400 hover:text-white transition-all cursor-pointer"
+                            >
+                              Mié y Sáb
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-2">
+                        {/* Botones de Días de la semana */}
+                        <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 pt-1">
                           {DIAS_SEMANA_ORDEN.map((dia) => {
-                            const diaHabilitado = diasSemanaHabilitados.length === 0 || diasSemanaHabilitados.includes(dia);
-                            const hDia = horariosPorDia[dia] || { es_24_horas: false, hora_inicio: '08:30', hora_fin: '18:30' };
-                            const es24h = Boolean(hDia.es_24_horas);
-
+                            const isSelected = diasSemanaHabilitados.length === 0 || diasSemanaHabilitados.includes(dia);
                             return (
-                              <div
+                              <button
                                 key={dia}
-                                className={`p-3 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                                  diaHabilitado
-                                    ? 'bg-slate-900/90 border-white/10'
-                                    : 'bg-slate-950/50 border-white/5 opacity-60'
+                                type="button"
+                                onClick={() => {
+                                  if (diasSemanaHabilitados.length === 0) {
+                                    setDiasSemanaHabilitados(DIAS_SEMANA_ORDEN.filter(d => d !== dia));
+                                  } else if (diasSemanaHabilitados.includes(dia)) {
+                                    setDiasSemanaHabilitados(prev => prev.filter(d => d !== dia));
+                                  } else {
+                                    setDiasSemanaHabilitados(prev => [...prev, dia]);
+                                  }
+                                }}
+                                className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-amber-500/20 border-amber-400 text-amber-200 shadow-md shadow-amber-950/40'
+                                    : 'bg-slate-900/60 border-white/5 text-slate-500 hover:text-slate-300'
                                 }`}
                               >
-                                <div className="flex items-center gap-2.5 min-w-[130px]">
-                                  <span className={`w-2.5 h-2.5 rounded-full ${diaHabilitado ? 'bg-amber-400' : 'bg-slate-600'}`} />
-                                  <div>
-                                    <strong className="text-xs text-white block capitalize">{DIAS_SEMANA_LABELS[dia]}</strong>
-                                    <span className="text-[9.5px] text-slate-400">
-                                      {diaHabilitado ? 'Día activo' : 'No despacha'}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-3 flex-wrap">
-                                  {/* Switch 24 Horas para este día */}
-                                  <label className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300 cursor-pointer select-none bg-slate-950 px-2.5 py-1 rounded-lg border border-white/10">
-                                    <input
-                                      type="checkbox"
-                                      checked={es24h}
-                                      onChange={e => {
-                                        setHorariosPorDia(prev => ({
-                                          ...prev,
-                                          [dia]: {
-                                            ...prev[dia],
-                                            es_24_horas: e.target.checked,
-                                            hora_inicio: prev[dia]?.hora_inicio || '08:30',
-                                            hora_fin: prev[dia]?.hora_fin || '18:30',
-                                          },
-                                        }));
-                                      }}
-                                      className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
-                                    />
-                                    <span>24 Horas</span>
-                                  </label>
-
-                                  {!es24h && (
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="time"
-                                        value={hDia.hora_inicio || '08:30'}
-                                        onChange={e => {
-                                          const val = e.target.value;
-                                          setHorariosPorDia(prev => ({
-                                            ...prev,
-                                            [dia]: { ...prev[dia], hora_inicio: val, es_24_horas: false },
-                                          }));
-                                        }}
-                                        className="px-2 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
-                                      />
-                                      <span className="text-slate-500 text-xs font-bold">a</span>
-                                      <input
-                                        type="time"
-                                        value={hDia.hora_fin || '18:30'}
-                                        onChange={e => {
-                                          const val = e.target.value;
-                                          setHorariosPorDia(prev => ({
-                                            ...prev,
-                                            [dia]: { ...prev[dia], hora_fin: val, es_24_horas: false },
-                                          }));
-                                        }}
-                                        className="px-2 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
-                                      />
-                                    </div>
-                                  )}
-
-                                  {/* Botón para replicar este horario a todos los demás */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const updated: Partial<Record<DiaSemana, HorarioDia>> = {};
-                                      DIAS_SEMANA_ORDEN.forEach(d => {
-                                        updated[d] = {
-                                          es_24_horas: es24h,
-                                          hora_inicio: hDia.hora_inicio || '08:30',
-                                          hora_fin: hDia.hora_fin || '18:30',
-                                        };
-                                      });
-                                      setHorariosPorDia(updated);
-                                      notifySuccess(`Horario de ${DIAS_SEMANA_LABELS[dia]} copiado a todos los días.`);
-                                    }}
-                                    title="Copiar este horario a todos los demás días"
-                                    className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-slate-400 hover:text-white transition-colors cursor-pointer"
-                                  >
-                                    Copiar a todos
-                                  </button>
-                                </div>
-                              </div>
+                                <span className="text-xs font-black uppercase">{DIAS_SEMANA_ABREV[dia]}</span>
+                                <span className="text-[9.5px] font-medium">{DIAS_SEMANA_LABELS[dia]}</span>
+                                <span className={`w-2 h-2 rounded-full mt-0.5 ${isSelected ? 'bg-amber-400' : 'bg-slate-700'}`} />
+                              </button>
                             );
                           })}
                         </div>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Card 3: Reglas Inteligentes de Selección y Visibilidad */}
+                      {/* Rango de Horario y Mensajes por Día */}
+                      <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-cyan-500/30 space-y-4 shadow-xl">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                          <div>
+                            <span className="font-bold text-cyan-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                              <Clock className="w-4 h-4 text-cyan-400" />
+                              <span>Horarios y Mensajes por Día</span>
+                            </span>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Define un horario global o ajusta la hora de corte y aviso por cada día de la semana.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-white/10">
+                            <button
+                              type="button"
+                              onClick={() => setModalidadHorario('uno_para_todos')}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                modalidadHorario === 'uno_para_todos'
+                                  ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              <span>🌐</span>
+                              <span>Uno para todos</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setModalidadHorario('individual_por_dia')}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                modalidadHorario === 'individual_por_dia'
+                                  ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              <span>📅</span>
+                              <span>Día x Día</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* MODALIDAD 1: UNO SOLO PARA TODOS */}
+                        {modalidadHorario === 'uno_para_todos' && (
+                          <div className="space-y-3.5 pt-1 animate-fadeIn">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 border border-white/5">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-xl">🕒</span>
+                                <div>
+                                  <strong className="text-xs text-white block">Atención Continua 24 Horas</strong>
+                                  <span className="text-[10.5px] text-slate-400 block">
+                                    La agencia opera todo el día sin restricción de horario de inicio ni fin.
+                                  </span>
+                                </div>
+                              </div>
+
+                              <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 px-3 py-1.5 rounded-xl border border-cyan-500/30">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(horarioGlobal.es_24_horas)}
+                                  onChange={e => setHorarioGlobal(prev => ({ ...prev, es_24_horas: e.target.checked }))}
+                                  className="w-4 h-4 rounded text-cyan-500 cursor-pointer"
+                                />
+                                <span className="text-xs font-bold text-cyan-300">
+                                  {horarioGlobal.es_24_horas ? '⚡ Activado (Todo el día)' : 'Desactivado (Fijar horas)'}
+                                </span>
+                              </label>
+                            </div>
+
+                            {!horarioGlobal.es_24_horas && (
+                              <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5 space-y-3 animate-fadeIn">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                                      Hora de Inicio / Apertura:
+                                    </label>
+                                    <input
+                                      type="time"
+                                      value={horarioGlobal.hora_inicio || '08:30'}
+                                      onChange={e => setHorarioGlobal(prev => ({ ...prev, hora_inicio: e.target.value }))}
+                                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                                      Hora de Corte / Cierre:
+                                    </label>
+                                    <input
+                                      type="time"
+                                      value={horarioGlobal.hora_fin || '18:30'}
+                                      onChange={e => setHorarioGlobal(prev => ({ ...prev, hora_fin: e.target.value }))}
+                                      className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono font-bold text-white focus:outline-none focus:border-cyan-400 cursor-pointer"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* MODALIDAD 2: INDIVIDUAL POR DÍA */}
+                        {modalidadHorario === 'individual_por_dia' && (
+                          <div className="space-y-3 pt-1 animate-fadeIn">
+                            <div className="grid grid-cols-1 gap-2.5">
+                              {DIAS_SEMANA_ORDEN.map((dia) => {
+                                const diaHabilitado = diasSemanaHabilitados.length === 0 || diasSemanaHabilitados.includes(dia);
+                                const hDia = horariosPorDia[dia] || { es_24_horas: false, hora_inicio: '08:30', hora_fin: '18:30' };
+                                const es24h = Boolean(hDia.es_24_horas);
+                                const msgDia = mensajesPorDia[dia] || '';
+
+                                return (
+                                  <div
+                                    key={dia}
+                                    className={`p-3.5 rounded-2xl border transition-all flex flex-col gap-2.5 ${
+                                      diaHabilitado
+                                        ? 'bg-slate-900/90 border-white/10'
+                                        : 'bg-slate-950/50 border-white/5 opacity-60'
+                                    }`}
+                                  >
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2.5 min-w-[130px]">
+                                        <span className={`w-2.5 h-2.5 rounded-full ${diaHabilitado ? 'bg-amber-400' : 'bg-slate-600'}`} />
+                                        <div>
+                                          <strong className="text-xs text-white block capitalize">{DIAS_SEMANA_LABELS[dia]}</strong>
+                                          <span className="text-[9.5px] text-slate-400">
+                                            {diaHabilitado ? 'Día activo' : 'No despacha'}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-3 flex-wrap">
+                                        <label className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300 cursor-pointer select-none bg-slate-950 px-2.5 py-1 rounded-lg border border-white/10">
+                                          <input
+                                            type="checkbox"
+                                            checked={es24h}
+                                            onChange={e => {
+                                              setHorariosPorDia(prev => ({
+                                                ...prev,
+                                                [dia]: {
+                                                  ...prev[dia],
+                                                  es_24_horas: e.target.checked,
+                                                  hora_inicio: prev[dia]?.hora_inicio || '08:30',
+                                                  hora_fin: prev[dia]?.hora_fin || '18:30',
+                                                },
+                                              }));
+                                            }}
+                                            className="w-3.5 h-3.5 rounded text-cyan-500 cursor-pointer"
+                                          />
+                                          <span>24 Horas</span>
+                                        </label>
+
+                                        {!es24h && (
+                                          <div className="flex items-center gap-2">
+                                            <input
+                                              type="time"
+                                              value={hDia.hora_inicio || '08:30'}
+                                              onChange={e => {
+                                                const val = e.target.value;
+                                                setHorariosPorDia(prev => ({
+                                                  ...prev,
+                                                  [dia]: { ...prev[dia], hora_inicio: val, es_24_horas: false },
+                                                }));
+                                              }}
+                                              className="px-2 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
+                                            />
+                                            <span className="text-slate-500 text-xs font-bold">a</span>
+                                            <input
+                                              type="time"
+                                              value={hDia.hora_fin || '18:30'}
+                                              onChange={e => {
+                                                const val = e.target.value;
+                                                setHorariosPorDia(prev => ({
+                                                  ...prev,
+                                                  [dia]: { ...prev[dia], hora_fin: val, es_24_horas: false },
+                                                }));
+                                              }}
+                                              className="px-2 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-400"
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Mensaje de alerta personalizado para este día */}
+                                    <div className="pt-1">
+                                      <input
+                                        type="text"
+                                        value={msgDia}
+                                        onChange={e => {
+                                          const val = e.target.value;
+                                          setMensajesPorDia(prev => ({ ...prev, [dia]: val }));
+                                        }}
+                                        placeholder={`Mensaje especial para ${DIAS_SEMANA_LABELS[dia]} (ej: Despacho prioritario hasta 2:00 PM)`}
+                                        className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-white focus:outline-none focus:border-purple-400"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  )}
+
+                  {/* Card Reglas Inteligentes de Selección y Visibilidad */}
                   <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-white/10 space-y-3">
                     <span className="font-bold text-purple-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
                       <SlidersHorizontal className="w-4 h-4 text-purple-400" />
-                      <span>Comportamiento Inteligente en el Formulario</span>
+                      <span>Comportamiento Inteligente en el Formulario de Clientes</span>
                     </span>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">

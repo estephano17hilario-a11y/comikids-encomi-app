@@ -41,7 +41,7 @@ export const ClientPortal: React.FC = () => {
       {currentUser ? (
         <ClientHUD />
       ) : (
-        <header className="glass-panel border-b border-cyan-500/20 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-6 relative z-0 backdrop-blur-md shadow-lg transition-all">
+        <header className="glass-panel border-b border-cyan-500/20 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-6 relative z-0 backdrop-blur-md shadow-lg transition-all app-top-header client-top-header">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               {/* Ícono de Encomi: Redirige al Funnel de Encomi */}
@@ -179,11 +179,13 @@ export const ClientPortal: React.FC = () => {
 
       {/* Mobile Bottom Navigation Dashboard */}
       {currentUser && (
-        <ClientBottomNav
-          activeSection={activeSection}
-          onSectionChange={setActiveSection}
-          ordersCount={myOrdersCount}
-        />
+        <div className="client-bottom-nav">
+          <ClientBottomNav
+            activeSection={activeSection}
+            onSectionChange={setActiveSection}
+            ordersCount={myOrdersCount}
+          />
+        </div>
       )}
 
     </div>

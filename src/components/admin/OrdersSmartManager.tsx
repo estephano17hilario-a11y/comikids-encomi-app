@@ -878,15 +878,18 @@ export const OrdersSmartManager: React.FC = () => {
     isProcessing
   );
 
-  // Sincronizar clase global en el body para ocultar el dock inferior del AdminPortal al abrir modales
+  // Sincronizar clase global en el body para ocultar el dock inferior del AdminPortal y HUD superior al abrir modales
   useEffect(() => {
     if (isAnyModalOpen) {
       document.body.classList.add('has-active-modal');
+      document.body.classList.add('hide-admin-dock');
     } else {
       document.body.classList.remove('has-active-modal');
+      document.body.classList.remove('hide-admin-dock');
     }
     return () => {
       document.body.classList.remove('has-active-modal');
+      document.body.classList.remove('hide-admin-dock');
     };
   }, [isAnyModalOpen]);
 

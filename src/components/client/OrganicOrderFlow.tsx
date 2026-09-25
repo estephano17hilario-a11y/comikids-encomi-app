@@ -437,6 +437,19 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const [submitting, setSubmitting] = useState(false);
   const [showEncomiAiModal, setShowEncomiAiModal] = useState(false);
   const [showDispatchAnimation, setShowDispatchAnimation] = useState(false);
+
+  const isAnyFlowModalOpen = Boolean(showMapModal || showOlvaMapModal || showEncomiAiModal || showDispatchAnimation);
+
+  useEffect(() => {
+    if (isAnyFlowModalOpen) {
+      document.body.classList.add('has-active-modal');
+      document.body.classList.add('hide-admin-dock');
+      return () => {
+        document.body.classList.remove('has-active-modal');
+        document.body.classList.remove('hide-admin-dock');
+      };
+    }
+  }, [isAnyFlowModalOpen]);
   const [createdOrder, setCreatedOrderState] = useState<Pedido | null>(() => {
     try {
       if (typeof window !== 'undefined') {

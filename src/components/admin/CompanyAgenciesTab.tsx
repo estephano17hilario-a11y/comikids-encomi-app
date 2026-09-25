@@ -234,16 +234,19 @@ export const CompanyAgenciesTab: React.FC = () => {
   // Referencias
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Ocultar dock inferior cuando se abre algún modal
+  // Ocultar dock inferior y HUD superior cuando se abre algún modal
   useEffect(() => {
     const isAnyModalOpen = Boolean(editingMethod || showCreateModal || showPreviewModal);
     if (isAnyModalOpen) {
       document.body.classList.add('hide-admin-dock');
+      document.body.classList.add('has-active-modal');
     } else {
       document.body.classList.remove('hide-admin-dock');
+      document.body.classList.remove('has-active-modal');
     }
     return () => {
       document.body.classList.remove('hide-admin-dock');
+      document.body.classList.remove('has-active-modal');
     };
   }, [editingMethod, showCreateModal, showPreviewModal]);
 

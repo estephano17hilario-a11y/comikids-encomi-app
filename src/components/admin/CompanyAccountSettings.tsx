@@ -120,19 +120,22 @@ export const CompanyAccountSettings: React.FC = () => {
   const [qrLoading, setQrLoading] = useState(false);
   const [qrSuccessMsg, setQrSuccessMsg] = useState('');
 
-  const isFloatingModalOpen = Boolean(activeModal);
+  const isFloatingModalOpen = Boolean(activeModal || showChangePasswordModal || showQrModal);
 
-  // Sincronizar body con has-active-modal para ocultar el selector de secciones (dock flotante) al abrir la ventana flotante
+  // Sincronizar body con has-active-modal y hide-admin-dock para ocultar el selector de secciones (dock flotante) y el HUD superior al abrir la ventana flotante
   useEffect(() => {
-    if (isFloatingModalOpen || showChangePasswordModal || showQrModal) {
+    if (isFloatingModalOpen) {
       document.body.classList.add('has-active-modal');
+      document.body.classList.add('hide-admin-dock');
     } else {
       document.body.classList.remove('has-active-modal');
+      document.body.classList.remove('hide-admin-dock');
     }
     return () => {
       document.body.classList.remove('has-active-modal');
+      document.body.classList.remove('hide-admin-dock');
     };
-  }, [isFloatingModalOpen, showChangePasswordModal, showQrModal]);
+  }, [isFloatingModalOpen]);
 
   const verifyLivePhoneStatus = async (silent = false) => {
     if (!silent) setIsVerifyingPhone(true);

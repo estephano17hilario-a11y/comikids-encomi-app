@@ -78,12 +78,27 @@ export const AdminPortal: React.FC = () => {
 
   const pendingOrdersCount = pedidos.filter(p => p.estado_envio !== 'entregado').length;
 
+  const isAnyAdminModalOpen = Boolean(
+    showCreateOrderModal ||
+    briefingConfig.show ||
+    showLogoutConfirm ||
+    showConfigModal
+  );
+
+  useEffect(() => {
+    if (isAnyAdminModalOpen) {
+      document.body.classList.add('has-active-modal');
+      return () => {
+        document.body.classList.remove('has-active-modal');
+      };
+    }
+  }, [isAnyAdminModalOpen]);
 
   return (
     <div className="min-h-screen flex flex-col bg-transparent text-slate-100 selection:bg-cyan-500 selection:text-white">
       
       {/* Top Vision Header con 40% Opacidad y Desenfoque */}
-      <header className="w-full bg-slate-950/40 border-b border-white/10 px-3.5 sm:px-8 pt-8 pb-3 sm:pt-9 sm:pb-3.5 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl" data-no-print="true">
+      <header className="w-full bg-slate-950/40 border-b border-white/10 px-3.5 sm:px-8 pt-8 pb-3 sm:pt-9 sm:pb-3.5 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl app-top-header admin-top-header" data-no-print="true">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5 sm:gap-4">
           
           {/* Brand */}

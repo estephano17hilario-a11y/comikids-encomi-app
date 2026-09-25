@@ -18,9 +18,25 @@ export const ClientHUD: React.FC = () => {
   const levelInfo = calculateLevel(xp);
   const hasCompletedAdditionalData = Boolean(currentUser.datos_adicionales_completados);
 
+  const isAnyClientHudModalOpen = Boolean(showLogoutModal || showAdditionalDataModal || showEditProfileModal);
+
+  React.useEffect(() => {
+    if (isAnyClientHudModalOpen) {
+      document.body.classList.add('has-active-modal');
+      document.body.classList.add('hide-admin-dock');
+    } else {
+      document.body.classList.remove('has-active-modal');
+      document.body.classList.remove('hide-admin-dock');
+    }
+    return () => {
+      document.body.classList.remove('has-active-modal');
+      document.body.classList.remove('hide-admin-dock');
+    };
+  }, [isAnyClientHudModalOpen]);
+
   return (
     <>
-      <header className="w-full bg-slate-950/85 border-b border-white/8 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-8 sticky top-0 z-40 backdrop-blur-2xl transition-all shadow-xl">
+      <header className="w-full bg-slate-950/85 border-b border-white/8 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-8 sticky top-0 z-40 backdrop-blur-2xl transition-all shadow-xl app-top-header client-top-header">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
           
           {/* Avatar + Name (Clickeable para editar perfil y predeterminados) */}

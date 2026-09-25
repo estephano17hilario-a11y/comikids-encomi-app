@@ -289,11 +289,19 @@ html.theme-modern-white body {
   }
 }
 
-/* Ocultar docks flotantes cuando haya un modal activo o se esté editando/creando agencias */
+/* Ocultar docks flotantes y HUD/header superior cuando haya un modal activo o se esté en ventanas flotantes */
 body.has-active-modal .admin-floating-dock,
 body.has-active-modal .admin-mass-action-bar,
+body.has-active-modal .app-top-header,
+body.has-active-modal .admin-top-header,
+body.has-active-modal .client-top-header,
+body.has-active-modal .client-bottom-nav,
 body.hide-admin-dock .admin-floating-dock,
-body.hide-admin-dock .admin-mass-action-bar {
+body.hide-admin-dock .admin-mass-action-bar,
+body.hide-admin-dock .app-top-header,
+body.hide-admin-dock .admin-top-header,
+body.hide-admin-dock .client-top-header,
+body.hide-admin-dock .client-bottom-nav {
   display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;

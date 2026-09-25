@@ -10,6 +10,7 @@ import {
   BloqueRotuladoPersonalizado,
 } from '../../types/database.types';
 import { ShalomLabelPrint } from './ShalomLabelPrint';
+import { useOrders } from '../../context/OrderContext';
 import {
   DIAS_SEMANA_ORDEN,
   DIAS_SEMANA_LABELS,
@@ -116,8 +117,14 @@ const DEFAULT_STANDARD_RECEIPT = (nombreAgencia: string) =>
   construirMensajeComprobacion(DEFAULT_INICIO_RECEIPT(nombreAgencia), DEFAULT_FIN_RECEIPT(), nombreAgencia);
 
 export const CompanyAgenciesTab: React.FC = () => {
-  const [methods, setMethods] = useState<MetodoEnvio[]>(() => ordersService.getShippingMethods());
-  const [tallerConfig] = useState<TallerConfig>(() => ordersService.getTallerConfig());
+  const { tallerConfig, shippingMethods } = useOrders();
+  const [methods, setMethods] = useState<MetodoEnvio[]>(() => (shippingMethods && shippingMethods.length > 0 ? shippingMethods : ordersService.getShippingMethods()));
+
+  useEffect(() => {
+    if (shippingMethods && shippingMethods.length > 0) {
+      setMethods(shippingMethods);
+    }
+  }, [shippingMethods]);
 
   // Estados de modales
   const [editingMethod, setEditingMethod] = useState<MetodoEnvio | null>(null);
@@ -846,6 +853,7 @@ export const CompanyAgenciesTab: React.FC = () => {
           const isSystem = Boolean(m.es_sistema || m.id === 'met-shalom' || m.id === 'met-olva' || m.codigo === 'shalom' || m.codigo === 'olva');
           const totalCampos = m.campos_personalizados?.length || 0;
           const totalRotulado = m.campos_personalizados?.filter(c => c.mostrar_en_rotulado)?.length || 0;
+          const isPredeterminada = !m.disponibilidad?.modo_horario || m.disponibilidad.modo_horario === 'predeterminado';
           const daysSummary = getAgencyDaysSummary(m);
           const agencyColor = m.color_borde || (m.codigo === 'shalom' ? '#ef4444' : m.codigo === 'motorizado' ? '#3b82f6' : m.codigo === 'olva' ? '#f59e0b' : '#06b6d4');
 
@@ -914,7 +922,7 @@ export const CompanyAgenciesTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Resumen de configuración de datos, rótulo y días de despacho */}
+                {/* Resumen de configuración de datos, rótulo y programación de despacho */}
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2 text-[10px] font-bold">
                     <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300">
@@ -929,18 +937,48 @@ export const CompanyAgenciesTab: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Badge resumen de Días de despacho */}
-                  <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] flex items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1 font-bold">
-                      <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>{daysSummary}</span>
+                  {/* Badge de Programación de Horario (Predeterminada vs Personalizada) */}
+                  {isPredeterminada ? (
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px] space-y-1 shadow-xs">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 font-black text-emerald-400">
+                          <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span className="text-[10.5px] uppercase tracking-wide">Programación PREDETERMINADA</span>
+                        </div>
+                        <span className="text-[8px] bg-emerald-500/25 text-emerald-200 border border-emerald-500/40 px-1.5 py-0.5 rounded font-black uppercase tracking-wider font-mono shrink-0">
+                          PREDETERMINADA
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[9.5px] text-emerald-200/90 pl-5">
+                        <span>Hereda corte general: <strong className="text-white font-mono">{tallerConfig.hora_corte_envio_hoy || '18:00'} hrs</strong></span>
+                        {m.disponibilidad?.ocultar_si_no_disponible && (
+                          <span className="text-[8px] bg-emerald-500/20 px-1.5 py-0.5 rounded text-emerald-300 font-mono">
+                            Auto-oculta
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {m.disponibilidad?.ocultar_si_no_disponible && (
-                      <span className="text-[8.5px] bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-200 uppercase font-mono">
-                        Auto-oculta
-                      </span>
-                    )}
-                  </div>
+                  ) : (
+                    <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[10px] space-y-1 shadow-xs">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 font-black text-purple-400">
+                          <Clock className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                          <span className="text-[10.5px] uppercase tracking-wide">Programación PERSONALIZADA</span>
+                        </div>
+                        <span className="text-[8px] bg-purple-500/25 text-purple-200 border border-purple-500/40 px-1.5 py-0.5 rounded font-black uppercase tracking-wider font-mono shrink-0">
+                          PERSONALIZADA
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[9.5px] text-purple-200/90 pl-5">
+                        <span>{daysSummary}</span>
+                        {m.disponibilidad?.ocultar_si_no_disponible && (
+                          <span className="text-[8px] bg-purple-500/20 px-1.5 py-0.5 rounded text-purple-300 font-mono">
+                            Auto-oculta
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1283,22 +1321,22 @@ export const CompanyAgenciesTab: React.FC = () => {
                         onClick={() => setModoHorario('predeterminado')}
                         className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-2 ${
                           modoHorario === 'predeterminado'
-                            ? 'bg-cyan-500/20 border-cyan-400 shadow-lg shadow-cyan-500/20 scale-[1.02]'
+                            ? 'bg-emerald-500/20 border-emerald-400 shadow-lg shadow-emerald-500/20 scale-[1.02]'
                             : 'bg-slate-900 border-white/10 hover:border-white/20'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <strong className="text-xs font-black text-white flex items-center gap-1.5">
-                            <span>🟢 Modo Horario Predeterminado</span>
+                            <span>🟢 Programación PREDETERMINADA</span>
                           </strong>
                           {modoHorario === 'predeterminado' && (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-cyan-400 text-slate-950">
-                              Activo
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-400 text-slate-950 font-mono">
+                              PREDETERMINADA
                             </span>
                           )}
                         </div>
                         <p className="text-[11px] text-slate-300 leading-snug">
-                          Hereda automáticamente el horario de corte general y los días de despacho configurados en los Ajustes de la Empresa.
+                          Hereda automáticamente la programación general y el horario de corte ({tallerConfig.hora_corte_envio_hoy || '18:00'} hrs) configurados en los Ajustes de la Empresa.
                         </p>
                       </div>
 
@@ -1313,11 +1351,11 @@ export const CompanyAgenciesTab: React.FC = () => {
                       >
                         <div className="flex items-center justify-between">
                           <strong className="text-xs font-black text-white flex items-center gap-1.5">
-                            <span>🟣 Modo Horario Personalizado</span>
+                            <span>🟣 Programación PERSONALIZADA</span>
                           </strong>
                           {modoHorario === 'personalizado' && (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-purple-400 text-white">
-                              Activo
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-purple-400 text-white font-mono">
+                              PERSONALIZADA
                             </span>
                           )}
                         </div>
@@ -1330,14 +1368,14 @@ export const CompanyAgenciesTab: React.FC = () => {
 
                   {/* Banner Explicativo de Modo Predeterminado */}
                   {modoHorario === 'predeterminado' && (
-                    <div className="p-4 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 text-cyan-200 text-xs flex items-start gap-3 animate-fadeIn">
-                      <Clock className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                    <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-200 text-xs flex items-start gap-3 animate-fadeIn">
+                      <Clock className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
                       <div className="space-y-1">
-                        <strong className="block font-black text-cyan-300">
-                          Horario Predeterminado de la Empresa en Uso:
+                        <strong className="block font-black text-emerald-300">
+                          Programación PREDETERMINADA de la Empresa en Uso:
                         </strong>
-                        <p className="text-[11.5px] leading-relaxed text-cyan-100/90">
-                          Esta agencia operará con la hora de corte general (<strong>{tallerConfig.hora_corte_envio_hoy || '18:00'} hrs</strong>) y los días habilitados de la empresa. Si actualizas los horarios en los Ajustes de Empresa, se reflejarán aquí sin necesidad de configurar nada más.
+                        <p className="text-[11.5px] leading-relaxed text-emerald-100/90">
+                          Esta agencia operará con la hora de corte general (<strong>{tallerConfig.hora_corte_envio_hoy || '18:00'} hrs</strong>) y los días habilitados de la empresa. Al realizar cambios en la Programación de Hoy, se aplicarán inmediatamente aquí sin necesidad de configurar nada más.
                         </p>
                       </div>
                     </div>

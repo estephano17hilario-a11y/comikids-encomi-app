@@ -2403,11 +2403,23 @@ class OrdersService {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        const payloadToSupabase = {
-          ...updated,
-          id: targetEmpId === 'empresa-master-comikids' ? 'config-main' : targetEmpId,
-          empresa_id: targetEmpId,
-        };
+        const validColumns = [
+          'id', 'empresa_id', 'nombre_taller', 'ruc_dni', 'celular_taller', 'whatsapp_pedidos',
+          'direccion_taller', 'ciudad_origen', 'remitente_email', 'remitente_dni', 'remitente_celular',
+          'agencia_shalom_origen', 'anuncio_publico_clientes', 'shalom_email', 'shalom_password',
+          'copilot_password', 'copilot_sub_instance', 'copilot_owner_phone', 'hora_corte_envio_hoy',
+          'dias_despacho_activos', 'despacho_domingo_habilitado', 'mensaje_corte_personalizado',
+          'horarios_por_dia', 'logo_url', 'tema_fondo', 'estilo_rotulo_default', 'remitente_default'
+        ];
+        const payloadToSupabase: any = {};
+        for (const col of validColumns) {
+          if ((updated as any)[col] !== undefined) {
+            payloadToSupabase[col] = (updated as any)[col];
+          }
+        }
+        payloadToSupabase.id = targetEmpId === 'empresa-master-comikids' ? 'config-main' : targetEmpId;
+        payloadToSupabase.empresa_id = targetEmpId;
+
         const { error } = await supabase.from('taller_config').upsert(payloadToSupabase);
         if (error) {
           console.error('[SUPABASE TALLER CONFIG UPSERT ERROR]', error);

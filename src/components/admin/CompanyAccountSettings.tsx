@@ -236,6 +236,9 @@ export const CompanyAccountSettings: React.FC = () => {
   const [horaCorteGeneral, setHoraCorteGeneral] = useState(tallerConfig.hora_corte_envio_hoy || '18:00');
   const [mensajeCorteGeneral, setMensajeCorteGeneral] = useState(tallerConfig.mensaje_corte_personalizado || '');
   const [cutoffSuccessMsg, setCutoffSuccessMsg] = useState('');
+  const [scheduleSaveStatus, setScheduleSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const autoSaveScheduleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevScheduleModalRef = useRef<string | null>(null);
 
   // Horarios configurados por día de la semana con hora de corte exacta para cada día
   const [horariosPorDia, setHorariosPorDia] = useState<Record<string, HorarioDiaDespacho>>(() => {
@@ -259,7 +262,84 @@ export const CompanyAccountSettings: React.FC = () => {
     return initial;
   });
 
-  // Aplicar hora de corte general a todos los días habilitados
+  // Sincronización reactiva: cargar valores de tallerConfig solo cuando el modal de horario se abre
+  useEffect(() => {
+    if (activeModal === 'horario' && prevScheduleModalRef.current !== 'horario') {
+      const existing = tallerConfig.horarios_por_dia || {};
+      const defaultDias = (tallerConfig.dias_despacho_activos || ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']).map(d => d.toLowerCase());
+      const defaultCorte = tallerConfig.hora_corte_envio_hoy || '18:00';
+
+      const initial: Record<string, HorarioDiaDespacho> = {};
+      DIAS_SEMANA_ORDEN.forEach(dia => {
+        if (existing[dia]) {
+          initial[dia] = { ...existing[dia] };
+        } else {
+          initial[dia] = {
+            dia,
+            activo: defaultDias.includes(dia),
+            hora_corte: dia === 'sabado' ? '14:00' : defaultCorte,
+            mensaje_personalizado: dia === 'sabado' ? 'Los sábados despachamos hasta las 2:00 PM' : '',
+          };
+        }
+      });
+      setHorariosPorDia(initial);
+      setHoraCorteGeneral(tallerConfig.hora_corte_envio_hoy || '18:00');
+      setMensajeCorteGeneral(tallerConfig.mensaje_corte_personalizado || '');
+      setCutoffSuccessMsg('');
+      setScheduleSaveStatus('idle');
+    }
+    prevScheduleModalRef.current = activeModal;
+  }, [activeModal, tallerConfig]);
+
+  // Función de guardado real y persistente en Supabase y LocalStorage
+  const performSaveSchedule = async (
+    currentHorarios: Record<string, HorarioDiaDespacho>,
+    currentHoraBase: string,
+    currentMensaje: string
+  ) => {
+    setScheduleSaveStatus('saving');
+    try {
+      const diasActivos = Object.entries(currentHorarios)
+        .filter(([_, conf]) => conf.activo)
+        .map(([dia]) => dia);
+
+      await updateTallerConfig({
+        hora_corte_envio_hoy: currentHoraBase,
+        dias_despacho_activos: diasActivos,
+        despacho_domingo_habilitado: currentHorarios['domingo']?.activo || false,
+        mensaje_corte_personalizado: currentMensaje.trim() || undefined,
+        horarios_por_dia: currentHorarios,
+      });
+
+      setScheduleSaveStatus('saved');
+      setCutoffSuccessMsg('CAMBIO GUARDADO');
+    } catch (err) {
+      console.error('Error guardando programación:', err);
+      setScheduleSaveStatus('idle');
+    }
+  };
+
+  // Disparador de autoguardado en vivo (inmediato para clics, debounced para tipeo)
+  const triggerScheduleAutoSave = (
+    newHorarios: Record<string, HorarioDiaDespacho>,
+    newHoraBase: string,
+    newMensaje: string,
+    immediate = false
+  ) => {
+    if (autoSaveScheduleTimerRef.current) {
+      clearTimeout(autoSaveScheduleTimerRef.current);
+    }
+    if (immediate) {
+      performSaveSchedule(newHorarios, newHoraBase, newMensaje);
+    } else {
+      setScheduleSaveStatus('saving');
+      autoSaveScheduleTimerRef.current = setTimeout(() => {
+        performSaveSchedule(newHorarios, newHoraBase, newMensaje);
+      }, 400);
+    }
+  };
+
+  // Aplicar hora de corte general a todos los días habilitados con autoguardado inmediato
   const handleApplyGeneralCutoffToAll = () => {
     setHorariosPorDia(prev => {
       const next = { ...prev };
@@ -271,6 +351,7 @@ export const CompanyAccountSettings: React.FC = () => {
           };
         }
       });
+      triggerScheduleAutoSave(next, horaCorteGeneral, mensajeCorteGeneral, true);
       return next;
     });
   };
@@ -1213,38 +1294,71 @@ export const CompanyAccountSettings: React.FC = () => {
                 className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-950/95 border border-cyan-500/40 shadow-2xl p-5 sm:p-7 space-y-5 animate-scaleUp"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xl">
+                <div className="flex items-center justify-between pb-3 border-b border-white/10 gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xl shrink-0">
                       ⏰
                     </div>
-                    <div>
-                      <h3 className="text-base sm:text-lg font-black text-white">
+                    <div className="min-w-0">
+                      <h3 className="text-base sm:text-lg font-black text-white truncate">
                         Editar Programación y Horario de Cada Día
                       </h3>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-400 truncate">
                         Configura qué días realizas envíos y la hora de corte exacta para cada día
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveModal(null)}
-                    className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                    {scheduleSaveStatus === 'saving' ? (
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center gap-1.5 animate-pulse shadow-md shadow-cyan-950/40">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                        <span>Guardando...</span>
+                      </span>
+                    ) : scheduleSaveStatus === 'saved' || cutoffSuccessMsg ? (
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 flex items-center gap-1.5 animate-scaleUp shadow-lg shadow-emerald-950/40">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>✓ CAMBIO GUARDADO</span>
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-900 text-slate-400 border border-slate-800 hidden sm:flex items-center gap-1">
+                        <Check className="w-3 h-3 text-cyan-400" />
+                        <span>Autoguardado</span>
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveModal(null)}
+                      className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Explicación Concisa */}
-                <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 text-xs text-cyan-200 flex items-start gap-2.5">
-                  <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                  <p className="text-[11.5px] leading-relaxed text-cyan-100/90">
-                    Aquí puedes configurar la <strong>hora exacta de corte para cada día individual</strong> (por ejemplo, Lunes a Viernes hasta las 18:00 hrs y Sábados hasta las 14:00 hrs). Tus clientas verán si su pedido saldrá hoy o el próximo día habilitado.
-                  </p>
+                {/* Banner de Estado de Autoguardado en Vivo */}
+                <div className="p-3 rounded-2xl bg-slate-900/90 border border-cyan-500/30 flex items-center justify-between gap-3 text-xs shadow-md">
+                  <div className="flex items-center gap-2">
+                    <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span className="text-slate-200 text-[11.5px]">
+                      Cualquier cambio se <strong>guarda en vivo automáticamente</strong> sin necesidad de dar clic en guardar.
+                    </span>
+                  </div>
+                  {scheduleSaveStatus === 'saving' ? (
+                    <span className="text-xs font-black text-cyan-300 flex items-center gap-1.5 bg-cyan-950/80 px-3 py-1 rounded-xl border border-cyan-500/40 shrink-0">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                      <span>Guardando...</span>
+                    </span>
+                  ) : (
+                    <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5 bg-emerald-950/80 px-3 py-1 rounded-xl border border-emerald-500/40 shrink-0">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>✓ CAMBIO GUARDADO</span>
+                    </span>
+                  )}
                 </div>
 
-                <form onSubmit={handleSaveCutoff} className="space-y-4">
+                <div className="space-y-4">
                   
                   {/* Control Rápido de Hora Base */}
                   <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-cyan-500/20 flex flex-wrap items-center justify-between gap-3">
@@ -1255,7 +1369,12 @@ export const CompanyAccountSettings: React.FC = () => {
                       <input
                         type="time"
                         value={horaCorteGeneral}
-                        onChange={e => setHoraCorteGeneral(e.target.value)}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setHoraCorteGeneral(val);
+                          triggerScheduleAutoSave(horariosPorDia, val, mensajeCorteGeneral, false);
+                        }}
+                        onBlur={() => triggerScheduleAutoSave(horariosPorDia, horaCorteGeneral, mensajeCorteGeneral, true)}
                         className="p-2 bg-slate-950 border border-cyan-500/40 rounded-xl text-xs font-mono font-bold text-cyan-300 focus:outline-none"
                       />
                     </div>
@@ -1293,14 +1412,16 @@ export const CompanyAccountSettings: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setHorariosPorDia(prev => ({
-                                      ...prev,
+                                    const next = {
+                                      ...horariosPorDia,
                                       [dia]: {
-                                        ...prev[dia],
+                                        ...conf,
                                         activo: !isActivo,
-                                        hora_corte: prev[dia]?.hora_corte || horaCorteGeneral,
+                                        hora_corte: conf.hora_corte || horaCorteGeneral,
                                       }
-                                    }));
+                                    };
+                                    setHorariosPorDia(next);
+                                    triggerScheduleAutoSave(next, horaCorteGeneral, mensajeCorteGeneral, true);
                                   }}
                                   className={`w-5 h-5 rounded-lg flex items-center justify-center font-bold text-xs transition-colors cursor-pointer ${
                                     isActivo ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-transparent border border-slate-700'
@@ -1328,14 +1449,17 @@ export const CompanyAccountSettings: React.FC = () => {
                                     value={conf.hora_corte || horaCorteGeneral}
                                     onChange={e => {
                                       const val = e.target.value;
-                                      setHorariosPorDia(prev => ({
-                                        ...prev,
+                                      const next = {
+                                        ...horariosPorDia,
                                         [dia]: {
-                                          ...prev[dia],
+                                          ...conf,
                                           hora_corte: val,
                                         }
-                                      }));
+                                      };
+                                      setHorariosPorDia(next);
+                                      triggerScheduleAutoSave(next, horaCorteGeneral, mensajeCorteGeneral, false);
                                     }}
+                                    onBlur={() => triggerScheduleAutoSave(horariosPorDia, horaCorteGeneral, mensajeCorteGeneral, true)}
                                     className="p-1.5 bg-slate-900 border border-cyan-500/30 rounded-xl text-xs font-mono font-bold text-cyan-300 focus:outline-none"
                                   />
                                 </div>
@@ -1349,14 +1473,17 @@ export const CompanyAccountSettings: React.FC = () => {
                                   value={conf.mensaje_personalizado || ''}
                                   onChange={e => {
                                     const val = e.target.value;
-                                    setHorariosPorDia(prev => ({
-                                      ...prev,
+                                    const next = {
+                                      ...horariosPorDia,
                                       [dia]: {
-                                        ...prev[dia],
+                                        ...conf,
                                         mensaje_personalizado: val,
                                       }
-                                    }));
+                                    };
+                                    setHorariosPorDia(next);
+                                    triggerScheduleAutoSave(next, horaCorteGeneral, mensajeCorteGeneral, false);
                                   }}
+                                  onBlur={() => triggerScheduleAutoSave(horariosPorDia, horaCorteGeneral, mensajeCorteGeneral, true)}
                                   placeholder={`Nota opcional para ${dia} (Ej: Los ${dia}s el corte es puntual)`}
                                   className="w-full p-2 bg-slate-900/60 border border-white/5 rounded-xl text-[11px] text-slate-300 focus:outline-none focus:border-cyan-400"
                                 />
@@ -1375,28 +1502,40 @@ export const CompanyAccountSettings: React.FC = () => {
                     <input
                       type="text"
                       value={mensajeCorteGeneral}
-                      onChange={e => setMensajeCorteGeneral(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setMensajeCorteGeneral(val);
+                        triggerScheduleAutoSave(horariosPorDia, horaCorteGeneral, val, false);
+                      }}
+                      onBlur={() => triggerScheduleAutoSave(horariosPorDia, horaCorteGeneral, mensajeCorteGeneral, true)}
                       placeholder="Ej: Pedidos confirmados después de hora de corte salen el siguiente día hábil"
                       className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400"
                     />
                   </div>
 
                   <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                    <div className="flex items-center gap-2">
+                      {scheduleSaveStatus === 'saving' ? (
+                        <span className="text-xs font-black text-cyan-300 flex items-center gap-1.5">
+                          <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                          <span>Guardando cambios en tiempo real...</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs font-black text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>✓ CAMBIO GUARDADO</span>
+                        </span>
+                      )}
+                    </div>
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={() => setActiveModal(null)}
                       className="py-2.5 px-6 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs sm:text-sm font-black flex items-center gap-2 shadow-lg shadow-cyan-500/25 transition-all cursor-pointer active:scale-95"
                     >
-                      <Save className="w-4 h-4 text-slate-950" />
-                      <span>Guardar Programación Completa</span>
+                      <span>Listo / Cerrar</span>
                     </button>
-                    {cutoffSuccessMsg && (
-                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                        <Check className="w-4 h-4" />
-                        {cutoffSuccessMsg}
-                      </span>
-                    )}
                   </div>
-                </form>
+                </div>
               </div>
             </div>
           )}

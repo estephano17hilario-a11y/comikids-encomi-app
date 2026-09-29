@@ -7,10 +7,10 @@ VPS_HOST = '89.117.73.97'
 VPS_USER = 'root'
 VPS_PASS = 'estephano10FM20home'
 
-# Cloud DB info
-CLOUD_HOST = 'aws-0-us-west-2.pooler.supabase.com'
+# Legacy Cloud DB info (MIGRATION COMPLETED - ARCHIVED)
+CLOUD_HOST = 'archived-legacy-cloud.pooler'
 CLOUD_PORT = '6543'
-CLOUD_USER = 'postgres.uwmdjsxwetjvsxsdngko'
+CLOUD_USER = 'archived_postgres_user'
 CLOUD_PASS = 'estephano10FM20home'
 CLOUD_DB = 'postgres'
 

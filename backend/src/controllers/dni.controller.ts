@@ -191,7 +191,7 @@ export class DniController {
             const endTime = process.hrtime.bigint();
             const latencyMs = Number(endTime - startTime) / 1_000_000;
 
-            // Guardar en Supabase usuarios para que las siguientes consultas sean instantáneas
+            // Guardar en usuarios de base de datos para que las siguientes consultas sean instantáneas
             supabaseAdmin.from('usuarios').upsert({
               id: `usr-dni-${cleanDni}`,
               dni: cleanDni,
@@ -199,7 +199,7 @@ export class DniController {
               nombre_completo: fullName,
               rol: 'client',
               created_at: new Date().toISOString(),
-            }).then(() => {}, () => {});
+            }, { onConflict: 'dni' }).then(() => {}, () => {});
 
             return reply.code(200).send({
               success: true,

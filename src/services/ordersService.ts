@@ -1231,7 +1231,7 @@ class OrdersService {
           await supabase.from('comprobantes_pago').delete().in('pedido_id', userOrderIds);
         }
         await supabase.from('comprobantes_pago').delete().eq('usuario_id', userId);
-        await supabase.from('logros_usuario').delete().eq('usuario_id', userId);
+        await supabase.from('logros_cliente').delete().eq('usuario_id', userId);
         await supabase.from('pedidos').delete().eq('usuario_id', userId);
         const { error: userDelError } = await supabase.from('usuarios').delete().eq('id', userId);
         if (userDelError) {

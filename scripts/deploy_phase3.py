@@ -97,8 +97,8 @@ GEMINI_API_KEY=${GEMINI_API_KEY:-}
 GEMINI_MODEL=gemini-3.1-flash-lite
 
 # Base de Datos de Negocio (Supabase)
-SUPABASE_URL=https://uwmdjsxwetjvsxsdngko.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3bWRqc3h3ZXRqdnN4c2RuZ2tvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY2NDE5MTEsImV4cCI6MjEwMjIxNzkxMX0.KaqryIyoe4IDQGTJD_cswZkW-wfgnMcyV9tJoWxHMq8
+SUPABASE_URL=https://api.89.117.73.97.sslip.io
+SUPABASE_SERVICE_ROLE_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4Nzg0OTc2MCwiZXhwIjo0OTQzNTIzMzYwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.5eQ25r3hmhs9RhYwExb4oeSLbxsvRYeWBEEvXvSyypA
 
 # Gateway WhatsApp (Evolution API v2)
 EVOLUTION_API_URL=http://evolution_api:8080

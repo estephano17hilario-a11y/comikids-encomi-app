@@ -9,12 +9,12 @@ export class SupabaseService {
     try {
       const cleanId = tenantId.replace('tienda_', '');
       const { data: store } = await supabaseAdmin
-        .from('tiendas')
+        .from('taller_config')
         .select('*')
-        .or(`id.eq.${cleanId},slug.eq.${tenantId}`)
+        .or(`empresa_id.eq.${cleanId},id.eq.${cleanId}`)
         .maybeSingle();
 
-      return store || { nombre: 'Tienda Encomi', id: cleanId };
+      return store ? { nombre: store.nombre_taller, id: store.empresa_id || store.id, ...store } : { nombre: 'Tienda Encomi', id: cleanId };
     } catch {
       return { nombre: 'Tienda Encomi', id: tenantId };
     }

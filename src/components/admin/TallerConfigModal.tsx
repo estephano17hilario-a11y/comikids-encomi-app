@@ -264,7 +264,7 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
                 <span>Vinculación de Sub-QR & Seguridad Copiloto IA</span>
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                Límite: 500k tokens/día
+                Límite: 2M tokens/día
               </span>
             </div>
 

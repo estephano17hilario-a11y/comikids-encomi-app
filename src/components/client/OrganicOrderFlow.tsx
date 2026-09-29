@@ -528,6 +528,18 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
   const whatsappTallerNumber = (tallerConfig?.whatsapp_pedidos || '51987654321').replace(/\D/g, '');
 
+  const scrollToField = (fieldId: string) => {
+    setTimeout(() => {
+      const el = document.getElementById(fieldId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if ('focus' in el && typeof (el as HTMLElement).focus === 'function') {
+          (el as HTMLElement).focus();
+        }
+      }
+    }, 60);
+  };
+
   // --- STEP 1: WHATSAPP SUBMIT ---
   const handleWhatsappSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -574,8 +586,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       return;
     }
 
-    if (clean.length < 8) {
-      setErrorMsg('Por favor ingresa un número de WhatsApp válido (mínimo 8 dígitos) o tu código de empresa registrado.');
+    const cleanPhoneDigits = clean.replace(/\D/g, '');
+    if (cleanPhoneDigits.length !== 9) {
+      setErrorMsg('Por favor ingresa un número de celular válido de exactamente 9 dígitos para continuar.');
       return;
     }
 
@@ -631,6 +644,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
     if (!nombreCompleto.trim()) {
       setErrorMsg('Por favor ingresa tu Nombre Completo.');
+      scrollToField('nombre-completo-input');
       return;
     }
 
@@ -639,6 +653,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       const dateCheck = isAgencyDateAllowed(selectedMethod, fechaEnvioDeseada);
       if (!dateCheck.allowed) {
         setErrorMsg(dateCheck.reason || 'La fecha seleccionada no es un día de despacho para esta agencia. Por favor ajústala antes de continuar.');
+        scrollToField('fecha-envio-input');
         return;
       }
     }
@@ -646,21 +661,25 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     if (selectedMethod?.tipo_formulario === 'shalom') {
       if (!selectedAgencyObject) {
         setErrorMsg('Por favor selecciona una Agencia Shalom de destino.');
+        scrollToField('shalom-agency-selector');
         return;
       }
       if (!dniShalom.trim()) {
         setErrorMsg('Por favor ingresa tu DNI o Carnet de Extranjería (CE).');
+        scrollToField('dni-input');
         return;
       }
       // Validación estricta: Mínimo 8 dígitos en el recuadro de DNI
       const dniClean = dniShalom.trim().replace(/\D/g, '');
       if (dniClean.length < 8) {
         setErrorMsg('El recuadro de DNI debe contener como mínimo 8 dígitos numéricos.');
+        scrollToField('dni-input');
         return;
       }
       // Validación de CE: 9 dígitos debe empezar con "00"
       if (dniClean.length === 9 && !dniClean.startsWith('00')) {
         setErrorMsg('El Carnet de Extranjería (CE) de 9 dígitos debe comenzar con "00" (ej: 001234567). Por favor corrígelo antes de continuar.');
+        scrollToField('dni-input');
         return;
       }
     }
@@ -668,10 +687,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
       if (!distritoQuery.trim()) {
         setErrorMsg('Por favor selecciona tu distrito en Lima.');
+        scrollToField('distrito-input');
         return;
       }
       if (!direccionExacta.trim()) {
         setErrorMsg('Por favor ingresa tu dirección exacta.');
+        scrollToField('direccion-input');
         return;
       }
     }
@@ -679,24 +700,30 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     if (selectedMethod?.tipo_formulario === 'olva') {
       if (!dniShalom.trim()) {
         setErrorMsg('Por favor ingresa el DNI o Carnet de Extranjería (CE) de quien recibe.');
+        scrollToField('olva-dni-input');
         return;
       }
       // Validación estricta: Mínimo 8 dígitos en el recuadro de DNI
       const dniOlvaClean = dniShalom.trim().replace(/\D/g, '');
       if (dniOlvaClean.length < 8) {
         setErrorMsg('El recuadro de DNI debe contener como mínimo 8 dígitos numéricos.');
+        scrollToField('olva-dni-input');
         return;
       }
       if (dniOlvaClean.length === 9 && !dniOlvaClean.startsWith('00')) {
         setErrorMsg('El Carnet de Extranjería (CE) de 9 dígitos debe comenzar con "00" (ej: 001234567). Por favor corrígelo antes de continuar.');
+        scrollToField('olva-dni-input');
         return;
       }
-      if (!whatsapp.trim()) {
-        setErrorMsg('Por favor ingresa el celular de quien recibe.');
+      const phoneClean = whatsapp.trim().replace(/\D/g, '');
+      if (phoneClean.length !== 9) {
+        setErrorMsg('Por favor ingresa el celular de quien recibe (9 dígitos obligatorios).');
+        scrollToField('olva-phone-input');
         return;
       }
       if (!correoCliente.trim()) {
         setErrorMsg('Por favor ingresa el correo electrónico para la notificación de Olva.');
+        scrollToField('olva-email-input');
         return;
       }
       if (!olvaDireccion.trim()) {
@@ -705,6 +732,17 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             ? 'Por favor ingresa la dirección o sede de la Agencia Olva de destino.'
             : 'Por favor ingresa la dirección exacta de tu domicilio.'
         );
+        scrollToField('olva-direccion-input');
+        return;
+      }
+    }
+
+    // Teléfono de contacto obligatorio para los demás métodos
+    if (selectedMethod?.tipo_formulario !== 'shalom' && selectedMethod?.tipo_formulario !== 'olva') {
+      const contactPhoneClean = whatsapp.trim().replace(/\D/g, '');
+      if (contactPhoneClean.length !== 9) {
+        setErrorMsg('Por favor ingresa un número de celular de 9 dígitos para el contacto.');
+        scrollToField('phone-contact-input');
         return;
       }
     }
@@ -728,169 +766,171 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           const val = customFieldValues[campo.id] ?? customFieldValues[campo.label];
           if (!val || String(val).trim() === '') {
             setErrorMsg(`Por favor completa el campo requerido: ${campo.label}`);
+            scrollToField(`custom-field-${campo.id}`);
             return;
           }
         }
       }
     }
 
-      // Persistir todos los datos
-      localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
-      if (dniShalom.trim().length >= 8) {
-        localStorage.setItem('incomi_saved_doc', dniShalom.trim());
-      }
-      if (selectedAgencyObject) {
-        localStorage.setItem('incomi_saved_shalom_agency', JSON.stringify(selectedAgencyObject));
-      }
-      if (selectedOlvaAgencyObject) {
-        localStorage.setItem('incomi_saved_olva_agency', JSON.stringify(selectedOlvaAgencyObject));
-      }
-      if (selectedMethodId) {
-        localStorage.setItem('incomi_saved_method_id', selectedMethodId);
-      }
-      if (correoCliente) localStorage.setItem('incomi_saved_email', correoCliente.trim());
-      if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery.trim());
-      if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta.trim());
-      if (referencia) localStorage.setItem('incomi_saved_reference', referencia.trim());
-      if (olvaDireccion) localStorage.setItem('incomi_saved_olva_address', olvaDireccion.trim());
-      if (olvaReferencia) localStorage.setItem('incomi_saved_olva_reference', olvaReferencia.trim());
-      localStorage.setItem('incomi_saved_olva_modalidad', olvaModalidad);
+    // Persistir todos los datos
+    localStorage.setItem('incomi_saved_fullname', nombreCompleto.trim());
+    if (dniShalom.trim().length >= 8) {
+      localStorage.setItem('incomi_saved_doc', dniShalom.trim());
+    }
+    if (selectedAgencyObject) {
+      localStorage.setItem('incomi_saved_shalom_agency', JSON.stringify(selectedAgencyObject));
+    }
+    if (selectedOlvaAgencyObject) {
+      localStorage.setItem('incomi_saved_olva_agency', JSON.stringify(selectedOlvaAgencyObject));
+    }
+    if (selectedMethodId) {
+      localStorage.setItem('incomi_saved_method_id', selectedMethodId);
+    }
+    if (correoCliente) localStorage.setItem('incomi_saved_email', correoCliente.trim());
+    if (distritoQuery) localStorage.setItem('incomi_saved_district', distritoQuery.trim());
+    if (direccionExacta) localStorage.setItem('incomi_saved_address', direccionExacta.trim());
+    if (referencia) localStorage.setItem('incomi_saved_reference', referencia.trim());
+    if (olvaDireccion) localStorage.setItem('incomi_saved_olva_address', olvaDireccion.trim());
+    if (olvaReferencia) localStorage.setItem('incomi_saved_olva_reference', olvaReferencia.trim());
+    localStorage.setItem('incomi_saved_olva_modalidad', olvaModalidad);
 
-      setSubmitting(true);
-      let finalDestinoDetalle = '';
-      try {
-        const cleanDocVal = dniShalom.trim().replace(/\D/g, '');
-        const validDni = cleanDocVal.length >= 8 ? cleanDocVal : (currentUser?.dni && currentUser.dni.length >= 8 && !currentUser.dni.startsWith('9') && !currentUser.dni.startsWith('usr-') ? currentUser.dni : '');
-        const userIdentifier = validDni || whatsapp.trim();
-        let activeUser: any = null;
+    const cleanDocVal = dniShalom.trim().replace(/\D/g, '');
+    const validDni = cleanDocVal.length >= 8 ? cleanDocVal : (currentUser?.dni && currentUser.dni.length >= 8 && !currentUser.dni.startsWith('9') && !currentUser.dni.startsWith('usr-') ? currentUser.dni : '');
+    const userIdentifier = validDni || whatsapp.trim();
 
-        // Si el usuario actual es cliente y coincide con este identificador, usarlo
-        if (currentUser && currentUser.rol !== 'empresa' && (currentUser.dni === userIdentifier || currentUser.id === userIdentifier || currentUser.telefono_default === whatsapp.trim())) {
-          activeUser = currentUser;
-          const userUpdates: any = {
-            nombre_completo: nombreCompleto.trim(),
-            telefono_default: whatsapp.trim() || activeUser.telefono_default,
-            dni_default: validDni || activeUser.dni_default,
-            email_default: correoCliente.trim() || activeUser.email_default,
-            distrito_default: distritoQuery.trim() || activeUser.distrito_default,
-            direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || activeUser.direccion_default,
-            referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || activeUser.referencia_default,
-            olva_modalidad_default: olvaModalidad,
-          };
-          if (validDni && (!activeUser.dni || activeUser.dni.length < 8 || activeUser.dni.startsWith('9') || activeUser.dni.startsWith('usr-'))) {
-            userUpdates.dni = validDni;
-          }
-          activeUser = { ...activeUser, ...userUpdates };
-          ordersService.updateUserProfile(activeUser.id, userUpdates).catch(e => console.warn('User profile update warn:', e));
-        } else {
-          // Registrar o actualizar el perfil de la clienta en memoria
-          try {
-            const regRes = await ordersService.registerUser(
-              nombreCompleto.trim(),
-              validDni || userIdentifier,
-              undefined,
-              'incomi2026',
-              whatsapp.trim()
-            );
-            activeUser = regRes.user || null;
-            if (activeUser) {
-              ordersService.updateUserProfile(activeUser.id, {
-                dni_default: validDni || undefined,
-                email_default: correoCliente.trim() || undefined,
-                distrito_default: distritoQuery.trim() || undefined,
-                direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || undefined,
-                referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || undefined,
-                olva_modalidad_default: olvaModalidad,
-              } as any).catch(e => console.warn('User extra update warn:', e));
-            }
-          } catch (regErr) {
-            console.warn('Error en registro preliminar de usuario (continuando con pedido):', regErr);
-          }
-        }
+    let agencyLat = selectedAgencyObject?.latitude ? Number(selectedAgencyObject.latitude) : undefined;
+    let agencyLng = selectedAgencyObject?.longitude ? Number(selectedAgencyObject.longitude) : undefined;
 
-        let agencyLat = selectedAgencyObject?.latitude ? Number(selectedAgencyObject.latitude) : undefined;
-        let agencyLng = selectedAgencyObject?.longitude ? Number(selectedAgencyObject.longitude) : undefined;
+    let finalDestinoDetalle = '';
+    if (selectedMethod?.tipo_formulario === 'shalom') {
+      const fullAgencyStr = selectedAgencyObject ? formatFullAgencyName(selectedAgencyObject) : 'AGENCIA SHALOM CENTRAL';
+      finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${validDni || dniShalom.trim()})`;
+    } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
+      finalDestinoDetalle = `${distritoQuery.trim()} • ${direccionExacta.trim()}${referencia.trim() ? ` (Ref: ${referencia.trim()})` : ''}`;
+    } else if (selectedMethod?.tipo_formulario === 'olva') {
+      const modLabel = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
+      const refText = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';
+      finalDestinoDetalle = `Olva Courier (${modLabel}): ${olvaDireccion.trim()}${refText} • DNI: ${validDni || dniShalom.trim()} • Tel: ${whatsapp.trim()} • Correo: ${correoCliente.trim()}`;
+    } else {
+      finalDestinoDetalle = customDestinoText.trim() || 'Indicaciones de entrega';
+    }
 
-        if (selectedMethod?.tipo_formulario === 'shalom') {
-          const fullAgencyStr = selectedAgencyObject ? formatFullAgencyName(selectedAgencyObject) : 'AGENCIA SHALOM CENTRAL';
-          finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${validDni || dniShalom.trim()})`;
-        } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
-          finalDestinoDetalle = `${distritoQuery.trim()} • ${direccionExacta.trim()}${referencia.trim() ? ` (Ref: ${referencia.trim()})` : ''}`;
-        } else if (selectedMethod?.tipo_formulario === 'olva') {
-          const modLabel = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
-          const refText = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';
-          finalDestinoDetalle = `Olva Courier (${modLabel}): ${olvaDireccion.trim()}${refText} • DNI: ${validDni || dniShalom.trim()} • Tel: ${whatsapp.trim()} • Correo: ${correoCliente.trim()}`;
-        } else {
-          finalDestinoDetalle = customDestinoText.trim() || 'Indicaciones de entrega';
-        }
+    setSubmitting(true);
+    try {
+      let activeUser: any = null;
 
-        const clientUserData = activeUser ? {
-          ...activeUser,
-          dni: validDni || (activeUser.dni && activeUser.dni.length >= 8 && !activeUser.dni.startsWith('9') && !activeUser.dni.startsWith('usr-') ? activeUser.dni : (validDni || ''))
-        } : {
-          id: 'usr-' + Date.now().toString(36),
-          dni: validDni || '',
+      // Si el usuario actual es cliente y coincide con este identificador, usarlo
+      if (currentUser && currentUser.rol !== 'empresa' && (currentUser.dni === userIdentifier || currentUser.id === userIdentifier || currentUser.telefono_default === whatsapp.trim())) {
+        activeUser = currentUser;
+        const userUpdates: any = {
           nombre_completo: nombreCompleto.trim(),
-          telefono_default: whatsapp.trim(),
-          email: correoCliente.trim() || undefined,
-          password_hash: 'incomi2026',
-          rol: 'client',
-          created_at: new Date().toISOString()
+          telefono_default: whatsapp.trim() || activeUser.telefono_default,
+          dni_default: validDni || activeUser.dni_default,
+          email_default: correoCliente.trim() || activeUser.email_default,
+          distrito_default: distritoQuery.trim() || activeUser.distrito_default,
+          direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || activeUser.direccion_default,
+          referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || activeUser.referencia_default,
+          olva_modalidad_default: olvaModalidad,
         };
+        if (validDni && (!activeUser.dni || activeUser.dni.length < 8 || activeUser.dni.startsWith('9') || activeUser.dni.startsWith('usr-'))) {
+          userUpdates.dni = validDni;
+        }
+        activeUser = { ...activeUser, ...userUpdates };
+        ordersService.updateUserProfile(activeUser.id, userUpdates).catch(e => console.warn('User profile update warn:', e));
+      } else {
+        // Registrar o actualizar el perfil de la clienta en memoria
+        try {
+          const regRes = await ordersService.registerUser(
+            nombreCompleto.trim(),
+            validDni || userIdentifier,
+            undefined,
+            'incomi2026',
+            whatsapp.trim()
+          );
+          activeUser = regRes.user || null;
+          if (activeUser) {
+            ordersService.updateUserProfile(activeUser.id, {
+              dni_default: validDni || undefined,
+              email_default: correoCliente.trim() || undefined,
+              distrito_default: distritoQuery.trim() || undefined,
+              direccion_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaDireccion.trim() : direccionExacta.trim()) || undefined,
+              referencia_default: (selectedMethod?.tipo_formulario === 'olva' ? olvaReferencia.trim() : referencia.trim()) || undefined,
+              olva_modalidad_default: olvaModalidad,
+            } as any).catch(e => console.warn('User extra update warn:', e));
+          }
+        } catch (regErr) {
+          console.warn('Error en registro preliminar de usuario (continuando con pedido):', regErr);
+        }
+      }
 
-        // Mantener únicamente los campos personalizados reales ingresados por el usuario
-        const finalCustomFields: Record<string, any> = { ...customFieldValues };
+      const clientUserData = activeUser ? {
+        ...activeUser,
+        dni: validDni || (activeUser.dni && activeUser.dni.length >= 8 && !activeUser.dni.startsWith('9') && !activeUser.dni.startsWith('usr-') ? activeUser.dni : (validDni || ''))
+      } : {
+        id: 'usr-' + Date.now().toString(36),
+        dni: validDni || '',
+        nombre_completo: nombreCompleto.trim(),
+        telefono_default: whatsapp.trim(),
+        email: correoCliente.trim() || undefined,
+        password_hash: 'incomi2026',
+        rol: 'client',
+        created_at: new Date().toISOString()
+      };
 
-        const orderPayload = {
-          usuario_id: clientUserData.id,
-          usuario: clientUserData,
+      // Mantener únicamente los campos personalizados reales ingresados por el usuario
+      const finalCustomFields: Record<string, any> = { ...customFieldValues };
+
+      const orderPayload = {
+        usuario_id: clientUserData.id,
+        usuario: clientUserData,
+        detalles_bordado: `Envío de Mercadería para ${nombreCompleto.trim()}`,
+        metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
+        metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
+        destino_detalle: finalDestinoDetalle,
+        latitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLat : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lat : undefined),
+        longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
+        observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
+        fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
+        campos_personalizados: finalCustomFields,
+        empresa_id: tallerConfig?.empresa_id || undefined,
+      };
+
+      // Creación del pedido (esperado y confirmado en Supabase antes de continuar)
+      const newOrder = await createPedido(orderPayload);
+      triggerConfetti();
+      setCreatedOrder(newOrder);
+      setShowDispatchAnimation(true);
+
+      // Login en segundo plano sin bloquear el despacho
+      if (currentUser?.rol !== 'empresa' && activeUser) {
+        login(userIdentifier, 'incomi2026').catch(e => console.warn('Background login warn:', e));
+      }
+
+    } catch (err) {
+      console.error('Error al registrar el envío:', err);
+      // En caso extremo de excepción local, fallback garantizado de creación local
+      try {
+        const fallbackOrder = await ordersService.createPedido({
+          usuario_id: 'usr-' + Date.now().toString(36),
           detalles_bordado: `Envío de Mercadería para ${nombreCompleto.trim()}`,
           metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
           metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
           destino_detalle: finalDestinoDetalle,
-          latitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLat : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lat : undefined),
-          longitud: selectedMethod?.tipo_formulario === 'shalom' ? agencyLng : (selectedMethod?.tipo_formulario === 'mapa_direccion' ? lng : undefined),
-          observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' ? (olvaModalidad === 'domicilio' ? olvaReferencia.trim() : undefined) : referencia.trim()) || undefined,
           fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
-          campos_personalizados: finalCustomFields,
+          campos_personalizados: customFieldValues,
           empresa_id: tallerConfig?.empresa_id || undefined,
-        };
-
-        // Creación instantánea del pedido a 60 FPS sin bloqueos de red
-        const newOrder = await createPedido(orderPayload);
+        });
         triggerConfetti();
-        setCreatedOrder(newOrder);
+        setCreatedOrder(fallbackOrder);
         setShowDispatchAnimation(true);
-
-        // Login en segundo plano sin bloquear el despacho
-        if (currentUser?.rol !== 'empresa' && activeUser) {
-          login(userIdentifier, 'incomi2026').catch(e => console.warn('Background login warn:', e));
-        }
-
-      } catch (err) {
-        console.error('Error al registrar el envío:', err);
-        // En caso extremo de excepción local, fallback garantizado de creación local
-        try {
-          const fallbackOrder = await ordersService.createPedido({
-            usuario_id: 'usr-' + Date.now().toString(36),
-            detalles_bordado: `Envío de Mercadería para ${nombreCompleto.trim()}`,
-            metodo_envio_codigo: selectedMethod?.codigo || 'shalom',
-            metodo_envio_nombre: selectedMethod?.nombre || 'Envío',
-            destino_detalle: finalDestinoDetalle,
-            fecha_limite: fechaEnvioDeseada || new Date().toISOString().split('T')[0],
-            campos_personalizados: customFieldValues,
-            empresa_id: tallerConfig?.empresa_id || undefined,
-          });
-          triggerConfetti();
-          setCreatedOrder(fallbackOrder);
-          setShowDispatchAnimation(true);
-        } catch {
-          setErrorMsg('Ocurrió un problema temporal. Por favor presiona de nuevo para confirmar.');
-        }
-      } finally {
-        setSubmitting(false);
+      } catch {
+        setErrorMsg('Ocurrió un problema al guardar el pedido. Por favor intenta presionar de nuevo para confirmar.');
       }
-    };
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // Paso 1 & 2: Extracción dinámica de variables para el Comprobante Estándar
   const getDatosComprobanteActual = (order: Pedido | null): DatosComprobante => {
@@ -1483,44 +1523,94 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           {/* =====================================================================
               PASO 1: WHATSAPP (CON MEMORIA AUTO-GUARDADA)
               ===================================================================== */}
-          {organicStep === 1 && (
-            <form onSubmit={handleWhatsappSubmit} className="space-y-5 animate-fadeIn">
-              <div className="space-y-3">
-                <p className="text-xs sm:text-sm text-slate-300 font-medium">
-                  Ingresa tu número de WhatsApp para enviarte las fotos del paquete 📦 y el código de seguimiento:
-                </p>
-                
-                <div className="flex items-center rounded-2xl bg-white/5 border-2 border-white/15 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/25 transition-all p-2 shadow-inner">
-                  <div className="flex items-center gap-2 px-4 py-3 bg-white/8 rounded-xl text-white font-bold text-base sm:text-lg border border-white/10 shrink-0 select-none">
-                    <span className="text-xl">🇵🇪</span>
-                    <span className="font-mono text-cyan-300 font-bold">+51</span>
+          {/* =====================================================================
+              PASO 1: WHATSAPP (CON MEMORIA AUTO-GUARDADA)
+              ===================================================================== */}
+          {organicStep === 1 && (() => {
+            const cleanDigits = whatsapp.replace(/\D/g, '');
+            const isMasterOrEmpresa = whatsapp.trim() === '963097777' || !!ordersService.getEmpresaByNumero(whatsapp.trim()) || !!ordersService.getEmpresaById(whatsapp.trim());
+            const isPhoneReady = cleanDigits.length === 9 || isMasterOrEmpresa;
+
+            return (
+              <form onSubmit={handleWhatsappSubmit} noValidate className="space-y-5 animate-fadeIn">
+                <div className="space-y-3">
+                  <p className="text-xs sm:text-sm text-slate-300 font-medium">
+                    Ingresa tu número de WhatsApp para enviarte las fotos del paquete 📦 y el código de seguimiento:
+                  </p>
+                  
+                  <div className={`flex items-center rounded-2xl bg-white/5 border-2 transition-all p-2 shadow-inner ${
+                    isPhoneReady 
+                      ? 'border-cyan-400 ring-4 ring-cyan-400/25 shadow-[0_0_20px_rgba(6,182,212,0.25)]' 
+                      : 'border-white/15 focus-within:border-cyan-400 focus-within:ring-4 focus-within:ring-cyan-400/25'
+                  }`}>
+                    <div className="flex items-center gap-2 px-4 py-3 bg-white/8 rounded-xl text-white font-bold text-base sm:text-lg border border-white/10 shrink-0 select-none">
+                      <span className="text-xl">🇵🇪</span>
+                      <span className="font-mono text-cyan-300 font-bold">+51</span>
+                    </div>
+                    <input
+                      id="step1-whatsapp-input"
+                      type="tel"
+                      autoFocus
+                      value={whatsapp}
+                      onChange={e => setWhatsapp(formatPhoneWithSpaces(e.target.value))}
+                      placeholder="987 654 321"
+                      maxLength={11}
+                      className="w-full bg-transparent px-4 py-3 text-lg sm:text-2xl font-bold font-mono text-white placeholder-slate-500 focus:outline-none tracking-wider"
+                    />
+                    {cleanDigits.length > 0 && (
+                      <div className="pr-3 shrink-0">
+                        {isPhoneReady ? (
+                          <span className="px-2.5 py-1 rounded-xl bg-cyan-500/20 text-cyan-300 font-bold text-xs border border-cyan-400/40 flex items-center gap-1 shadow-sm animate-fadeIn">
+                            ✓ Listo
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/40 flex items-center gap-1 animate-fadeIn">
+                            {cleanDigits.length}/9
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <input
-                    type="tel"
-                    required
-                    autoFocus
-                    value={whatsapp}
-                    onChange={e => setWhatsapp(formatPhoneWithSpaces(e.target.value))}
-                    placeholder="987 654 321"
-                    maxLength={11}
-                    className="w-full bg-transparent px-4 py-3 text-lg sm:text-2xl font-bold font-mono text-white placeholder-slate-500 focus:outline-none tracking-wider"
-                  />
-                </div>
-              </div>
 
-              {errorMsg && (
-                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3.5 rounded-2xl border border-rose-500/20">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{errorMsg}</span>
+                  {/* Mensaje de guía dinámico de dígitos */}
+                  <div className="flex items-center justify-between text-xs px-1">
+                    {cleanDigits.length === 0 ? (
+                      <span className="text-slate-400">Obligatorio 9 dígitos para continuar</span>
+                    ) : cleanDigits.length < 9 ? (
+                      <span className="text-amber-400 font-semibold flex items-center gap-1">
+                        ⚠️ Faltan {9 - cleanDigits.length} dígito{9 - cleanDigits.length === 1 ? '' : 's'} para habilitar el botón ({cleanDigits.length}/9)
+                      </span>
+                    ) : (
+                      <span className="text-emerald-400 font-bold flex items-center gap-1">
+                        ✓ 9 dígitos completados correctamente
+                      </span>
+                    )}
+                    <span className="font-mono text-slate-500 text-[11px]">{cleanDigits.length}/9</span>
+                  </div>
                 </div>
-              )}
 
-              <button type="submit" className="big-btn-primary py-4.5 sm:py-5 text-base sm:text-lg font-black shadow-xl">
-                <span>Continuar</span>
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            </form>
-          )}
+                {errorMsg && (
+                  <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 p-3.5 rounded-2xl border border-rose-500/20">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
+
+                <button 
+                  type="submit" 
+                  disabled={!isPhoneReady}
+                  className={`w-full py-4.5 sm:py-5 px-6 rounded-2xl text-base sm:text-lg font-black transition-all duration-300 flex items-center justify-center gap-2 ${
+                    isPhoneReady 
+                      ? 'bg-linear-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white shadow-[0_0_35px_rgba(6,182,212,0.7)] hover:shadow-[0_0_45px_rgba(6,182,212,0.9)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer ring-2 ring-cyan-300/60 animate-pulse' 
+                      : 'bg-slate-800/80 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60 shadow-none'
+                  }`}
+                >
+                  <span>Continuar</span>
+                  <ArrowRight className={`w-5 h-5 transition-transform ${isPhoneReady ? 'translate-x-1' : ''}`} />
+                </button>
+              </form>
+            );
+          })()}
 
           {/* =====================================================================
               PASO 2: SELECCIÓN DE MÉTODO (CON LOGOS OFICIALES, SHALOM Y OTRAS AGENCIAS)
@@ -1632,7 +1722,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               PASO 3: DATOS DE ENTREGA & NOMBRE (COMPACTO CON EMOJIS)
               ===================================================================== */}
           {organicStep === 3 && (
-            <form onSubmit={handleFinalSubmit} className="space-y-4 animate-fadeIn">
+            <form onSubmit={handleFinalSubmit} noValidate className="space-y-4 animate-fadeIn">
               
               {/* RAMA A: AGENCIA SHALOM */}
               {selectedMethod?.tipo_formulario === 'shalom' && (
@@ -1678,7 +1768,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   )}
 
                   {/* Selección de Agencia */}
-                  <div className="space-y-2">
+                  <div id="shalom-agency-selector" className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
                         📦 Agencia Shalom de Destino
@@ -1871,6 +1961,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     </div>
                     <div className="relative flex items-center">
                       <input
+                        id="dni-input"
                         type="text"
                         required
                         value={dniShalom}
@@ -1987,6 +2078,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           </label>
                           <div className="relative flex items-center">
                             <input
+                              id="distrito-input"
                               type="text"
                               required
                               value={distritoQuery}
@@ -2026,6 +2118,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             📍 Dirección Exacta (Calle, Pasaje, Número, Dpto) *
                           </label>
                           <input
+                            id="direccion-input"
                             type="text"
                             required
                             value={direccionExacta}
@@ -2374,6 +2467,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           📍 Dirección Exacta (Calle, Avenida, Número, Dpto, Distrito y Ciudad) *
                         </label>
                         <input
+                          id="olva-direccion-input"
                           type="text"
                           required
                           value={olvaDireccion}
@@ -2420,6 +2514,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         </div>
                         <div className="relative flex items-center">
                           <input
+                            id="olva-dni-input"
                             type="text"
                             required
                             value={dniShalom}
@@ -2471,6 +2566,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           📱 Celular / WhatsApp (Cliente) *
                         </label>
                         <input
+                          id="olva-phone-input"
                           type="tel"
                           required
                           value={whatsapp}
@@ -2487,6 +2583,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                         📧 Correo Electrónico (Cliente) *
                       </label>
                       <input
+                        id="olva-email-input"
                         type="email"
                         required
                         value={correoCliente}
@@ -2555,6 +2652,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
                             {campo.tipo === 'textarea' ? (
                               <textarea
+                                id={`custom-field-${campo.id}`}
                                 rows={2}
                                 required={campo.requerido}
                                 value={val}
@@ -2564,6 +2662,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               />
                             ) : (
                               <input
+                                id={`custom-field-${campo.id}`}
                                 type={campo.tipo === 'telefono' ? 'tel' : campo.tipo === 'numero' ? 'number' : 'text'}
                                 required={campo.requerido}
                                 value={val}
@@ -2601,6 +2700,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     </div>
                     <div className="relative flex items-center">
                       <input
+                        id="nombre-completo-input"
                         type="text"
                         required
                         value={nombreCompleto}
@@ -2622,6 +2722,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                       </label>
                       <div className="relative flex items-center">
                         <input
+                          id="phone-contact-input"
                           type="tel"
                           required
                           value={whatsapp}
@@ -2658,6 +2759,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
                     <div className="relative flex items-center">
                       <input
+                        id="fecha-envio-input"
                         type="date"
                         required
                         min={minShippingDate}
@@ -2740,11 +2842,19 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
                   <button
                     type="submit"
+                    id="submit-order-button"
                     disabled={submitting}
-                    className="big-btn-primary py-4.5 sm:py-5 text-base sm:text-lg font-black mt-2 shadow-2xl"
+                    className={`w-full py-4.5 sm:py-5 px-6 rounded-2xl text-base sm:text-lg font-black mt-2 shadow-2xl transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
+                      submitting
+                        ? 'bg-slate-800 text-slate-400 cursor-wait opacity-85'
+                        : 'big-btn-primary'
+                    }`}
                   >
                     {submitting ? (
-                      <span>Registrando Envío...</span>
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+                        <span>Guardando Pedido en el Sistema...</span>
+                      </span>
                     ) : (
                       <>
                         <span>Confirmar y Finalizar Pedido</span>

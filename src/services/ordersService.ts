@@ -461,16 +461,21 @@ class OrdersService {
     let existingIdx = users.findIndex(u => u.dni.toUpperCase().replace(/\s+/g, '') === cleanDni);
     let existingUser: Usuario | null = existingIdx !== -1 ? users[existingIdx] : null;
 
-    // 2. Si no está en memoria local, buscar en Supabase para evitar duplicación y error 23505
+    // 2. Si no está en memoria local, buscar en Supabase para evitar duplicación y error 23505 (con timeout de 2.5s)
     if (!existingUser && isSupabaseConfigured && supabase) {
       try {
-        const { data: dbUser, error } = await supabase
-          .from('usuarios')
-          .select('*')
-          .eq('dni', cleanDni)
-          .maybeSingle();
-        if (!error && dbUser) {
-          existingUser = dbUser as Usuario;
+        const res = await Promise.race([
+          supabase
+            .from('usuarios')
+            .select('*')
+            .eq('dni', cleanDni)
+            .maybeSingle(),
+          new Promise<{ data: null; error: any }>((resolve) => 
+            setTimeout(() => resolve({ data: null, error: new Error('User lookup timeout') }), 2500)
+          )
+        ]);
+        if (!res.error && res.data) {
+          existingUser = res.data as Usuario;
         }
       } catch (err) {
         console.warn('Error verificando usuario en Supabase:', err);
@@ -1564,8 +1569,8 @@ class OrdersService {
   private sanitizePedidoForDb(pedido: Partial<Pedido>): Record<string, any> {
     const payload: Record<string, any> = {};
     if (pedido.id !== undefined) payload.id = pedido.id;
-    if (pedido.empresa_id !== undefined) {
-      payload.empresa_id = pedido.empresa_id;
+    if (pedido.empresa_id && typeof pedido.empresa_id === 'string' && pedido.empresa_id.trim()) {
+      payload.empresa_id = pedido.empresa_id.trim();
     } else {
       payload.empresa_id = 'empresa-master-comikids';
     }
@@ -1585,7 +1590,14 @@ class OrdersService {
     if (pedido.estado_produccion !== undefined) payload.estado_produccion = pedido.estado_produccion;
     if (pedido.estado_envio !== undefined) payload.estado_envio = pedido.estado_envio;
     if (pedido.observaciones_cliente !== undefined) payload.observaciones_cliente = pedido.observaciones_cliente || null;
-    if (pedido.fecha_limite !== undefined) payload.fecha_limite = pedido.fecha_limite || null;
+    if (pedido.fecha_limite !== undefined) {
+      const fClean = String(pedido.fecha_limite || '').trim();
+      if (fClean && /^\d{4}-\d{2}-\d{2}/.test(fClean)) {
+        payload.fecha_limite = fClean.slice(0, 10);
+      } else {
+        payload.fecha_limite = null;
+      }
+    }
     if (pedido.rotulado !== undefined) payload.rotulado = Boolean(pedido.rotulado);
     if (pedido.registrado_shalom !== undefined) payload.registrado_shalom = Boolean(pedido.registrado_shalom);
     if (pedido.shalom_ose_id !== undefined) payload.shalom_ose_id = pedido.shalom_ose_id || null;
@@ -1616,7 +1628,7 @@ class OrdersService {
           }
         } else if (targetEmpresaId) {
           if (targetEmpresaId === 'empresa-master-comikids') {
-            query = query.or('empresa_id.eq.empresa-master-comikids,empresa_id.is.null');
+            query = query.or('empresa_id.eq.empresa-master-comikids,empresa_id.is.null,empresa_id.eq.');
           } else {
             query = query.eq('empresa_id', targetEmpresaId);
           }
@@ -1773,61 +1785,84 @@ class OrdersService {
     const allOrders = this.getLocalOrders(targetEmpresaId);
     const userOrderCount = allOrders.filter(o => o.usuario_id === pedidoData.usuario_id).length;
 
-    // PERSISTENCIA ROBUSTA EN SEGUNDO PLANO (SUPABASE):
-    // Garantiza que la interfaz responda a 60 FPS en <20ms sin bloquear el navegador en Brave/Safari/móviles
+    // PERSISTENCIA REAL Y DIRECTA EN SUPABASE (AWAITED):
+    // Garantiza que el pedido esté 100% guardado y confirmado en el servidor antes de permitir el despacho y abrir WhatsApp
     const client = supabase;
     if (isSupabaseConfigured && client) {
-      (async () => {
-        try {
-          // 1. Sincronizar usuario si existe
-          if (pedidoData.usuario) {
-            const userDni = (pedidoData.usuario.dni || '').trim().toUpperCase().replace(/\s+/g, '');
-            const canonicalUserId = pedidoData.usuario.id;
-            const cleanUser = {
-              id: canonicalUserId,
-              dni: userDni || canonicalUserId,
-              nombre_completo: pedidoData.usuario.nombre_completo || 'Cliente',
-              edad: pedidoData.usuario.edad ? Number(pedidoData.usuario.edad) : null,
-              genero: pedidoData.usuario.genero || null,
-              motivo_compra: pedidoData.usuario.motivo_compra || null,
-              password_hash: pedidoData.usuario.password_hash || 'incomi2026',
-              rol: pedidoData.usuario.rol || 'client',
-              avatar_url: pedidoData.usuario.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${userDni || canonicalUserId}`,
-              puntos_xp: pedidoData.usuario.puntos_xp || 0,
-              nivel: pedidoData.usuario.nivel || 1,
-              telefono_default: pedidoData.usuario.telefono_default || null,
-              dni_default: pedidoData.usuario.dni_default || (userDni.length === 8 ? userDni : null),
-              distrito_default: pedidoData.usuario.distrito_default || null,
-              direccion_default: pedidoData.usuario.direccion_default || null,
-              referencia_default: pedidoData.usuario.referencia_default || null,
-              email: pedidoData.usuario.email || pedidoData.usuario.email_default || null,
-              email_default: pedidoData.usuario.email_default || null,
-              olva_modalidad_default: pedidoData.usuario.olva_modalidad_default || null,
-              datos_adicionales_completados: Boolean(pedidoData.usuario.datos_adicionales_completados),
-              created_at: pedidoData.usuario.created_at || now,
-            };
+      try {
+        // 1. Sincronizar usuario si existe (con timeout de 2.5s)
+        if (pedidoData.usuario) {
+          const userDni = (pedidoData.usuario.dni || '').trim().toUpperCase().replace(/\s+/g, '');
+          const canonicalUserId = pedidoData.usuario.id;
+          const cleanUser = {
+            id: canonicalUserId,
+            dni: userDni || canonicalUserId,
+            nombre_completo: pedidoData.usuario.nombre_completo || 'Cliente',
+            edad: pedidoData.usuario.edad ? Number(pedidoData.usuario.edad) : null,
+            genero: pedidoData.usuario.genero || null,
+            motivo_compra: pedidoData.usuario.motivo_compra || null,
+            password_hash: pedidoData.usuario.password_hash || 'incomi2026',
+            rol: pedidoData.usuario.rol || 'client',
+            avatar_url: pedidoData.usuario.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${userDni || canonicalUserId}`,
+            puntos_xp: pedidoData.usuario.puntos_xp || 0,
+            nivel: pedidoData.usuario.nivel || 1,
+            telefono_default: pedidoData.usuario.telefono_default || null,
+            dni_default: pedidoData.usuario.dni_default || (userDni.length === 8 ? userDni : null),
+            distrito_default: pedidoData.usuario.distrito_default || null,
+            direccion_default: pedidoData.usuario.direccion_default || null,
+            referencia_default: pedidoData.usuario.referencia_default || null,
+            email: pedidoData.usuario.email || pedidoData.usuario.email_default || null,
+            email_default: pedidoData.usuario.email_default || null,
+            olva_modalidad_default: pedidoData.usuario.olva_modalidad_default || null,
+            datos_adicionales_completados: Boolean(pedidoData.usuario.datos_adicionales_completados),
+            created_at: pedidoData.usuario.created_at || now,
+          };
 
-            try {
-              await client.from('usuarios').upsert(cleanUser, { onConflict: 'dni' });
-            } catch (uErr) {
-              console.warn('[SUPABASE USUARIO NOTICE]:', uErr);
+          try {
+            await Promise.race([
+              client.from('usuarios').upsert(cleanUser, { onConflict: 'dni' }),
+              new Promise((_, r) => setTimeout(() => r(new Error('User timeout')), 2500))
+            ]);
+          } catch (uErr) {
+            console.warn('[SUPABASE USUARIO NOTICE]:', uErr);
+          }
+        }
+
+        // 2. Guardar el pedido en Supabase con reintentos
+        const dbPayload = this.sanitizePedidoForDb(newPedido);
+        let savedInSupabase = false;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const { error: insErr } = await Promise.race([
+              client.from('pedidos').upsert(dbPayload, { onConflict: 'id' }),
+              new Promise<{ error: any }>((_, r) => setTimeout(() => r({ error: new Error('Timeout pedidos upsert') }), 4000))
+            ]);
+
+            if (!insErr) {
+              savedInSupabase = true;
+              console.log(`[SUPABASE SUCCESS] Pedido ${newPedido.codigo_seguimiento} guardado exitosamente en la nube (intento ${attempt})`);
+              this.dequeuePendingOrder(newPedido.id);
+              break;
+            } else {
+              console.warn(`[SUPABASE RETRY ${attempt}] Error guardando pedido:`, insErr);
             }
+          } catch (attErr) {
+            console.warn(`[SUPABASE RETRY EXCEPTION ${attempt}]:`, attErr);
           }
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, 400));
+          }
+        }
 
-          // 2. Guardar el pedido en Supabase
-          const dbPayload = this.sanitizePedidoForDb(newPedido);
-          const { error: insErr } = await client.from('pedidos').upsert(dbPayload, { onConflict: 'id' });
-          if (insErr) {
-            console.warn('[WARN] Error guardando pedido en Supabase, encolando:', insErr);
-            this.enqueuePendingOrder(newPedido);
-          } else {
-            this.dequeuePendingOrder(newPedido.id);
-          }
-        } catch (cloudErr) {
-          console.warn('[SUPABASE PERSISTENCE WARN]:', cloudErr);
+        if (!savedInSupabase) {
+          console.warn('[SUPABASE WARN] Encolando pedido pendiente tras reintentos fallidos:', newPedido.id);
           this.enqueuePendingOrder(newPedido);
         }
-      })();
+      } catch (cloudErr) {
+        console.warn('[SUPABASE PERSISTENCE WARN]:', cloudErr);
+        this.enqueuePendingOrder(newPedido);
+      }
     }
 
     // Tareas secundarias asíncronas (XP y Logros) ejecutadas en segundo plano

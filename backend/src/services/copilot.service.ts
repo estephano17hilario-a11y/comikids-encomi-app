@@ -36,8 +36,8 @@ interface KnownAccount {
   defaultPassword?: string;
 }
 
-// Límite diario de tokens por cuenta de Sub-QR (500,000 tokens)
-const DAILY_TOKEN_LIMIT = 500_000;
+// Límite diario de tokens por cuenta de Sub-QR (2,000,000 tokens)
+const DAILY_TOKEN_LIMIT = 2_000_000;
 
 interface ShalomAgencyMatch {
   id: number;
@@ -581,7 +581,7 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
             const currentTokens = await this.getDailyTokenUsage(sessionData.accountCode);
             const remainingTokens = Math.max(0, DAILY_TOKEN_LIMIT - currentTokens);
 
-            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea WhatsApp:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles:* ${remainingTokens.toLocaleString()} / 500,000\n\n🛠️ *Acceso Total Habilitado:*\n• 📦 *Registrar pedidos:* Envíame Nombre, DNI, WhatsApp y Destino.\n• 🔍 *Consultar pedidos:* Pregúntame "¿cuántos envíos hay para hoy?" o busca por cliente.\n• 🚀 *Despachos WhatsApp:* Envío directo de comprobantes y guías.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
+            const welcomeMsg = `✅ *¡Autenticación Exitosa y Base de Datos Conectada!*\n\n🏢 *Empresa:* ${sessionData.displayName}\n📱 *Línea WhatsApp:* +${sessionData.ownerPhone}\n⚡ *Instancia:* \`${sessionData.instanceName}\`\n🪙 *Tokens Disponibles:* ${remainingTokens.toLocaleString()} / ${DAILY_TOKEN_LIMIT.toLocaleString()}\n\n🛠️ *Acceso Total Habilitado:*\n• 📦 *Registrar pedidos:* Envíame Nombre, DNI, WhatsApp y Destino.\n• 🔍 *Consultar pedidos:* Pregúntame "¿cuántos envíos hay para hoy?" o busca por cliente.\n• 🚀 *Despachos WhatsApp:* Envío directo de comprobantes y guías.\n\n💡 *¿Qué consulta o acción deseas realizar?*`;
 
             await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, welcomeMsg);
             return welcomeMsg;
@@ -761,12 +761,12 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
       }
 
       // -------------------------------------------------------------
-      // PASO 4: CONTROL DE LÍMITE DIARIO DE 500,000 TOKENS POR SUB-QR
+      // PASO 4: CONTROL DE LÍMITE DIARIO DE 2,000,000 TOKENS POR SUB-QR
       // -------------------------------------------------------------
       const currentTokenUsage = await this.getDailyTokenUsage(sessionData.accountCode);
       if (currentTokenUsage >= DAILY_TOKEN_LIMIT) {
         console.warn(`[COPILOT TOKENS LIMIT] Cuenta ${sessionData.accountCode} superó el límite diario (${currentTokenUsage} >= ${DAILY_TOKEN_LIMIT})`);
-        const limitMsg = `⚠️ *Límite Diario de IA Alcanzado (${currentTokenUsage.toLocaleString()} / 500,000 tokens)*\n\nTu cuenta *${sessionData.displayName}* ha llegado al consumo máximo diario permitido de 500k tokens para el Copiloto Encomi AI.\n\n🔄 Tu cuota se reiniciará automáticamente a la medianoche (00:00 hora Perú). Puedes continuar gestionando tus pedidos en el panel web: https://encomi.vercel.app`;
+        const limitMsg = `⚠️ *Límite Diario de IA Alcanzado (${currentTokenUsage.toLocaleString()} / ${DAILY_TOKEN_LIMIT.toLocaleString()} tokens)*\n\nTu cuenta *${sessionData.displayName}* ha llegado al consumo máximo diario permitido de 2M tokens para el Copiloto Encomi AI.\n\n🔄 Tu cuota se reiniciará automáticamente a la medianoche (00:00 hora Perú). Puedes continuar gestionando tus pedidos en el panel web: https://encomi.vercel.app`;
         await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, limitMsg);
         return limitMsg;
       }
@@ -829,7 +829,7 @@ Estás interactuando directamente con el administrador de la cuenta: ${userName}
 INFORMACIÓN DE ACCESO:
 - Cuenta de Empresa: "${sessionData.displayName}"
 - Línea de Despacho Sub-QR: +${userSenderPhone} (${userSenderInstance})
-- Tokens consumidos hoy: ${currentTokenUsage.toLocaleString()} / 500,000 tokens
+- Tokens consumidos hoy: ${currentTokenUsage.toLocaleString()} / ${DAILY_TOKEN_LIMIT.toLocaleString()} tokens
 - Fecha actual del sistema (Perú UTC-5): ${todayString}
 - Archivo adjunto: ${hasAttachedMedia ? `SÍ (${isImage ? 'IMAGEN' : 'DOCUMENTO'}: ${attachedFileName})` : 'NO'}
 

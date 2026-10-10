@@ -3,6 +3,7 @@ import { supabase } from '../services/supabaseClient';
 import { OlvaAgency } from '../types/database.types';
 import { OLVA_AGENCIES } from '../data/olvaAgencies';
 import { searchAndRankAgencies, normalizeSearchText } from '../utils/agencySearch';
+import { filterAgenciesWithVigencia } from '../utils/agencyStatus';
 
 export interface UseOlvaAgenciesOptions {
   autoFetchNearby?: boolean;
@@ -249,10 +250,11 @@ export function useOlvaAgencies(options: UseOlvaAgenciesOptions = {}) {
       let catalog: OlvaAgency[] = [];
 
       if (supabase) {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
         const { data, error: dbError } = await supabase
           .from('olva_agencies')
           .select('*')
-          .eq('is_active', true)
+          .or(`is_active.eq.true,and(is_active.eq.false,deleted_at.gte.${thirtyDaysAgo})`)
           .order('name', { ascending: true })
           .limit(defaultLimit);
 
@@ -275,7 +277,13 @@ export function useOlvaAgencies(options: UseOlvaAgenciesOptions = {}) {
               tipo: row.tipo,
               is_partner: row.is_partner,
               latitude: row.latitude ? Number(row.latitude) : null,
-              longitude: row.longitude ? Number(row.longitude) : null
+              longitude: row.longitude ? Number(row.longitude) : null,
+              is_active: row.is_active !== false,
+              previous_name: row.previous_name || null,
+              previous_address: row.previous_address || null,
+              previous_agency_info: row.previous_agency_info || null,
+              name_changed_at: row.name_changed_at || null,
+              deleted_at: row.deleted_at || null,
             };
             item.full_display_name = formatFullOlvaAgencyName(item);
             return item;
@@ -284,19 +292,23 @@ export function useOlvaAgencies(options: UseOlvaAgenciesOptions = {}) {
       }
 
       if (catalog.length === 0) {
-        catalog = OLVA_AGENCIES.map(a => {
+        catalog = filterAgenciesWithVigencia(OLVA_AGENCIES).map(a => {
           const item: OlvaAgency = {
             ...a,
             department: a.departamento,
             province: a.provincia,
             district: a.distrito,
             latitude: a.latitude ? Number(a.latitude) : null,
-            longitude: a.longitude ? Number(a.longitude) : null
+            longitude: a.longitude ? Number(a.longitude) : null,
+            is_active: a.is_active !== false,
           };
           item.full_display_name = formatFullOlvaAgencyName(item);
           return item;
         });
       }
+
+      // Filtrar asegurando vigencia de 30 días
+      catalog = filterAgenciesWithVigencia(catalog);
 
       const targetCoords = coords || userLocation;
       if (targetCoords) {
@@ -308,13 +320,14 @@ export function useOlvaAgencies(options: UseOlvaAgenciesOptions = {}) {
       setAgencies(catalog);
     } catch (err: any) {
       console.warn('Usando catálogo local de agencias Olva:', err);
-      let localCat: OlvaAgency[] = OLVA_AGENCIES.map(a => ({
+      let localCat: OlvaAgency[] = filterAgenciesWithVigencia(OLVA_AGENCIES).map(a => ({
         ...a,
         department: a.departamento,
         province: a.provincia,
         district: a.distrito,
         latitude: a.latitude ? Number(a.latitude) : null,
         longitude: a.longitude ? Number(a.longitude) : null,
+        is_active: a.is_active !== false,
         full_display_name: formatFullOlvaAgencyName(a)
       }));
       const targetCoords = coords || userLocation;

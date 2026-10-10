@@ -68,7 +68,8 @@ function getCachedNormalized(a: any) {
     const nom = normalizeSearchText(a.nombre || a.name);
     const dir = normalizeSearchText(a.direccion || a.address);
     const code = normalizeSearchText(a.code || a.codigo);
-    const full = `${dep} ${prov} ${dist} ${nom} ${dir} ${code}`;
+    const prev = normalizeSearchText(a.previous_name || a.previous_agency_info || '');
+    const full = `${dep} ${prov} ${dist} ${nom} ${dir} ${code} ${prev}`.trim();
     const words = full.split(/\s+/).filter(Boolean);
     cached = { dist, nom, code, prov, dep, dir, full, words };
     normalizedAgencyCache.set(a, cached);

@@ -11,6 +11,8 @@ import { ShalomAgenciesMap } from './ShalomAgenciesMap';
 import { OlvaAgenciesMap } from './OlvaAgenciesMap';
 import { EncomiAiChatModal } from './EncomiAiChatModal';
 import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido, CampoPersonalizadoAgencia, EmpresaAccount } from '../../types/database.types';
+import { AgencyStatusBadge } from '../common/AgencyStatusBadge';
+import { getAgencyStatusInfo } from '../../utils/agencyStatus';
 import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import {
@@ -664,6 +666,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         scrollToField('shalom-agency-selector');
         return;
       }
+      if (selectedAgencyObject.is_active === false) {
+        setErrorMsg(`La agencia Shalom "${selectedAgencyObject.distrito || selectedAgencyObject.nombre}" fue cerrada recientemente y ya no existe. Por favor selecciona otra sede activa.`);
+        scrollToField('shalom-agency-selector');
+        return;
+      }
       if (!dniShalom.trim()) {
         setErrorMsg('Por favor ingresa tu DNI o Carnet de Extranjería (CE).');
         scrollToField('dni-input');
@@ -733,6 +740,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             : 'Por favor ingresa la dirección exacta de tu domicilio.'
         );
         scrollToField('olva-direccion-input');
+        return;
+      }
+      if (olvaModalidad === 'agencia' && selectedOlvaAgencyObject && selectedOlvaAgencyObject.is_active === false) {
+        setErrorMsg(`La agencia Olva "${selectedOlvaAgencyObject.distrito || selectedOlvaAgencyObject.nombre}" fue cerrada recientemente y ya no existe. Por favor selecciona otra sede activa.`);
+        scrollToField('olva-agency-selector');
         return;
       }
     }
@@ -1821,6 +1833,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           )}
                         </div>
 
+                        {/* Estado de nombre cambiado o baja de 30 días */}
+                        <AgencyStatusBadge agency={selectedAgencyObject} compact={false} />
+
                         <button
                           type="button"
                           onClick={() => setIsAgencyListOpen(true)}
@@ -1859,6 +1874,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             ) : (
                               shalomAgenciesList.slice(0, 35).map(ag => {
                                 const isSelected = selectedAgencyObject?.id === ag.id;
+                                const statusInfo = getAgencyStatusInfo(ag);
                                 const cleanAddr = cleanAddressText(ag.direccion, ag.provincia, ag.departamento);
                                 const distanceText = ag.distance_meters !== undefined
                                   ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
@@ -1870,15 +1886,21 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                   <button
                                     key={ag.id}
                                     type="button"
+                                    disabled={!statusInfo.canBeSelected}
                                     onClick={() => {
+                                      if (!statusInfo.canBeSelected) {
+                                        return;
+                                      }
                                       setSelectedAgencyObject(ag);
                                       if (ag.departamento) setDepartamentoShalom(ag.departamento);
                                       setIsAgencyListOpen(false);
                                     }}
-                                    className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
-                                      isSelected
-                                        ? 'bg-cyan-500/25 border border-cyan-500/60 text-white shadow-md'
-                                        : 'bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300'
+                                    className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 ${
+                                      !statusInfo.canBeSelected
+                                        ? 'bg-rose-950/25 border border-rose-500/40 text-rose-200 cursor-not-allowed opacity-85'
+                                        : isSelected
+                                        ? 'bg-cyan-500/25 border border-cyan-500/60 text-white shadow-md cursor-pointer'
+                                        : 'bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 cursor-pointer'
                                     }`}
                                   >
                                     <div className="flex items-start justify-between gap-2">
@@ -1886,16 +1908,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                         <HighlightMatch text={titleText} query={agencySearchQuery} />
                                       </h5>
 
-                                      {distanceText && (
-                                        <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-full shrink-0 border border-cyan-500/25">
-                                          📍 {distanceText}
-                                        </span>
-                                      )}
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <AgencyStatusBadge agency={ag} compact={true} />
+                                        {distanceText && (
+                                          <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-full shrink-0 border border-cyan-500/25">
+                                            📍 {distanceText}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
 
                                     <p className="text-[11px] text-slate-300 leading-snug">
                                       <HighlightMatch text={cleanAddr || 'Dirección de la sede'} query={agencySearchQuery} />
                                     </p>
+
+                                    {/* Indicador detallado de vigencia 30 días para modificadas o cerradas */}
+                                    <AgencyStatusBadge agency={ag} compact={false} />
                                   </button>
                                 );
                               })
@@ -2320,6 +2348,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             )}
                           </div>
 
+                          {/* Estado de nombre cambiado o baja de 30 días */}
+                          <AgencyStatusBadge agency={selectedOlvaAgencyObject} compact={false} />
+
                           <button
                             type="button"
                             onClick={() => setIsOlvaAgencyListOpen(true)}
@@ -2358,6 +2389,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               ) : (
                                 olvaAgenciesList.slice(0, 35).map(ag => {
                                   const isSelected = selectedOlvaAgencyObject?.id === ag.id;
+                                  const statusInfo = getAgencyStatusInfo(ag);
                                   const cleanAddr = cleanOlvaAddressText(ag.direccion || ag.address, ag.provincia, ag.departamento);
                                   const distanceText = ag.distance_meters !== undefined
                                     ? (ag.distance_meters < 1000 ? `${Math.round(ag.distance_meters)} m` : `${(ag.distance_meters / 1000).toFixed(1)} km`)
@@ -2369,16 +2401,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                     <button
                                       key={ag.id}
                                       type="button"
+                                      disabled={!statusInfo.canBeSelected}
                                       onClick={() => {
+                                        if (!statusInfo.canBeSelected) {
+                                          return;
+                                        }
                                         setSelectedOlvaAgencyObject(ag);
                                         setOlvaDireccion(formatFullOlvaAgencyName(ag));
                                         if (ag.departamento) setDepartamentoOlva(ag.departamento);
                                         setIsOlvaAgencyListOpen(false);
                                       }}
-                                      className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
-                                        isSelected
-                                          ? 'bg-amber-500/25 border border-amber-500/60 text-white shadow-md'
-                                          : 'bg-white/4 hover:bg-white/8 border border-white/8 text-slate-300'
+                                      className={`w-full text-left p-3 rounded-xl transition-all flex flex-col gap-1 ${
+                                        !statusInfo.canBeSelected
+                                          ? 'bg-rose-950/25 border border-rose-500/40 text-rose-200 cursor-not-allowed opacity-85'
+                                          : isSelected
+                                          ? 'bg-amber-500/25 border border-amber-500/60 text-white shadow-md cursor-pointer'
+                                          : 'bg-white/4 hover:bg-white/8 border border-white/8 text-slate-300 cursor-pointer'
                                       }`}
                                     >
                                       <div className="flex items-start justify-between gap-2">
@@ -2386,16 +2424,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                                           <HighlightMatch text={titleText} query={olvaAgencySearchQuery} />
                                         </h5>
 
-                                        {distanceText && (
-                                          <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full shrink-0 border border-amber-500/30">
-                                            📍 {distanceText}
-                                          </span>
-                                        )}
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <AgencyStatusBadge agency={ag} compact={true} />
+                                          {distanceText && (
+                                            <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full shrink-0 border border-amber-500/30">
+                                              📍 {distanceText}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
 
                                       <p className="text-[11px] text-slate-300 leading-snug">
                                         <HighlightMatch text={cleanAddr || 'Dirección de sede Olva'} query={olvaAgencySearchQuery} />
                                       </p>
+
+                                      {/* Indicador detallado de vigencia 30 días para modificadas o cerradas */}
+                                      <AgencyStatusBadge agency={ag} compact={false} />
 
                                       {ag.horario && (
                                         <p className="text-[10px] text-slate-400 flex items-center gap-1">

@@ -198,7 +198,7 @@ export class ShalomSyncService {
         const codeTag = code ? ` (CÓDIGO: ${code})` : '';
         const fullName = `${department} / ${province} / ${district} / ${name}${address ? ` - ${address}` : ''}${codeTag}`.toUpperCase();
 
-        const normalizedDBRecord = {
+        const normalizedDBRecord: any = {
           id: agId,
           code,
           name,
@@ -217,6 +217,11 @@ export class ShalomSyncService {
           longitude: typeof raw.longitud === 'number' ? raw.longitud : null,
           is_active: true,
           updated_at: new Date().toISOString(),
+          previous_name: null,
+          previous_address: null,
+          previous_agency_info: null,
+          name_changed_at: null,
+          deleted_at: null,
         };
 
         const existing = dbAgenciesMap.get(agId);
@@ -234,13 +239,52 @@ export class ShalomSyncService {
           const isScheduleChanged = (existing.schedule || '').trim() !== scheduleText;
           const isLocationChanged = existing.latitude !== normalizedDBRecord.latitude || existing.longitude !== normalizedDBRecord.longitude;
 
-          if (isNameChanged || isAddressChanged || isDistrictChanged || isCodeChanged || isScheduleChanged || isLocationChanged) {
+          const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+          if (isNameChanged) {
+            normalizedDBRecord.previous_name = existing.name;
+            normalizedDBRecord.previous_address = existing.address;
+            normalizedDBRecord.previous_agency_info = existing.full_name || `${existing.name} - ${existing.address}`;
+            normalizedDBRecord.name_changed_at = new Date().toISOString();
+          } else if (existing.previous_name) {
+            const changedTime = existing.name_changed_at ? new Date(existing.name_changed_at).getTime() : 0;
+            if (changedTime && Date.now() - changedTime <= thirtyDaysMs) {
+              normalizedDBRecord.previous_name = existing.previous_name;
+              normalizedDBRecord.previous_address = existing.previous_address;
+              normalizedDBRecord.previous_agency_info = existing.previous_agency_info;
+              normalizedDBRecord.name_changed_at = existing.name_changed_at;
+            }
+          }
+
+          if (existing.is_active === false) {
+            normalizedDBRecord.is_active = true;
+            normalizedDBRecord.deleted_at = null;
+            updatedAgenciesCount++;
+            agenciesToUpsert.push(normalizedDBRecord);
+            changedAgenciesForOrders.push({ id: agId, oldData: existing, newData: normalizedDBRecord, isModified: true });
+          } else if (isNameChanged || isAddressChanged || isDistrictChanged || isCodeChanged || isScheduleChanged || isLocationChanged) {
             updatedAgenciesCount++;
             agenciesToUpsert.push(normalizedDBRecord);
             changedAgenciesForOrders.push({ id: agId, oldData: existing, newData: normalizedDBRecord, isModified: true });
           } else {
             unchangedAgenciesCount++;
           }
+        }
+      }
+
+      // Detectar agencias cerradas/borradas que estaban en BD pero ya no existen en la API oficial
+      const apiIdsSet = new Set(apiAgencies.map(a => Number(a.id)));
+      const toDeactivateAgencies: any[] = [];
+      const nowIso = new Date().toISOString();
+      for (const [dbId, existing] of dbAgenciesMap.entries()) {
+        if (existing.is_active !== false && !apiIdsSet.has(dbId)) {
+          toDeactivateAgencies.push({
+            id: dbId,
+            is_active: false,
+            deleted_at: existing.deleted_at || nowIso,
+            previous_name: existing.previous_name || existing.name,
+            previous_agency_info: existing.previous_agency_info || existing.full_name || `${existing.name} - ${existing.address}`,
+            updated_at: nowIso,
+          });
         }
       }
 
@@ -257,6 +301,27 @@ export class ShalomSyncService {
           if (upsertErr) {
             console.error(`[SHALOM SYNC UPSERT BATCH ERROR] Lote ${Math.floor(i / batchSize) + 1}:`, upsertErr.message);
             errors.push(`Error en upsert lote ${Math.floor(i / batchSize) + 1}: ${upsertErr.message}`);
+          }
+        }
+      }
+
+      // Desactivar agencias cerradas/eliminadas (con vigencia de 30 días)
+      if (toDeactivateAgencies.length > 0) {
+        console.log(`[SHALOM SYNC DEACTIVATE] Marcando ${toDeactivateAgencies.length} agencias cerradas/eliminadas con vigencia de 30 días...`);
+        for (const deact of toDeactivateAgencies) {
+          const { error: deactErr } = await supabaseAdmin
+            .from('shalom_agencies')
+            .update({
+              is_active: false,
+              deleted_at: deact.deleted_at,
+              previous_name: deact.previous_name,
+              previous_agency_info: deact.previous_agency_info,
+              updated_at: deact.updated_at,
+            })
+            .eq('id', deact.id);
+
+          if (deactErr) {
+            console.error(`[SHALOM SYNC DEACTIVATE ERROR] ID ${deact.id}:`, deactErr.message);
           }
         }
       }

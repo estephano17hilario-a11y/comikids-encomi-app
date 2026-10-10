@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { OlvaAgency } from '../../types/database.types';
 import { UserCoordinates, cleanOlvaAddressText } from '../../hooks/useOlvaAgencies';
+import { getAgencyStatusInfo } from '../../utils/agencyStatus';
 import { Crosshair, Compass, X, Search } from 'lucide-react';
 
 interface Props {
@@ -18,12 +19,19 @@ interface Props {
 }
 
 // Icono minimalista estilo Cupertino / Olva Courier (Ámbar / Amarillo Dorado)
-const createOlvaAgencyIcon = (isSelected: boolean, tipo?: string) => {
-  const bg = isSelected
-    ? 'background: #f59e0b; border: 2.5px solid #ffffff; box-shadow: 0 0 16px rgba(245, 158, 11, 0.9);'
-    : 'background: rgba(15, 23, 42, 0.95); border: 1.5px solid rgba(251, 191, 36, 0.7); box-shadow: 0 4px 12px rgba(0,0,0,0.5);';
+const createOlvaAgencyIcon = (isSelected: boolean, tipo?: string, isDeleted: boolean = false, isNameChanged: boolean = false) => {
+  let bg = 'background: rgba(15, 23, 42, 0.95); border: 1.5px solid rgba(251, 191, 36, 0.7); box-shadow: 0 4px 12px rgba(0,0,0,0.5);';
+  let iconEmoji = tipo?.includes('AGENTE') ? '🏪' : '🚚';
 
-  const iconEmoji = tipo?.includes('AGENTE') ? '🏪' : '🚚';
+  if (isDeleted) {
+    bg = 'background: #e11d48; border: 2px solid #ffffff; box-shadow: 0 0 16px rgba(225, 29, 72, 0.9);';
+    iconEmoji = '⚠️';
+  } else if (isSelected) {
+    bg = 'background: #f59e0b; border: 2.5px solid #ffffff; box-shadow: 0 0 16px rgba(245, 158, 11, 0.9);';
+  } else if (isNameChanged) {
+    bg = 'background: #d97706; border: 2px solid #ffffff; box-shadow: 0 0 14px rgba(217, 119, 6, 0.8);';
+    iconEmoji = '🔄';
+  }
 
   const iconSvg = `
     <div style="
@@ -34,7 +42,7 @@ const createOlvaAgencyIcon = (isSelected: boolean, tipo?: string) => {
       display: flex; 
       align-items: center; 
       justify-content: center; 
-      cursor: pointer;
+      cursor: ${isDeleted ? 'not-allowed' : 'pointer'};
       transition: all 0.2s ease;
       ${bg}
     ">
@@ -173,11 +181,13 @@ export const OlvaAgenciesMap: React.FC<Props> = ({
 
     validAgencies.forEach(agency => {
       const isSelected = selectedAgency?.id === agency.id;
+      const statusInfo = getAgencyStatusInfo(agency);
       const lat = Number(agency.latitude);
       const lng = Number(agency.longitude);
 
       const marker = L.marker([lat, lng], {
-        icon: createOlvaAgencyIcon(isSelected, agency.tipo),
+        icon: createOlvaAgencyIcon(isSelected, agency.tipo, statusInfo.isDeletedRecently, statusInfo.isNameChangedRecently),
+        zIndexOffset: isSelected ? 900 : (statusInfo.isDeletedRecently ? 50 : 100),
         title: agency.nombre || agency.name
       });
 
@@ -189,33 +199,48 @@ export const OlvaAgenciesMap: React.FC<Props> = ({
 
       const cleanAddr = cleanOlvaAddressText(agency.direccion || agency.address, agency.provincia, agency.departamento);
 
-      const popupContent = `
-        <div style="
-          font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-          min-width: 200px;
-          max-width: 280px;
-          color: #0f172a;
-          padding: 4px;
-        ">
-          <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #d97706; letter-spacing: 0.5px; margin-bottom: 2px;">
-            OLVA COURIER • ${agency.tipo || 'AGENCIA'}
+      let statusBadgeHtml = '';
+      if (statusInfo.isDeletedRecently) {
+        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #ffe4e6; color: #be123c; padding: 2px 7px; border-radius: 9999px;">⚠️ YA NO EXISTE</span>`;
+      } else if (statusInfo.isNameChangedRecently) {
+        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #fef3c7; color: #b45309; padding: 2px 7px; border-radius: 9999px;">🔄 NOMBRE CAMBIADO</span>`;
+      }
+
+      let statusMessageHtml = '';
+      if (statusInfo.isDeletedRecently) {
+        statusMessageHtml = `
+          <div style="font-size: 11px; color: #9f1239; background: #fff1f2; border: 1px solid #fecdd3; padding: 6px 8px; border-radius: 8px; margin-bottom: 6px; line-height: 1.3;">
+            ${statusInfo.previousName ? `<strong>Antigua sede:</strong> ${statusInfo.previousName}<br/>` : ''}
+            Esta agencia fue desactivada o eliminada recientemente (vigencia de 30 días). <strong>No se puede seleccionar.</strong>
           </div>
-          <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 4px; line-height: 1.2;">
-            ${agency.distrito || agency.district || agency.nombre}
+        `;
+      } else if (statusInfo.isNameChangedRecently && statusInfo.previousName) {
+        statusMessageHtml = `
+          <div style="font-size: 11px; color: #92400e; background: #fffbeb; border: 1px solid #fef3c7; padding: 5px 8px; border-radius: 8px; margin-bottom: 6px; line-height: 1.3;">
+            ℹ️ <strong>Nombre cambiado recientemente.</strong> Antes: "${statusInfo.previousName}" (vigencia 30 días).
           </div>
-          <div style="font-size: 11px; color: #475569; margin-bottom: 6px; line-height: 1.3;">
-            ${cleanAddr || 'Dirección disponible en sede'}
-          </div>
-          ${distText ? `
-            <div style="display: inline-block; font-size: 10px; font-weight: 700; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 6px; margin-bottom: 8px;">
-              📍 A ${distText}
-            </div>
-          ` : ''}
-          ${agency.horario ? `
-            <div style="font-size: 10px; color: #64748b; margin-bottom: 8px;">
-              🕒 ${agency.horario}
-            </div>
-          ` : ''}
+        `;
+      }
+
+      let buttonHtml = '';
+      if (!statusInfo.canBeSelected) {
+        buttonHtml = `
+          <button disabled style="
+            width: 100%;
+            background: #f1f5f9;
+            color: #94a3b8;
+            border: 1px solid #cbd5e1;
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: not-allowed;
+          ">
+            ❌ Sede Cerrada (No seleccionable)
+          </button>
+        `;
+      } else {
+        buttonHtml = `
           <button id="btn-select-olva-${agency.id}" style="
             width: 100%;
             background: #f59e0b;
@@ -231,6 +256,41 @@ export const OlvaAgenciesMap: React.FC<Props> = ({
           ">
             ${isSelected ? '✓ Seleccionada' : 'Seleccionar esta Agencia Olva'}
           </button>
+        `;
+      }
+
+      const popupContent = `
+        <div style="
+          font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+          min-width: 200px;
+          max-width: 280px;
+          color: #0f172a;
+          padding: 4px;
+        ">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 2px;">
+            <span style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #d97706; letter-spacing: 0.5px;">
+              OLVA COURIER • ${agency.tipo || 'AGENCIA'}
+            </span>
+            ${statusBadgeHtml}
+          </div>
+          <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 4px; line-height: 1.2;">
+            ${agency.distrito || agency.district || agency.nombre}
+          </div>
+          ${statusMessageHtml}
+          <div style="font-size: 11px; color: #475569; margin-bottom: 6px; line-height: 1.3;">
+            ${cleanAddr || 'Dirección disponible en sede'}
+          </div>
+          ${distText ? `
+            <div style="display: inline-block; font-size: 10px; font-weight: 700; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 6px; margin-bottom: 8px;">
+              📍 A ${distText}
+            </div>
+          ` : ''}
+          ${agency.horario ? `
+            <div style="font-size: 10px; color: #64748b; margin-bottom: 8px;">
+              🕒 ${agency.horario}
+            </div>
+          ` : ''}
+          ${buttonHtml}
         </div>
       `;
 
@@ -241,17 +301,23 @@ export const OlvaAgenciesMap: React.FC<Props> = ({
       });
 
       marker.on('popupopen', () => {
-        const btn = document.getElementById(`btn-select-olva-${agency.id}`);
-        if (btn) {
-          btn.onclick = () => {
-            onSelectAgency(agency);
-            map.closePopup();
-          };
+        if (statusInfo.canBeSelected) {
+          const btn = document.getElementById(`btn-select-olva-${agency.id}`);
+          if (btn) {
+            btn.onclick = () => {
+              onSelectAgency(agency);
+              map.closePopup();
+            };
+          }
         }
       });
 
       marker.on('click', () => {
-        marker.openPopup();
+        if (statusInfo.canBeSelected) {
+          marker.openPopup();
+        } else {
+          marker.openPopup();
+        }
       });
 
       layer.addLayer(marker);

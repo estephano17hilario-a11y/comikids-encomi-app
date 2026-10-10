@@ -3,6 +3,7 @@ import { supabase } from '../services/supabaseClient';
 import { ShalomAgency } from '../types/database.types';
 import { SHALOM_AGENCIES } from '../data/shalomAgencies';
 import { searchAndRankAgencies, normalizeSearchText } from '../utils/agencySearch';
+import { filterAgenciesWithVigencia } from '../utils/agencyStatus';
 
 export interface UseShalomAgenciesOptions {
   autoFetchNearby?: boolean;
@@ -246,10 +247,11 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
       let catalog: ShalomAgency[] = [];
 
       if (supabase) {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
         const { data, error: dbError } = await supabase
           .from('shalom_agencies')
           .select('*')
-          .eq('is_active', true)
+          .or(`is_active.eq.true,and(is_active.eq.false,deleted_at.gte.${thirtyDaysAgo})`)
           .order('name', { ascending: true })
           .limit(defaultLimit);
 
@@ -273,7 +275,13 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
               telefono: row.phone,
               horario: row.schedule,
               latitude: row.latitude ? Number(row.latitude) : null,
-              longitude: row.longitude ? Number(row.longitude) : null
+              longitude: row.longitude ? Number(row.longitude) : null,
+              is_active: row.is_active !== false,
+              previous_name: row.previous_name || null,
+              previous_address: row.previous_address || null,
+              previous_agency_info: row.previous_agency_info || null,
+              name_changed_at: row.name_changed_at || null,
+              deleted_at: row.deleted_at || null,
             };
             item.full_display_name = formatFullAgencyName(item);
             return item;
@@ -282,19 +290,23 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
       }
 
       if (catalog.length === 0) {
-        catalog = SHALOM_AGENCIES.map(a => {
+        catalog = filterAgenciesWithVigencia(SHALOM_AGENCIES).map(a => {
           const item: ShalomAgency = {
             ...a,
             department: a.departamento,
             province: a.provincia,
             district: a.distrito,
             latitude: a.latitude ? Number(a.latitude) : null,
-            longitude: a.longitude ? Number(a.longitude) : null
+            longitude: a.longitude ? Number(a.longitude) : null,
+            is_active: a.is_active !== false,
           };
           item.full_display_name = formatFullAgencyName(item);
           return item;
         });
       }
+
+      // Filtrar asegurando vigencia de 30 días
+      catalog = filterAgenciesWithVigencia(catalog);
 
       const targetCoords = coords || userLocation;
       if (targetCoords) {
@@ -306,13 +318,14 @@ export function useShalomAgencies(options: UseShalomAgenciesOptions = {}) {
       setAgencies(catalog);
     } catch (err: any) {
       console.warn('Usando catálogo local de agencias Shalom:', err);
-      let localCat: ShalomAgency[] = SHALOM_AGENCIES.map(a => ({
+      let localCat: ShalomAgency[] = filterAgenciesWithVigencia(SHALOM_AGENCIES).map(a => ({
         ...a,
         department: a.departamento,
         province: a.provincia,
         district: a.distrito,
         latitude: a.latitude ? Number(a.latitude) : null,
         longitude: a.longitude ? Number(a.longitude) : null,
+        is_active: a.is_active !== false,
         full_display_name: formatFullAgencyName(a)
       }));
       const targetCoords = coords || userLocation;

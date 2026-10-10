@@ -11,6 +11,8 @@ import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
 import { DniService } from '../../services/dniService';
 import { getDailyShalomPin } from '../../utils/formatters';
 import { getRelativeDayLabel } from '../../services/whatsappService';
+import { AgencyStatusBadge } from '../common/AgencyStatusBadge';
+import { getAgencyStatusInfo } from '../../utils/agencyStatus';
 import {
   X,
   Save,
@@ -32,7 +34,8 @@ import {
   Edit3,
   Building2,
   Loader2,
-  Calendar
+  Calendar,
+  AlertTriangle
 } from 'lucide-react';
 
 
@@ -276,6 +279,11 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
 
   // Sincronizar destinoDetalle cuando se selecciona agencia Shalom o cambia el DNI de recojo
   const handleSelectShalomAgency = (agency: ShalomAgency) => {
+    const status = getAgencyStatusInfo(agency);
+    if (status.isDeletedRecently) {
+      alert('⚠️ Esta agencia Shalom ya no existe o fue cerrada permanentemente. Por favor selecciona una sede activa.');
+      return;
+    }
     setSelectedShalomAgency(agency);
     setIsShalomListOpen(false);
     setShowShalomMapModal(false);
@@ -298,6 +306,11 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
 
   // Sincronizar destinoDetalle cuando se selecciona agencia Olva
   const handleSelectOlvaAgency = (agency: OlvaAgency) => {
+    const status = getAgencyStatusInfo(agency);
+    if (status.isDeletedRecently) {
+      alert('⚠️ Esta sede Olva Courier ya no existe o fue dada de baja. Por favor selecciona una sede activa.');
+      return;
+    }
     setSelectedOlvaAgency(agency);
     setIsOlvaListOpen(false);
     setShowOlvaMapModal(false);
@@ -327,6 +340,16 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   // Guardar cambios
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (selectedCourier === 'shalom' && selectedShalomAgency && getAgencyStatusInfo(selectedShalomAgency).isDeletedRecently) {
+      alert('⚠️ No se puede guardar: La agencia Shalom seleccionada ya no existe. Elige una sede activa.');
+      return;
+    }
+    if (selectedCourier === 'olva' && olvaModalidad === 'agencia' && selectedOlvaAgency && getAgencyStatusInfo(selectedOlvaAgency).isDeletedRecently) {
+      alert('⚠️ No se puede guardar: La agencia Olva seleccionada ya no existe. Elige una sede activa.');
+      return;
+    }
+
     setSaving(true);
     try {
       const finalNombre = nombreCliente.trim() || 'Cliente';
@@ -646,11 +669,21 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                         </div>
                       </div>
 
-                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1 shrink-0">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Sede Activa</span>
-                      </span>
+                      {getAgencyStatusInfo(selectedShalomAgency).isDeletedRecently ? (
+                        <span className="text-[10px] font-bold text-rose-400 bg-rose-500/20 px-2 py-0.5 rounded-full border border-rose-500/30 flex items-center gap-1 shrink-0">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Ya no existe</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1 shrink-0">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Sede Activa</span>
+                        </span>
+                      )}
                     </div>
+
+                    {/* Badge de estado (Cambio de nombre / Ya no existe) */}
+                    <AgencyStatusBadge agency={selectedShalomAgency} />
 
                     {/* Badge Destino Oficial Shalom */}
                     <div className="flex items-center gap-1.5 text-xs text-rose-300 font-bold bg-rose-950/50 px-2.5 py-1 rounded-xl border border-rose-500/40">
@@ -741,14 +774,18 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                           const isSelected = selectedShalomAgency?.id === ag.id;
                           const cleanAddr = cleanAddressText(ag.direccion, ag.provincia, ag.departamento);
                           const titleText = `${ag.departamento || ''} / ${ag.provincia || ''} / ${ag.distrito || ag.nombre || ''}`;
+                          const status = getAgencyStatusInfo(ag);
 
                           return (
                             <button
                               key={ag.id}
                               type="button"
+                              disabled={status.isDeletedRecently}
                               onClick={() => handleSelectShalomAgency(ag)}
                               className={`w-full text-left p-2.5 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
-                                isSelected
+                                status.isDeletedRecently
+                                  ? 'opacity-60 cursor-not-allowed bg-rose-950/20 border border-rose-500/30'
+                                  : isSelected
                                   ? 'bg-cyan-500/25 border border-cyan-500/50 text-cyan-200 font-bold shadow-xs'
                                   : 'bg-white/3 hover:bg-white/8 border border-white/5 text-slate-300'
                               }`}
@@ -766,6 +803,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                               <p className="text-[10px] text-slate-400 leading-snug">
                                 <HighlightMatch text={cleanAddr || 'Dirección de la sede'} query={shalomSearchQuery} />
                               </p>
+                              <AgencyStatusBadge agency={ag} compact />
                             </button>
                           );
                         })
@@ -927,11 +965,21 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                             </div>
                           </div>
 
-                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1 shrink-0">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>Confirmada</span>
-                          </span>
-                        </div>
+                      {getAgencyStatusInfo(selectedOlvaAgency).isDeletedRecently ? (
+                        <span className="text-[10px] font-bold text-rose-400 bg-rose-500/20 px-2 py-0.5 rounded-full border border-rose-500/30 flex items-center gap-1 shrink-0">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Ya no existe</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1 shrink-0">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Confirmada</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Badge de estado (Cambio de nombre / Ya no existe) */}
+                    <AgencyStatusBadge agency={selectedOlvaAgency} />
 
                         <p className="text-[11px] text-slate-300 pt-1 border-t border-amber-500/20">
                           <strong>📍 Dirección:</strong> {cleanOlvaAddressText(selectedOlvaAgency.direccion || selectedOlvaAgency.address, selectedOlvaAgency.provincia, selectedOlvaAgency.departamento)}
@@ -1015,14 +1063,18 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                               const isSelected = selectedOlvaAgency?.id === ag.id;
                               const cleanAddr = cleanOlvaAddressText(ag.direccion || ag.address, ag.provincia, ag.departamento);
                               const titleText = `${ag.departamento || ''} / ${ag.provincia || ''} / ${ag.distrito || ag.nombre || ''}`;
+                              const status = getAgencyStatusInfo(ag);
 
                               return (
                                 <button
                                   key={ag.id}
                                   type="button"
+                                  disabled={status.isDeletedRecently}
                                   onClick={() => handleSelectOlvaAgency(ag)}
                                   className={`w-full text-left p-2.5 rounded-xl transition-all flex flex-col gap-1 cursor-pointer ${
-                                    isSelected
+                                    status.isDeletedRecently
+                                      ? 'opacity-60 cursor-not-allowed bg-rose-950/20 border border-rose-500/30'
+                                      : isSelected
                                       ? 'bg-amber-500/25 border border-amber-500/50 text-amber-200 font-bold shadow-xs'
                                       : 'bg-white/3 hover:bg-white/8 border border-white/5 text-slate-300'
                                   }`}
@@ -1040,6 +1092,7 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                                   <p className="text-[10px] text-slate-400 leading-snug">
                                     <HighlightMatch text={cleanAddr || 'Dirección de la sede'} query={olvaSearchQuery} />
                                   </p>
+                                  <AgencyStatusBadge agency={ag} compact />
                                 </button>
                               );
                             })

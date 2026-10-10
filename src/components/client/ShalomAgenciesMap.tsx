@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ShalomAgency } from '../../types/database.types';
 import { UserCoordinates, cleanAddressText } from '../../hooks/useShalomAgencies';
+import { getAgencyStatusInfo } from '../../utils/agencyStatus';
 import { Crosshair, Compass, X, Search } from 'lucide-react';
 
 interface Props {
@@ -18,10 +19,20 @@ interface Props {
 }
 
 // Icono minimalista estilo Cupertino para Agencias Shalom
-const createAgencyIcon = (isSelected: boolean) => {
-  const bg = isSelected
-    ? 'background: #0ea5e9; border: 2.5px solid #ffffff; box-shadow: 0 0 16px rgba(14, 165, 233, 0.9);'
-    : 'background: rgba(15, 23, 42, 0.95); border: 1.5px solid rgba(255, 255, 255, 0.5); box-shadow: 0 4px 12px rgba(0,0,0,0.5);';
+const createAgencyIcon = (isSelected: boolean, isDeleted: boolean = false, isNameChanged: boolean = false) => {
+  let bg = 'background: rgba(15, 23, 42, 0.95); border: 1.5px solid rgba(255, 255, 255, 0.5); box-shadow: 0 4px 12px rgba(0,0,0,0.5);';
+  let emoji = '📦';
+
+  if (isDeleted) {
+    bg = 'background: #e11d48; border: 2px solid #ffffff; box-shadow: 0 0 16px rgba(225, 29, 72, 0.9);';
+    emoji = '⚠️';
+  } else if (isSelected) {
+    bg = 'background: #0ea5e9; border: 2.5px solid #ffffff; box-shadow: 0 0 16px rgba(14, 165, 233, 0.9);';
+    emoji = '📦';
+  } else if (isNameChanged) {
+    bg = 'background: #f59e0b; border: 2px solid #ffffff; box-shadow: 0 0 14px rgba(245, 158, 11, 0.8);';
+    emoji = '🔄';
+  }
 
   const iconSvg = `
     <div style="
@@ -32,12 +43,12 @@ const createAgencyIcon = (isSelected: boolean) => {
       display: flex; 
       align-items: center; 
       justify-content: center; 
-      cursor: pointer;
+      cursor: ${isDeleted ? 'not-allowed' : 'pointer'};
       transition: all 0.2s ease;
       ${bg}
     ">
       <div style="transform: rotate(45deg); font-size: 14px;">
-        📦
+        ${emoji}
       </div>
     </div>
   `;
@@ -174,12 +185,13 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
       const lat = Number(agency.latitude);
       const lng = Number(agency.longitude);
       const isSelected = selectedAgency?.id === agency.id;
+      const statusInfo = getAgencyStatusInfo(agency);
 
       bounds.extend([lat, lng]);
 
       const marker = L.marker([lat, lng], {
-        icon: createAgencyIcon(isSelected),
-        zIndexOffset: isSelected ? 900 : 100,
+        icon: createAgencyIcon(isSelected, statusInfo.isDeletedRecently, statusInfo.isNameChangedRecently),
+        zIndexOffset: isSelected ? 900 : (statusInfo.isDeletedRecently ? 50 : 100),
       });
 
       const cleanAddr = cleanAddressText(agency.direccion, agency.provincia, agency.departamento);
@@ -191,13 +203,77 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
       popupContent.style.fontFamily = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif';
       popupContent.style.padding = '6px';
       popupContent.style.minWidth = '240px';
+
+      let statusBadgeHtml = '';
+      if (statusInfo.isDeletedRecently) {
+        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #ffe4e6; color: #be123c; padding: 2px 8px; border-radius: 9999px;">⚠️ YA NO EXISTE</span>`;
+      } else if (statusInfo.isNameChangedRecently) {
+        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #fef3c7; color: #b45309; padding: 2px 8px; border-radius: 9999px;">🔄 NOMBRE CAMBIADO</span>`;
+      }
+
+      let statusMessageHtml = '';
+      if (statusInfo.isDeletedRecently) {
+        statusMessageHtml = `
+          <div style="font-size: 11px; color: #9f1239; background: #fff1f2; border: 1px solid #fecdd3; padding: 6px 8px; border-radius: 8px; margin-bottom: 8px; line-height: 1.3;">
+            ${statusInfo.previousName ? `<strong>Antigua agencia:</strong> ${statusInfo.previousName}<br/>` : ''}
+            Esta agencia fue cerrada o eliminada recientemente (vigencia de 30 días). <strong>No se puede seleccionar para envíos.</strong>
+          </div>
+        `;
+      } else if (statusInfo.isNameChangedRecently && statusInfo.previousName) {
+        statusMessageHtml = `
+          <div style="font-size: 11px; color: #92400e; background: #fffbeb; border: 1px solid #fef3c7; padding: 5px 8px; border-radius: 8px; margin-bottom: 8px; line-height: 1.3;">
+            ℹ️ <strong>Nombre cambiado recientemente.</strong> Antes se llamaba: "${statusInfo.previousName}" (vigencia 30 días).
+          </div>
+        `;
+      }
+
+      let buttonHtml = '';
+      if (!statusInfo.canBeSelected) {
+        buttonHtml = `
+          <button disabled style="
+            width: 100%; 
+            padding: 9px 14px; 
+            background: #f1f5f9; 
+            color: #94a3b8; 
+            font-size: 12px; 
+            font-weight: 700; 
+            border: 1px solid #cbd5e1; 
+            border-radius: 12px; 
+            cursor: not-allowed;
+          ">
+            ❌ Sede Cerrada (No seleccionable)
+          </button>
+        `;
+      } else {
+        buttonHtml = `
+          <button id="btn-select-agency-${agency.id}" style="
+            width: 100%; 
+            padding: 9px 14px; 
+            background: #0ea5e9; 
+            color: #ffffff; 
+            font-size: 13px; 
+            font-weight: 700; 
+            border: none; 
+            border-radius: 12px; 
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.35);
+          ">
+            ${isSelected ? '✓ Seleccionada' : 'Seleccionar esta Agencia'}
+          </button>
+        `;
+      }
+
       popupContent.innerHTML = `
         <div style="border-bottom: 1px solid rgba(0,0,0,0.08); padding-bottom: 8px; margin-bottom: 8px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
             <span style="font-size: 11px; font-weight: 800; color: #0284c7; text-transform: uppercase; letter-spacing: 0.5px;">
               Agencia Shalom
             </span>
-            ${distanceText ? `<span style="font-size: 11px; font-weight: 700; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 9999px;">📍 ${distanceText}</span>` : ''}
+            <div style="display: flex; align-items: center; gap: 4px;">
+              ${statusBadgeHtml}
+              ${distanceText ? `<span style="font-size: 11px; font-weight: 700; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 9999px;">📍 ${distanceText}</span>` : ''}
+            </div>
           </div>
           <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-top: 3px; line-height: 1.25;">
             ${agency.distrito || agency.nombre}
@@ -206,6 +282,8 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
             ${agency.departamento || ''} • ${agency.provincia || ''}
           </div>
         </div>
+
+        ${statusMessageHtml}
 
         <div style="font-size: 12px; color: #334155; margin-bottom: 6px; line-height: 1.35;">
           ${cleanAddr || 'Dirección de la sede'}
@@ -217,38 +295,30 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
           </div>
         ` : ''}
 
-        <button id="btn-select-agency-${agency.id}" style="
-          width: 100%; 
-          padding: 9px 14px; 
-          background: #0ea5e9; 
-          color: #ffffff; 
-          font-size: 13px; 
-          font-weight: 700; 
-          border: none; 
-          border-radius: 12px; 
-          cursor: pointer;
-          transition: all 0.2s;
-          box-shadow: 0 4px 12px rgba(14, 165, 233, 0.35);
-        ">
-          ${isSelected ? '✓ Seleccionada' : 'Seleccionar esta Agencia'}
-        </button>
+        ${buttonHtml}
       `;
 
       marker.bindPopup(popupContent, { maxWidth: 300 });
       marker.on('popupopen', () => {
-        const btn = document.getElementById(`btn-select-agency-${agency.id}`);
-        if (btn) {
-          btn.onclick = (e) => {
-            e.stopPropagation();
-            onSelectAgency(agency);
-            marker.closePopup();
-            if (onClose) onClose();
-          };
+        if (statusInfo.canBeSelected) {
+          const btn = document.getElementById(`btn-select-agency-${agency.id}`);
+          if (btn) {
+            btn.onclick = (e) => {
+              e.stopPropagation();
+              onSelectAgency(agency);
+              marker.closePopup();
+              if (onClose) onClose();
+            };
+          }
         }
       });
 
       marker.on('click', () => {
-        onSelectAgency(agency);
+        if (statusInfo.canBeSelected) {
+          onSelectAgency(agency);
+        } else {
+          marker.openPopup();
+        }
       });
 
       layer.addLayer(marker);

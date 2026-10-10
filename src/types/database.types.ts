@@ -315,6 +315,11 @@ export interface ShalomAgency {
   is_active?: boolean;
   updated_at?: string;
   full_display_name?: string;
+  previous_name?: string | null;
+  previous_address?: string | null;
+  previous_agency_info?: string | null;
+  name_changed_at?: string | null;
+  deleted_at?: string | null;
 }
 
 export interface ShalomAgencyDB {
@@ -337,6 +342,11 @@ export interface ShalomAgencyDB {
   is_active: boolean;
   distance_meters?: number;
   updated_at?: string;
+  previous_name?: string | null;
+  previous_address?: string | null;
+  previous_agency_info?: string | null;
+  name_changed_at?: string | null;
+  deleted_at?: string | null;
 }
 
 export interface OlvaAgency {
@@ -368,6 +378,11 @@ export interface OlvaAgency {
   is_active?: boolean;
   updated_at?: string;
   full_display_name?: string;
+  previous_name?: string | null;
+  previous_address?: string | null;
+  previous_agency_info?: string | null;
+  name_changed_at?: string | null;
+  deleted_at?: string | null;
 }
 
 export interface OlvaAgencyDB {
@@ -389,6 +404,11 @@ export interface OlvaAgencyDB {
   is_active: boolean;
   distance_meters?: number;
   updated_at?: string;
+  previous_name?: string | null;
+  previous_address?: string | null;
+  previous_agency_info?: string | null;
+  name_changed_at?: string | null;
+  deleted_at?: string | null;
 }
 
 export interface Colaborador {

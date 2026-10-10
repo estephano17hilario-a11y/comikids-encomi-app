@@ -30,6 +30,11 @@ export interface ShalomAgency {
   is_active?: boolean;
   updated_at?: string;
   full_display_name?: string;
+  previous_name?: string | null;
+  previous_address?: string | null;
+  previous_agency_info?: string | null;
+  name_changed_at?: string | null;
+  deleted_at?: string | null;
 }
 
 export interface Usuario {

@@ -102,7 +102,12 @@ function toDbRow(item) {
     latitude: item.latitude,
     longitude: item.longitude,
     is_active: item.is_active,
-    updated_at: item.updated_at
+    updated_at: item.updated_at,
+    previous_name: item.previous_name || null,
+    previous_address: item.previous_address || null,
+    previous_agency_info: item.previous_agency_info || null,
+    name_changed_at: item.name_changed_at || null,
+    deleted_at: item.deleted_at || null
   };
 }
 
@@ -176,27 +181,49 @@ async function runShalomSync() {
   console.log('🔍 Analizando estado previo en Supabase para detección de cambios...');
   const { data: existingRows } = await supabase
     .from('shalom_agencies')
-    .select('id, name, address, schedule, is_active');
+    .select('id, name, full_name, address, schedule, is_active, previous_name, previous_address, previous_agency_info, name_changed_at, deleted_at, department, province, district, code, ubigeo, dep_id, prov_id, dist_id, latitude, longitude, phone');
 
   const existingMap = new Map((existingRows || []).map(r => [Number(r.id), r]));
   
   let newCount = 0;
   let updatedCount = 0;
+  let nameChangedCount = 0;
   let reactivatedCount = 0;
-  const toDeactivateIds = [];
+  const toDeactivateAgencies = [];
+  const nowIso = new Date().toISOString();
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
   normalized.forEach(item => {
     const existing = existingMap.get(Number(item.id));
     if (!existing) {
       newCount++;
     } else {
+      // Comparar cambios de nombre
+      const nameWasChanged = (existing.name || '').trim().toUpperCase() !== (item.name || '').trim().toUpperCase();
+      const addrWasChanged = (existing.address || '').trim().toUpperCase() !== (item.address || '').trim().toUpperCase();
+      
+      if (nameWasChanged) {
+        nameChangedCount++;
+        item.previous_name = existing.name;
+        item.previous_address = existing.address;
+        item.previous_agency_info = existing.full_name || `${existing.name} - ${existing.address}`;
+        item.name_changed_at = nowIso;
+      } else if (existing.previous_name) {
+        // Preservar nombre anterior si aún está dentro de los 30 días de vigencia
+        const changedTime = existing.name_changed_at ? new Date(existing.name_changed_at).getTime() : 0;
+        if (changedTime && Date.now() - changedTime <= thirtyDaysMs) {
+          item.previous_name = existing.previous_name;
+          item.previous_address = existing.previous_address;
+          item.previous_agency_info = existing.previous_agency_info;
+          item.name_changed_at = existing.name_changed_at;
+        }
+      }
+
       if (existing.is_active === false) {
         reactivatedCount++;
-      } else if (
-        existing.name !== item.name ||
-        existing.address !== item.address ||
-        existing.schedule !== item.schedule
-      ) {
+        item.is_active = true;
+        item.deleted_at = null;
+      } else if (nameWasChanged || addrWasChanged || existing.schedule !== item.schedule) {
         updatedCount++;
       }
     }
@@ -205,16 +232,24 @@ async function runShalomSync() {
   // Detectar agencias que Shalom eliminó del API oficial
   existingMap.forEach((existing, dbId) => {
     if (existing.is_active !== false && !apiIdsSet.has(dbId)) {
-      toDeactivateIds.push(dbId);
+      toDeactivateAgencies.push({
+        ...existing,
+        is_active: false,
+        deleted_at: existing.deleted_at || nowIso,
+        previous_name: existing.previous_name || existing.name,
+        previous_agency_info: existing.previous_agency_info || existing.full_name || `${existing.name} - ${existing.address}`,
+        updated_at: nowIso
+      });
     }
   });
 
   console.log('----------------------------------------------------');
   console.log(`📊 DIFERENCIAL DETECTADO:`);
-  console.log(`  ✨ Nuevas agencias detectadas       : ${newCount}`);
-  console.log(`  📝 Agencias con cambios (nombre/dir): ${updatedCount}`);
-  console.log(`  🔄 Agencias reactivadas             : ${reactivatedCount}`);
-  console.log(`  🛑 Agencias cerradas/eliminadas     : ${toDeactivateIds.length}`);
+  console.log(`  ✨ Nuevas agencias detectadas           : ${newCount}`);
+  console.log(`  📝 Agencias con cambios generales       : ${updatedCount}`);
+  console.log(`  🔄 Agencias con nombre cambiado reciente: ${nameChangedCount}`);
+  console.log(`  🌟 Agencias reactivadas                 : ${reactivatedCount}`);
+  console.log(`  🛑 Agencias cerradas/eliminadas (bajas) : ${toDeactivateAgencies.length}`);
   console.log('----------------------------------------------------');
 
   // 2. Guardar / Batch Upsert en Supabase (Lotes de 100)
@@ -235,25 +270,53 @@ async function runShalomSync() {
     }
   }
 
-  // 3. Desactivar agencias que ya no existen en la API
-  if (toDeactivateIds.length > 0) {
-    console.log(`🛑 Desactivando ${toDeactivateIds.length} agencias cerradas por Shalom...`);
-    const { error: deactError } = await supabase
-      .from('shalom_agencies')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .in('id', toDeactivateIds);
+  // 3. Desactivar agencias que ya no existen en la API (marcar is_active=false y deleted_at=now)
+  if (toDeactivateAgencies.length > 0) {
+    console.log(`🛑 Desactivando ${toDeactivateAgencies.length} agencias cerradas por Shalom (con deleted_at para vigencia de 30 días)...`);
+    for (const deact of toDeactivateAgencies) {
+      const { error: deactError } = await supabase
+        .from('shalom_agencies')
+        .update({
+          is_active: false,
+          deleted_at: deact.deleted_at,
+          previous_name: deact.previous_name,
+          previous_agency_info: deact.previous_agency_info,
+          updated_at: nowIso
+        })
+        .eq('id', deact.id);
 
-    if (deactError) {
-      console.warn('⚠️ Error al desactivar agencias:', deactError.message);
-    } else {
-      console.log(`  ✅ ${toDeactivateIds.length} agencias marcadas como inactivas.`);
+      if (deactError) {
+        console.warn(`⚠️ Error al desactivar agencia ID ${deact.id}:`, deactError.message);
+      }
     }
+    console.log(`  ✅ ${toDeactivateAgencies.length} agencias marcadas como inactivas con vigencia de 30 días.`);
   }
 
-  // 4. Actualizar respaldo local en JSON y código estático
+  // 4. Actualizar respaldo local en JSON y código estático (incluyendo agencias borradas con < 30 días de vigencia)
   try {
     fs.mkdirSync('data', { recursive: true });
-    fs.writeFileSync('data/shalom_agencies_full.json', JSON.stringify(normalized, null, 2), 'utf8');
+
+    // Obtener agencias que están inactivas pero eliminadas hace menos de 30 días
+    const recentDeleted = [];
+    existingMap.forEach((ag) => {
+      const isApiPresent = apiIdsSet.has(Number(ag.id));
+      if (!isApiPresent) {
+        const delTime = ag.deleted_at ? new Date(ag.deleted_at).getTime() : Date.now();
+        if (Date.now() - delTime <= thirtyDaysMs) {
+          recentDeleted.push({
+            ...normalizeItem(ag),
+            is_active: false,
+            deleted_at: ag.deleted_at || nowIso,
+            previous_name: ag.previous_name || ag.name,
+            previous_agency_info: ag.previous_agency_info || ag.full_name,
+            updated_at: ag.updated_at || nowIso
+          });
+        }
+      }
+    });
+
+    const catalogWithVigencia = [...normalized, ...recentDeleted];
+    fs.writeFileSync('data/shalom_agencies_full.json', JSON.stringify(catalogWithVigencia, null, 2), 'utf8');
 
     const staticTs = `import { ShalomAgency } from '../types/database.types';
 
@@ -265,10 +328,10 @@ export const DEPARTAMENTOS_PERU = [
   'PASCO', 'PIURA', 'PUNO', 'SAN MARTIN', 'TACNA', 'TUMBES', 'UCAYALI'
 ];
 
-export const SHALOM_AGENCIES: ShalomAgency[] = ${JSON.stringify(normalized, null, 2)};
+export const SHALOM_AGENCIES: ShalomAgency[] = ${JSON.stringify(catalogWithVigencia, null, 2)};
 `;
     fs.writeFileSync('src/data/shalomAgencies.ts', staticTs, 'utf8');
-    console.log('📁 Respaldo offline sincronizado en data/ y src/data/shalomAgencies.ts');
+    console.log(`📁 Respaldo offline sincronizado en data/ y src/data/shalomAgencies.ts (${catalogWithVigencia.length} agencias: ${normalized.length} activas + ${recentDeleted.length} borradas con vigencia 30d).`);
   } catch (fsErr) {
     console.warn('⚠️ No se pudo actualizar el archivo local:', fsErr.message);
   }

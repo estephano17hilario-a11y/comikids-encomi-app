@@ -7,6 +7,8 @@ import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyTime
 import { DniService } from '../../services/dniService';
 import { isAgencyDateAllowed, getNextAvailableDateForAgency } from '../../utils/agencyAvailability';
 import { getRelativeDayLabel } from '../../services/whatsappService';
+import { AgencyStatusBadge } from '../common/AgencyStatusBadge';
+import { getAgencyStatusInfo } from '../../utils/agencyStatus';
 import {
   X,
   PlusCircle,
@@ -136,6 +138,11 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
       let destinoDetalle = '';
       if (selectedMethod?.tipo_formulario === 'shalom') {
         const agencyObj = shalomAgenciesList.find(a => String(a.id) === String(selectedAgencyId)) || shalomAgenciesList[0];
+        if (agencyObj && getAgencyStatusInfo(agencyObj).isDeletedRecently) {
+          alert('⚠️ La agencia Shalom seleccionada ya no existe o fue dada de baja. Por favor selecciona una sede activa.');
+          setSubmitting(false);
+          return;
+        }
         const fullAgencyStr = agencyObj ? formatFullAgencyName(agencyObj) : `AGENCIA SHALOM ${selectedDepartment}`;
         destinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dni.trim()})`;
       } else if (selectedMethod?.tipo_formulario === 'olva') {
@@ -393,20 +400,33 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
                 ) : (
                   shalomAgenciesList.map(a => {
                     const isSelected = String(selectedAgencyId) === String(a.id);
+                    const status = getAgencyStatusInfo(a);
+
                     return (
                       <button
                         key={a.id}
                         type="button"
+                        disabled={status.isDeletedRecently}
                         onClick={() => setSelectedAgencyId(a.id)}
                         className={`w-full text-left p-2 rounded-lg text-[11px] transition-all cursor-pointer ${
-                          isSelected
+                          status.isDeletedRecently
+                            ? 'opacity-60 cursor-not-allowed bg-rose-950/20 border border-rose-500/30'
+                            : isSelected
                             ? 'bg-cyan-500/25 border border-cyan-500/50 text-cyan-200 font-bold'
                             : 'hover:bg-white/6 text-slate-300'
                         }`}
                       >
-                        <p className={`font-bold truncate ${isSelected ? 'text-cyan-300' : 'text-white'}`}>
-                          {formatFullAgencyName(a)}
-                        </p>
+                        <div className="flex items-center justify-between gap-1">
+                          <p className={`font-bold truncate ${status.isDeletedRecently ? 'text-rose-300 line-through' : isSelected ? 'text-cyan-300' : 'text-white'}`}>
+                            {formatFullAgencyName(a)}
+                          </p>
+                          {a.code && (
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 shrink-0">
+                              {a.code}
+                            </span>
+                          )}
+                        </div>
+                        <AgencyStatusBadge agency={a} compact />
                       </button>
                     );
                   })
@@ -418,12 +438,14 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
                 const sel = shalomAgenciesList.find(a => String(a.id) === String(selectedAgencyId));
                 if (!sel) return null;
                 const canonicalOfficial = extractShalomDestino(formatFullAgencyName(sel), sel.code);
+
                 return (
                   <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-[11px] text-cyan-200 space-y-1.5">
                     <p className="font-bold text-white flex items-center gap-1.5">
                       <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                       {formatFullAgencyName(sel)}
                     </p>
+                    <AgencyStatusBadge agency={sel} />
                     <div className="flex items-center gap-1.5 text-xs text-rose-300 font-bold bg-rose-950/50 px-2 py-0.5 rounded-lg border border-rose-500/40">
                       <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                       <span>Sede Oficial: <strong className="text-white font-black">{canonicalOfficial}</strong></span>

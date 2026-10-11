@@ -70,9 +70,23 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const [downloadingPdfIds, setDownloadingPdfIds] = useState<Record<string, boolean>>({});
   const [downloadingAll, setDownloadingAll] = useState(false);
 
-  // Clave de recojo para Shalom (prioriza la clave registrada en el pedido o 0808)
-  const registeredDefaultPin = pedidos.find(p => p.shalom_clave_recojo && p.shalom_clave_recojo.trim())?.shalom_clave_recojo?.trim() || '0808';
-  const [pickupCode, setPickupCode] = useState(() => registeredDefaultPin);
+  // Clave de recojo para Shalom:
+  // 1. Prioriza la última clave utilizada con éxito hoy en el navegador (si tiene 4 dígitos)
+  // 2. Si no, la clave registrada en los pedidos seleccionados
+  // 3. Predeterminado oficial seguro 0808
+  const initialPinCandidate = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedPin = localStorage.getItem('incomi_last_used_shalom_pin')?.trim();
+        if (storedPin && storedPin.length === 4) return storedPin;
+      } catch {}
+    }
+    const orderPin = pedidos.find(p => p.shalom_clave_recojo && p.shalom_clave_recojo.trim())?.shalom_clave_recojo?.trim();
+    if (orderPin && orderPin.length === 4) return orderPin;
+    return '0808';
+  }, [pedidos]);
+
+  const [pickupCode, setPickupCode] = useState(() => initialPinCandidate);
   const [pinErrorState, setPinErrorState] = useState<{
     oldPin: string;
     suggestedPin: string;
@@ -115,7 +129,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     };
   }, []);
 
-  // Inicializar mapa de edición una sola vez al abrir el modal
+  // Inicializar mapa de edición una sola vez al abrir el modal asegurando que todos adopten pickupCode
   const initializedRef = React.useRef(false);
   useEffect(() => {
     if (!initializedRef.current && pedidos.length > 0) {
@@ -126,12 +140,13 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           dni: extractShalomDni(p) || '',
           phone: extractShalomPhone(p) || '',
           name: p.usuario?.nombre_completo || 'Cliente',
-          pickupCode: p.shalom_clave_recojo?.trim() || registeredDefaultPin,
+          // Todos los pedidos en este lote adoptan inicialmente la clave exacta del recuadro
+          pickupCode: pickupCode || initialPinCandidate,
         };
       }
       setEditedData(initial);
     }
-  }, [pedidos, registeredDefaultPin]);
+  }, [pedidos, pickupCode, initialPinCandidate]);
 
 
   const origen = extractShalomOrigen(tallerConfig) || 'AV MEXICO CO';
@@ -214,9 +229,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     });
     setPinErrorState(null);
     setCustomPinInput('');
-    setTimeout(() => {
-      handleStartApiDispatch();
-    }, 50);
+    saveUsedShalomPin(pin);
+    handleStartApiDispatch(pin);
   };
 
   // Reintento individual para un paquete específico con clave personalizada
@@ -331,13 +345,17 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
 
   // 1. DESPACHO AUTOMÁTICO VÍA API CON RATE LIMITING (Máximo ~54 req/min para respetar los 60 req/min)
-  const handleStartApiDispatch = async () => {
+  const handleStartApiDispatch = async (overridePin?: string) => {
     if (isDispatching) return;
 
-    const pinCheck = validateShalomPin(pickupCode);
+    const activePin = overridePin ? formatShalomPin(overridePin) : pickupCode;
+    const pinCheck = validateShalomPin(activePin);
     if (!pinCheck.isValid) {
       alert(`Clave de recojo inválida: ${pinCheck.error}`);
       return;
+    }
+    if (overridePin) {
+      setPickupCode(activePin);
     }
 
     setPinErrorState(null);
@@ -363,7 +381,11 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         await new Promise(r => setTimeout(r, delayMs));
       }
 
-      const rowPickupCode = formatShalomPin(row.data.pickupCode || pickupCode);
+      // CRÍTICO: La clave que prevalece es de forma estricta la del recuadro
+      const rowPickupCode = overridePin
+        ? activePin
+        : formatShalomPin(row.data.pickupCode || activePin);
+
       if (rowPickupCode.length !== 4) {
         alert(`La clave de recojo para el pedido #${row.pedido.codigo_seguimiento} debe tener exactamente 4 dígitos.`);
         setIsDispatching(false);
@@ -485,16 +507,17 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     setActiveTab('finished');
 
     if (successfulIds.length > 0) {
-      saveUsedShalomPin(pickupCode);
+      saveUsedShalomPin(activePin);
       try {
         const successResults = successfulIds.map(id => {
           const res = resultsMap[id];
           const row = auditedRows.find(r => r.pedido.id === id);
+          const finalPin = overridePin || res?.pickupCode || row?.data.pickupCode || activePin;
           return {
             pedidoId: id,
             oseId: res?.oseId ? String(res.oseId) : undefined,
             guideNumber: res?.guideNumber,
-            pickupCode: res?.pickupCode || row?.data.pickupCode || pickupCode,
+            pickupCode: finalPin,
             dni: row?.data.dni,
             phone: row?.data.phone,
             name: row?.data.name,
@@ -699,6 +722,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                     onChange={(e) => {
                       const newPin = formatShalomPin(e.target.value);
                       setPickupCode(newPin);
+                      if (newPin.length === 4) {
+                        saveUsedShalomPin(newPin);
+                      }
                       setEditedData(prev => {
                         const next = { ...prev };
                         for (const p of pedidos) {

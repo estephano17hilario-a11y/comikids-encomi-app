@@ -373,11 +373,15 @@ export class ShalomController {
       // NUNCA generar guías sintéticas como 'SH-OK' o 'V204-ID'. Solo usar guía oficial si fue asignada
       const fullGuia = rawGuia ? (serie && !String(rawGuia).includes('-') ? `${serie}-${rawGuia}` : String(rawGuia)) : null;
       const trackingCode = rawResData.codigo || rawResData.tracking_code || String(oseId);
-      // CRÍTICO: El PIN confirmado es SIEMPRE la clave que el usuario envió (pickupCode).
-      // Solo si Shalom devuelve explícitamente un pickup_code de 4 dígitos (NUNCA usar rawResData.codigo ya que es el código de envío/guía)
-      const confirmedPin = (rawResData.pickup_code && String(rawResData.pickup_code).trim().replace(/\D/g, '').length === 4)
-        ? String(rawResData.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
-        : pickupCode;
+      // CRÍTICO: El PIN confirmado es SIEMPRE la clave que el usuario envió en el recuadro (pickupCode).
+      // Shalom Pro puede retornar en rawResData.pickup_code el pin por defecto de su cuenta (ej: 0808)
+      // o un valor no deseado. Por lo tanto, si el usuario envió una clave válida de 4 dígitos,
+      // esta prevalece de forma estricta y absoluta.
+      const confirmedPin = (pickupCode && pickupCode.length === 4)
+        ? pickupCode
+        : ((rawResData.pickup_code && String(rawResData.pickup_code).trim().replace(/\D/g, '').length === 4)
+            ? String(rawResData.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
+            : '0808');
 
       const normalizedData = {
         ...rawResData,

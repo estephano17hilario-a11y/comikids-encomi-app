@@ -245,10 +245,12 @@ export class ShalomApiService {
           codigoSeguimiento: payload.codigoSeguimiento,
           success: true,
           oseId: String(oseId),
-          guideNumber: guideNumber || undefined,
-          pickupCode: (data.pickup_code && String(data.pickup_code).trim().replace(/\D/g, '').length === 4 && String(data.pickup_code) !== String(data.codigo))
-            ? String(data.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
-            : payload.pickup_code,
+          // CRÍTICO: La clave seleccionada en el recuadro por el usuario (payload.pickup_code) prevalece siempre
+          pickupCode: (payload.pickup_code && String(payload.pickup_code).trim().replace(/\D/g, '').length === 4)
+            ? String(payload.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
+            : ((data.pickup_code && String(data.pickup_code).trim().replace(/\D/g, '').length === 4 && String(data.pickup_code) !== String(data.codigo))
+                ? String(data.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
+                : getDailyShalomPin()),
           customerName: payload.destinatario.nombre,
           agencyName: confirmedAgency,
           agencyFullName: confirmedFullName,

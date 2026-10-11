@@ -88,6 +88,66 @@ export const OrdersSmartManager: React.FC = () => {
   const [transportFilter, setTransportFilter] = useState<'all' | 'shalom' | 'motorizado' | 'olva'>('all');
   const [isTrackingSyncing, setIsTrackingSyncing] = useState(false);
 
+  // Clasificación por Fechas: 'none' | 'registrado' | 'programado' | 'entregado'
+  const [dateFilterType, setDateFilterType] = useState<'none' | 'registrado' | 'programado' | 'entregado'>('none');
+  const [dateFilterValue, setDateFilterValue] = useState<string>(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  });
+
+  const setQuickDate = (offsetDays: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    setDateFilterValue(`${y}-${m}-${day}`);
+  };
+
+  // Helper para normalizar fecha local YYYY-MM-DD
+  const getOrderDateOnly = (dateStr?: string): string => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return String(dateStr).slice(0, 10);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    } catch {
+      return String(dateStr).slice(0, 10);
+    }
+  };
+
+  // Conteos dinámicos para la fecha seleccionada en dateFilterValue
+  const dateCounts = useMemo(() => {
+    if (!dateFilterValue) return { registrados: 0, programados: 0, entregados: 0 };
+    let registrados = 0;
+    let programados = 0;
+    let entregados = 0;
+
+    for (const p of pedidos) {
+      if (getOrderDateOnly(p.created_at) === dateFilterValue) {
+        registrados++;
+      }
+      if (getOrderDateOnly(p.fecha_limite) === dateFilterValue) {
+        programados++;
+      }
+      if (
+        p.estado_envio === 'entregado' &&
+        (getOrderDateOnly((p as any).campos_personalizados?.fecha_entrega) === dateFilterValue ||
+          getOrderDateOnly(p.updated_at) === dateFilterValue)
+      ) {
+        entregados++;
+      }
+    }
+
+    return { registrados, programados, entregados };
+  }, [pedidos, dateFilterValue]);
+
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -210,16 +270,40 @@ export const OrdersSmartManager: React.FC = () => {
         return false;
       }
 
+      // Clasificación por Fecha
+      if (dateFilterType !== 'none' && dateFilterValue) {
+        if (dateFilterType === 'registrado') {
+          if (getOrderDateOnly(order.created_at) !== dateFilterValue) return false;
+        } else if (dateFilterType === 'programado') {
+          if (getOrderDateOnly(order.fecha_limite) !== dateFilterValue) return false;
+        } else if (dateFilterType === 'entregado') {
+          if (order.estado_envio !== 'entregado') return false;
+          const deliveryDate = getOrderDateOnly((order as any).campos_personalizados?.fecha_entrega || order.updated_at);
+          if (deliveryDate !== dateFilterValue) return false;
+        }
+      }
+
       // Status
+      if (dateFilterType === 'entregado') {
+        if (statusFilter !== 'all' && statusFilter !== 'entregado') return false;
+        return order.estado_envio === 'entregado';
+      }
+
       if (statusFilter === 'almacen') return (order.estado_produccion === 'en_cola' || (!order.estado_produccion && order.estado_envio === 'pendiente')) && order.estado_envio !== 'entregado';
       if (statusFilter === 'alistando') return order.estado_produccion === 'bordando' && order.estado_envio !== 'entregado';
       if (statusFilter === 'dejando_shalom') return order.estado_envio === 'en_camino' || order.estado_envio === 'listo_para_recojo' || (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente');
       if (statusFilter === 'entregado') return order.estado_envio === 'entregado';
 
+      // Si está activo un filtro por fecha de registro o fecha programada y statusFilter === 'all':
+      // mostrar todos los que coincidan con la fecha
+      if (dateFilterType === 'registrado' || dateFilterType === 'programado') {
+        return true;
+      }
+
       // Vista "Todos": Todos los pedidos vigentes EXCEPTO los que ya fueron entregados
       return order.estado_envio !== 'entregado';
     });
-  }, [pedidos, searchTerm, statusFilter, transportFilter]);
+  }, [pedidos, searchTerm, statusFilter, transportFilter, dateFilterType, dateFilterValue]);
 
 
   // Selection handlers
@@ -1147,6 +1231,140 @@ export const OrdersSmartManager: React.FC = () => {
           </div>
 
         </div>
+
+        {/* Barra de Clasificación por Fechas (Registrados, Programados y Entregados) */}
+        <div className="pt-2.5 border-t border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs font-black text-cyan-300 shrink-0">
+              <Calendar className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span>Clasificar Fecha:</span>
+            </div>
+
+            <div className="inline-flex items-center bg-slate-950/60 backdrop-blur-xl p-1 rounded-xl border border-white/10 text-[11px] font-bold overflow-x-auto gap-0.5">
+              <button
+                type="button"
+                onClick={() => setDateFilterType('none')}
+                className={`py-1 px-2.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                  dateFilterType === 'none'
+                    ? 'bg-white/20 text-white font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Todas las fechas
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilterType('registrado')}
+                className={`py-1 px-2.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                  dateFilterType === 'registrado'
+                    ? 'bg-blue-600 text-white font-black shadow-md shadow-blue-600/30 ring-1 ring-blue-400'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Pedidos cuya fecha de creación/registro en el sistema fue en esta fecha"
+              >
+                <span>📝</span>
+                <span>Registrados ({dateCounts.registrados})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilterType('programado')}
+                className={`py-1 px-2.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                  dateFilterType === 'programado'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/30 ring-1 ring-amber-300'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Pedidos cuya fecha límite programada para despacho es en esta fecha"
+              >
+                <span>🚚</span>
+                <span>Programados ({dateCounts.programados})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilterType('entregado')}
+                className={`py-1 px-2.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                  dateFilterType === 'entregado'
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/30 ring-1 ring-emerald-300'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Pedidos que fueron entregados en esta fecha"
+              >
+                <span>✅</span>
+                <span>Entregados ({dateCounts.entregados})</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Selector de Fecha y Atajos Rápidos (Ayer, Hoy, Mañana) */}
+          <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+            <div className="flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-white/10 text-[10px] font-bold">
+              <button
+                type="button"
+                onClick={() => setQuickDate(-1)}
+                className="px-2 py-0.5 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                title="Ayer"
+              >
+                Ayer
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickDate(0)}
+                className="px-2 py-0.5 rounded-md text-cyan-300 hover:text-white hover:bg-cyan-500/20 transition-colors cursor-pointer"
+                title="Hoy"
+              >
+                Hoy
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickDate(1)}
+                className="px-2 py-0.5 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                title="Mañana"
+              >
+                Mañana
+              </button>
+            </div>
+
+            <div className="relative">
+              <input
+                type="date"
+                value={dateFilterValue}
+                onChange={(e) => setDateFilterValue(e.target.value)}
+                className="px-2.5 py-1 bg-slate-950/80 border border-cyan-500/40 rounded-xl text-xs font-mono font-bold text-cyan-200 focus:outline-none focus:border-cyan-400 shadow-inner"
+              />
+            </div>
+
+            {dateFilterType !== 'none' && (
+              <button
+                type="button"
+                onClick={() => setDateFilterType('none')}
+                className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                title="Quitar filtro de fecha"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Notificación activa de vista clasificada */}
+        {dateFilterType !== 'none' && (
+          <div className="p-2.5 rounded-2xl bg-cyan-950/50 border border-cyan-500/40 text-cyan-200 text-xs flex items-center justify-between gap-2 animate-fadeIn shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">
+                {dateFilterType === 'registrado' ? '📝' : dateFilterType === 'programado' ? '🚚' : '✅'}
+              </span>
+              <span>
+                Mostrando pedidos <strong>{dateFilterType === 'registrado' ? 'registrados el' : dateFilterType === 'programado' ? 'programados para el' : 'entregados el'} {dateFilterValue}</strong> ({filteredOrders.length} {filteredOrders.length === 1 ? 'pedido' : 'pedidos'}).
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDateFilterType('none')}
+              className="text-[11px] font-bold text-cyan-300 hover:text-white bg-cyan-900/60 hover:bg-cyan-800 px-2 py-0.5 rounded-lg border border-cyan-500/30 cursor-pointer transition-colors"
+            >
+              ✕ Ver todos
+            </button>
+          </div>
+        )}
 
       </div>
 

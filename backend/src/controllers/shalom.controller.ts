@@ -342,8 +342,8 @@ export class ShalomController {
             const errCode = postErr.response?.data?.error?.code || postErr.response?.data?.code;
             console.warn(`[SHALOM PROXY CREATE ORDER ATTEMPT ${attempt}/${maxAttempts}]`, postErr?.response?.data || postErr.message);
             
-            // No reintentar si el error es de validación del cliente (400, 422) o bloqueo de login (shalom_login_unavailable)
-            if (status === 400 || status === 422 || errCode === 'shalom_login_unavailable') {
+            // No reintentar si el error es de validación del cliente (400, 422), rate limit (429) o bloqueo de login (shalom_login_unavailable)
+            if (status === 400 || status === 422 || status === 429 || errCode === 'shalom_login_unavailable') {
               throw postErr;
             }
             if (attempt < maxAttempts) {
@@ -414,20 +414,34 @@ export class ShalomController {
     } catch (error: any) {
       console.error('[SHALOM PROXY CREATE ORDER ERROR]', error?.response?.data || error?.message);
       const errData = error?.response?.data;
+      const status = error?.response?.status;
       let errMsg = errData?.message || errData?.error?.message || errData?.error || error?.message || 'Error en Shalom Pro';
-      if (errData?.error?.code === 'shalom_login_unavailable' || errMsg.includes('autenticar') || errMsg.includes('login')) {
+
+      // Detección estricta de Rate Limit / Too Many Calls / Límite de ~30 llamadas de Shalom
+      const isRateLimit = status === 429 ||
+        /too\s*many|many\s*calls|demasiadas\s*llamadas|demasiadas\s*solicitudes|demasiadas\s*peticiones|espere|esperar|rate\s*limit|l[ií]mite\s*de\s*llamadas|quota\s*exceeded|wait\s*a\s*moment/i.test(String(errMsg));
+
+      let isPinError = false;
+      if (isRateLimit) {
+        errMsg = `Límite de peticiones de Shalom Pro alcanzado ('Too Many Calls' / 'Espere'). Pausando de forma inteligente para desbloquear la API.`;
+      } else if (errData?.error?.code === 'shalom_login_unavailable' || errMsg.includes('autenticar') || errMsg.includes('login')) {
         errMsg = 'No se pudo autenticar la cuenta contra Shalom Pro en este momento. El servidor de Shalom está ocupado o con verificación de seguridad. Reintenta en unos minutos.';
       } else if (errMsg.includes('clave del d') || errMsg.includes('clave de ayer') || errMsg.includes('dia anterior') || errMsg.includes('reutilizar claves')) {
         errMsg = `Shalom Pro rechazó la clave '${pickupCode}' (fue usada el día anterior). Por favor cambia la clave para reintentar.`;
+        isPinError = true;
       } else if (errMsg.toLowerCase().includes('clave') || errMsg.toLowerCase().includes('pin') || errMsg.toLowerCase().includes('pickup_code')) {
         errMsg = `Shalom Pro rechazó la clave '${pickupCode}': ${errMsg}. Por favor cambia la clave para reintentar.`;
+        isPinError = true;
       } else if (error.code === 'ECONNABORTED' || errMsg.includes('timeout')) {
         errMsg = 'Tiempo de espera agotado al conectar con Shalom Pro (el servidor de Shalom tardó más de 25s en responder).';
       }
+
       return reply.code(200).send({
         success: false,
         error: errMsg,
-        pickup_code_rejected: pickupCode,
+        is_rate_limit: isRateLimit,
+        retry_after_seconds: isRateLimit ? 55 : undefined,
+        pickup_code_rejected: isPinError ? pickupCode : undefined,
       });
     }
   }

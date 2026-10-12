@@ -53,6 +53,8 @@ export interface ShalomDispatchResult {
   guideNumber?: string;
   trackingCode?: string;
   errorMessage?: string;
+  isRateLimit?: boolean;
+  retryAfterSeconds?: number;
   labelPdfBase64?: string;
   pdfBase64?: string;
   customerPhone?: string;
@@ -61,6 +63,27 @@ export interface ShalomDispatchResult {
   agencyFullName?: string;
   terminalId?: number;
   pickupCode?: string;
+}
+
+export function isShalomRateLimitError(errorMsg?: any): boolean {
+  if (!errorMsg) return false;
+  const msg = String(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg)).toLowerCase();
+  return (
+    msg.includes('too many') ||
+    msg.includes('many calls') ||
+    msg.includes('demasiadas llamadas') ||
+    msg.includes('demasiadas solicitudes') ||
+    msg.includes('demasiadas peticiones') ||
+    msg.includes('espere') ||
+    msg.includes('esperar') ||
+    msg.includes('rate limit') ||
+    msg.includes('límite') ||
+    msg.includes('limite') ||
+    msg.includes('429') ||
+    msg.includes('quota') ||
+    msg.includes('bloqueo de api') ||
+    msg.includes('wait a moment')
+  );
 }
 
 
@@ -260,28 +283,38 @@ export class ShalomApiService {
 
       const rawError = resJson?.error || resJson?.message || 'Error al registrar en Shalom Pro';
       const errorMsg = typeof rawError === 'string' ? rawError : (rawError?.message || JSON.stringify(rawError));
+      const isRateLimit = Boolean(resJson?.is_rate_limit || isShalomRateLimitError(errorMsg));
+
       return {
         pedidoId: payload.pedidoId,
         codigoSeguimiento: payload.codigoSeguimiento,
         success: false,
         errorMessage: errorMsg,
+        isRateLimit,
+        retryAfterSeconds: resJson?.retry_after_seconds || (isRateLimit ? 55 : undefined),
         customerPhone: payload.destinatario.telefono,
         customerName: payload.destinatario.nombre,
         agencyName: agencyDetails.officialDestination,
         agencyFullName: agencyDetails.agencyName,
         terminalId: agencyDetails.terminalId,
+        pickupCode: payload.pickup_code,
       };
     } catch (err: any) {
       const catchError = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Fallo de conexión al registrar con la API de Shalom';
       const safeCatchError = typeof catchError === 'string' ? catchError : JSON.stringify(catchError);
+      const isRateLimit = isShalomRateLimitError(safeCatchError);
+
       return {
         pedidoId: payload.pedidoId,
         codigoSeguimiento: payload.codigoSeguimiento,
         success: false,
         errorMessage: safeCatchError,
+        isRateLimit,
+        retryAfterSeconds: isRateLimit ? 55 : undefined,
         customerPhone: payload.destinatario.telefono,
         customerName: payload.destinatario.nombre,
         agencyName: payload.destinatario.agenciaDestino,
+        pickupCode: payload.pickup_code,
       };
     }
   }

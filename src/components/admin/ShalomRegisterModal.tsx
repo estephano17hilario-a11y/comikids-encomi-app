@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalomOrigen } from '../../utils/shalomExcelExporter';
 import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
-import { ShalomApiService, ShalomDispatchResult } from '../../services/shalomApiService';
+import { ShalomApiService, ShalomDispatchResult, isShalomRateLimitError } from '../../services/shalomApiService';
 import { getApiBaseUrl } from '../../config/api';
 import { validateShalomPin, formatShalomPin, getDailyShalomPin, getNextShalomPin, saveUsedShalomPin } from '../../utils/formatters';
 
@@ -26,7 +26,8 @@ import {
   Edit2,
   ExternalLink,
   Truck,
-  KeyRound
+  KeyRound,
+  Timer
 } from 'lucide-react';
 
 
@@ -59,7 +60,50 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const [dispatchResults, setDispatchResults] = useState<Record<string, ShalomDispatchResult>>({});
   const [isDispatching, setIsDispatching] = useState(false);
   const [progressIndex, setProgressIndex] = useState(0);
+  const [currentBatchTotal, setCurrentBatchTotal] = useState(pedidos.length);
   const [retryingIds, setRetryingIds] = useState<Record<string, boolean>>({});
+
+  // Estados de pausa inteligente anti-bloqueo Shalom (límite de ~30 pedidos)
+  const [cooldownState, setCooldownState] = useState<{
+    active: boolean;
+    secondsRemaining: number;
+    reason: 'preventive' | 'rate_limit';
+    orderCodigo?: string;
+    orderIndex?: number;
+    attempt?: number;
+    maxAttempts?: number;
+    pickupCodeUsed?: string;
+  } | null>(null);
+
+  const skipCooldownRef = React.useRef(false);
+  const cancelDispatchRef = React.useRef(false);
+
+  // Helper de cuenta regresiva con visualización en vivo
+  const waitWithCountdown = async (
+    seconds: number,
+    reason: 'preventive' | 'rate_limit',
+    meta?: {
+      orderCodigo?: string;
+      orderIndex?: number;
+      attempt?: number;
+      maxAttempts?: number;
+      pickupCodeUsed?: string;
+    }
+  ) => {
+    skipCooldownRef.current = false;
+    for (let s = seconds; s > 0; s--) {
+      if (skipCooldownRef.current || cancelDispatchRef.current) break;
+      setCooldownState({
+        active: true,
+        secondsRemaining: s,
+        reason,
+        ...meta,
+      });
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    setCooldownState(null);
+    skipCooldownRef.current = false;
+  };
   
   // Estados de WhatsApp sync
   const [isSyncingWhatsApp, setIsSyncingWhatsApp] = useState(false);
@@ -120,12 +164,11 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     }
   };
 
-
-
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = '';
+      cancelDispatchRef.current = true;
     };
   }, []);
 
@@ -230,7 +273,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     setPinErrorState(null);
     setCustomPinInput('');
     saveUsedShalomPin(pin);
-    handleStartApiDispatch(pin);
+    handleStartApiDispatch(pin, true);
   };
 
   // Reintento individual para un paquete específico con clave personalizada
@@ -344,8 +387,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   };
 
 
-  // 1. DESPACHO AUTOMÁTICO VÍA API CON RATE LIMITING (Máximo ~54 req/min para respetar los 60 req/min)
-  const handleStartApiDispatch = async (overridePin?: string) => {
+  // 1. DESPACHO AUTOMÁTICO VÍA API CON INTELIGENCIA ANTI-BLOQUEO (Rate Limiting y recuperación de cuota ~30 pedidos)
+  const handleStartApiDispatch = async (overridePin?: string, onlyPending?: boolean) => {
     if (isDispatching) return;
 
     const activePin = overridePin ? formatShalomPin(overridePin) : pickupCode;
@@ -359,8 +402,18 @@ export const ShalomRegisterModal: React.FC<Props> = ({
     }
 
     setPinErrorState(null);
+    setCooldownState(null);
+    skipCooldownRef.current = false;
+    cancelDispatchRef.current = false;
     setIsDispatching(true);
     setActiveTab('dispatching');
+
+    // Seleccionar filas a procesar (todas o únicamente las pendientes que no se emitieron)
+    const rowsToProcess = onlyPending
+      ? auditedRows.filter(r => !dispatchResults[r.pedido.id]?.success)
+      : auditedRows;
+
+    setCurrentBatchTotal(rowsToProcess.length);
     setProgressIndex(0);
 
     const auth = {
@@ -368,18 +421,18 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       password: tallerConfig.shalom_password || '986398Mi$',
     };
 
-    const resultsMap: Record<string, ShalomDispatchResult> = {};
-    const successfulIds: string[] = [];
+    // Mantener resultados previos si estamos reanudando
+    const resultsMap: Record<string, ShalomDispatchResult> = { ...dispatchResults };
+    const successfulIds: string[] = Object.keys(dispatchResults).filter(id => dispatchResults[id]?.success);
 
-    for (let i = 0; i < auditedRows.length; i++) {
-      const row = auditedRows[i];
+    let ordersInCurrentBurst = 0;
+    let shouldHaltBatch = false;
+
+    for (let i = 0; i < rowsToProcess.length; i++) {
+      if (cancelDispatchRef.current || shouldHaltBatch) break;
+
+      const row = rowsToProcess[i];
       setProgressIndex(i + 1);
-
-      // Rate Limiting solicitado: exactamente entre 3 y 4 segundos por orden (3000ms a 4000ms)
-      if (i > 0) {
-        const delayMs = Math.floor(3000 + Math.random() * 1000); // 3.0s a 4.0s
-        await new Promise(r => setTimeout(r, delayMs));
-      }
 
       // CRÍTICO: La clave que prevalece es de forma estricta la del recuadro
       const rowPickupCode = overridePin
@@ -392,6 +445,23 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         setActiveTab('audit');
         return;
       }
+
+      // =========================================================================
+      // INTELIGENCIA 1: PAUSA PREVENTIVA ANTI-BLOQUEO (Límite Shalom ~30 llamadas)
+      // "hantes de que me bote el que many calls, tiene que tomarse el tiempo"
+      // Cada 25 pedidos exitosos continuos en la ráfaga, enfriar la API 45s
+      // =========================================================================
+      if (ordersInCurrentBurst >= 25) {
+        console.log(`[SHALOM PROACTIVE PAUSE] Ráfaga de 25 alcanzada (${i}/${rowsToProcess.length}). Pausa preventiva de 45s.`);
+        await waitWithCountdown(45, 'preventive', {
+          orderCodigo: row.pedido.codigo_seguimiento,
+          orderIndex: i + 1,
+          pickupCodeUsed: rowPickupCode,
+        });
+        ordersInCurrentBurst = 0;
+      }
+
+      if (cancelDispatchRef.current) break;
 
       const remitenteDoc = (tallerConfig.remitente_dni || tallerConfig.ruc_dni || '42020312').replace(/\D/g, '') || '42020312';
       const remitenteTel = (tallerConfig.remitente_celular || tallerConfig.celular_taller || '927781412').replace(/\D/g, '') || '927781412';
@@ -425,22 +495,81 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         },
       };
 
-      try {
-        const res = await ShalomApiService.registerOrder(payload, auth);
-        res.pickupCode = rowPickupCode;
-        
-        if (res.success && (res.oseId || (res.guideNumber && !res.guideNumber.startsWith('SH-') && res.guideNumber !== 'S/G'))) {
-          successfulIds.push(row.pedido.id);
+      // =========================================================================
+      // INTELIGENCIA 2: REINTENTO REACTIVO AUTOMÁTICO EN RATE LIMIT
+      // "cuando hay ese bloqueo ... continuar desde el que no se pudo ultimo,
+      // SE INTELIGENTE Y RESPETA LA CLAVE SIN ERRORES"
+      // =========================================================================
+      let orderFinished = false;
+      let rateLimitAttempts = 0;
+      const maxRateLimitAttempts = 3;
+
+      while (!orderFinished && rateLimitAttempts <= maxRateLimitAttempts) {
+        if (cancelDispatchRef.current || shouldHaltBatch) break;
+
+        // Rate Limiting seguro entre pedidos: 3.5s a 4.2s
+        if (i > 0 && rateLimitAttempts === 0) {
+          const delayMs = Math.floor(3500 + Math.random() * 700);
+          await new Promise(r => setTimeout(r, delayMs));
         }
 
-        resultsMap[row.pedido.id] = res;
+        if (cancelDispatchRef.current) break;
 
-        // Si Shalom Pro reporta error por clave usada ayer, clave rechazada o autenticación, detener el lote inmediatamente
-        if (!res.success) {
+        try {
+          const res = await ShalomApiService.registerOrder(payload, auth);
+          // RESPETO ABSOLUTO DE LA CLAVE DEL RECUADRO:
+          res.pickupCode = rowPickupCode;
+
+          const isRateLimit = Boolean(res.isRateLimit || isShalomRateLimitError(res.errorMessage));
+
+          if (res.success && (res.oseId || (res.guideNumber && !res.guideNumber.startsWith('SH-') && res.guideNumber !== 'S/G'))) {
+            if (!successfulIds.includes(row.pedido.id)) {
+              successfulIds.push(row.pedido.id);
+            }
+            resultsMap[row.pedido.id] = res;
+            ordersInCurrentBurst++;
+            orderFinished = true;
+            break;
+          }
+
+          // A) BLOQUEO POR RATE LIMIT / TOO MANY CALLS:
+          if (isRateLimit) {
+            rateLimitAttempts++;
+            if (rateLimitAttempts <= maxRateLimitAttempts) {
+              const waitSec = res.retryAfterSeconds || 55;
+              console.warn(`[SHALOM RATE LIMIT] Bloqueo detectado en orden #${row.pedido.codigo_seguimiento}. Pausando ${waitSec}s para reanudar automáticamente desde este mismo pedido con clave '${rowPickupCode}' (intento ${rateLimitAttempts}/${maxRateLimitAttempts}).`);
+              
+              await waitWithCountdown(waitSec, 'rate_limit', {
+                orderCodigo: row.pedido.codigo_seguimiento,
+                orderIndex: i + 1,
+                attempt: rateLimitAttempts,
+                maxAttempts: maxRateLimitAttempts,
+                pickupCodeUsed: rowPickupCode,
+              });
+
+              ordersInCurrentBurst = 0; // Reiniciar ráfaga tras la pausa
+              // Reintentar exactamente este mismo pedido en el siguiente ciclo while
+              continue;
+            } else {
+              // Si tras 3 pausas de 55s sigue bloqueado, registrar resultado y continuar
+              resultsMap[row.pedido.id] = res;
+              orderFinished = true;
+              break;
+            }
+          }
+
+          // B) ERROR GENUINO DE CLAVE (rechazada por Shalom por ser usada ayer - SOLO SI NO ES RATE LIMIT)
           const errStr = String(typeof res.errorMessage === 'string' ? res.errorMessage : JSON.stringify(res.errorMessage || '')).toLowerCase();
-          
-          // Detección de regla de clave de Shalom Pro (usada ayer, no permitida, etc.)
-          const isPinError = errStr.includes('clave') || errStr.includes('pin') || errStr.includes('dia anterior') || errStr.includes('día anterior') || errStr.includes('reutilizar') || errStr.includes('pickup_code');
+          const isPinError = !isRateLimit && (
+            errStr.includes('clave del d') ||
+            errStr.includes('clave de ayer') ||
+            errStr.includes('dia anterior') ||
+            errStr.includes('día anterior') ||
+            errStr.includes('reutilizar claves') ||
+            (errStr.includes('clave') && errStr.includes('inválid')) ||
+            (errStr.includes('pin') && errStr.includes('inválid'))
+          );
+
           if (isPinError) {
             const nextPin = getNextShalomPin(rowPickupCode);
             setCustomPinInput(nextPin);
@@ -450,27 +579,30 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               errorMessage: typeof res.errorMessage === 'string' ? res.errorMessage : 'Shalom Pro rechazó la clave indicada.',
               failedOrderId: row.pedido.id,
             });
-            console.warn(`[SHALOM PIN ERROR] Clave ${rowPickupCode} rechazada por Shalom. Sugerida: ${nextPin}. Deteniendo lote para reintento.`);
-            for (let j = i + 1; j < auditedRows.length; j++) {
-              const remRow = auditedRows[j];
+            console.warn(`[SHALOM PIN ERROR] Clave ${rowPickupCode} rechazada por Shalom. Deteniendo lote.`);
+            for (let j = i + 1; j < rowsToProcess.length; j++) {
+              const remRow = rowsToProcess[j];
               resultsMap[remRow.pedido.id] = {
                 pedidoId: remRow.pedido.id,
                 codigoSeguimiento: remRow.pedido.codigo_seguimiento,
                 success: false,
-                errorMessage: `Shalom Pro no permitió la clave '${rowPickupCode}'. Cambia la clave por otra para que prevalezca y reintenta.`,
+                errorMessage: `Shalom Pro no permitió la clave '${rowPickupCode}'. Cambia la clave para que prevalezca y reintenta.`,
                 customerPhone: remRow.data.phone,
                 customerName: remRow.data.name,
                 agencyName: remRow.destino,
                 pickupCode: rowPickupCode,
               };
             }
+            shouldHaltBatch = true;
+            orderFinished = true;
             break;
           }
 
+          // C) ERROR DE AUTENTICACIÓN / LOGIN
           if (errStr.includes('autenticar') || errStr.includes('shalom_login_unavailable') || errStr.includes('credenciales') || errStr.includes('unauthorized')) {
             console.warn('[SHALOM DISPATCH STOP] Deteniendo lote por fallo de autenticación en Shalom Pro.');
-            for (let j = i + 1; j < auditedRows.length; j++) {
-              const remRow = auditedRows[j];
+            for (let j = i + 1; j < rowsToProcess.length; j++) {
+              const remRow = rowsToProcess[j];
               resultsMap[remRow.pedido.id] = {
                 pedidoId: remRow.pedido.id,
                 codigoSeguimiento: remRow.pedido.codigo_seguimiento,
@@ -479,29 +611,57 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                 customerPhone: remRow.data.phone,
                 customerName: remRow.data.name,
                 agencyName: remRow.destino,
-                pickupCode: remRow.data.pickupCode || pickupCode,
+                pickupCode: remRow.data.pickupCode || rowPickupCode,
               };
             }
+            shouldHaltBatch = true;
+            orderFinished = true;
             break;
           }
+
+          // D) OTRO ERROR ESPECÍFICO
+          resultsMap[row.pedido.id] = res;
+          orderFinished = true;
+          break;
+
+        } catch (err: any) {
+          const catchError = err.message || 'Error de conexión';
+          const isRateLimit = isShalomRateLimitError(catchError);
+
+          if (isRateLimit) {
+            rateLimitAttempts++;
+            if (rateLimitAttempts <= maxRateLimitAttempts) {
+              await waitWithCountdown(55, 'rate_limit', {
+                orderCodigo: row.pedido.codigo_seguimiento,
+                orderIndex: i + 1,
+                attempt: rateLimitAttempts,
+                maxAttempts: maxRateLimitAttempts,
+                pickupCodeUsed: rowPickupCode,
+              });
+              ordersInCurrentBurst = 0;
+              continue;
+            }
+          }
+
+          resultsMap[row.pedido.id] = {
+            pedidoId: row.pedido.id,
+            codigoSeguimiento: row.pedido.codigo_seguimiento,
+            success: false,
+            errorMessage: catchError,
+            customerPhone: row.data.phone,
+            customerName: row.data.name,
+            agencyName: row.destino,
+            pickupCode: rowPickupCode,
+          };
+          orderFinished = true;
+          break;
         }
-      } catch (err: any) {
-        resultsMap[row.pedido.id] = {
-          pedidoId: row.pedido.id,
-          codigoSeguimiento: row.pedido.codigo_seguimiento,
-          success: false,
-          errorMessage: err.message || 'Error de conexión',
-          customerPhone: row.data.phone,
-          customerName: row.data.name,
-          agencyName: row.destino,
-          pickupCode: rowPickupCode,
-        };
       }
 
       setDispatchResults({ ...resultsMap });
     }
 
-    // Asegurar que dispatchResults tenga el estado completo final
+    // Fin del lote
     setDispatchResults({ ...resultsMap });
     setIsDispatching(false);
     setActiveTab('finished');
@@ -924,21 +1084,55 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         {/* ========================================================================= */}
         {activeTab === 'dispatching' && (
           <div className="space-y-5 py-6 flex flex-col items-center justify-center flex-1">
-            <div className="relative w-20 h-20 flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20 animate-ping" />
-              <div className="w-16 h-16 rounded-full bg-cyan-600 flex items-center justify-center shadow-lg shadow-cyan-500/50">
-                <Loader2 className="w-8 h-8 text-white animate-spin" />
+            {cooldownState?.active ? (
+              <div className="w-full max-w-lg p-5 rounded-2xl bg-amber-500/15 border-2 border-amber-500/40 text-amber-200 shadow-xl shadow-amber-950/40 flex flex-col items-center text-center gap-3 animate-fadeIn">
+                <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                  <Timer className="w-5 h-5 animate-pulse text-amber-400" />
+                  <span>
+                    {cooldownState.reason === 'preventive'
+                      ? '⏱️ Pausa Preventiva Anti-Bloqueo Shalom'
+                      : '⏳ Límite de Shalom Alcanzado (Too Many Calls / Espere)'}
+                  </span>
+                </div>
+
+                <div className="flex items-baseline gap-2 font-mono text-3xl font-black text-amber-300">
+                  <span>{cooldownState.secondsRemaining}</span>
+                  <span className="text-sm font-semibold text-amber-400">segundos restantes</span>
+                </div>
+
+                <p className="text-xs text-amber-200/90 leading-relaxed max-w-md">
+                  {cooldownState.reason === 'preventive'
+                    ? 'Lote continuo de 25 paquetes alcanzado. Pausando 45 segundos para enfriar la cuota de la API de Shalom Pro y evitar bloqueos automáticos.'
+                    : `Shalom Pro solicitó una pausa temporal por límite de peticiones. Reanudando automáticamente el pedido #${cooldownState.orderCodigo} (intento ${cooldownState.attempt}/${cooldownState.maxAttempts}) respetando la clave '${cooldownState.pickupCodeUsed}'...`}
+                </p>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { skipCooldownRef.current = true; }}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500/25 hover:bg-amber-500/40 text-amber-200 font-bold text-xs border border-amber-500/40 transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+                  >
+                    <span>⏩ Omitir espera y continuar ya</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="relative w-20 h-20 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20 animate-ping" />
+                <div className="w-16 h-16 rounded-full bg-cyan-600 flex items-center justify-center shadow-lg shadow-cyan-500/50">
+                  <Loader2 className="w-8 h-8 text-white animate-spin" />
+                </div>
+              </div>
+            )}
 
             <div className="text-center space-y-1">
               <h4 className="text-base font-bold text-white">Despachando pedidos en Shalom Pro API...</h4>
               <p className="text-xs text-cyan-300">
-                Procesando orden {progressIndex} de {totalCount}
+                Procesando orden {progressIndex} de {currentBatchTotal || totalCount}
               </p>
               <div className="pt-1">
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-emerald-300 bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-500/40 font-semibold shadow-inner">
-                  🛡️ Intervalo dinámico antibloqueo activo (3.0s – 4.0s por paquete)
+                  🛡️ Intervalo dinámico antibloqueo activo (3.5s – 4.2s por paquete)
                 </span>
               </div>
             </div>
@@ -946,7 +1140,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
             <div className="w-full max-w-md bg-slate-800 h-2 rounded-full overflow-hidden">
               <div
                 className="bg-cyan-400 h-full transition-all duration-300 ease-out"
-                style={{ width: `${(progressIndex / totalCount) * 100}%` }}
+                style={{ width: `${(progressIndex / (currentBatchTotal || totalCount)) * 100}%` }}
               />
             </div>
           </div>
@@ -959,7 +1153,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           <div className="space-y-4 overflow-y-auto pr-1 flex-1">
             
             {/* Banner Resumen */}
-            <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
               isAllDispatchedSuccess
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                 : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
@@ -977,31 +1171,45 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                   <p className="text-xs text-slate-300">
                     {isAllDispatchedSuccess
                       ? 'Todas las órdenes fueron registradas en la plataforma de Shalom Pro.'
-                      : `${totalCount - successfulList.length} ${totalCount - successfulList.length === 1 ? 'pedido tuvo error o no pudo emitirse' : 'pedidos tuvieron error o no pudieron emitirse'}. Revisa el motivo abajo y puedes reintentar individualmente.`}
+                      : `${totalCount - successfulList.length} ${totalCount - successfulList.length === 1 ? 'pedido tuvo error o no pudo emitirse' : 'pedidos tuvieron error o no pudieron emitirse'}. Puedes reanudar los pendientes con 1 clic manteniendo la clave sin errores.`}
                   </p>
                 </div>
               </div>
 
-              {successfulList.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleDownloadAllTickets}
-                  disabled={downloadingAll}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 shrink-0"
-                >
-                  {downloadingAll ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      <span>Descargando todos...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      <span>Descargar Todos los Tickets ({successfulList.length})</span>
-                    </>
-                  )}
-                </button>
-              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                {totalCount - successfulList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleStartApiDispatch(pickupCode, true)}
+                    disabled={isDispatching}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-900/40 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>⚡ Reanudar {totalCount - successfulList.length} pendientes</span>
+                  </button>
+                )}
+
+                {successfulList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadAllTickets}
+                    disabled={downloadingAll}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95 shrink-0"
+                  >
+                    {downloadingAll ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>Descargando todos...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        <span>Descargar Todos ({successfulList.length})</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Banner de Recuperación Inmediata con Nueva Clave si fue rechazada por Shalom */}

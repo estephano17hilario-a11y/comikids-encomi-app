@@ -1503,7 +1503,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
 
                   {/* Botón Principal API Dispatch */}
                   <button
-                    onClick={handleStartApiDispatch}
+                    onClick={() => handleStartApiDispatch()}
                     disabled={isDispatching || !allValid || !validateShalomPin(pickupCode).isValid}
                     className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-cyan-600/30 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer active:scale-98"
                   >

@@ -2,7 +2,8 @@ import React, { useRef } from 'react';
 import { RotateCcw, Lock } from 'lucide-react';
 import { useFeedback } from '../../../context/FeedbackContext';
 import { StepProps, SALUDO_SUGERENCIAS, DESPEDIDA_SUGERENCIAS, VARIABLES_MENSAJE, DEFAULT_INICIO_RECEIPT, DEFAULT_FIN_RECEIPT } from './agencyDraft';
-import { StepHeader, Card, ChipButton, textareaClass } from './ui';
+import { StepIntro, Card, ChipButton, textareaClass, NumberBadge } from './ui';
+import { MSG_COLORS } from './previews';
 import { isNativeDuplicateField } from './previews';
 
 // Inserta una variable donde está el cursor
@@ -43,7 +44,7 @@ const VariableChips: React.FC<{ onInsert: (t: string) => void }> = ({ onInsert }
   </div>
 );
 
-export const StepMensaje: React.FC<StepProps> = ({ draft, update }) => {
+export const StepMensaje: React.FC<StepProps> = ({ draft, update, accent }) => {
   const { toast } = useFeedback();
   const saludo = useInsert(draft.mensajeInicio, v => update({ mensajeInicio: v }));
   const despedida = useInsert(draft.mensajeFin, v => update({ mensajeFin: v }));
@@ -51,11 +52,18 @@ export const StepMensaje: React.FC<StepProps> = ({ draft, update }) => {
 
   return (
     <div className="space-y-5">
-      <StepHeader emoji="💬" title="Mensaje de WhatsApp" subtitle="Es el comprobante que recibe tu clienta al hacer su pedido. Solo escribes el saludo y la despedida." />
+      <StepIntro
+        emoji="💬"
+        title="Mensaje de WhatsApp"
+        accent={accent}
+        queEs="Apenas tu clienta termina su pedido, le llega un comprobante por WhatsApp. El mensaje tiene 3 partes: tú escribes el saludo y la despedida; los datos del medio se ponen solos."
+        pasos={['Escribe cómo la saludas (parte 1).', 'Revisa los datos que se ponen solos (parte 2).', 'Escribe cómo te despides (parte 3).']}
+      />
 
       <Card
-        emoji="👋"
-        title="1. Saludo (va arriba)"
+        badge={<NumberBadge n={1} color={MSG_COLORS.saludo} />}
+        title="Saludo (va arriba)"
+        help="Lo primero que lee tu clienta. Puedes poner su nombre automáticamente con el botón «Nombre de la clienta»."
         right={
           <button
             type="button"
@@ -86,7 +94,7 @@ export const StepMensaje: React.FC<StepProps> = ({ draft, update }) => {
         </div>
       </Card>
 
-      <Card emoji="🔒" title="2. Datos del pedido (automático)" description="El sistema los completa solo con lo que escribió tu clienta. No tienes que hacer nada." tone="muted">
+      <Card badge={<NumberBadge n={2} color={MSG_COLORS.datos} />} title="Datos del pedido (automático)" description="El sistema los completa solo con lo que escribió tu clienta. No tienes que hacer nada." tone="muted">
         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-300">
           {['🏷️ Código del pedido', '👤 Nombre', '🪪 DNI', '📱 WhatsApp', `🚚 ${draft.nombre || 'Agencia'}`, '📅 Fecha de envío', '📍 Destino'].map(item => (
             <li key={item} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5">
@@ -103,7 +111,7 @@ export const StepMensaje: React.FC<StepProps> = ({ draft, update }) => {
         </ul>
       </Card>
 
-      <Card emoji="💖" title="3. Despedida (va abajo)">
+      <Card badge={<NumberBadge n={3} color={MSG_COLORS.despedida} />} title="Despedida (va abajo)" help="Buen lugar para recordarle algo importante. Ej: que lleve su DNI para recoger el paquete.">
         <textarea
           ref={despedida.ref}
           rows={3}

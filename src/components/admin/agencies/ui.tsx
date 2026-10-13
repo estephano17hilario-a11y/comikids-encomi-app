@@ -15,14 +15,75 @@ export const StepHeader: React.FC<{ emoji: string; title: string; subtitle: stri
   </div>
 );
 
+// Portada de cada paso: qué es, para qué sirve y cómo se usa, en palabras simples
+export const StepIntro: React.FC<{
+  emoji: string;
+  title: string;
+  queEs: string;
+  pasos: string[];
+  accent: string;
+}> = ({ emoji, title, queEs, pasos, accent }) => (
+  <div
+    className="relative overflow-hidden rounded-3xl border p-5 sm:p-6 space-y-4"
+    style={{ borderColor: `${accent}55`, background: `linear-gradient(135deg, ${accent}26 0%, rgba(15,23,42,0.85) 55%)` }}
+  >
+    <div className="absolute -right-6 -top-6 text-[110px] leading-none opacity-15 select-none pointer-events-none" aria-hidden="true">{emoji}</div>
+    <div className="relative flex items-start gap-3 sm:gap-4">
+      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl shrink-0 shadow-lg" style={{ backgroundColor: `${accent}33` }} aria-hidden="true">
+        {emoji}
+      </div>
+      <div className="min-w-0">
+        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">{title}</h2>
+        <p className="text-[15px] sm:text-base text-slate-200 mt-1.5 leading-relaxed">{queEs}</p>
+      </div>
+    </div>
+    <div className="relative rounded-2xl bg-slate-950/50 border border-white/10 p-3.5 sm:p-4">
+      <p className="text-xs font-black uppercase tracking-wider mb-2" style={{ color: accent }}>Así se hace</p>
+      <ol className="space-y-2">
+        {pasos.map((p, i) => (
+          <li key={i} className="flex items-start gap-2.5 text-[15px] text-slate-200 leading-snug">
+            <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-slate-950 shrink-0 mt-px" style={{ backgroundColor: accent }}>{i + 1}</span>
+            <span>{p}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </div>
+);
+
+// Caja de explicación / ejemplo dentro de una sección
+export const Explain: React.FC<{ children: React.ReactNode; tone?: 'info' | 'tip' | 'warn' }> = ({ children, tone = 'info' }) => {
+  const styles = {
+    info: 'bg-sky-500/10 border-sky-400/25 text-sky-100',
+    tip: 'bg-amber-400/10 border-amber-400/25 text-amber-100',
+    warn: 'bg-rose-500/10 border-rose-400/30 text-rose-100',
+  }[tone];
+  const icon = { info: '💡', tip: '✨', warn: '⚠️' }[tone];
+  return (
+    <div className={`flex items-start gap-2.5 rounded-2xl border px-3.5 py-3 text-[14px] leading-relaxed ${styles}`}>
+      <span className="shrink-0" aria-hidden="true">{icon}</span>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+};
+
+// Número que conecta una tarjeta con su zona en un dibujo
+export const NumberBadge: React.FC<{ n: number; color?: string }> = ({ n, color = '#ec4899' }) => (
+  <span className="inline-flex w-7 h-7 rounded-full items-center justify-center text-sm font-black text-white shrink-0" style={{ backgroundColor: color }} aria-label={`Parte ${n}`}>
+    {n}
+  </span>
+);
+
 export const Card: React.FC<{
   emoji?: string;
+  badge?: React.ReactNode;
   title?: string;
   description?: string;
+  help?: React.ReactNode;
   right?: React.ReactNode;
   children?: React.ReactNode;
   tone?: 'default' | 'muted';
-}> = ({ emoji, title, description, right, children, tone = 'default' }) => (
+}> = ({ emoji, badge, title, description, help, right, children, tone = 'default' }) => (
   <section
     className={`rounded-3xl border p-4 sm:p-5 space-y-4 ${
       tone === 'muted' ? 'bg-slate-900/40 border-white/5' : 'bg-slate-900/80 border-white/10'
@@ -31,7 +92,8 @@ export const Card: React.FC<{
     {(title || right) && (
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5 min-w-0">
-          {emoji && <span className="text-xl leading-7 shrink-0" aria-hidden="true">{emoji}</span>}
+          {badge}
+          {emoji && !badge && <span className="text-xl leading-7 shrink-0" aria-hidden="true">{emoji}</span>}
           <div className="min-w-0">
             {title && <h3 className="text-base sm:text-lg font-black text-white leading-7">{title}</h3>}
             {description && <p className="text-sm text-slate-400 leading-snug mt-0.5">{description}</p>}
@@ -40,6 +102,7 @@ export const Card: React.FC<{
         {right && <div className="shrink-0">{right}</div>}
       </div>
     )}
+    {help && <Explain>{help}</Explain>}
     {children}
   </section>
 );

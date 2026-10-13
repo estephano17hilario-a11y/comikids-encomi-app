@@ -512,4 +512,7 @@ export interface StepProps {
   updateRotulo: (patch: Partial<RotuloDraft>) => void;
   base: MetodoEnvio;
   taller: TallerConfig;
+  accent: string; // color del paso actual
+  openPreview: () => void; // abre la vista previa (útil en celular)
+  highlight: (key: string) => void; // resalta algo en la vista previa (ej. "campo:<id>")
 }

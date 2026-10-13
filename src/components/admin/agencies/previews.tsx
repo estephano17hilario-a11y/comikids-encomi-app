@@ -134,7 +134,7 @@ export const isNativeDuplicateField = (campo: { id: string; label: string; siste
 };
 
 // Paso 3: el formulario que llena la clienta
-export const FormPreview: React.FC<{ draft: AgencyDraft; live: MetodoEnvio }> = ({ draft, live }) => {
+export const FormPreview: React.FC<{ draft: AgencyDraft; live: MetodoEnvio; highlightKey?: string }> = ({ draft, live, highlightKey }) => {
   const extras = draft.campos.filter(c => !isNativeDuplicateField(c));
   return (
     <PhoneFrame title="Formulario de tu clienta">
@@ -150,7 +150,10 @@ export const FormPreview: React.FC<{ draft: AgencyDraft; live: MetodoEnvio }> = 
           <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-300 px-1 pt-2">Tus preguntas</p>
         )}
         {extras.map(c => (
-          <div key={c.id} className="space-y-1">
+          <div
+            key={c.id}
+            className={`space-y-1 rounded-xl transition-all ${highlightKey === `campo:${c.id}` ? 'ring-2 ring-indigo-400 bg-indigo-500/15 p-1.5 animate-scaleUp' : ''}`}
+          >
             <p className="text-[13px] font-bold text-white px-1">
               {c.label} {c.requerido && <span className="text-rose-400">*</span>}
             </p>
@@ -193,10 +196,21 @@ const renderWhatsappText = (text: string) =>
     </React.Fragment>
   ));
 
-// Paso 4: comprobante por WhatsApp
+export const MSG_COLORS = { saludo: '#22d3ee', datos: '#94a3b8', despedida: '#f472b6' };
+
+const PartTag: React.FC<{ n: number; color: string; label: string }> = ({ n, color, label }) => (
+  <span className="inline-flex items-center gap-1.5 mb-1 text-[10px] font-black uppercase tracking-wider" style={{ color }}>
+    <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-slate-950" style={{ backgroundColor: color }}>{n}</span>
+    {label}
+  </span>
+);
+
+// Paso 4: comprobante por WhatsApp, con sus 3 partes marcadas
 export const WhatsAppPreview: React.FC<{ draft: AgencyDraft; companyName: string }> = ({ draft, companyName }) => {
-  const full = construirMensajeComprobacion(draft.mensajeInicio, draft.mensajeFin, draft.nombre);
-  const [head, ...rest] = full.split(RECEIPT_DIVIDER);
+  const full = construirMensajeComprobacion('·', '', draft.nombre);
+  const datos = full.split(RECEIPT_DIVIDER).slice(1).join(RECEIPT_DIVIDER).trim();
+  const saludo = draft.mensajeInicio.trim();
+  const despedida = draft.mensajeFin.trim();
   return (
     <PhoneFrame tone="whatsapp">
       <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/10">
@@ -208,10 +222,22 @@ export const WhatsAppPreview: React.FC<{ draft: AgencyDraft; companyName: string
           <p className="text-[11px] text-emerald-400">en línea</p>
         </div>
       </div>
-      <div className="ml-auto max-w-[94%] rounded-2xl rounded-tr-sm bg-[#005c4b] px-3 py-2.5 text-[13px] text-white leading-relaxed whitespace-pre-wrap break-words shadow">
-        <span className="block rounded-lg bg-black/15 px-2 py-1.5 mb-1.5">{renderWhatsappText(fillExample(head.trim(), draft))}</span>
-        <span className="block text-emerald-50/90">{renderWhatsappText(fillExample(rest.join(RECEIPT_DIVIDER).trim(), draft))}</span>
-        <span className="flex items-center justify-end gap-1 text-[10px] text-emerald-200/70 mt-1">
+      <div className="ml-auto max-w-[96%] rounded-2xl rounded-tr-sm bg-[#005c4b] px-3 py-2.5 text-[13px] text-white leading-relaxed whitespace-pre-wrap break-words shadow space-y-2">
+        <div className="rounded-lg border-l-4 bg-black/15 px-2 py-1.5" style={{ borderColor: MSG_COLORS.saludo }}>
+          <PartTag n={1} color={MSG_COLORS.saludo} label="Saludo" />
+          <div>{saludo ? renderWhatsappText(fillExample(saludo, draft)) : <em className="opacity-60">(vacío)</em>}</div>
+        </div>
+        <div className="rounded-lg border-l-4 bg-black/10 px-2 py-1.5" style={{ borderColor: MSG_COLORS.datos }}>
+          <PartTag n={2} color={MSG_COLORS.datos} label="Datos automáticos" />
+          <div className="text-emerald-50/90">{renderWhatsappText(fillExample(datos, draft).trim())}</div>
+        </div>
+        {despedida && (
+          <div className="rounded-lg border-l-4 bg-black/15 px-2 py-1.5" style={{ borderColor: MSG_COLORS.despedida }}>
+            <PartTag n={3} color={MSG_COLORS.despedida} label="Despedida" />
+            <div>{renderWhatsappText(fillExample(despedida, draft))}</div>
+          </div>
+        )}
+        <span className="flex items-center justify-end gap-1 text-[10px] text-emerald-200/70">
           12:45 <CheckCheck className="w-3.5 h-3.5 text-sky-300" />
         </span>
       </div>

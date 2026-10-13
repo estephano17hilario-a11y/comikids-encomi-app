@@ -2,9 +2,9 @@ import React, { useRef } from 'react';
 import { Upload, Check, Link2 } from 'lucide-react';
 import { useFeedback } from '../../../context/FeedbackContext';
 import { StepProps, LOGO_PRESETS, COLOR_PRESETS } from './agencyDraft';
-import { StepHeader, Card, Field, inputClass, Disclosure } from './ui';
+import { StepIntro, Card, Field, inputClass, Disclosure } from './ui';
 
-export const StepIdentidad: React.FC<StepProps> = ({ draft, update, base }) => {
+export const StepIdentidad: React.FC<StepProps> = ({ draft, update, base, accent }) => {
   const { toast } = useFeedback();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -25,9 +25,15 @@ export const StepIdentidad: React.FC<StepProps> = ({ draft, update, base }) => {
 
   return (
     <div className="space-y-5">
-      <StepHeader emoji="🎨" title="Nombre y logo" subtitle="Así reconocerán tus clientas esta agencia cuando elijan cómo recibir su pedido." />
+      <StepIntro
+        emoji="🎨"
+        title="Nombre y logo"
+        accent={accent}
+        queEs="Cuando tu clienta hace un pedido, elige cómo quiere recibirlo tocando una tarjeta como la de la vista previa. Un nombre claro y un logo conocido le dan confianza."
+        pasos={['Escribe el nombre de la agencia.', 'Elige su logo o sube una foto.', 'Elige un color para reconocer sus pedidos en tu lista.']}
+      />
 
-      <Card emoji="✏️" title="¿Cómo se llama?">
+      <Card emoji="✏️" title="1. ¿Cómo se llama?" help="Usa el nombre que tus clientas conocen. Ej: «Shalom» y no «Empresa de transportes S.A.C.»">
         <Field label="Nombre de la agencia" htmlFor="agency-name">
           <input
             id="agency-name"
@@ -50,7 +56,7 @@ export const StepIdentidad: React.FC<StepProps> = ({ draft, update, base }) => {
         </Field>
       </Card>
 
-      <Card emoji="🖼️" title="Elige su logo" description="Toca una imagen o sube la tuya desde el celular.">
+      <Card emoji="🖼️" title="2. Elige su logo" description="Toca una imagen o sube la tuya desde el celular." help="El logo aparece en la tarjeta que ve tu clienta y en el rótulo que imprimes.">
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
           <button
             type="button"
@@ -108,7 +114,7 @@ export const StepIdentidad: React.FC<StepProps> = ({ draft, update, base }) => {
         </Disclosure>
       </Card>
 
-      <Card emoji="🎯" title="Elige su color" description={`Los pedidos de ${draft.nombre || base.nombre || 'esta agencia'} tendrán este color en tu lista para reconocerlos de un vistazo.`}>
+      <Card emoji="🎯" title="3. Elige su color" help={`En tu lista de pedidos, los de ${draft.nombre || base.nombre || 'esta agencia'} tendrán un borde de este color. Así sabes de un vistazo cuáles van por aquí.`}>
         <div className="flex flex-wrap gap-3">
           {COLOR_PRESETS.map(c => {
             const selected = draft.color.toLowerCase() === c.hex.toLowerCase();

@@ -10,7 +10,8 @@ import {
   BLOQUE_TIPOS,
   EstiloRotulo,
 } from './agencyDraft';
-import { StepHeader, Card, ChoiceCards, BigSwitch, Field, inputClass, Disclosure, ChipButton } from './ui';
+import { StepIntro, Card, ChoiceCards, BigSwitch, Field, inputClass, Disclosure, ChipButton, NumberBadge, Explain } from './ui';
+import { RotuloDraft } from './agencyDraft';
 
 // Dibujitos de la forma del rótulo
 const ShapeEchado = () => (
@@ -32,6 +33,52 @@ const ShapeParado = () => (
   </svg>
 );
 
+// Colores de cada parte del rótulo (mismo número en el mapa y en su tarjeta)
+const ZONA = {
+  arriba: '#22d3ee',
+  destino: '#f59e0b',
+  recibe: '#10b981',
+  envia: '#a78bfa',
+  respuestas: '#818cf8',
+  avisos: '#f43f5e',
+  codigo: '#94a3b8',
+};
+
+// Mapa esquemático: muestra dónde va cada parte y se apaga lo que está desactivado
+const LabelMap: React.FC<{ r: RotuloDraft; hasRespuestas: boolean }> = ({ r, hasRespuestas }) => {
+  const zones: { n: number; label: string; color: string; on: boolean; y: number; h: number }[] = [
+    { n: 1, label: 'Parte de arriba (logos)', color: ZONA.arriba, on: r.mostrar_logo_empresa || r.mostrar_logo_agencia || Boolean(r.subtitulo_cabecera), y: 8, h: 26 },
+    { n: 2, label: 'Destino', color: ZONA.destino, on: r.mostrar_destino, y: 40, h: 26 },
+    { n: 3, label: 'Quién recibe (tu clienta)', color: ZONA.recibe, on: r.incluir_destinatario, y: 72, h: 40 },
+    { n: 4, label: 'Quién envía (tu negocio)', color: ZONA.envia, on: r.incluir_remitente, y: 118, h: 26 },
+    { n: 5, label: 'Respuestas de tus preguntas', color: ZONA.respuestas, on: hasRespuestas, y: 150, h: 20 },
+    { n: 6, label: 'Avisos especiales', color: ZONA.avisos, on: r.bloques.length > 0, y: 176, h: 20 },
+    { n: 7, label: 'Código y sello', color: ZONA.codigo, on: r.mostrar_barcode || r.mostrar_tracking || r.mostrar_fecha_sello, y: 202, h: 22 },
+  ];
+  return (
+    <div className="grid grid-cols-1 min-[460px]:grid-cols-[150px_1fr] gap-4 items-center">
+      <svg viewBox="0 0 150 232" className="w-36 mx-auto" role="img" aria-label="Mapa de las partes del rótulo">
+        <rect x="2" y="2" width="146" height="228" rx="10" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="5 4" />
+        {zones.map(z => (
+          <g key={z.n} opacity={z.on ? 1 : 0.25}>
+            <rect x="10" y={z.y} width="130" height={z.h} rx="5" fill={z.color} fillOpacity="0.22" stroke={z.color} strokeWidth="2" />
+            <circle cx="24" cy={z.y + z.h / 2} r="8" fill={z.color} />
+            <text x="24" y={z.y + z.h / 2 + 4} textAnchor="middle" fontSize="10" fontWeight="900" fill="#0f172a">{z.n}</text>
+          </g>
+        ))}
+      </svg>
+      <ol className="space-y-1.5">
+        {zones.map(z => (
+          <li key={z.n} className={`flex items-center gap-2.5 text-[15px] ${z.on ? 'text-slate-100' : 'text-slate-500 line-through'}`}>
+            <NumberBadge n={z.n} color={z.color} />
+            <span>{z.label}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+};
+
 const ESTILOS: { value: EstiloRotulo; emoji: string; title: string; desc: string }[] = [
   { value: '', emoji: '🌐', title: 'El de mi negocio', desc: 'Usa el diseño elegido en Ajustes' },
   { value: 'estandar_oficial', emoji: '🏷️', title: 'Clásico', desc: 'Letras grandes, DNI gigante' },
@@ -52,7 +99,7 @@ const POSICIONES: { id: NonNullable<BloqueRotuladoPersonalizado['posicion']>; la
   { id: 'abajo', label: '⬇️ Abajo' },
 ];
 
-export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update }) => {
+export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update, accent, openPreview }) => {
   const { toast } = useFeedback();
   const r = draft.rotulo;
   const [nuevoAviso, setNuevoAviso] = useState<Omit<BloqueRotuladoPersonalizado, 'id'> | null>(null);
@@ -60,7 +107,7 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
   const setBloques = (bloques: BloqueRotuladoPersonalizado[]) => updateRotulo({ bloques });
   const addBloque = (b: Omit<BloqueRotuladoPersonalizado, 'id'>) => {
     setBloques([...r.bloques, { ...b, id: 'b-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) }]);
-    toast('Aviso agregado al rótulo');
+    toast('Aviso agregado al rótulo', 'success', { label: 'Ver cómo queda', onClick: openPreview });
   };
   const moveBloque = (idx: number, dir: -1 | 1) => {
     const j = idx + dir;
@@ -72,9 +119,15 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
 
   return (
     <div className="space-y-5">
-      <StepHeader emoji="🏷️" title="Rótulo para imprimir" subtitle="La etiqueta que pegas en la caja. Todo lo que cambies se ve al instante en la vista previa." />
+      <StepIntro
+        emoji="🏷️"
+        title="Rótulo para imprimir"
+        accent={accent}
+        queEs="El rótulo es la etiqueta que imprimes y pegas en la caja. La persona de la agencia la lee para saber a quién entregar el paquete. Todo lo que cambies aquí se ve al instante en la vista previa."
+        pasos={['Elige la forma y el diseño.', 'Si quieres ir rápido, toca un atajo.', 'Prende o apaga cada parte del rótulo (están numeradas).']}
+      />
 
-      <Card emoji="📐" title="¿Cómo pegas el rótulo en la caja?">
+      <Card emoji="📐" title="1. ¿Cómo pegas el rótulo en la caja?" help="Echado: ideal para cajas grandes o bolsas anchas. Parado: ideal para bolsas angostas o impresoras de tickets.">
         <ChoiceCards
           ariaLabel="Forma del rótulo"
           value={r.orientacion}
@@ -86,11 +139,11 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
         />
       </Card>
 
-      <Card emoji="🎨" title="Elige un diseño">
+      <Card emoji="🎨" title="2. Elige un diseño" help="«El de mi negocio» usa el diseño que elegiste en Ajustes para todas las agencias. Elige otro solo si quieres que esta agencia sea distinta.">
         <ChoiceCards ariaLabel="Diseño del rótulo" columns={2} value={r.estilo} onChange={v => updateRotulo({ estilo: v })} options={ESTILOS} />
       </Card>
 
-      <Card emoji="⚡" title="Atajos rápidos" description="Un toque y el rótulo queda listo. Luego puedes ajustar los detalles abajo.">
+      <Card emoji="⚡" title="3. Atajos rápidos (opcional)" description="Un toque y el rótulo queda listo. Luego puedes ajustar los detalles abajo.">
         <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-2.5">
           {ROTULO_PRESETS.map(p => (
             <button
@@ -112,13 +165,12 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
         </div>
       </Card>
 
-      <div className="pt-2">
-        <h3 className="text-lg font-black text-white px-1">¿Qué sale en el rótulo?</h3>
-        <p className="text-sm text-slate-400 px-1">Prende o apaga cada parte.</p>
-      </div>
+      <Card emoji="🗺️" title="4. ¿Qué sale en el rótulo?" description="Tu rótulo tiene 7 partes. Abajo hay una tarjeta para cada una, con el mismo número. Lo que apagues se ve tachado aquí.">
+        <LabelMap r={r} hasRespuestas={draft.campos.some(c => c.mostrar_en_rotulado)} />
+      </Card>
 
       {/* Parte de arriba */}
-      <Card emoji="🏢" title="Parte de arriba">
+      <Card badge={<NumberBadge n={1} color={ZONA.arriba} />} title="Parte de arriba" description="El encabezado: tu logo, el de la agencia y una frase.">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <BigSwitch compact checked={r.mostrar_logo_empresa} onChange={v => updateRotulo({ mostrar_logo_empresa: v })} label="Logo de mi negocio" />
           <BigSwitch compact checked={r.mostrar_logo_agencia} onChange={v => updateRotulo({ mostrar_logo_agencia: v })} label="Logo de la agencia" />
@@ -129,7 +181,7 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
       </Card>
 
       {/* Destino */}
-      <Card emoji="📍" title="Destino" description="La agencia o dirección a donde va el paquete.">
+      <Card badge={<NumberBadge n={2} color={ZONA.destino} />} title="Destino" description="La agencia o dirección a donde va el paquete. Es lo más importante para la agencia.">
         <BigSwitch checked={r.mostrar_destino} onChange={v => updateRotulo({ mostrar_destino: v })} label="Mostrar el destino" />
         {r.mostrar_destino && (
           <Disclosure title="Cambiar el título del destino">
@@ -139,7 +191,7 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
       </Card>
 
       {/* Quién recibe */}
-      <Card emoji="👤" title="Quién recibe (tu clienta)">
+      <Card badge={<NumberBadge n={3} color={ZONA.recibe} />} title="Quién recibe (tu clienta)" description="Sus datos para que la agencia le entregue el paquete." help="Para Shalom y Olva deja prendido el DNI: lo piden para entregar. «Gigante» se lee mejor de lejos.">
         <BigSwitch checked={r.incluir_destinatario} onChange={v => updateRotulo({ incluir_destinatario: v })} label="Mostrar los datos de quién recibe" />
         {r.incluir_destinatario && (
           <div className="space-y-4 animate-fadeIn">
@@ -202,7 +254,7 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
       </Card>
 
       {/* Quién envía */}
-      <Card emoji="📦" title="Quién envía (tu negocio)">
+      <Card badge={<NumberBadge n={4} color={ZONA.envia} />} title="Quién envía (tu negocio)" description="Tus datos, por si la agencia necesita devolver el paquete o llamarte.">
         <BigSwitch checked={r.incluir_remitente} onChange={v => updateRotulo({ incluir_remitente: v })} label="Mostrar los datos de quién envía" />
         {r.incluir_remitente && (
           <div className="space-y-4 animate-fadeIn">
@@ -215,6 +267,9 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
                 { value: 'propios', emoji: '✍️', title: 'Otros datos', desc: 'Solo para esta agencia' },
               ]}
             />
+            {!r.usar_remitente_personalizado && (
+              <Explain>Se usan el nombre, documento y celular que pusiste en <strong>Ajustes → Remitente</strong>.</Explain>
+            )}
             {r.usar_remitente_personalizado && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fadeIn">
                 <Field label="Nombre" htmlFor="rem-nom">
@@ -251,7 +306,7 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
 
       {/* Datos extra del formulario */}
       {draft.campos.length > 0 && (
-        <Card emoji="📝" title="Respuestas de tus preguntas" description="Elige cuáles se imprimen y con qué nombre.">
+        <Card badge={<NumberBadge n={5} color={ZONA.respuestas} />} title="Respuestas de tus preguntas" description="Lo que tu clienta contestó en el paso «Datos que pides». Elige cuáles se imprimen y con qué nombre.">
           <ul className="space-y-2.5">
             {draft.campos.map(c => (
               <li key={c.id} className="rounded-2xl bg-slate-950/50 border border-white/10 p-3 space-y-2.5">
@@ -278,7 +333,7 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
       )}
 
       {/* Avisos */}
-      <Card emoji="⚠️" title="Avisos especiales" description="Recuadros de color como FRÁGIL o FLETE EN DESTINO.">
+      <Card badge={<NumberBadge n={6} color={ZONA.avisos} />} title="Avisos especiales" description="Recuadros de color para avisar algo a quien carga la caja. Ej: FRÁGIL o FLETE EN DESTINO.">
         {r.bloques.length > 0 && (
           <ul className="space-y-2">
             {r.bloques.map((b, idx) => (
@@ -368,7 +423,7 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update })
       </Card>
 
       {/* Código y sello */}
-      <Card emoji="🔢" title="Código y sello">
+      <Card badge={<NumberBadge n={7} color={ZONA.codigo} />} title="Código y sello" description="El código de barras y el número del pedido sirven para encontrarlo rápido. El sello al pie da confianza.">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <BigSwitch compact checked={r.mostrar_barcode} onChange={v => updateRotulo({ mostrar_barcode: v })} label="Código de barras" />
           <BigSwitch compact checked={r.mostrar_tracking} onChange={v => updateRotulo({ mostrar_tracking: v })} label="Número del pedido" />

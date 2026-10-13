@@ -3,7 +3,7 @@ import { DiaSemana, HorarioDia } from '../../../types/database.types';
 import { useFeedback } from '../../../context/FeedbackContext';
 import { DIAS_SEMANA_ORDEN, DIAS_SEMANA_LABELS, DIAS_SEMANA_ABREV } from '../../../utils/agencyAvailability';
 import { StepProps } from './agencyDraft';
-import { StepHeader, Card, ChoiceCards, BigSwitch, ChipButton, Field, inputClass } from './ui';
+import { StepIntro, Card, ChoiceCards, BigSwitch, ChipButton, Field, inputClass, Explain } from './ui';
 
 const LUN_VIE: DiaSemana[] = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'];
 const LUN_SAB: DiaSemana[] = [...LUN_VIE, 'sabado'];
@@ -34,7 +34,7 @@ const TimeRange: React.FC<{ value: HorarioDia; onChange: (v: HorarioDia) => void
   </div>
 );
 
-export const StepHorario: React.FC<StepProps> = ({ draft, update, taller }) => {
+export const StepHorario: React.FC<StepProps> = ({ draft, update, taller, accent }) => {
   const { toast } = useFeedback();
   const allDays = draft.dias.length === 0;
   const isOn = (dia: DiaSemana) => allDays || draft.dias.includes(dia);
@@ -52,9 +52,15 @@ export const StepHorario: React.FC<StepProps> = ({ draft, update, taller }) => {
 
   return (
     <div className="space-y-5">
-      <StepHeader emoji="📅" title="Días y horario" subtitle="Dile al sistema qué días sale esta agencia, así tus clientas solo eligen fechas posibles." />
+      <StepIntro
+        emoji="📅"
+        title="Días y horario"
+        accent={accent}
+        queEs="Cuando tu clienta pide, elige la fecha en que quiere el envío. Aquí le dices al sistema qué días llevas paquetes a esta agencia, para que ella no elija un día en que no vas."
+        pasos={['Di si sale los mismos días que tu negocio o tiene días propios.', 'Si tiene días propios, márcalos y pon la hora límite.', 'Elige qué pasa los días en que no sale.']}
+      />
 
-      <Card emoji="🤔" title="¿Sale los mismos días que tu negocio?">
+      <Card emoji="🤔" title="1. ¿Sale los mismos días que tu negocio?" help="Lo más fácil es elegir «Sí». Elige «No» solo si a esta agencia vas en días distintos. Ej: a Shalom vas todos los días, pero a Marvisur solo miércoles y sábados.">
         <ChoiceCards
           ariaLabel="Tipo de horario"
           value={draft.modoHorario}
@@ -73,7 +79,7 @@ export const StepHorario: React.FC<StepProps> = ({ draft, update, taller }) => {
 
       {draft.modoHorario === 'personalizado' && (
         <>
-          <Card emoji="📆" title="¿Qué días sale?" description="Toca los días para prender o apagar.">
+          <Card emoji="📆" title="2. ¿Qué días sale?" description="Toca un día para prenderlo (verde) o apagarlo (gris). O usa un atajo.">
             <div className="flex flex-wrap gap-2">
               <ChipButton active={allDays} onClick={() => update({ dias: [] })}>Todos los días</ChipButton>
               <ChipButton active={!allDays && sameDays(draft.dias, LUN_SAB)} onClick={() => update({ dias: LUN_SAB })}>Lunes a sábado</ChipButton>
@@ -102,7 +108,11 @@ export const StepHorario: React.FC<StepProps> = ({ draft, update, taller }) => {
             </div>
           </Card>
 
-          <Card emoji="⏰" title="¿A qué hora?">
+          <Card
+            emoji="⏰"
+            title="3. ¿Hasta qué hora recibes pedidos?"
+            help={<>La <strong>hora de corte</strong> es la hora límite: si tu clienta pide después, su paquete sale el siguiente día de envío. Ej: corte 6:00 pm → un pedido de las 7:00 pm sale mañana.</>}
+          >
             <ChoiceCards
               ariaLabel="Horario de la agencia"
               value={draft.modalidadHorario === 'individual_por_dia' ? 'por_dia' : draft.horarioGlobal.es_24_horas ? 'todo_el_dia' : 'horario'}
@@ -154,7 +164,7 @@ export const StepHorario: React.FC<StepProps> = ({ draft, update, taller }) => {
         </>
       )}
 
-      <Card emoji="🙋‍♀️" title="¿Cómo lo ve tu clienta?">
+      <Card emoji="🙋‍♀️" title={draft.modoHorario === 'personalizado' ? '4. ¿Qué pasa los días que no sale?' : '2. ¿Qué pasa los días que no sale?'} description="Así se comporta el formulario de tu clienta.">
         <div className="space-y-2.5">
           <BigSwitch
             checked={draft.restringirFecha}
@@ -171,7 +181,8 @@ export const StepHorario: React.FC<StepProps> = ({ draft, update, taller }) => {
             description="No aparecerá en la lista esos días."
           />
         </div>
-        <Field label="Mensaje para tus clientas (opcional)" htmlFor="disp-msg" hint="Reemplaza el resumen automático. Ej: Despachamos solo miércoles y sábados.">
+        <Explain tone="tip">Recomendado: deja prendido «Solo dejar elegir días en que sale». Así nadie te pide envío un domingo si no vas.</Explain>
+        <Field label="Aviso que verá tu clienta (opcional)" htmlFor="disp-msg" hint="Sale debajo del nombre de la agencia. Si lo dejas vacío, el sistema escribe uno solo (Ej: «Despachos: Mié, Sáb»).">
           <input
             id="disp-msg"
             type="text"

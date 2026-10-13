@@ -5,7 +5,7 @@ import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalo
 import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
 import { ShalomApiService, ShalomDispatchResult, isShalomRateLimitError } from '../../services/shalomApiService';
 import { getApiBaseUrl } from '../../config/api';
-import { validateShalomPin, formatShalomPin, getDailyShalomPin, getNextShalomPin, saveUsedShalomPin } from '../../utils/formatters';
+import { validateShalomPin, formatShalomPin, getDailyShalomPin, getNextShalomPin, saveUsedShalomPin, getLastUsedShalomPinInfo } from '../../utils/formatters';
 
 import {
   X,
@@ -27,7 +27,8 @@ import {
   ExternalLink,
   Truck,
   KeyRound,
-  Timer
+  Timer,
+  Info
 } from 'lucide-react';
 
 
@@ -115,22 +116,38 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const [downloadingAll, setDownloadingAll] = useState(false);
 
   // Clave de recojo para Shalom:
-  // 1. Prioriza la última clave utilizada con éxito hoy en el navegador (si tiene 4 dígitos)
-  // 2. Si no, la clave registrada en los pedidos seleccionados
-  // 3. Predeterminado oficial seguro 0808
+  // 1. Detecta la clave utilizada en la sesión de hoy vs ayer para evitar rechazos automáticos
+  // 2. Si la última clave fue utilizada ayer, Shalom PROHÍBE reutilizarla: sugerir la siguiente clave segura
+  // 3. Clave registrada en los pedidos si es válida y diferente a la de ayer
+  // 4. Predeterminado oficial seguro 0808 (o 0707 si ayer se usó 0808)
+  const lastPinInfo = useMemo(() => getLastUsedShalomPinInfo(), []);
+
   const initialPinCandidate = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const storedPin = localStorage.getItem('incomi_last_used_shalom_pin')?.trim();
-        if (storedPin && storedPin.length === 4) return storedPin;
-      } catch {}
+    // Si hoy ya se utilizó exitosamente una clave en esta misma fecha, mantenerla
+    if (lastPinInfo.isToday && lastPinInfo.pin) {
+      return lastPinInfo.pin;
     }
-    const orderPin = pedidos.find(p => p.shalom_clave_recojo && p.shalom_clave_recojo.trim())?.shalom_clave_recojo?.trim();
-    if (orderPin && orderPin.length === 4) return orderPin;
-    return '0808';
-  }, [pedidos]);
+    // Si la última clave guardada es de ayer, Shalom no permitirá reutilizarla
+    if (lastPinInfo.isYesterday && lastPinInfo.pin) {
+      return getNextShalomPin(lastPinInfo.pin);
+    }
+    const orderPin = pedidos.find(p => p.shalom_clave_recojo && p.shalom_clave_recojo.trim().length === 4)?.shalom_clave_recojo?.trim();
+    if (orderPin && orderPin !== lastPinInfo.pin) return orderPin;
+    return lastPinInfo.pin === '0808' ? '0707' : '0808';
+  }, [pedidos, lastPinInfo]);
 
   const [pickupCode, setPickupCode] = useState(() => initialPinCandidate);
+
+  // Detección preventiva de conflicto con la clave del día anterior
+  const isYesterdayConflict = Boolean(
+    lastPinInfo.isYesterday &&
+    lastPinInfo.pin &&
+    pickupCode === lastPinInfo.pin
+  );
+  const suggestedAlternativePin = useMemo(() => {
+    return lastPinInfo.pin ? getNextShalomPin(lastPinInfo.pin) : '0707';
+  }, [lastPinInfo]);
+
   const [pinErrorState, setPinErrorState] = useState<{
     oldPin: string;
     suggestedPin: string;
@@ -397,6 +414,19 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       alert(`Clave de recojo inválida: ${pinCheck.error}`);
       return;
     }
+
+    // Comprobación preventiva ANTES de despachar para no fallar "a mitad de camino"
+    if (lastPinInfo.isYesterday && lastPinInfo.pin && activePin === lastPinInfo.pin) {
+      alert(
+        `⚠️ ATENCIÓN PREVIA SHALOM PRO:\n\n` +
+        `La clave '${activePin}' fue utilizada el día de ayer (${lastPinInfo.dateStr}).\n\n` +
+        `La política estricta de Shalom Pro prohíbe reutilizar la misma clave de recojo dos días consecutivos. ` +
+        `Si intentas despachar con ella, Shalom cancelará los paquetes a mitad de camino.\n\n` +
+        `Por favor cámbiala en el recuadro por otra clave de 4 dígitos (te sugerimos '${suggestedAlternativePin}').`
+      );
+      return;
+    }
+
     if (overridePin) {
       setPickupCode(activePin);
     }
@@ -911,6 +941,56 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                 )}
               </div>
             </div>
+
+            {/* Aviso Preventivo Anticolisión de Clave de Ayer */}
+            {isYesterdayConflict && (
+              <div className="p-3 rounded-2xl bg-rose-500/15 border-2 border-rose-500/50 text-rose-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn shadow-lg shadow-rose-950/30">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <h5 className="font-bold text-white text-xs">
+                      ⚠️ Shalom Pro rechazará la clave '{pickupCode}' (fue usada ayer {lastPinInfo.dateStr})
+                    </h5>
+                    <p className="text-[11px] text-rose-300/90 mt-0.5 leading-relaxed">
+                      La política estricta de Shalom Pro prohíbe reutilizar la misma clave de recojo dos días seguidos. Si despachas con ella, Shalom cancelará el registro a mitad de camino. Cambia la clave en el recuadro o aplica la sugerida: <strong>{suggestedAlternativePin}</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickupCode(suggestedAlternativePin);
+                    saveUsedShalomPin(suggestedAlternativePin);
+                    setEditedData(prev => {
+                      const next = { ...prev };
+                      for (const p of pedidos) {
+                        next[p.id] = {
+                          ...(next[p.id] || { dni: '', phone: '', name: '' }),
+                          pickupCode: suggestedAlternativePin,
+                        };
+                      }
+                      return next;
+                    });
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Usar {suggestedAlternativePin}</span>
+                </button>
+              </div>
+            )}
+
+            {lastPinInfo.isYesterday && !isYesterdayConflict && (
+              <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-200 text-xs flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span className="text-[11px]">
+                    ℹ️ Política Shalom Pro: Ayer se utilizó la clave <strong>{lastPinInfo.pin}</strong>. Hoy estás usando la clave <strong>{pickupCode}</strong> (válida y autorizada para Shalom).
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div className="flex items-center gap-2 text-xs text-slate-300">

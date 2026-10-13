@@ -119,3 +119,32 @@ export function saveUsedShalomPin(pin: string): void {
   }
 }
 
+/**
+ * Retorna información detallada sobre la última clave usada y cuándo fue usada
+ * para alertar preventivamente sobre la política anti-reutilización de Shalom.
+ */
+export function getLastUsedShalomPinInfo(): {
+  pin: string | null;
+  dateStr: string | null;
+  isToday: boolean;
+  isYesterday: boolean;
+} {
+  if (typeof window === 'undefined') {
+    return { pin: null, dateStr: null, isToday: false, isYesterday: false };
+  }
+  try {
+    const pin = localStorage.getItem('incomi_last_used_shalom_pin')?.trim() || null;
+    const dateStr = localStorage.getItem('incomi_last_used_shalom_pin_date')?.trim() || null;
+    if (!pin || pin.length !== 4) {
+      return { pin: null, dateStr: null, isToday: false, isYesterday: false };
+    }
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+    const isToday = dateStr === todayStr;
+    const isYesterday = Boolean(dateStr && dateStr !== todayStr);
+    return { pin, dateStr, isToday, isYesterday };
+  } catch {
+    return { pin: null, dateStr: null, isToday: false, isYesterday: false };
+  }
+}
+

@@ -359,6 +359,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   }, [selectedAgencyObject]);
 
   const [isAgencyListOpen, setIsAgencyListOpen] = useState(false);
+  const shalomSearchBoxRef = React.useRef<HTMLDivElement>(null);
   const [showMapModal, setShowMapModal] = useState(false);
 
   // Olva Hook & State (376 Agencias Nacionales)
@@ -395,6 +396,20 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   }, [selectedOlvaAgencyObject]);
 
   const [isOlvaAgencyListOpen, setIsOlvaAgencyListOpen] = useState(false);
+  const olvaSearchBoxRef = React.useRef<HTMLDivElement>(null);
+
+  // Al abrir un buscador de agencias, llevarlo justo debajo del encabezado fijo para que
+  // la lista (que se abre hacia abajo) tenga espacio y la primera agencia siempre se vea.
+  useEffect(() => {
+    const box = isAgencyListOpen ? shalomSearchBoxRef.current : isOlvaAgencyListOpen ? olvaSearchBoxRef.current : null;
+    if (!box) return;
+    const raf = requestAnimationFrame(() => {
+      box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const input = box.querySelector('input');
+      if (input && document.activeElement !== input) input.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isAgencyListOpen, isOlvaAgencyListOpen]);
   const [showOlvaMapModal, setShowOlvaMapModal] = useState(false);
 
   // Motorizado Branch State
@@ -535,6 +550,11 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
   const selectedMethod: MetodoEnvio | undefined =
     activeShippingMethods.find(m => m.id === selectedMethodId) || activeShippingMethods[0];
+
+  // Agencias creadas por la empresa (no Shalom, Olva ni motorizado con mapa): la clienta escribe el destino
+  const isCustomDeliveryMethod = Boolean(
+    selectedMethod && !['shalom', 'olva', 'mapa_direccion'].includes(selectedMethod.tipo_formulario)
+  );
 
   const whatsappTallerNumber = (tallerConfig?.whatsapp_pedidos || '51987654321').replace(/\D/g, '');
 
@@ -697,6 +717,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         scrollToField('dni-input');
         return;
       }
+    }
+
+    if (isCustomDeliveryMethod && !customDestinoText.trim()) {
+      setErrorMsg('Por favor escribe a dónde enviamos tu pedido (dirección o agencia de destino).');
+      scrollToField('custom-destino-input');
+      return;
     }
 
     if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
@@ -1885,11 +1911,39 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
                     {/* Buscador & Lista Flotante de Agencias (Solo visible cuando isAgencyListOpen=true) */}
                     {isAgencyListOpen && (
-                      <div className="relative space-y-2 animate-fadeIn z-50">
+                      <div ref={shalomSearchBoxRef} className="relative space-y-2 animate-fadeIn scroll-mt-28">
                         
+                        {/* Input del Buscador */}
+                        <div className="relative flex items-center">
+                          <input
+                            type="text"
+
+                            value={agencySearchQuery}
+                            onFocus={() => setIsAgencyListOpen(true)}
+                            onClick={() => setIsAgencyListOpen(true)}
+                            onChange={e => {
+                              setAgencySearchQuery(e.target.value);
+                              setIsAgencyListOpen(true);
+                              if (showOnlyNearest5) setShowOnlyNearest5(false);
+                            }}
+                            placeholder="Buscar por distrito o provincia (ej. Pangoa co, Gamarra, Trujillo)..."
+                            className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all font-medium"
+                          />
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+                          {agencySearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setAgencySearchQuery('')}
+                              className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
                         {/* Panel Flotante de Resultados: Solo aparece cuando isAgencyListOpen es TRUE */}
                         {isAgencyListOpen && (
-                          <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[39vh] sm:max-h-[43vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-cyan-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
+                          <div className="relative w-full max-h-[55vh] sm:max-h-[440px] overflow-y-auto overscroll-contain space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 border-2 border-cyan-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
                             {shalomAgenciesList.length === 0 ? (
                               <p className="text-center text-xs text-slate-400 py-6">
                                 No se encontraron agencias con &quot;{agencySearchQuery}&quot;
@@ -1966,34 +2020,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                             )}
                           </div>
                         )}
-
-                        {/* Input del Buscador */}
-                        <div className="relative flex items-center">
-                          <input
-                            type="text"
-
-                            value={agencySearchQuery}
-                            onFocus={() => setIsAgencyListOpen(true)}
-                            onClick={() => setIsAgencyListOpen(true)}
-                            onChange={e => {
-                              setAgencySearchQuery(e.target.value);
-                              setIsAgencyListOpen(true);
-                              if (showOnlyNearest5) setShowOnlyNearest5(false);
-                            }}
-                            placeholder="Buscar por distrito o provincia (ej. Pangoa co, Gamarra, Trujillo)..."
-                            className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-400/20 transition-all font-medium"
-                          />
-                          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
-                          {agencySearchQuery && (
-                            <button
-                              type="button"
-                              onClick={() => setAgencySearchQuery('')}
-                              className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
                       </div>
                     )}
                   </div>
@@ -2402,11 +2428,38 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
                       {/* Buscador & Lista Flotante de Agencias Olva (Solo visible cuando isOlvaAgencyListOpen=true) */}
                       {isOlvaAgencyListOpen && (
-                        <div className="relative space-y-2 animate-fadeIn z-50">
+                        <div ref={olvaSearchBoxRef} className="relative space-y-2 animate-fadeIn scroll-mt-28">
                           
+                          {/* Input del Buscador Olva */}
+                          <div className="relative flex items-center">
+                            <input
+                              type="text"
+                              value={olvaAgencySearchQuery}
+                              onFocus={() => setIsOlvaAgencyListOpen(true)}
+                              onClick={() => setIsOlvaAgencyListOpen(true)}
+                              onChange={e => {
+                                setOlvaAgencySearchQuery(e.target.value);
+                                setIsOlvaAgencyListOpen(true);
+                                if (showOnlyNearest5Olva) setShowOnlyNearest5Olva(false);
+                              }}
+                              placeholder="Buscar sede Olva por distrito, calle o nombre (ej. Pangoa, Miraflores, Cusco)..."
+                              className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all font-medium"
+                            />
+                            <Search className="w-4 h-4 text-amber-400 absolute left-3.5 pointer-events-none" />
+                            {olvaAgencySearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setOlvaAgencySearchQuery('')}
+                                className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
                           {/* Panel Flotante de Resultados: Solo aparece cuando isOlvaAgencyListOpen es TRUE */}
                           {isOlvaAgencyListOpen && (
-                            <div className="absolute bottom-full mb-2.5 left-0 right-0 w-full z-50 max-h-[39vh] sm:max-h-[43vh] overflow-y-auto space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
+                            <div className="relative w-full max-h-[55vh] sm:max-h-[440px] overflow-y-auto overscroll-contain space-y-1.5 p-2.5 rounded-2xl bg-slate-950/98 border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] animate-fadeIn">
                               {olvaAgenciesList.length === 0 ? (
                                 <p className="text-center text-xs text-slate-400 py-6">
                                   No se encontraron agencias Olva con &quot;{olvaAgencySearchQuery}&quot;
@@ -2491,33 +2544,6 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                               )}
                             </div>
                           )}
-
-                          {/* Input del Buscador Olva */}
-                          <div className="relative flex items-center">
-                            <input
-                              type="text"
-                              value={olvaAgencySearchQuery}
-                              onFocus={() => setIsOlvaAgencyListOpen(true)}
-                              onClick={() => setIsOlvaAgencyListOpen(true)}
-                              onChange={e => {
-                                setOlvaAgencySearchQuery(e.target.value);
-                                setIsOlvaAgencyListOpen(true);
-                                if (showOnlyNearest5Olva) setShowOnlyNearest5Olva(false);
-                              }}
-                              placeholder="Buscar sede Olva por distrito, calle o nombre (ej. Pangoa, Miraflores, Cusco)..."
-                              className="w-full pl-10 pr-9 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all font-medium"
-                            />
-                            <Search className="w-4 h-4 text-amber-400 absolute left-3.5 pointer-events-none" />
-                            {olvaAgencySearchQuery && (
-                              <button
-                                type="button"
-                                onClick={() => setOlvaAgencySearchQuery('')}
-                                className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center absolute right-2.5 cursor-pointer"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
                         </div>
                       )}
                     </div>
@@ -2666,18 +2692,19 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                 </div>
               )}
 
-              {/* RAMA D: OTRO MÉTODO PERSONALIZADO */}
-              {selectedMethod?.tipo_formulario === 'texto_simple' && (
+              {/* RAMA D: AGENCIAS PERSONALIZADAS (creadas por la empresa) */}
+              {isCustomDeliveryMethod && (
                 <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    📝 Indicaciones de Entrega *
+                  <label htmlFor="custom-destino-input" className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    📍 ¿A dónde enviamos tu pedido? *
                   </label>
                   <textarea
+                    id="custom-destino-input"
                     required
                     rows={3}
                     value={customDestinoText}
                     onChange={e => setCustomDestinoText(e.target.value)}
-                    placeholder="Indica las instrucciones de entrega..."
+                    placeholder="Dirección, agencia o indicaciones de entrega (ej: Agencia Marvisur de Huancayo)"
                     className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-base text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 resize-none"
                   />
                 </div>

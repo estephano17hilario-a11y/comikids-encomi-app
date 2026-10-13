@@ -125,7 +125,7 @@ export const MatrixPortal: React.FC = () => {
 1️⃣ Abre este enlace en tu celular o computadora: ${origin}
 2️⃣ En el recuadro principal, escribe tu número de entrada: *${emp.numero_entrada}*
 3️⃣ Ingresa tu contraseña: *${emp.password_hash}* y haz clic en *Ingresar*.
-4️⃣ ¡Listo! Ya estás dentro de tu panel para gestionar tus despachos, rotulado Shalom, inventario y más.
+4️⃣ ¡Listo! Ya estás dentro de tu panel para gestionar tus despachos, rotulado Shalom, pagos Yape y más.
 
 💡 *Consejo:* Guarda este mensaje para tener siempre a la mano tus credenciales.`;
   };
@@ -1074,7 +1074,7 @@ export const MatrixPortal: React.FC = () => {
                     { key: 'pedidos', label: 'Pedidos / Envíos', icon: Package, desc: 'Gestión de paquetes y guías' },
                     { key: 'agendas', label: 'Agendas & Entregas', icon: CheckSquare, desc: 'Calendario y programación' },
                     { key: 'estadisticas', label: 'Estadísticas & Ventas', icon: Sliders, desc: 'Gráficas de volumen y ventas' },
-                    { key: 'inventario', label: 'Inventario / Almacén', icon: Layers, desc: 'Control de stock y prendas' },
+                    { key: 'inventario', label: 'Yape', icon: Layers, desc: 'Pagos recibidos por Yape y sus ajustes' },
                     { key: 'hitos', label: 'Hitos 🏆', icon: Trophy, desc: 'Metas y logros de despachos' },
                     { key: 'ajustes', label: 'Ajustes de Empresa ⚙️', icon: Settings, desc: 'Links, remitente, horarios y taller' },
                     { key: 'encomi_ai', label: 'Encomi AI Asistente', icon: Sparkles, desc: 'Copiloto inteligente' },

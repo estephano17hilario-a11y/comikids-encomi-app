@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { GlassPanel } from '../../components/ui/GlassPanel';
-import { Icon } from '../../components/ui/Icon';
+import { GlassPanel } from './ui/GlassPanel';
 import { HyperGraph } from './HyperGraph';
-import { yapeReaderService, YapeTransaction } from '../../../../services/yapeReaderService';
-import { Smartphone, TrendingUp, Calendar, User, CheckCircle2, ShieldCheck, DollarSign, Filter } from 'lucide-react';
+import { yapeReaderService, YapeTransaction } from '../../services/yapeReaderService';
+import { Smartphone, User, ShieldCheck } from 'lucide-react';
 
 interface ClientSpending {
   name: string;

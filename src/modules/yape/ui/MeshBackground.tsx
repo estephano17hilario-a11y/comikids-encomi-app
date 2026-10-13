@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef } from 'react';
-import { MeshTheme } from '../../types';
+import { MeshTheme } from '../themes';
 
 interface MeshBackgroundProps {
   isLiveMode: boolean;

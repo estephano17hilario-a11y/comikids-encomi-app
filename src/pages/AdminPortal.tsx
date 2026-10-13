@@ -3,14 +3,14 @@ import { createPortal } from 'react-dom';
 import { useOrders } from '../context/OrderContext';
 import { useAuth } from '../context/AuthContext';
 import { OrdersSmartManager } from '../components/admin/OrdersSmartManager';
-// Las pestañas pesadas (gráficos, inventario, agencias, ajustes) se cargan al abrirlas
+// Las pestañas pesadas (gráficos, Yape, agencias, ajustes) se cargan al abrirlas
 const ClientDirectory = lazy(() => import('../components/admin/ClientDirectory').then(m => ({ default: m.ClientDirectory })));
 const VisionAnalyticsDashboard = lazy(() => import('../components/admin/VisionAnalyticsDashboard').then(m => ({ default: m.VisionAnalyticsDashboard })));
 const CompanyAccountSettings = lazy(() => import('../components/admin/CompanyAccountSettings').then(m => ({ default: m.CompanyAccountSettings })));
 const CompanyAgenciesTab = lazy(() => import('../components/admin/CompanyAgenciesTab').then(m => ({ default: m.CompanyAgenciesTab })));
 const CompanyAchievementsTab = lazy(() => import('../components/admin/CompanyAchievementsTab').then(m => ({ default: m.CompanyAchievementsTab })));
-const ComicInventoryApp = lazy(() => import('../modules/comic_inventory/ComicInventoryApp').then(m => ({ default: m.ComicInventoryApp })));
-import { liveSessionService, LiveSessionState } from '../services/liveSessionService';
+const YapeSection = lazy(() => import('../modules/yape/YapeSection').then(m => ({ default: m.YapeSection })));
+import { yapeReaderService } from '../services/yapeReaderService';
 const EncomiAiSection = lazy(() => import('../components/client/EncomiAiSection').then(m => ({ default: m.EncomiAiSection })));
 import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
@@ -22,7 +22,7 @@ import {
   ClipboardList,
   Users,
   BarChart3,
-  Store,
+  Smartphone,
   Settings,
   LogOut,
   Sparkles,
@@ -57,10 +57,18 @@ export const AdminPortal: React.FC = () => {
     encomi_ai: true,
   };
   
-  // Estado de sesión Live sincronizado
-  const [liveState, setLiveState] = useState<LiveSessionState>(() => liveSessionService.getState());
+  // El modo TikTok Live se eliminó junto con el inventario: si quedó una sesión abierta,
+  // se cierra y se apaga el modo live del lector nativo de Yape (si no, seguiría marcando pagos como "Live").
   useEffect(() => {
-    return liveSessionService.subscribe(setLiveState);
+    try {
+      const raw = localStorage.getItem('incomi_live_session_state_v1');
+      if (raw) {
+        localStorage.removeItem('incomi_live_session_state_v1');
+        if (JSON.parse(raw)?.isLive) yapeReaderService.setLiveMode(false);
+      }
+    } catch {
+      // sin acceso a localStorage: nada que limpiar
+    }
   }, []);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
@@ -79,9 +87,9 @@ export const AdminPortal: React.FC = () => {
 
   const dockItems: { id: EmpresaTab; label: string; short?: string; icon: React.ElementType; activeClass: string; badge?: number }[] = [
     { id: 'pedidos' as EmpresaTab, label: 'Pedidos', icon: ClipboardList, activeClass: 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30', badge: pendingOrdersCount, visible: sec.pedidos !== false },
-    { id: 'agendas' as EmpresaTab, label: 'Clientes', icon: Users, activeClass: 'bg-purple-600 text-white shadow-md shadow-purple-600/30', visible: sec.agendas !== false },
+    { id: 'agendas' as EmpresaTab, label: 'Clientes', icon: Users, activeClass: 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30', visible: sec.agendas !== false },
     { id: 'estadisticas' as EmpresaTab, label: 'Métricas', icon: BarChart3, activeClass: 'bg-blue-600 text-white shadow-md shadow-blue-600/30', visible: sec.estadisticas !== false },
-    { id: 'inventario' as EmpresaTab, label: 'Inventario', short: 'Stock', icon: Store, activeClass: 'bg-pink-600 text-white shadow-md shadow-pink-600/30', visible: Boolean(sec.inventario) },
+    { id: 'inventario' as EmpresaTab, label: 'Yape', icon: Smartphone, activeClass: 'bg-purple-600 text-white shadow-md shadow-purple-600/30', visible: Boolean(sec.inventario) && !empresaConfig?.desactivar_yape },
     { id: 'agencias' as EmpresaTab, label: 'Agencias', icon: Truck, activeClass: 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30', visible: sec.agencias !== false },
     { id: 'encomi_ai' as EmpresaTab, label: 'IA', icon: Sparkles, activeClass: 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30', visible: sec.encomi_ai !== false },
   ].filter(item => item.visible);
@@ -128,17 +136,9 @@ export const AdminPortal: React.FC = () => {
                 <h1 className="text-sm sm:text-base font-black text-white tracking-tight truncate">
                   {companyName}
                 </h1>
-                {liveState.isLive && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                    En vivo
-                  </span>
-                )}
               </div>
               <p className="text-[11px] sm:text-xs text-slate-400 truncate">
-                {liveState.isLive
-                  ? `Live activo • S/ ${liveState.revenue.toLocaleString()}`
-                  : pendingOrdersCount > 0
+                {pendingOrdersCount > 0
                   ? `${pendingOrdersCount} ${pendingOrdersCount === 1 ? 'pedido activo' : 'pedidos activos'}`
                   : 'Todo al día ✨'}
               </p>
@@ -220,11 +220,7 @@ export const AdminPortal: React.FC = () => {
           {activeTab === 'pedidos' && sec.pedidos !== false && <OrdersSmartManager />}
           {activeTab === 'agendas' && sec.agendas !== false && <ClientDirectory />}
           {activeTab === 'estadisticas' && sec.estadisticas !== false && <VisionAnalyticsDashboard />}
-          {activeTab === 'inventario' && sec.inventario && (
-            <div>
-              <ComicInventoryApp />
-            </div>
-          )}
+          {activeTab === 'inventario' && sec.inventario && !empresaConfig?.desactivar_yape && <YapeSection />}
           {activeTab === 'agencias' && sec.agencias !== false && (
             <div className="max-w-6xl mx-auto space-y-4 animate-fadeIn">
               <CompanyAgenciesTab />
@@ -266,9 +262,6 @@ export const AdminPortal: React.FC = () => {
                       {item.badge > 99 ? '99+' : item.badge}
                     </span>
                   ) : null}
-                  {item.id === 'inventario' && liveState.isLive && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 border border-slate-900" />
-                  )}
                 </span>
                 <span className="truncate max-w-full leading-none tracking-tight">
                   <span className="sm:hidden">{item.short || item.label}</span>

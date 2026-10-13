@@ -185,7 +185,8 @@ export const draftFromMethod = (m: MetodoEnvio, taller: TallerConfig): AgencyDra
     mensajeDisponibilidad: disp?.mensaje_disponibilidad || '',
     rotulo: {
       orientacion: 'vertical', // el rótulo siempre se imprime parado
-      estilo: cfg?.estilo_rotulo === 'eco_ink_saving' ? 'eco_ink_saving' : 'estandar_oficial',
+      // Por defecto blanco y negro; solo es a color si la agencia lo eligió
+      estilo: cfg?.estilo_rotulo && cfg.estilo_rotulo !== 'eco_ink_saving' ? 'estandar_oficial' : 'eco_ink_saving',
       mostrar_logo_empresa: cfg?.mostrar_logo_empresa !== false,
       mostrar_logo_agencia: cfg?.mostrar_logo_agencia !== false,
       subtitulo_cabecera: cfg?.subtitulo_cabecera || '',
@@ -206,10 +207,11 @@ export const draftFromMethod = (m: MetodoEnvio, taller: TallerConfig): AgencyDra
       titulo_cliente_telefono: cfg?.titulo_cliente_telefono || '',
       incluir_remitente: cfg?.incluir_remitente === true,
       titulo_remitente: cfg?.titulo_remitente || '',
-      mostrar_remitente_nombre: cfg?.mostrar_remitente_nombre !== false,
-      mostrar_remitente_ruc_dni: cfg?.mostrar_remitente_ruc_dni !== false,
-      mostrar_remitente_telefono: cfg?.mostrar_remitente_telefono !== false,
-      mostrar_remitente_origen: cfg?.mostrar_remitente_origen !== false,
+      // El remitente se pone solo si se prende al menos uno de sus datos
+      mostrar_remitente_nombre: cfg?.incluir_remitente === true && cfg?.mostrar_remitente_nombre !== false,
+      mostrar_remitente_ruc_dni: cfg?.incluir_remitente === true && cfg?.mostrar_remitente_ruc_dni !== false,
+      mostrar_remitente_telefono: cfg?.incluir_remitente === true && cfg?.mostrar_remitente_telefono !== false,
+      mostrar_remitente_origen: cfg?.incluir_remitente === true && cfg?.mostrar_remitente_origen !== false,
       usar_remitente_personalizado: Boolean(rem?.usar_personalizado),
       rem_nombre: rem?.nombre || taller.remitente_default?.nombre || taller.nombre_taller || '',
       rem_ruc_dni: rem?.ruc_dni || taller.remitente_default?.ruc_dni || taller.remitente_dni || taller.ruc_dni || '',
@@ -265,7 +267,7 @@ const rotuloFromDraft = (d: AgencyDraft) => {
     campos_visibles: d.campos.filter(c => c.mostrar_en_rotulado).map(c => c.id),
     etiquetas_campos: r.etiquetas_campos,
     bloques_personalizados: r.bloques,
-    incluir_remitente: r.incluir_remitente,
+    incluir_remitente: r.mostrar_remitente_nombre || r.mostrar_remitente_ruc_dni || r.mostrar_remitente_telefono || r.mostrar_remitente_origen,
     titulo_remitente: opt(r.titulo_remitente),
     mostrar_remitente_nombre: r.mostrar_remitente_nombre,
     mostrar_remitente_ruc_dni: r.mostrar_remitente_ruc_dni,
@@ -335,6 +337,7 @@ export const newAgencyMethod = (nombre: string, foto_url: string, color: string,
       incluir_campos_personalizados: true,
       campos_visibles: [],
       orientacion: 'vertical',
+      estilo_rotulo: 'eco_ink_saving',
       incluir_remitente: false,
       mostrar_remitente_nombre: true,
       mostrar_remitente_ruc_dni: true,
@@ -354,7 +357,7 @@ export const newAgencyMethod = (nombre: string, foto_url: string, color: string,
 // ---------------------------------------------------------------------------
 // Atajos del rótulo
 // ---------------------------------------------------------------------------
-export type RotuloPreset = 'completo' | 'solo_destinatario' | 'eco_ahorro';
+export type RotuloPreset = 'completo' | 'solo_destinatario';
 
 export const ROTULO_PRESETS: { id: RotuloPreset; emoji: string; title: string; desc: string; sale: string[]; noSale: string[]; recomendado?: boolean }[] = [
   {
@@ -373,14 +376,6 @@ export const ROTULO_PRESETS: { id: RotuloPreset; emoji: string; title: string; d
     desc: 'Todo lo de tu clienta y además TUS datos, por si la agencia necesita llamarte o devolverte el paquete.',
     sale: ['Todo lo de tu clienta', 'Tus datos: nombre, DNI/RUC, celular y dirección', 'Código de barras y número del pedido'],
     noSale: [],
-  },
-  {
-    id: 'eco_ahorro',
-    emoji: '🌿',
-    title: 'Ahorra tinta',
-    desc: 'Cambia el rótulo a blanco y negro y achica un poco el DNI. Gastas mucho menos tinta. No cambia qué datos salen.',
-    sale: ['Diseño en blanco y negro', 'DNI en tamaño grande'],
-    noSale: ['Colores'],
   },
 ];
 
@@ -407,6 +402,10 @@ export const applyRotuloPreset = (r: RotuloDraft, preset: RotuloPreset): RotuloD
     return {
       ...r,
       incluir_remitente: false,
+      mostrar_remitente_nombre: false,
+      mostrar_remitente_ruc_dni: false,
+      mostrar_remitente_telefono: false,
+      mostrar_remitente_origen: false,
       incluir_destinatario: true,
       mostrar_cliente_nombre: true,
       mostrar_cliente_dni: true,
@@ -416,7 +415,7 @@ export const applyRotuloPreset = (r: RotuloDraft, preset: RotuloPreset): RotuloD
       tamano_dni: 'gigante',
     };
   }
-  return { ...r, estilo: 'eco_ink_saving', tamano_dni: 'grande' };
+  return r;
 };
 
 export const AVISO_PLANTILLAS: { emoji: string; label: string; bloque: Omit<BloqueRotuladoPersonalizado, 'id'> }[] = [

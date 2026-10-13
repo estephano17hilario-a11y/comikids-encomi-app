@@ -74,6 +74,7 @@ export const CompanyAccountSettings: React.FC = () => {
     saveMasterCode,
     pedidos,
     shippingMethods,
+    updateShippingMethod,
   } = useOrders();
 
   const { currentUser, currentEmpresa } = useAuth();
@@ -231,7 +232,7 @@ export const CompanyAccountSettings: React.FC = () => {
 
   // Estado para Estilo Predeterminado de Rótulos de Envío
   const [estiloRotuloDefault, setEstiloRotuloDefault] = useState<'estandar_oficial' | 'vision_modern' | 'eco_ink_saving'>(
-    tallerConfig.estilo_rotulo_default || 'estandar_oficial'
+    tallerConfig.estilo_rotulo_default || 'eco_ink_saving'
   );
   const [rotuloSuccessMsg, setRotuloSuccessMsg] = useState('');
 
@@ -503,6 +504,10 @@ export const CompanyAccountSettings: React.FC = () => {
   const handleSaveEstiloRotulo = async (estilo: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving') => {
     setEstiloRotuloDefault(estilo);
     await updateTallerConfig({ estilo_rotulo_default: estilo });
+    // Cada agencia tiene su propio diseño de rótulo: desde aquí se aplica a todas de una vez
+    (shippingMethods || []).forEach(m => {
+      updateShippingMethod(m.id, { config_rotulado: { ...(m.config_rotulado || {}), estilo_rotulo: estilo } });
+    });
     setRotuloSuccessMsg('¡Estilo predeterminado de rótulos actualizado!');
     setTimeout(() => {
       setRotuloSuccessMsg('');
@@ -1172,7 +1177,7 @@ export const CompanyAccountSettings: React.FC = () => {
                 <div className="p-3.5 rounded-2xl bg-pink-950/40 border border-pink-500/40 text-xs text-pink-200 flex items-start gap-2.5">
                   <Info className="w-4 h-4 text-pink-400 shrink-0 mt-0.5" />
                   <p className="text-[11.5px] leading-relaxed text-pink-100/90">
-                    Haz clic en el formato que deseas usar como predeterminado. Se guardará de inmediato y se aplicará a todas las impresiones.
+                    Haz clic en el formato que deseas usar como predeterminado. Se guardará de inmediato y se aplicará a todas tus agencias (luego puedes cambiarlo en cada agencia).
                   </p>
                 </div>
 

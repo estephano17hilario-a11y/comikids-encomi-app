@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Trash2, Plus, ArrowUp, ArrowDown, Check, X } from 'lucide-react';
 import { BloqueRotuladoPersonalizado } from '../../../types/database.types';
 import { useFeedback } from '../../../context/FeedbackContext';
-import { StepProps, RotuloDraft, ROTULO_PRESETS, applyRotuloPreset, AVISO_PLANTILLAS, BLOQUE_TIPOS, EstiloRotulo } from './agencyDraft';
+import { StepProps, RotuloDraft, RotuloPreset, ROTULO_PRESETS, applyRotuloPreset, AVISO_PLANTILLAS, BLOQUE_TIPOS, EstiloRotulo } from './agencyDraft';
 import { StepIntro, Card, ChoiceCards, BigSwitch, Field, inputClass, Disclosure, ChipButton, NumberBadge, Explain } from './ui';
 import { isNativeDuplicateField } from './previews';
 
@@ -15,12 +15,15 @@ const ZONA = {
   codigo: '#94a3b8',
 };
 
+const remitenteActivo = (r: RotuloDraft) =>
+  r.mostrar_remitente_nombre || r.mostrar_remitente_ruc_dni || r.mostrar_remitente_telefono || r.mostrar_remitente_origen;
+
 // Mapa del rótulo (parado): muestra dónde va cada parte; lo apagado se ve tenue y tachado
 const LabelMap: React.FC<{ r: RotuloDraft }> = ({ r }) => {
   const zones: { n: number; label: string; color: string; on: boolean; y: number; h: number }[] = [
     { n: 1, label: 'Parte de arriba (logos)', color: ZONA.arriba, on: r.mostrar_logo_empresa || r.mostrar_logo_agencia || Boolean(r.subtitulo_cabecera), y: 8, h: 30 },
     { n: 2, label: 'Datos de tu clienta', color: ZONA.clienta, on: true, y: 44, h: 92 },
-    { n: 3, label: 'Tus datos (remitente)', color: ZONA.remitente, on: r.incluir_remitente, y: 142, h: 30 },
+    { n: 3, label: 'Tus datos (remitente)', color: ZONA.remitente, on: remitenteActivo(r), y: 142, h: 30 },
     { n: 4, label: 'Avisos especiales', color: ZONA.avisos, on: r.bloques.length > 0, y: 178, h: 22 },
     { n: 5, label: 'Código y sello', color: ZONA.codigo, on: r.mostrar_barcode || r.mostrar_tracking || r.mostrar_fecha_sello, y: 206, h: 22 },
   ];
@@ -93,6 +96,29 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update, a
   const { toast } = useFeedback();
   const r = draft.rotulo;
   const [nuevoAviso, setNuevoAviso] = useState<Omit<BloqueRotuladoPersonalizado, 'id'> | null>(null);
+  // Atajo puesto: se guarda cómo estaba el rótulo antes para poder deshacerlo
+  const [atajo, setAtajo] = useState<{ id: RotuloPreset; antes: RotuloDraft; despues: RotuloDraft } | null>(null);
+  const atajoActivo = atajo && JSON.stringify(atajo.despues) === JSON.stringify(r) ? atajo.id : null;
+
+  const toggleAtajo = (id: RotuloPreset, title: string) => {
+    if (atajoActivo === id && atajo) {
+      updateRotulo(atajo.antes);
+      setAtajo(null);
+      toast(`Quitaste «${title}». Tu rótulo volvió a como estaba.`, 'info');
+      return;
+    }
+    const antes = atajo && atajoActivo ? atajo.antes : r;
+    const despues = applyRotuloPreset(r, id);
+    updateRotulo(despues);
+    setAtajo({ id, antes, despues });
+    toast(`Pusiste «${title}». Si no te gusta, tócalo otra vez para quitarlo.`, 'success', { label: 'Ver cómo queda', onClick: openPreview });
+  };
+
+  // Al prender o apagar un dato del remitente, el remitente se incluye solo si queda alguno prendido
+  const setRemitente = (patch: Partial<RotuloDraft>) => {
+    const next = { ...r, ...patch };
+    updateRotulo({ ...patch, incluir_remitente: remitenteActivo(next) });
+  };
   const preguntas = draft.campos.filter(c => !isNativeDuplicateField(c));
 
   const setBloques = (bloques: BloqueRotuladoPersonalizado[]) => updateRotulo({ bloques });
@@ -127,48 +153,61 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update, a
         <ChoiceCards ariaLabel="Diseño del rótulo" value={r.estilo} onChange={v => updateRotulo({ estilo: v })} options={DISENOS} />
       </Card>
 
-      {/* 2. Atajos */}
-      <Card emoji="⚡" title="2. Atajos rápidos (opcional)" description="Un toque y el rótulo queda listo. Cada atajo te dice qué se imprime y qué no. Después puedes ajustar cualquier detalle más abajo.">
+      {/* 2. Atajos reversibles */}
+      <Card
+        emoji="⚡"
+        title="2. Atajos (opcional)"
+        description="Un atajo prende y apaga varias opciones de abajo por ti, de un solo toque."
+        help="Toca un atajo para ponerlo. Si no te gusta, tócalo otra vez y tu rótulo vuelve a como estaba. También puedes no usar ninguno y elegir todo abajo."
+      >
         <div className="space-y-3">
-          {ROTULO_PRESETS.map(p => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => {
-                updateRotulo(applyRotuloPreset(r, p.id));
-                toast(`Atajo «${p.title}» aplicado`, 'success', { label: 'Ver cómo queda', onClick: openPreview });
-              }}
-              className="w-full text-left rounded-2xl border-2 border-white/10 bg-slate-950/50 hover:border-white/30 p-4 space-y-3 transition-colors"
-            >
-              <span className="flex items-start gap-3">
-                <span className="text-3xl leading-9 shrink-0" aria-hidden="true">{p.emoji}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2 flex-wrap">
-                    <span className="text-lg font-black text-white">{p.title}</span>
-                    {p.recomendado && <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Recomendado</span>}
+          {ROTULO_PRESETS.map(p => {
+            const activo = atajoActivo === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                role="switch"
+                aria-checked={activo}
+                onClick={() => toggleAtajo(p.id, p.title)}
+                className={`w-full text-left rounded-2xl border-2 p-4 space-y-3 transition-colors ${activo ? 'bg-white/10' : 'border-white/10 bg-slate-950/50 hover:border-white/30'}`}
+                style={activo ? { borderColor: accent } : undefined}
+              >
+                <span className="flex items-start gap-3">
+                  <span className="text-3xl leading-9 shrink-0" aria-hidden="true">{p.emoji}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 flex-wrap">
+                      <span className="text-lg font-black text-white">{p.title}</span>
+                      {p.recomendado && <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Recomendado</span>}
+                    </span>
+                    <span className="block text-[15px] text-slate-300 leading-snug mt-1">{p.desc}</span>
                   </span>
-                  <span className="block text-[15px] text-slate-300 leading-snug mt-1">{p.desc}</span>
+                  <span className={`relative shrink-0 w-12 h-7 rounded-full transition-colors ${activo ? 'bg-emerald-500' : 'bg-slate-600'}`} aria-hidden="true">
+                    <span className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${activo ? 'translate-x-5' : ''}`} />
+                  </span>
                 </span>
-              </span>
-              <span className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <span className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 space-y-1">
-                  <span className="block text-xs font-black uppercase tracking-wider text-emerald-300">Sí se imprime</span>
-                  {p.sale.map(t => (
-                    <span key={t} className="flex items-start gap-1.5 text-sm text-slate-200"><Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />{t}</span>
-                  ))}
-                </span>
-                {p.noSale.length > 0 && (
-                  <span className="rounded-xl bg-rose-500/10 border border-rose-500/20 p-3 space-y-1">
-                    <span className="block text-xs font-black uppercase tracking-wider text-rose-300">No se imprime</span>
-                    {p.noSale.map(t => (
-                      <span key={t} className="flex items-start gap-1.5 text-sm text-slate-200"><X className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />{t}</span>
+                <span className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <span className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 space-y-1">
+                    <span className="block text-xs font-black uppercase tracking-wider text-emerald-300">Sí se imprime</span>
+                    {p.sale.map(t => (
+                      <span key={t} className="flex items-start gap-1.5 text-sm text-slate-200"><Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />{t}</span>
                     ))}
                   </span>
-                )}
-              </span>
-              <span className="block text-center text-sm font-black rounded-xl py-2.5 text-slate-950" style={{ backgroundColor: accent }}>Usar este atajo</span>
-            </button>
-          ))}
+                  {p.noSale.length > 0 && (
+                    <span className="rounded-xl bg-rose-500/10 border border-rose-500/20 p-3 space-y-1">
+                      <span className="block text-xs font-black uppercase tracking-wider text-rose-300">No se imprime</span>
+                      {p.noSale.map(t => (
+                        <span key={t} className="flex items-start gap-1.5 text-sm text-slate-200"><X className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />{t}</span>
+                      ))}
+                    </span>
+                  )}
+                </span>
+                <span className={`block text-center text-sm font-black rounded-xl py-2.5 ${activo ? 'bg-white/10 text-white' : 'text-slate-950'}`} style={activo ? undefined : { backgroundColor: accent }}>
+                  {activo ? '✓ Puesto • Toca para quitarlo' : 'Tocar para poner este atajo'}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </Card>
 
@@ -282,32 +321,22 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update, a
 
       {/* Parte 3: remitente, apagado por defecto */}
       <Card badge={<NumberBadge n={3} color={ZONA.remitente} />} title="Tus datos (remitente)" description="El remitente eres tú: quien envía el paquete.">
-        <BigSwitch
-          checked={r.incluir_remitente}
-          onChange={v => {
-            updateRotulo({ incluir_remitente: v });
-            if (v) toast('Ahora elige qué datos tuyos se imprimen', 'info');
-          }}
-          emoji="📦"
-          label="Poner mis datos en el rótulo"
-          description={r.incluir_remitente ? 'Prendido: tus datos se imprimen.' : 'Apagado: tus datos NO se imprimen (así viene por defecto).'}
-        />
-        {!r.incluir_remitente && (
+        <div className="space-y-2">
+          <p className="text-base font-black text-white">¿Qué datos tuyos quieres poner?</p>
+          <p className="text-sm text-slate-400 -mt-1">Por defecto no se pone ninguno. Prende solo los que quieras que salgan.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <BigSwitch compact checked={r.mostrar_remitente_nombre} onChange={v => setRemitente({ mostrar_remitente_nombre: v })} emoji="🏪" label="Mi nombre" />
+            <BigSwitch compact checked={r.mostrar_remitente_ruc_dni} onChange={v => setRemitente({ mostrar_remitente_ruc_dni: v })} emoji="🪪" label="Mi DNI o RUC" />
+            <BigSwitch compact checked={r.mostrar_remitente_telefono} onChange={v => setRemitente({ mostrar_remitente_telefono: v })} emoji="📱" label="Mi celular" />
+            <BigSwitch compact checked={r.mostrar_remitente_origen} onChange={v => setRemitente({ mostrar_remitente_origen: v })} emoji="📍" label="Mi dirección" />
+          </div>
+        </div>
+        {!remitenteActivo(r) && (
           <Explain>Ponlos si quieres que la agencia sepa quién envía y pueda llamarte o devolverte el paquete si no lo recogen.</Explain>
         )}
 
-        {r.incluir_remitente && (
+        {remitenteActivo(r) && (
           <div className="rounded-3xl border-2 p-4 space-y-4 animate-slideUp" style={{ borderColor: `${ZONA.remitente}66`, backgroundColor: `${ZONA.remitente}12` }}>
-            <div className="space-y-2">
-              <p className="text-base font-black text-white">¿Qué datos tuyos se ponen?</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <BigSwitch compact checked={r.mostrar_remitente_nombre} onChange={v => updateRotulo({ mostrar_remitente_nombre: v })} emoji="🏪" label="Nombre" />
-                <BigSwitch compact checked={r.mostrar_remitente_ruc_dni} onChange={v => updateRotulo({ mostrar_remitente_ruc_dni: v })} emoji="🪪" label="DNI o RUC" />
-                <BigSwitch compact checked={r.mostrar_remitente_telefono} onChange={v => updateRotulo({ mostrar_remitente_telefono: v })} emoji="📱" label="Celular" />
-                <BigSwitch compact checked={r.mostrar_remitente_origen} onChange={v => updateRotulo({ mostrar_remitente_origen: v })} emoji="📍" label="Dirección" />
-              </div>
-            </div>
-
             <div className="space-y-2">
               <p className="text-base font-black text-white">¿De dónde saco tus datos?</p>
               <ChoiceCards

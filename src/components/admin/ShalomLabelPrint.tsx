@@ -115,10 +115,10 @@ export const ShalomLabelPrint: React.FC<Props> = ({
 
   // Estilo de rotulado efectivo
   const effectiveStyle: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving' =
+    // Cada agencia elige su diseño; si no eligió, se imprime en blanco y negro
     estiloRotuloOverride ||
     currentMethod?.config_rotulado?.estilo_rotulo ||
-    tallerConfig.estilo_rotulo_default ||
-    'estandar_oficial';
+    'eco_ink_saving';
 
   // Datos 100% Personalizables del Emisor (Remitente)
   const senderCustom = currentMethod?.config_rotulado?.remitente_personalizado?.usar_personalizado

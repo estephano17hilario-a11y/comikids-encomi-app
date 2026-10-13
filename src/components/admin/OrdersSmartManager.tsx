@@ -214,14 +214,50 @@ export const OrdersSmartManager: React.FC = () => {
 
   const today = toLocalDate(new Date());
 
+  const yesterday = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return toLocalDate(d);
+  }, []);
+
+  const tomorrow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return toLocalDate(d);
+  }, []);
+
+  const dayAfterTomorrow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return toLocalDate(d);
+  }, []);
+
   // Clasificación por Fechas: 'none' | 'registrado' | 'programado' | 'entregado'
   const [dateFilterType, setDateFilterType] = useState<'none' | 'registrado' | 'programado' | 'entregado'>('none');
   const [dateFilterValue, setDateFilterValue] = useState<string>(today);
 
-  const setQuickDate = (offsetDays: number) => {
+  const toggleQuickDate = (offsetDays: number) => {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
-    setDateFilterValue(toLocalDate(d));
+    const targetDate = toLocalDate(d);
+    if (dateFilterType !== 'none' && dateFilterValue === targetDate) {
+      setDateFilterType('none');
+    } else {
+      setDateFilterValue(targetDate);
+      if (dateFilterType === 'none') {
+        setDateFilterType('programado');
+      }
+      setQuickFilter('none');
+    }
+  };
+
+  const handleManualDateChange = (val: string) => {
+    if (!val) return;
+    setDateFilterValue(val);
+    if (dateFilterType === 'none') {
+      setDateFilterType('programado');
+    }
+    setQuickFilter('none');
   };
 
   // Conteos dinámicos para la fecha seleccionada en dateFilterValue
@@ -258,6 +294,8 @@ export const OrdersSmartManager: React.FC = () => {
     orders: Pedido[];
     statusName: string;
   } | null>(null);
+  const [changeDateOrder, setChangeDateOrder] = useState<Pedido | null>(null);
+  const [changeDateCustomValue, setChangeDateCustomValue] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
 
@@ -513,6 +551,24 @@ export const OrdersSmartManager: React.FC = () => {
       toast('No se pudo cambiar el estado. Intenta de nuevo.', 'error');
     } finally {
       setBusyOrderId(null);
+    }
+  };
+
+  const handleSaveOrderDate = async (orderId: string, newDate: string | null) => {
+    setIsProcessing(true);
+    try {
+      await updatePedido(orderId, { fecha_limite: (newDate ? newDate : null) as any });
+      setChangeDateOrder(null);
+      toast(
+        newDate
+          ? `Fecha de envío cambiada a ${formatFechaConDia(newDate)}`
+          : 'Fecha programada eliminada',
+        'info'
+      );
+    } catch (err: any) {
+      toast(err?.message || 'Error al actualizar fecha', 'error');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -789,22 +845,18 @@ export const OrdersSmartManager: React.FC = () => {
               <span className="text-xs font-bold truncate">{urgency.label}</span>
             </div>
             {stage !== 'entregado' && (
-              <label className="relative shrink-0 inline-flex items-center gap-1 text-[11px] font-bold opacity-80 hover:opacity-100 cursor-pointer">
-                <span className="underline underline-offset-2">Cambiar</span>
-                <input
-                  type="date"
-                  aria-label="Cambiar fecha de envío"
-                  value={getOrderDateOnly(order.fecha_limite)}
-                  onChange={async (e) => {
-                    const newDate = e.target.value;
-                    if (newDate) {
-                      await updatePedido(order.id, { fecha_limite: newDate });
-                      toast(`Fecha de envío cambiada a ${formatFechaConDia(newDate)}`, 'info');
-                    }
-                  }}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-              </label>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setChangeDateOrder(order);
+                  setChangeDateCustomValue(getOrderDateOnly(order.fecha_limite) || today);
+                }}
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/20 hover:bg-black/40 text-xs font-bold opacity-90 hover:opacity-100 transition-all border border-white/10 active:scale-95"
+                title="Cambiar fecha programada de envío"
+              >
+                <span>Cambiar</span>
+              </button>
             )}
           </div>
 
@@ -1050,6 +1102,7 @@ export const OrdersSmartManager: React.FC = () => {
     notifyModalData ||
     deliveryTargetOrders ||
     swipeTargetOrder ||
+    changeDateOrder ||
     isProcessing
   );
 
@@ -1340,66 +1393,127 @@ export const OrdersSmartManager: React.FC = () => {
               aria-expanded={showDateTools}
               className={`min-h-9 px-3 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all ${
                 showDateTools || dateFilterType !== 'none'
-                  ? 'bg-cyan-500/15 text-cyan-200 border-cyan-500/40'
+                  ? 'bg-cyan-500/20 text-cyan-200 border-cyan-500/50 shadow-sm shadow-cyan-500/20'
                   : 'border-white/10 text-slate-300 hover:bg-white/5'
               }`}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>Filtrar por fecha</span>
-              {dateFilterType !== 'none' && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+              <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Clasificar por días</span>
+              {dateFilterType !== 'none' && (
+                <span className="px-1.5 py-0.5 rounded-md bg-cyan-400 text-slate-950 text-[10px] font-black uppercase tracking-wide">
+                  {dateFilterValue === today
+                    ? 'Hoy'
+                    : dateFilterValue === yesterday
+                    ? 'Ayer'
+                    : dateFilterValue === tomorrow
+                    ? 'Mañana'
+                    : formatShortDate(dateFilterValue)}
+                </span>
+              )}
             </button>
           </div>
         </div>
 
         {/* Panel de fechas (plegable) */}
-        {(showDateTools || dateFilterType !== 'none') && (
-          <div className="p-3 rounded-2xl bg-slate-950/60 border border-white/10 space-y-2.5 animate-fadeIn">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                { id: 'none' as const, label: 'Sin filtro' },
-                { id: 'registrado' as const, label: `Registrados (${dateCounts.registrados})` },
-                { id: 'programado' as const, label: `Programados (${dateCounts.programados})` },
-                { id: 'entregado' as const, label: `Entregados (${dateCounts.entregados})` },
-              ].map(opt => (
-                <button
-                  key={opt.id}
-                  onClick={() => {
-                    setDateFilterType(opt.id);
-                    setQuickFilter('none');
-                  }}
-                  aria-pressed={dateFilterType === opt.id}
-                  className={`min-h-9 px-3 rounded-xl text-xs font-bold transition-all ${
-                    dateFilterType === opt.id ? 'bg-cyan-500 text-slate-950' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+        {(showDateTools || dateFilterType !== 'none') && (() => {
+          const isAyer = dateFilterType !== 'none' && dateFilterValue === yesterday;
+          const isHoy = dateFilterType !== 'none' && dateFilterValue === today;
+          const isManana = dateFilterType !== 'none' && dateFilterValue === tomorrow;
+          const isManualCustom = dateFilterType !== 'none' && !isAyer && !isHoy && !isManana && Boolean(dateFilterValue);
+
+          return (
+            <div className="p-3 sm:p-4 rounded-2xl bg-slate-950/70 border border-cyan-500/30 space-y-3 animate-fadeIn shadow-xl">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { id: 'none' as const, label: 'Sin filtro' },
+                  { id: 'programado' as const, label: `Programados (${dateCounts.programados})` },
+                  { id: 'registrado' as const, label: `Registrados (${dateCounts.registrados})` },
+                  { id: 'entregado' as const, label: `Entregados (${dateCounts.entregados})` },
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => {
+                      setDateFilterType(opt.id);
+                      setQuickFilter('none');
+                    }}
+                    aria-pressed={dateFilterType === opt.id}
+                    className={`min-h-9 px-3 rounded-xl text-xs font-bold transition-all ${
+                      dateFilterType === opt.id ? 'bg-cyan-500 text-slate-950 font-black shadow-sm' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
+                {[
+                  { label: 'Ayer', offset: -1, date: yesterday, hint: formatShortDate(yesterday), isSelected: isAyer },
+                  { label: 'Hoy', offset: 0, date: today, hint: formatShortDate(today), isSelected: isHoy },
+                  { label: 'Mañana', offset: 1, date: tomorrow, hint: formatShortDate(tomorrow), isSelected: isManana },
+                ].map(q => (
+                  <button
+                    key={q.label}
+                    type="button"
+                    onClick={() => toggleQuickDate(q.offset)}
+                    aria-pressed={q.isSelected}
+                    className={`min-h-9 px-3.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      q.isSelected
+                        ? 'bg-cyan-400 text-slate-950 font-black shadow-md shadow-cyan-400/25 ring-2 ring-white/30'
+                        : 'bg-white/5 hover:bg-white/10 text-slate-200 border border-white/5'
+                    }`}
+                  >
+                    {q.isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    <span>{q.label}</span>
+                    <span className={`text-[10px] ${q.isSelected ? 'text-slate-950/70 font-bold' : 'text-slate-400'}`}>
+                      ({q.hint})
+                    </span>
+                  </button>
+                ))}
+
+                {/* Selección manual de fecha */}
+                <div
+                  className={`flex items-center gap-1.5 min-h-9 px-2.5 rounded-xl border transition-all ${
+                    isManualCustom
+                      ? 'bg-cyan-400 text-slate-950 font-black border-cyan-300 shadow-md shadow-cyan-400/25 ring-2 ring-white/30'
+                      : 'bg-slate-900 border-white/15 text-slate-300'
                   }`}
+                  title="Elegir cualquier otra fecha en el calendario"
                 >
-                  {opt.label}
-                </button>
-              ))}
+                  {isManualCustom ? (
+                    <Check className="w-3.5 h-3.5 stroke-[3] text-slate-950 shrink-0" />
+                  ) : (
+                    <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  )}
+                  <span className={`text-[11px] font-bold whitespace-nowrap ${isManualCustom ? 'text-slate-950 font-black' : 'text-slate-400'}`}>
+                    {isManualCustom ? 'Fecha:' : 'Otra fecha:'}
+                  </span>
+                  <input
+                    type="date"
+                    value={dateFilterValue}
+                    onChange={(e) => handleManualDateChange(e.target.value)}
+                    aria-label="Fecha personalizada a consultar"
+                    className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${
+                      isManualCustom ? 'text-slate-950 font-black' : 'text-cyan-300'
+                    }`}
+                  />
+                </div>
+
+                {dateFilterType !== 'none' && (
+                  <button
+                    type="button"
+                    onClick={() => setDateFilterType('none')}
+                    className="min-h-9 px-2.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 text-xs font-bold transition-all flex items-center gap-1 sm:ml-auto"
+                    title="Quitar filtro de fecha"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Quitar filtro</span>
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                { label: 'Ayer', offset: -1 },
-                { label: 'Hoy', offset: 0 },
-                { label: 'Mañana', offset: 1 },
-              ].map(q => (
-                <button
-                  key={q.label}
-                  onClick={() => setQuickDate(q.offset)}
-                  className="min-h-9 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-200"
-                >
-                  {q.label}
-                </button>
-              ))}
-              <input
-                type="date"
-                value={dateFilterValue}
-                onChange={(e) => setDateFilterValue(e.target.value)}
-                aria-label="Fecha a consultar"
-                className="min-h-9 px-3 bg-slate-900 border border-cyan-500/40 rounded-xl text-xs font-mono font-bold text-cyan-200 focus:outline-none focus:border-cyan-400"
-              />
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Resumen de filtros activos */}
         {hasActiveFilters && (
@@ -1700,6 +1814,131 @@ export const OrdersSmartManager: React.FC = () => {
             toast(`${deliveredIds.length} ${deliveredIds.length === 1 ? 'pedido entregado' : 'pedidos entregados'}`);
           }}
         />
+      )}
+
+      {/* Modal: Cambiar fecha de envío del pedido */}
+      {changeDateOrder && createPortal(
+        <div
+          className="fixed inset-0 z-9999 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+          data-no-print="true"
+          onClick={() => setChangeDateOrder(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="change-date-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-cyan-500/30 p-5 sm:p-6 space-y-4 shadow-2xl animate-slideUp sm:animate-scaleUp pb-safe text-white"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 id="change-date-title" className="text-base font-black text-white truncate">
+                    Cambiar fecha de envío
+                  </h3>
+                  <p className="text-xs text-slate-400 truncate">
+                    Pedido #{changeDateOrder.codigo_seguimiento} • {changeDateOrder.usuario?.nombre_completo || 'Cliente'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setChangeDateOrder(null)}
+                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center shrink-0"
+                aria-label="Cerrar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-white/5 border border-white/5 text-xs text-slate-300">
+              <span className="text-slate-400 font-medium">Fecha actual: </span>
+              <strong className="text-cyan-300">
+                {changeDateOrder.fecha_limite
+                  ? formatFechaConDia(changeDateOrder.fecha_limite)
+                  : 'Sin fecha programada'}
+              </strong>
+            </div>
+
+            {/* Accesos rápidos: Hoy, Mañana, Pasado mañana */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-400 block">
+                Selección rápida:
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Hoy', date: today, hint: formatShortDate(today) },
+                  { label: 'Mañana', date: tomorrow, hint: formatShortDate(tomorrow) },
+                  { label: 'Pasado mañana', date: dayAfterTomorrow, hint: formatShortDate(dayAfterTomorrow) },
+                ].map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => handleSaveOrderDate(changeDateOrder.id, item.date)}
+                    className="p-2.5 rounded-2xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/40 text-center transition-all group disabled:opacity-50"
+                  >
+                    <div className="text-xs font-black text-white group-hover:text-cyan-300">
+                      {item.label}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                      {item.hint}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Elegir manualmente otra fecha */}
+            <div className="space-y-1.5 pt-1">
+              <label htmlFor="custom-order-date-input" className="text-xs font-bold text-slate-400 block">
+                O elige cualquier fecha en el calendario:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="custom-order-date-input"
+                  type="date"
+                  value={changeDateCustomValue}
+                  onChange={(e) => setChangeDateCustomValue(e.target.value)}
+                  className="flex-1 min-h-11 px-3 bg-slate-950 border border-white/15 focus:border-cyan-400 rounded-xl text-sm font-bold text-white focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!changeDateCustomValue || isProcessing}
+                  onClick={() => handleSaveOrderDate(changeDateOrder.id, changeDateCustomValue)}
+                  className="min-h-11 px-4 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs shadow-md shadow-cyan-400/20 disabled:opacity-50 transition-all"
+                >
+                  {isProcessing ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+
+            {/* Acciones secundarias */}
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10">
+              {changeDateOrder.fecha_limite ? (
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => handleSaveOrderDate(changeDateOrder.id, null)}
+                  className="text-xs font-bold text-rose-400 hover:text-rose-300 hover:underline"
+                >
+                  Quitar fecha programada
+                </button>
+              ) : <div />}
+              <button
+                type="button"
+                onClick={() => setChangeDateOrder(null)}
+                className="min-h-9 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

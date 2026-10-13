@@ -293,7 +293,7 @@ export const DEFAULT_TALLER_CONFIG: TallerConfig = {
   mensaje_corte_personalizado: '',
   logo_url: '/Comikids.png',
   tema_fondo: 'vision-obsidian',
-  estilo_rotulo_default: 'estandar_oficial',
+  estilo_rotulo_default: 'eco_ink_saving',
 };
 
 export const getDefaultTallerConfigForEmpresa = (empresa?: EmpresaAccount | null): TallerConfig => {
@@ -329,7 +329,7 @@ export const getDefaultTallerConfigForEmpresa = (empresa?: EmpresaAccount | null
     mensaje_corte_personalizado: '',
     logo_url: empresa.logo_url || '',
     tema_fondo: empresa.tema_fondo || 'vision-obsidian',
-    estilo_rotulo_default: 'estandar_oficial',
+    estilo_rotulo_default: 'eco_ink_saving',
     remitente_default: {
       nombre: cleanNombre,
       ruc_dni: cleanNum,

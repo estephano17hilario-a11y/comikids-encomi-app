@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /webhook/
+
+Sitemap: https://comikids-encomi-app.vercel.app/sitemap.xml

@@ -1,0 +1,22 @@
+{
+  "name": "Encomi — Gestión de envíos",
+  "short_name": "Encomi",
+  "description": "Registra, clasifica y despacha tus paquetes con Shalom, Olva y motorizado.",
+  "lang": "es-PE",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#060913",
+  "theme_color": "#060913",
+  "categories": ["business", "productivity", "shopping"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/encomi-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Nuevo envío", "url": "/?action=nuevo_envio", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

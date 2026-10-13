@@ -41,52 +41,39 @@ export const ClientPortal: React.FC = () => {
       {currentUser ? (
         <ClientHUD />
       ) : (
-        <header className="glass-panel border-b border-cyan-500/20 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-6 relative z-0 backdrop-blur-md shadow-lg transition-all app-top-header client-top-header">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              {/* Ícono de Encomi: Redirige al Funnel de Encomi */}
-              <button
-                type="button"
-                onClick={() => { window.location.href = '/?funnel=encomi'; }}
-                title="Ir al Funnel oficial de Encomi"
-                className="w-9 h-9 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-lg shadow-md shadow-cyan-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-              >
-                📦
-              </button>
-
-              {/* Nombre de Encomi: Redirige al Funnel */}
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = '/?funnel=encomi';
-                }}
-                title="Ir al Funnel oficial de Encomi"
-                className="text-left cursor-pointer group"
-              >
-                <h1 className="text-base font-black text-white leading-tight group-hover:text-cyan-300 transition-colors">
-                  Encomi
+        <header className="glass-panel border-b border-cyan-500/20 px-4 pt-safe-header pb-3 sm:px-6 relative z-0 backdrop-blur-md shadow-lg transition-all app-top-header client-top-header">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+            {/* Marca de la tienda: la clienta compra a la tienda, no a la plataforma */}
+            <div className="flex items-center gap-3 min-w-0">
+              {tallerConfig?.logo_url ? (
+                <img
+                  src={tallerConfig.logo_url}
+                  alt=""
+                  className="w-11 h-11 rounded-2xl object-cover bg-white border border-white/15 shrink-0"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                />
+              ) : (
+                <div className="w-11 h-11 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-lg shrink-0" aria-hidden="true">
+                  📦
+                </div>
+              )}
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-lg font-black text-white leading-tight truncate">
+                  {tallerConfig?.nombre_taller || 'Encomi'}
                 </h1>
-                <p className="text-[10px] text-slate-400 group-hover:text-slate-300">
-                  Despacho de Mercadería (Shalom & Moto)
-                </p>
-              </button>
+                <p className="text-xs text-slate-400 truncate">Registra tu envío en 1 minuto</p>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-2xl text-xs sm:text-sm font-black bg-gradient-to-r from-pink-500/25 via-purple-500/25 to-cyan-500/25 text-pink-200 border-2 border-pink-400/50 flex items-center gap-2 shadow-xl shadow-pink-500/25 tracking-wide">
-                {tallerConfig?.logo_url ? (
-                  <img
-                    src={tallerConfig.logo_url}
-                    alt={tallerConfig?.nombre_taller || 'Empresa'}
-                    className="w-5 h-5 sm:w-6 sm:h-6 object-contain rounded"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                  />
-                ) : (
-                  <span className="text-sm">🏢</span>
-                )}
-                <span className="truncate max-w-[150px] sm:max-w-xs">{tallerConfig?.nombre_taller || 'Encomi'}</span>
-              </span>
-            </div>
+            <a
+              href="/?funnel=encomi"
+              className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-white/10 text-[11px] text-slate-400 hover:text-white hover:border-white/20 transition-colors"
+              title="Conoce Encomi"
+            >
+              <span className="hidden min-[380px]:inline">con</span>
+              <img src="/encomi-icon.svg" alt="" className="w-4 h-4 rounded" />
+              <strong className="font-black text-slate-200">Encomi</strong>
+            </a>
           </div>
         </header>
       )}
@@ -101,6 +88,7 @@ export const ClientPortal: React.FC = () => {
               
               <button
                 onClick={() => setActiveSection('crear_pedido')}
+                aria-current={activeSection === 'crear_pedido' ? 'page' : undefined}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
                   activeSection === 'crear_pedido'
                     ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
@@ -113,6 +101,7 @@ export const ClientPortal: React.FC = () => {
 
               <button
                 onClick={() => setActiveSection('mis_pedidos')}
+                aria-current={activeSection === 'mis_pedidos' ? 'page' : undefined}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all relative ${
                   activeSection === 'mis_pedidos'
                     ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
@@ -130,6 +119,7 @@ export const ClientPortal: React.FC = () => {
 
               <button
                 onClick={() => setActiveSection('mis_logros')}
+                aria-current={activeSection === 'mis_logros' ? 'page' : undefined}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
                   activeSection === 'mis_logros'
                     ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
@@ -142,13 +132,14 @@ export const ClientPortal: React.FC = () => {
 
               <button
                 onClick={() => setActiveSection('encomi_ai')}
+                aria-current={activeSection === 'encomi_ai' ? 'page' : undefined}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
                   activeSection === 'encomi_ai'
                     ? 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-lg shadow-cyan-500/30'
                     : 'text-cyan-400 hover:text-white'
                 }`}
               >
-                <Sparkles className="w-4 h-4 animate-pulse" />
+                <Sparkles className="w-4 h-4" />
                 <span>Encomi AI</span>
               </button>
 

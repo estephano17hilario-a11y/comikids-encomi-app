@@ -12,12 +12,6 @@ export const ClientHUD: React.FC = () => {
   const [showAdditionalDataModal, setShowAdditionalDataModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
 
-  if (!currentUser) return null;
-
-  const xp = currentUser.puntos_xp || 0;
-  const levelInfo = calculateLevel(xp);
-  const hasCompletedAdditionalData = Boolean(currentUser.datos_adicionales_completados);
-
   const isAnyClientHudModalOpen = Boolean(showLogoutModal || showAdditionalDataModal || showEditProfileModal);
 
   React.useEffect(() => {
@@ -34,9 +28,15 @@ export const ClientHUD: React.FC = () => {
     };
   }, [isAnyClientHudModalOpen]);
 
+  if (!currentUser) return null;
+
+  const xp = currentUser.puntos_xp || 0;
+  const levelInfo = calculateLevel(xp);
+  const hasCompletedAdditionalData = Boolean(currentUser.datos_adicionales_completados);
+
   return (
     <>
-      <header className="w-full bg-slate-950/85 border-b border-white/8 px-4 pt-10 pb-4 sm:pt-12 sm:pb-4 sm:px-8 sticky top-0 z-40 backdrop-blur-2xl transition-all shadow-xl app-top-header client-top-header">
+      <header className="w-full bg-slate-950/85 border-b border-white/8 px-4 pt-safe-header pb-3 sm:px-8 sticky top-0 z-40 backdrop-blur-2xl transition-all shadow-xl app-top-header client-top-header">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 sm:gap-4">
           
           {/* Avatar + Name (Clickeable para editar perfil y predeterminados) */}
@@ -84,28 +84,16 @@ export const ClientHUD: React.FC = () => {
             
             {/* Botón de Datos Adicionales con Urgencia o Modo Edición */}
             {!hasCompletedAdditionalData ? (
-              <div className="relative flex flex-col items-center">
-                {/* Tooltip "¡DALE CLICK!" */}
-                <div className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-bounce">
-                  <div className="bg-amber-400 text-slate-950 text-[9px] font-black px-2 py-1 rounded-lg whitespace-nowrap shadow-lg shadow-amber-500/50">
-                    ¡DALE CLICK! 👆
-                  </div>
-                  <div className="w-0 h-0 mx-auto border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-amber-400" />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowAdditionalDataModal(true)}
-                  style={{ animationDuration: '0.5s' }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 text-xs sm:text-sm font-black shadow-xl shadow-amber-500/50 active:scale-95 animate-pulse transition-all cursor-pointer ring-4 ring-amber-400/40"
-                  title="¡Completar datos adicionales importantes!"
-                >
-                  <span className="w-5 h-5 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center font-black text-xs shrink-0 shadow">
-                    !
-                  </span>
-                  <span>DATOS</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdditionalDataModal(true)}
+                className="relative flex items-center gap-1.5 min-h-10 px-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs sm:text-sm font-black shadow-lg shadow-amber-500/30 active:scale-95 transition-all"
+                title="Completa tus datos y gana 50 XP"
+              >
+                <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-rose-500 border-2 border-slate-950" aria-hidden="true" />
+                <span>Completar datos</span>
+                <span className="hidden sm:inline text-[10px] font-black bg-slate-950/15 px-1.5 py-0.5 rounded-lg">+50 XP</span>
+              </button>
             ) : (
               <button
                 type="button"
@@ -122,10 +110,10 @@ export const ClientHUD: React.FC = () => {
             <button
               type="button"
               onClick={triggerConfetti}
-              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/9 border border-white/10 text-amber-300 text-xs sm:text-sm font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
+              className="hidden min-[380px]:flex items-center gap-1.5 sm:gap-2 min-h-10 px-3 sm:px-4 rounded-2xl bg-white/5 hover:bg-white/9 border border-white/10 text-amber-300 text-xs sm:text-sm font-bold transition-all active:scale-95 shadow-sm cursor-pointer"
               title="Celebrar mis puntos XP"
             >
-              <Sparkles className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
+              <Sparkles className="w-4 h-4 text-amber-400" />
               <span className="font-mono font-black">{xp} XP</span>
             </button>
 
@@ -133,8 +121,9 @@ export const ClientHUD: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowLogoutModal(true)}
-              className="p-2.5 rounded-2xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors cursor-pointer"
-              title="Cerrar Sesión"
+              className="min-w-10 min-h-10 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors"
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
             >
               <LogOut className="w-4 h-4" />
             </button>

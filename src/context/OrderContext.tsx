@@ -70,10 +70,21 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const knownOrderIdsRef = useRef<Set<string>>(new Set());
   const isInitialLoadRef = useRef<boolean>(true);
 
+  // currentEmpresa se recrea en cada render de AuthProvider; se guarda en un ref para que
+  // refreshData no cambie de identidad (eso re-suscribía el canal realtime y disparaba descargas en cadena).
+  const currentEmpresaRef = useRef(currentEmpresa);
+  currentEmpresaRef.current = currentEmpresa;
+
+  // Control de concurrencia: si ya hay una descarga en curso, se agenda UNA sola más al terminar.
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshQueuedRef = useRef(false);
+  const debounceTimerRef = useRef<number | null>(null);
+
   const deliveredCount = pedidos.filter(p => p.estado_envio === 'entregado').length;
   const companyAchievements = ordersService.getCompanyAchievements(deliveredCount);
 
-  const refreshData = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
+    const currentEmpresa = currentEmpresaRef.current;
     try {
       // If empresa, get orders for that specific empresa. If client, get only their personal orders
       const isEmpresaRole = role === 'empresa' || Boolean(impersonatedEmpresa);
@@ -144,8 +155,36 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id, currentUser?.dni, role, activeEmpresaId, currentEmpresa, impersonatedEmpresa]);
+  }, [currentUser?.id, currentUser?.dni, role, activeEmpresaId, impersonatedEmpresa]);
 
+  const refreshData = useCallback(async (): Promise<void> => {
+    if (refreshInFlightRef.current) {
+      refreshQueuedRef.current = true;
+      return refreshInFlightRef.current;
+    }
+    const run = (async () => {
+      try {
+        await fetchAll();
+        while (refreshQueuedRef.current) {
+          refreshQueuedRef.current = false;
+          await fetchAll();
+        }
+      } finally {
+        refreshInFlightRef.current = null;
+      }
+    })();
+    refreshInFlightRef.current = run;
+    return run;
+  }, [fetchAll]);
+
+  // Agrupa ráfagas de eventos (p. ej. 20 pedidos actualizados en masa) en una sola descarga
+  const scheduleRefresh = useCallback((delayMs = 600) => {
+    if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
+      refreshData().catch(e => console.warn('scheduleRefresh warn:', e));
+    }, delayMs);
+  }, [refreshData]);
 
   useEffect(() => {
     NativeNotificationService.requestPermissions();
@@ -154,7 +193,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     // Eventos de entrada/salida de la app (cambio de visibilidad y focus)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        refreshData();
+        scheduleRefresh(150);
       }
     };
     window.addEventListener('focus', handleVisibilityChange);
@@ -171,13 +210,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             // Solo alertar si el pedido pertenece a la empresa activa
             if (!incomingOrder?.empresa_id || incomingOrder.empresa_id === activeEmpresaId) {
               soundService.playNewOrderAlert();
-              await refreshData();
+              scheduleRefresh(100);
               if (incomingOrder) {
                 setLatestNewOrder(incomingOrder);
               }
             }
           } else if (event.data?.type === 'UPDATE_ORDER') {
-            await refreshData();
+            scheduleRefresh();
           }
         };
       }
@@ -185,10 +224,17 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       console.warn('BroadcastChannel fallback:', e);
     }
 
-    // Polling de sincronización periódica cada 10 segundos
+    // Polling de respaldo: con realtime activo basta cada 30 s; sin él, cada 12 s.
+    // No se descarga nada mientras la pestaña/app está en segundo plano (ahorra datos y batería).
+    const pollMs = isSupabaseConfigured && supabase ? 30000 : 12000;
     const fastSyncInterval = setInterval(() => {
-      refreshData();
-    }, 10000);
+      if (document.visibilityState === 'visible') {
+        refreshData();
+      }
+    }, pollMs);
+
+    const belongsToActiveEmpresa = (row: any) =>
+      !row?.empresa_id || !activeEmpresaId || row.empresa_id === activeEmpresaId || role !== 'empresa';
 
     // Supabase Realtime Channel
     let activeChannel: any = null;
@@ -203,7 +249,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             const newP = payload.new as Pedido;
             if (!newP?.empresa_id || newP.empresa_id === activeEmpresaId) {
               soundService.playNewOrderAlert();
-              await refreshData();
+              scheduleRefresh(100);
               if (newP) {
                 setLatestNewOrder(newP);
                 NativeNotificationService.notifyNewOrder(
@@ -218,22 +264,22 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'pedidos' },
-          async () => {
-            await refreshData();
+          (payload) => {
+            if (belongsToActiveEmpresa(payload.new)) scheduleRefresh();
           }
         )
         .on(
           'postgres_changes',
           { event: 'DELETE', schema: 'public', table: 'pedidos' },
-          async () => {
-            await refreshData();
+          () => {
+            scheduleRefresh();
           }
         )
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'taller_config' },
           async () => {
-            const remoteConfig = await ordersService.fetchTallerConfig(activeEmpresaId, currentEmpresa);
+            const remoteConfig = await ordersService.fetchTallerConfig(activeEmpresaId, currentEmpresaRef.current);
             if (remoteConfig) {
               setTallerConfig(remoteConfig);
             }
@@ -247,12 +293,24 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       window.removeEventListener('focus', handleVisibilityChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(fastSyncInterval);
+      if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
       if (broadcastChannel) broadcastChannel.close();
       if (activeChannel && supabase) {
         supabase.removeChannel(activeChannel);
       }
     };
-  }, [refreshData, activeEmpresaId]);
+  }, [refreshData, scheduleRefresh, activeEmpresaId, role]);
+
+  // Actualización optimista: la pantalla cambia al instante y la nube se sincroniza detrás.
+  const applyLocalPatch = useCallback((ids: string[], patch: Partial<Pedido>) => {
+    const setIds = new Set(ids);
+    const now = new Date().toISOString();
+    setPedidos(prev => prev.map(p => {
+      if (!setIds.has(p.id)) return p;
+      const mergedUser = patch.usuario ? { ...p.usuario, ...patch.usuario } as Pedido['usuario'] : p.usuario;
+      return { ...p, ...patch, usuario: mergedUser, updated_at: now };
+    }));
+  }, []);
 
   const handleCreatePedido = async (data: Omit<Pedido, 'id' | 'codigo_seguimiento' | 'created_at' | 'estado_produccion' | 'estado_envio'>) => {
     const payloadWithEmpresa = {
@@ -284,11 +342,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const handleUpdatePedido = async (pedidoId: string, updates: Partial<Pedido>) => {
+    applyLocalPatch([pedidoId], updates);
     const updated = await ordersService.updatePedido(pedidoId, updates);
     if (updated) {
       soundService.playStatusChangeSuccess();
-      await refreshData();
+      setPedidos(prev => prev.map(p => (p.id === pedidoId ? { ...p, ...updated } : p)));
     }
+    scheduleRefresh();
     return updated;
   };
 
@@ -297,8 +357,8 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const ok = await ordersService.deletePedido(pedidoId);
     if (ok) {
       soundService.playStatusChangeSuccess();
-      await refreshData();
     }
+    scheduleRefresh();
     return ok;
   };
 
@@ -308,32 +368,38 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const ok = await ordersService.deleteMultiplePedidos(pedidoIds);
     if (ok) {
       soundService.playStatusChangeSuccess();
-      await refreshData();
     }
+    scheduleRefresh();
     return ok;
   };
 
   const handleUpdateMultipleEstados = async (pedidoIds: string[], estadoEnvio: EstadoEnvio, estadoProduccion?: EstadoProduccion) => {
+    applyLocalPatch(pedidoIds, {
+      estado_envio: estadoEnvio,
+      ...(estadoProduccion ? { estado_produccion: estadoProduccion } : {}),
+    });
     await ordersService.updateMultipleEstados(pedidoIds, estadoEnvio, estadoProduccion);
     soundService.playStatusChangeSuccess();
-    await refreshData();
+    scheduleRefresh();
   };
 
   const handleUpdateEstadoProduccion = async (pedidoId: string, nuevoEstado: EstadoProduccion) => {
+    applyLocalPatch([pedidoId], { estado_produccion: nuevoEstado });
     const updated = await ordersService.updateEstadoProduccion(pedidoId, nuevoEstado);
     if (updated) {
       soundService.playStatusChangeSuccess();
-      await refreshData();
     }
+    scheduleRefresh();
     return updated;
   };
 
   const handleUpdateEstadoEnvio = async (pedidoId: string, nuevoEstado: EstadoEnvio) => {
+    applyLocalPatch([pedidoId], { estado_envio: nuevoEstado });
     const updated = await ordersService.updateEstadoEnvio(pedidoId, nuevoEstado);
     if (updated) {
       soundService.playStatusChangeSuccess();
-      await refreshData();
     }
+    scheduleRefresh();
     return updated;
   };
 

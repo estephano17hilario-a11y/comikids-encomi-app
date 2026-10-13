@@ -1635,8 +1635,11 @@ class OrdersService {
         }
         const { data: dbOrders, error: ordersError } = await query;
         
-        // Sincronizar usuarios de Supabase en la memoria local
-        const { data: dbUsers } = await supabase.from('usuarios').select('*');
+        // Sincronizar usuarios de Supabase en la memoria local.
+        // Un cliente solo necesita su propio registro: no se descarga la tabla completa a su navegador.
+        const { data: dbUsers } = userId
+          ? await supabase.from('usuarios').select('*').eq('id', userId)
+          : await supabase.from('usuarios').select('*');
         if (dbUsers && dbUsers.length > 0) {
           const localUsers = this.getUsers();
           const mergedMap = new Map<string, Usuario>();

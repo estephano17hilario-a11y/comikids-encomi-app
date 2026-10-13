@@ -92,15 +92,47 @@ export const VisionAnalyticsDashboard: React.FC = () => {
   const { pedidos } = useOrders();
   
   // Default to today's real date
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  // Fecha local (en Perú, toISOString() ya es "mañana" desde las 7 pm)
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  // Periodos generados según la fecha actual (antes estaban fijos hasta agosto 2026)
+  const periodOptions = useMemo(() => {
+    const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const TRIM = ['Enero - Marzo', 'Abril - Junio', 'Julio - Septiembre', 'Octubre - Diciembre'];
+    const now = new Date();
+    const months: { value: string; label: string }[] = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        label: `${MESES[d.getMonth()]} ${d.getFullYear()}${i === 0 ? ' (actual)' : ''}`,
+      });
+    }
+    const quarters: { value: string; label: string }[] = [];
+    let qy = now.getFullYear();
+    let q = Math.floor(now.getMonth() / 3) + 1;
+    for (let i = 0; i < 6; i++) {
+      quarters.push({ value: `${qy}-T${q}`, label: `T${q}: ${TRIM[q - 1]} ${qy}${i === 0 ? ' (actual)' : ''}` });
+      q--;
+      if (q === 0) { q = 4; qy--; }
+    }
+    const years = [0, 1, 2].map(i => {
+      const y = now.getFullYear() - i;
+      return { value: String(y), label: `Año ${y}${i === 0 ? ' (actual)' : ''}` };
+    });
+    return { months, quarters, years };
+  }, []);
 
   // Timeframe and sub-modifiers
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('mes');
   const [selectedDay, setSelectedDay] = useState<string>(todayStr);
   const [selectedWeek, setSelectedWeek] = useState<string>('sem-actual');
-  const [selectedMonth, setSelectedMonth] = useState<string>('08');
-  const [selectedQuarter, setSelectedQuarter] = useState<string>('T3');
-  const [selectedYear, setSelectedYear] = useState<string>('2026');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => periodOptions.months[0].value);
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(() => periodOptions.quarters[0].value);
+  const [selectedYear, setSelectedYear] = useState<string>(() => periodOptions.years[0].value);
 
   // Animation trigger on modifier change
   const [animKey, setAnimKey] = useState(0);
@@ -251,14 +283,10 @@ export const VisionAnalyticsDashboard: React.FC = () => {
 
     // 4.3. MES: Real grouping by week ranges (01-07, 08-14, 15-21, 22-28, 29-31)
     if (timeFrame === 'mes') {
-      const targetMonth = parseInt(selectedMonth, 10);
+      const [mYear, mMonth] = selectedMonth.split('-').map(n => parseInt(n, 10));
       const monthOrders = pedidos.filter(p => {
-        try {
-          const d = new Date(p.created_at);
-          return d.getMonth() + 1 === targetMonth;
-        } catch {
-          return true;
-        }
+        const d = new Date(p.created_at);
+        return !isNaN(d.getTime()) && d.getFullYear() === mYear && d.getMonth() + 1 === mMonth;
       });
 
       const weeks = [
@@ -288,21 +316,20 @@ export const VisionAnalyticsDashboard: React.FC = () => {
 
     // 4.4. TRIMESTRE: Real grouping by 3 months
     if (timeFrame === 'trimestre') {
-      const qMonths = selectedQuarter === 'T1'
+      const [qYearStr, qCode] = selectedQuarter.split('-');
+      const qYear = parseInt(qYearStr, 10);
+      const qMonths = qCode === 'T1'
         ? [{ m: 1, name: 'Enero' }, { m: 2, name: 'Febrero' }, { m: 3, name: 'Marzo' }]
-        : selectedQuarter === 'T2'
+        : qCode === 'T2'
         ? [{ m: 4, name: 'Abril' }, { m: 5, name: 'Mayo' }, { m: 6, name: 'Junio' }]
-        : selectedQuarter === 'T3'
+        : qCode === 'T3'
         ? [{ m: 7, name: 'Julio' }, { m: 8, name: 'Agosto' }, { m: 9, name: 'Septiembre' }]
         : [{ m: 10, name: 'Octubre' }, { m: 11, name: 'Noviembre' }, { m: 12, name: 'Diciembre' }];
 
       const qResults = qMonths.map(qm => {
         const count = pedidos.filter(p => {
-          try {
-            return new Date(p.created_at).getMonth() + 1 === qm.m;
-          } catch {
-            return false;
-          }
+          const d = new Date(p.created_at);
+          return !isNaN(d.getTime()) && d.getFullYear() === qYear && d.getMonth() + 1 === qm.m;
         }).length;
         return { label: qm.name, orders: count };
       });
@@ -436,16 +463,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                   handleModifierChange();
                 }}
                 icon={<Calendar className="w-4 h-4" />}
-                options={[
-                  { value: '08', label: 'Agosto 2026' },
-                  { value: '07', label: 'Julio 2026' },
-                  { value: '06', label: 'Junio 2026' },
-                  { value: '05', label: 'Mayo 2026' },
-                  { value: '04', label: 'Abril 2026' },
-                  { value: '03', label: 'Marzo 2026' },
-                  { value: '02', label: 'Febrero 2026' },
-                  { value: '01', label: 'Enero 2026' },
-                ]}
+                options={periodOptions.months}
               />
             )}
 
@@ -457,12 +475,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                   handleModifierChange();
                 }}
                 icon={<TrendingUp className="w-4 h-4" />}
-                options={[
-                  { value: 'T3', label: 'T3: Julio - Septiembre 2026' },
-                  { value: 'T2', label: 'T2: Abril - Junio 2026' },
-                  { value: 'T1', label: 'T1: Enero - Marzo 2026' },
-                  { value: 'T4', label: 'T4: Octubre - Diciembre 2025' },
-                ]}
+                options={periodOptions.quarters}
               />
             )}
 
@@ -474,11 +487,7 @@ export const VisionAnalyticsDashboard: React.FC = () => {
                   handleModifierChange();
                 }}
                 icon={<Store className="w-4 h-4" />}
-                options={[
-                  { value: '2026', label: 'Año 2026 (Actual)' },
-                  { value: '2025', label: 'Año 2025' },
-                  { value: '2024', label: 'Año 2024' },
-                ]}
+                options={periodOptions.years}
               />
             )}
 

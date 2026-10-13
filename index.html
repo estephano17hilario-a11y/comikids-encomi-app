@@ -1,22 +1,63 @@
 <!doctype html>
-<html lang="es" class="h-full">
+<html lang="es-PE" class="h-full">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#ec4899" />
-    <meta name="description" content="Encomi - Plataforma de gestión y seguimiento en tiempo real de envíos y logística nacional Encomi Envíos." />
-    
-    <title>Encomi • Encomi Envíos</title>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#060913" />
+    <meta name="color-scheme" content="dark" />
+
+    <title>Encomi — Gestión de envíos Shalom, Olva y motorizado para emprendedores</title>
+    <meta name="description" content="Registra, clasifica y despacha tus paquetes en un solo lugar. Encomi conecta tus pedidos con Shalom, Olva y motorizados en Lima, imprime rótulos y avisa a tus clientas por WhatsApp automáticamente." />
+    <meta name="keywords" content="envíos Shalom, Olva Courier, rótulos de envío, gestión de pedidos, despacho de paquetes, emprendedores Perú, delivery Lima, WhatsApp pedidos" />
+    <meta name="author" content="Encomi" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://comikids-encomi-app.vercel.app/" />
+
+    <!-- Open Graph / redes sociales (vista previa al compartir el link por WhatsApp, Facebook, etc.) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Encomi" />
+    <meta property="og:locale" content="es_PE" />
+    <meta property="og:url" content="https://comikids-encomi-app.vercel.app/" />
+    <meta property="og:title" content="Encomi — Tus envíos Shalom, Olva y motorizado en piloto automático" />
+    <meta property="og:description" content="Registra pedidos, imprime rótulos y avisa a tus clientas por WhatsApp. Hecho para emprendedores en Perú." />
+    <meta property="og:image" content="https://comikids-encomi-app.vercel.app/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Encomi — Gestión de envíos para emprendedores" />
+    <meta name="twitter:description" content="Registra pedidos, imprime rótulos y avisa a tus clientas por WhatsApp." />
+    <meta name="twitter:image" content="https://comikids-encomi-app.vercel.app/og-image.png" />
+
+    <!-- PWA: instalable en el celular como app -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Encomi" />
+    <link rel="icon" type="image/svg+xml" href="/encomi-icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    
-    <!-- Favicon SVG -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Datos estructurados para Google -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Encomi",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web, Android",
+        "url": "https://comikids-encomi-app.vercel.app/",
+        "inLanguage": "es-PE",
+        "description": "Plataforma para registrar, clasificar y despachar paquetes con Shalom, Olva y motorizados, con rótulos imprimibles y avisos por WhatsApp.",
+        "areaServed": { "@type": "Country", "name": "Perú" },
+        "offers": { "@type": "Offer", "priceCurrency": "PEN", "availability": "https://schema.org/InStock" }
+      }
+    </script>
   </head>
-  <body class="h-full bg-slate-950 text-slate-100 font-['Plus_Jakarta_Sans',sans-serif] antialiased selection:bg-pink-500 selection:text-white overflow-x-hidden">
+  <body class="h-full bg-slate-950 text-slate-100 antialiased selection:bg-cyan-500 selection:text-white overflow-x-hidden">
+    <noscript>Encomi necesita JavaScript activado para funcionar.</noscript>
     <div id="root" class="min-h-full flex flex-col"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

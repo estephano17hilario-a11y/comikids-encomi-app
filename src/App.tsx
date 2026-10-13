@@ -1,13 +1,23 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OrderProvider } from './context/OrderContext';
 import { GeolocationProvider } from './context/GeolocationContext';
+import { FeedbackProvider } from './context/FeedbackContext';
 import { ClientPortal } from './pages/ClientPortal';
-import { AdminPortal } from './pages/AdminPortal';
 import { OrderAlertModal } from './components/common/OrderAlertModal';
-import { EncomiFunnelLanding } from './components/funnel/EncomiFunnelLanding';
 
-import { MatrixPortal } from './pages/MatrixPortal';
+// Cada panel se descarga solo cuando se necesita: la clienta que registra un envío
+// no baja el código del panel de empresa, Matrix ni la landing.
+const AdminPortal = lazy(() => import('./pages/AdminPortal').then(m => ({ default: m.AdminPortal })));
+const MatrixPortal = lazy(() => import('./pages/MatrixPortal').then(m => ({ default: m.MatrixPortal })));
+const EncomiFunnelLanding = lazy(() => import('./components/funnel/EncomiFunnelLanding').then(m => ({ default: m.EncomiFunnelLanding })));
+
+const ScreenLoading: React.FC = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-slate-400 text-sm" role="status">
+    <span className="w-9 h-9 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" aria-hidden="true" />
+    <span>Cargando…</span>
+  </div>
+);
 
 const MainAppContent: React.FC = () => {
   const { role, impersonatedEmpresa, stopImpersonation } = useAuth();
@@ -35,16 +45,16 @@ const MainAppContent: React.FC = () => {
     return (
       <>
         {impersonatedEmpresa && (
-          <aside aria-label="Banner de modo Matrix Master" className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] px-4 py-2 rounded-2xl bg-emerald-950/90 border border-emerald-500/50 text-emerald-200 text-xs font-bold flex items-center gap-3 shadow-2xl backdrop-blur-md animate-bounce">
-            <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>⚡ Modo Matrix Master: Administrando <strong>{impersonatedEmpresa.nombre}</strong></span>
+          <aside aria-label="Modo Matrix Master" className="fixed bottom-24 sm:bottom-auto sm:top-3 left-1/2 -translate-x-1/2 z-[9999] w-[calc(100%-1.5rem)] sm:w-auto max-w-xl px-3 py-2 rounded-2xl bg-emerald-950/95 border border-emerald-500/50 text-emerald-200 text-xs font-bold flex items-center justify-between gap-3 shadow-2xl backdrop-blur-md">
+            <span className="flex items-center gap-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+              <span className="truncate">Administrando <strong>{impersonatedEmpresa.nombre}</strong></span>
             </span>
             <button
               onClick={stopImpersonation}
-              className="px-3 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-md active:scale-95 cursor-pointer"
+              className="min-h-9 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-md active:scale-95 shrink-0"
             >
-              Volver a Matrix Central
+              Volver a Matrix
             </button>
           </aside>
         )}
@@ -62,13 +72,17 @@ const MainAppContent: React.FC = () => {
 
 export function App() {
   return (
-    <GeolocationProvider>
-      <AuthProvider>
-        <OrderProvider>
-          <MainAppContent />
-        </OrderProvider>
-      </AuthProvider>
-    </GeolocationProvider>
+    <FeedbackProvider>
+      <GeolocationProvider>
+        <AuthProvider>
+          <OrderProvider>
+            <Suspense fallback={<ScreenLoading />}>
+              <MainAppContent />
+            </Suspense>
+          </OrderProvider>
+        </AuthProvider>
+      </GeolocationProvider>
+    </FeedbackProvider>
   );
 }
 

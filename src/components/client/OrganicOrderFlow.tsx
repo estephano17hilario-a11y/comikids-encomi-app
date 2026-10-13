@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { useAuth } from '../../context/AuthContext';
 import { ordersService } from '../../services/ordersService';
@@ -6,10 +6,18 @@ import { useShalomAgencies, formatFullAgencyName, cleanAddressText } from '../..
 import { useOlvaAgencies, formatFullOlvaAgencyName, cleanOlvaAddressText } from '../../hooks/useOlvaAgencies';
 import { DEPARTAMENTOS_OLVA } from '../../data/olvaAgencies';
 import { searchDistritos } from '../../data/distritosLima';
-import { PlacesMapPicker } from './PlacesMapPicker';
-import { ShalomAgenciesMap } from './ShalomAgenciesMap';
-import { OlvaAgenciesMap } from './OlvaAgenciesMap';
-import { EncomiAiChatModal } from './EncomiAiChatModal';
+// Mapas y chat IA se descargan solo cuando se usan (mapbox/leaflet pesan mucho en celular)
+const PlacesMapPicker = lazy(() => import('./PlacesMapPicker').then(m => ({ default: m.PlacesMapPicker })));
+const ShalomAgenciesMap = lazy(() => import('./ShalomAgenciesMap').then(m => ({ default: m.ShalomAgenciesMap })));
+const OlvaAgenciesMap = lazy(() => import('./OlvaAgenciesMap').then(m => ({ default: m.OlvaAgenciesMap })));
+const EncomiAiChatModal = lazy(() => import('./EncomiAiChatModal').then(m => ({ default: m.EncomiAiChatModal })));
+
+const MapLoading: React.FC = () => (
+  <div className="w-full min-h-[320px] rounded-2xl bg-slate-900/80 border border-white/10 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
+    <span className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" aria-hidden="true" />
+    <span>Cargando mapa…</span>
+  </div>
+);
 import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido, CampoPersonalizadoAgencia, EmpresaAccount } from '../../types/database.types';
 import { AgencyStatusBadge } from '../common/AgencyStatusBadge';
 import { getAgencyStatusInfo } from '../../utils/agencyStatus';
@@ -1027,6 +1035,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               </button>
             </div>
 
+            <Suspense fallback={<MapLoading />}>
             <ShalomAgenciesMap
               agencies={shalomAgenciesList}
               selectedAgency={selectedAgencyObject}
@@ -1043,6 +1052,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               searchQuery={agencySearchQuery}
               onSearchChange={setAgencySearchQuery}
             />
+            </Suspense>
           </div>
         </div>
       )}
@@ -1068,6 +1078,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               </button>
             </div>
 
+            <Suspense fallback={<MapLoading />}>
             <OlvaAgenciesMap
               agencies={olvaAgenciesList}
               selectedAgency={selectedOlvaAgencyObject}
@@ -1085,6 +1096,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               searchQuery={olvaAgencySearchQuery}
               onSearchChange={setOlvaAgencySearchQuery}
             />
+            </Suspense>
           </div>
         </div>
       )}
@@ -1454,20 +1466,28 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           
           {/* Header — compacto */}
           <div className="flex items-center justify-between border-b border-white/8 pb-2">
-            <div>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 bg-white/6 px-2.5 py-0.5 rounded-full border border-white/10">
-                Paso {organicStep} de 3
-              </span>
-              <h2 className="text-base font-bold text-white mt-1 tracking-tight">
+            <div className="min-w-0">
+              <ol className="flex items-center gap-1.5 text-[11px] font-bold" aria-label={`Paso ${organicStep} de 3`}>
+                {['Contacto', 'Envío', 'Datos'].map((label, i) => {
+                  const n = i + 1;
+                  const done = organicStep > n;
+                  const current = organicStep === n;
+                  return (
+                    <li key={label} className="flex items-center gap-1.5" aria-current={current ? 'step' : undefined}>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                        done ? 'bg-emerald-500 text-slate-950' : current ? 'bg-cyan-400 text-slate-950' : 'bg-white/10 text-slate-500'
+                      }`}>
+                        {done ? '✓' : n}
+                      </span>
+                      <span className={current ? 'text-white' : 'text-slate-500 hidden min-[360px]:inline'}>{label}</span>
+                      {n < 3 && <span className="w-4 h-px bg-white/15" aria-hidden="true" />}
+                    </li>
+                  );
+                })}
+              </ol>
+              <h2 className="text-base sm:text-lg font-bold text-white mt-2 tracking-tight">
                 {organicStep === 1 && (
-                  <span className="flex items-center gap-2 flex-wrap">
-                    <span>Envío de Mercadería</span>
-                    <span>📦</span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-black">
-                      <MessageCircle className="w-3 h-3 fill-current" />
-                      <span>WhatsApp</span>
-                    </span>
-                  </span>
+                  <span>¿A qué WhatsApp te avisamos? 📲</span>
                 )}
                 {organicStep === 2 && '¿Cómo deseas recibir tu pedido? 🚚'}
                 {organicStep === 3 && (
@@ -1496,7 +1516,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               </h2>
             </div>
             <div className="flex items-center gap-2">
-              {/* Branding Oficial de la Empresa: Foto y Nombre arriba a la derecha */}
+              {/* Marca de la tienda: solo si no se muestra ya en el encabezado */}
+              {currentUser && currentUser.rol !== 'empresa' && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-cyan-500/20 border border-pink-400/30 text-pink-200 shadow-sm">
                 {tallerConfig?.logo_url ? (
                   <img
@@ -1512,6 +1533,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   {tallerConfig?.nombre_taller || 'Encomi'}
                 </span>
               </div>
+              )}
 
               {organicStep > 1 && (
                 <button
@@ -1523,8 +1545,9 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                     }
                     setOrganicStep((prev) => (prev - 1) as 1 | 2);
                   }}
-                  className="p-1.5 sm:p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className="min-w-10 min-h-10 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
                   title="Volver"
+                  aria-label="Volver al paso anterior"
                 >
                   <ArrowLeft className="w-4 h-4" />
                 </button>
@@ -1546,8 +1569,8 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             return (
               <form onSubmit={handleWhatsappSubmit} noValidate className="space-y-5 animate-fadeIn">
                 <div className="space-y-3">
-                  <p className="text-xs sm:text-sm text-slate-300 font-medium">
-                    Ingresa tu número de WhatsApp para enviarte las fotos del paquete 📦 y el código de seguimiento:
+                  <p className="text-sm text-slate-300">
+                    Te enviaremos las fotos de tu paquete y el código de seguimiento.
                   </p>
                   
                   <div className={`flex items-center rounded-2xl bg-white/5 border-2 transition-all p-2 shadow-inner ${
@@ -1613,7 +1636,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   disabled={!isPhoneReady}
                   className={`w-full py-4.5 sm:py-5 px-6 rounded-2xl text-base sm:text-lg font-black transition-all duration-300 flex items-center justify-center gap-2 ${
                     isPhoneReady 
-                      ? 'bg-linear-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white shadow-[0_0_35px_rgba(6,182,212,0.7)] hover:shadow-[0_0_45px_rgba(6,182,212,0.9)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer ring-2 ring-cyan-300/60 animate-pulse' 
+                      ? 'bg-linear-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white shadow-[0_0_35px_rgba(6,182,212,0.7)] hover:shadow-[0_0_45px_rgba(6,182,212,0.9)] hover:scale-[1.02] active:scale-[0.98] cursor-pointer ring-2 ring-cyan-300/60' 
                       : 'bg-slate-800/80 text-slate-500 border border-slate-700/50 cursor-not-allowed opacity-60 shadow-none'
                   }`}
                 >
@@ -2045,6 +2068,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   {/* SUBPASO 1: MAPA GIGANTE OBLIGATORIO */}
                   {motorizadoSubStep === 'map' && (
                     <div className="animate-fadeIn">
+                      <Suspense fallback={<MapLoading />}>
                       <PlacesMapPicker
                         initialLat={lat}
                         initialLng={lng}
@@ -2065,6 +2089,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                           setMotorizadoSubStep('form');
                         }}
                       />
+                      </Suspense>
                     </div>
                   )}
 
@@ -2916,6 +2941,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
 
       {/* Encomi AI Interactive FAQ Chat Modal */}
       {showEncomiAiModal && (
+        <Suspense fallback={null}>
         <EncomiAiChatModal
           initialOrder={createdOrder}
           clientName={nombreCompleto || 'Cliente'}
@@ -2923,6 +2949,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
           isAdmin={currentUser?.rol === 'empresa'}
           onClose={() => setShowEncomiAiModal(false)}
         />
+        </Suspense>
       )}
 
     </div>

@@ -241,7 +241,9 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       const cleanPhone = row.phone.replace(/\D/g, '');
       const isDniValid = cleanDni.length >= 6 || row.dni.length >= 6;
       const isPhoneValid = cleanPhone.length >= 7 || row.phone.length >= 7;
-      const isComplete = Boolean(row.name && destino);
+      // Si la agencia no se pudo identificar, el resolver devuelve Lima Tingo María por defecto:
+      // ese pedido NO debe enviarse a Shalom hasta corregir el destino (el paquete iría a Lima).
+      const isComplete = Boolean(row.name && destino && agencyDetails.isVerified);
 
       return {
         pedido: p,
@@ -1093,6 +1095,15 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                       )}
                     </div>
                   </div>
+
+                  {!row.agencyDetails.isVerified && (
+                    <div className="mb-2.5 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-200 text-xs font-semibold flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>
+                        No reconocemos la agencia Shalom de destino. Edita el destino de este pedido (o quítalo de la selección) antes de registrar: si no, Shalom lo enviaría a Lima Tingo María.
+                      </span>
+                    </div>
+                  )}
 
                   {/* Inputs de Edición Rápida */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">

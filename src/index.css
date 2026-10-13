@@ -7,16 +7,114 @@
     --card-border: rgba(255, 255, 255, 0.10);
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     background-color: var(--bg-main);
     color: #f8fafc;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
     min-height: 100vh;
+    min-height: 100dvh;
     background-attachment: fixed;
     background-size: cover;
+  }
+
+  /* Botones y enlaces: cursor de mano y anillo de foco visible al navegar con teclado */
+  button:not(:disabled),
+  [role='button'],
+  a[href],
+  label[for],
+  select {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  :focus-visible {
+    outline: 2px solid #22d3ee;
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+
+  /* En celular: los campos a 16px evitan el zoom automático de iOS y se leen mejor */
+  @media (max-width: 640px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+}
+
+/* Áreas seguras (notch / barra de gestos) */
+.pt-safe-header {
+  padding-top: max(0.75rem, env(safe-area-inset-top), var(--safe-area-inset-top, 0px));
+}
+/* En la app Android (edge-to-edge) se reserva siempre el espacio de la barra de estado */
+html.is-native .pt-safe-header {
+  padding-top: max(2.25rem, env(safe-area-inset-top), var(--safe-area-inset-top, 0px));
+}
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+.bottom-safe {
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/* Animaciones usadas en la app que no estaban definidas */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-slideUp { animation: slideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-slideDown { animation: slideDown 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-scaleUp { animation: scaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-shake { animation: shake 0.4s ease-in-out; }
+.animate-toastIn { animation: toastIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Scroll horizontal sin barra visible (filtros tipo chips en celular) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Respeta a quien prefiere menos movimiento */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -287,6 +385,11 @@ html.theme-modern-white body {
     page-break-inside: avoid !important;
     overflow: hidden !important;
   }
+}
+
+/* Con pedidos seleccionados, la barra de acciones en lote ocupa el lugar del dock */
+body.has-order-selection .admin-floating-dock {
+  display: none !important;
 }
 
 /* Ocultar docks flotantes y HUD/header superior cuando haya un modal activo o se esté en ventanas flotantes */

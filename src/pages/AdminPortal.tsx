@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { createPortal } from 'react-dom';
 import { useOrders } from '../context/OrderContext';
 import { useAuth } from '../context/AuthContext';
 import { OrdersSmartManager } from '../components/admin/OrdersSmartManager';
-import { ClientDirectory } from '../components/admin/ClientDirectory';
-import { VisionAnalyticsDashboard } from '../components/admin/VisionAnalyticsDashboard';
-import { CompanyAccountSettings } from '../components/admin/CompanyAccountSettings';
-import { CompanyAgenciesTab } from '../components/admin/CompanyAgenciesTab';
-import { CompanyAchievementsTab } from '../components/admin/CompanyAchievementsTab';
-import { ComicInventoryApp } from '../modules/comic_inventory/ComicInventoryApp';
+// Las pestañas pesadas (gráficos, inventario, agencias, ajustes) se cargan al abrirlas
+const ClientDirectory = lazy(() => import('../components/admin/ClientDirectory').then(m => ({ default: m.ClientDirectory })));
+const VisionAnalyticsDashboard = lazy(() => import('../components/admin/VisionAnalyticsDashboard').then(m => ({ default: m.VisionAnalyticsDashboard })));
+const CompanyAccountSettings = lazy(() => import('../components/admin/CompanyAccountSettings').then(m => ({ default: m.CompanyAccountSettings })));
+const CompanyAgenciesTab = lazy(() => import('../components/admin/CompanyAgenciesTab').then(m => ({ default: m.CompanyAgenciesTab })));
+const CompanyAchievementsTab = lazy(() => import('../components/admin/CompanyAchievementsTab').then(m => ({ default: m.CompanyAchievementsTab })));
+const ComicInventoryApp = lazy(() => import('../modules/comic_inventory/ComicInventoryApp').then(m => ({ default: m.ComicInventoryApp })));
 import { liveSessionService, LiveSessionState } from '../services/liveSessionService';
-import { EncomiAiSection } from '../components/client/EncomiAiSection';
+const EncomiAiSection = lazy(() => import('../components/client/EncomiAiSection').then(m => ({ default: m.EncomiAiSection })));
 import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
 import { ExecutiveBriefingModal } from '../components/admin/ExecutiveBriefingModal';
@@ -28,16 +29,14 @@ import {
   FileBarChart,
   Plus,
   X,
-  Trophy,
-  Sliders,
   Truck
 } from 'lucide-react';
 
 export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'inventario' | 'agencias' | 'hitos' | 'ajustes' | 'encomi_ai';
 
 export const AdminPortal: React.FC = () => {
-  const { pedidos, masterCode, tallerConfig, refreshData } = useOrders();
-  const { currentUser, currentEmpresa, empresaConfig, logout } = useAuth();
+  const { pedidos, tallerConfig, refreshData } = useOrders();
+  const { currentEmpresa, empresaConfig, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<EmpresaTab>('pedidos');
 
   // Aplicar tema futurista guardado para la empresa
@@ -78,6 +77,15 @@ export const AdminPortal: React.FC = () => {
 
   const pendingOrdersCount = pedidos.filter(p => p.estado_envio !== 'entregado').length;
 
+  const dockItems: { id: EmpresaTab; label: string; short?: string; icon: React.ElementType; activeClass: string; badge?: number }[] = [
+    { id: 'pedidos' as EmpresaTab, label: 'Pedidos', icon: ClipboardList, activeClass: 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30', badge: pendingOrdersCount, visible: sec.pedidos !== false },
+    { id: 'agendas' as EmpresaTab, label: 'Clientes', icon: Users, activeClass: 'bg-purple-600 text-white shadow-md shadow-purple-600/30', visible: sec.agendas !== false },
+    { id: 'estadisticas' as EmpresaTab, label: 'Métricas', icon: BarChart3, activeClass: 'bg-blue-600 text-white shadow-md shadow-blue-600/30', visible: sec.estadisticas !== false },
+    { id: 'inventario' as EmpresaTab, label: 'Inventario', short: 'Stock', icon: Store, activeClass: 'bg-pink-600 text-white shadow-md shadow-pink-600/30', visible: Boolean(sec.inventario) },
+    { id: 'agencias' as EmpresaTab, label: 'Agencias', icon: Truck, activeClass: 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30', visible: sec.agencias !== false },
+    { id: 'encomi_ai' as EmpresaTab, label: 'IA', icon: Sparkles, activeClass: 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30', visible: sec.encomi_ai !== false },
+  ].filter(item => item.visible);
+
   const isAnyAdminModalOpen = Boolean(
     showCreateOrderModal ||
     briefingConfig.show ||
@@ -97,74 +105,88 @@ export const AdminPortal: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-transparent text-slate-100 selection:bg-cyan-500 selection:text-white">
       
-      {/* Top Vision Header con 40% Opacidad y Desenfoque */}
-      <header className="w-full bg-slate-950/40 border-b border-white/10 px-3.5 sm:px-8 pt-8 pb-3 sm:pt-9 sm:pb-3.5 sticky top-0 z-30 backdrop-blur-2xl print:hidden transition-all shadow-xl app-top-header admin-top-header" data-no-print="true">
+      {/* Encabezado: marca + acciones principales */}
+      <header className="w-full bg-slate-950/70 border-b border-white/10 px-3.5 sm:px-8 pt-safe-header pb-3 sticky top-0 z-30 backdrop-blur-2xl print:hidden shadow-xl app-top-header admin-top-header" data-no-print="true">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5 sm:gap-4">
-          
-          {/* Brand */}
+
+          {/* Marca */}
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-lg sm:text-xl shadow-lg shadow-cyan-500/25 shrink-0">
-              📦
-            </div>
+            {tallerConfig.logo_url ? (
+              <img
+                src={tallerConfig.logo_url}
+                alt=""
+                className="w-10 h-10 rounded-2xl object-cover bg-slate-900 border border-white/10 shrink-0"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-2xl bg-linear-to-tr from-cyan-500 via-blue-600 to-pink-500 flex items-center justify-center text-white text-lg shadow-lg shadow-cyan-500/25 shrink-0" aria-hidden="true">
+                📦
+              </div>
+            )}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <h1 className="text-sm sm:text-base font-black text-white tracking-tight truncate">
                   {companyName}
                 </h1>
-                {liveState.isLive ? (
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 animate-pulse shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
-                    En Live 🔴
-                  </span>
-                ) : (
-                  <span className="px-1.5 py-0.5 rounded-md text-[8px] sm:text-[9px] font-black uppercase bg-pink-500/15 text-pink-300 border border-pink-500/20 shrink-0">
-                    Panel Empresa
+                {liveState.isLive && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    En vivo
                   </span>
                 )}
               </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 font-mono truncate">
-                {liveState.isLive ? `Live Activo • S/ ${liveState.revenue.toLocaleString()}` : 'Panel de Gestión'}
+              <p className="text-[11px] sm:text-xs text-slate-400 truncate">
+                {liveState.isLive
+                  ? `Live activo • S/ ${liveState.revenue.toLocaleString()}`
+                  : pendingOrdersCount > 0
+                  ? `${pendingOrdersCount} ${pendingOrdersCount === 1 ? 'pedido activo' : 'pedidos activos'}`
+                  : 'Todo al día ✨'}
               </p>
             </div>
           </div>
 
-          {/* Quick Header Actions - Exactly on the same horizontal axis line */}
+          {/* Acciones */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            
-            {/* Botón Circular + para Añadir Nuevo Pedido */}
             <button
               onClick={() => setShowCreateOrderModal(true)}
-              className="p-2 sm:p-2.5 rounded-2xl bg-linear-to-tr from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white border border-pink-400/40 shadow-md shadow-pink-500/25 transition-all cursor-pointer active:scale-90 flex items-center justify-center shrink-0"
-              title="Registrar nuevo pedido (Interfaz clásica de cliente)"
+              className="min-h-10 px-3 sm:px-4 rounded-2xl bg-linear-to-tr from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white text-xs sm:text-sm font-black border border-pink-400/40 shadow-md shadow-pink-500/25 transition-all active:scale-95 flex items-center gap-1.5"
+              title="Registrar un nuevo pedido"
             >
-              <Plus className="w-4 h-4 text-white stroke-[2.5]" />
+              <Plus className="w-4 h-4 stroke-[2.75]" />
+              <span>Nuevo<span className="hidden sm:inline"> pedido</span></span>
             </button>
 
             <button
               onClick={() => setBriefingConfig({ show: true, mode: 'manual' })}
-              className="py-2 px-2.5 sm:px-3 rounded-2xl bg-linear-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
-              title="Ver Informe Ejecutivo de Despachos"
+              className="min-h-10 min-w-10 px-2.5 sm:px-3 rounded-2xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+              title="Informe del día"
+              aria-label="Informe del día"
             >
-              <FileBarChart className="w-4 h-4 text-cyan-400 shrink-0" />
-              <span className="hidden md:inline text-xs">Informe del Día</span>
+              <FileBarChart className="w-4 h-4 shrink-0" />
+              <span className="hidden lg:inline">Informe del día</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('ajustes')}
-              className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer shrink-0 ${
-                activeTab === 'ajustes'
-                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/30'
-                  : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
-              }`}
-              title="Ajustes de la Empresa"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+            {sec.ajustes !== false && (
+              <button
+                onClick={() => setActiveTab('ajustes')}
+                aria-current={activeTab === 'ajustes' ? 'page' : undefined}
+                className={`min-h-10 min-w-10 flex items-center justify-center rounded-2xl border transition-all ${
+                  activeTab === 'ajustes'
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/30'
+                    : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
+                }`}
+                title="Ajustes de la empresa"
+                aria-label="Ajustes de la empresa"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
 
             <button
               onClick={() => setShowLogoutConfirm(true)}
-              className="p-2 sm:p-2.5 rounded-2xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors cursor-pointer shrink-0"
-              title="Cerrar Sesión"
+              className="min-h-10 min-w-10 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-white/10 transition-colors"
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -175,7 +197,7 @@ export const AdminPortal: React.FC = () => {
 
       {/* Main Container */}
       <main
-        className={`flex-1 w-full max-w-7xl mx-auto space-y-4 pb-28 print:hidden transition-all ${
+        className={`flex-1 w-full max-w-7xl mx-auto space-y-4 pb-32 print:hidden transition-all ${
           activeTab === 'inventario'
             ? 'px-2 sm:px-4 py-3'
             : activeTab === 'pedidos'
@@ -186,6 +208,14 @@ export const AdminPortal: React.FC = () => {
       >
         
         {/* Dynamic Section Rendering */}
+        <Suspense
+          fallback={
+            <div className="py-24 flex flex-col items-center justify-center gap-3 text-slate-400 text-sm" role="status">
+              <span className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" aria-hidden="true" />
+              <span>Cargando sección…</span>
+            </div>
+          }
+        >
         <div className="transition-all duration-300">
           {activeTab === 'pedidos' && sec.pedidos !== false && <OrdersSmartManager />}
           {activeTab === 'agendas' && sec.agendas !== false && <ClientDirectory />}
@@ -204,133 +234,58 @@ export const AdminPortal: React.FC = () => {
           {activeTab === 'ajustes' && sec.ajustes !== false && <CompanyAccountSettings />}
           {activeTab === 'encomi_ai' && sec.encomi_ai !== false && <EncomiAiSection isAdmin={true} />}
         </div>
+        </Suspense>
 
       </main>
 
-      {/* --- FLOATING APPLE VISION BOTTOM DOCK --- */}
-      <div className="fixed bottom-3 sm:bottom-6 left-0 right-0 mx-auto z-40 w-[calc(100%-1.25rem)] sm:w-11/12 max-w-3xl animate-slideUp print:hidden admin-floating-dock" data-no-print="true">
-        <div className="p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl bg-slate-950/75 border border-white/15 backdrop-blur-3xl shadow-2xl shadow-cyan-500/20 flex items-center justify-between gap-1 overflow-x-auto">
-          
-          {/* 1. Pedidos To-Do */}
-          {sec.pedidos !== false && (
-            <button
-              onClick={() => setActiveTab('pedidos')}
-              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'pedidos'
-                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <ClipboardList className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">Pedidos</span>
-              {pendingOrdersCount > 0 && (
-                <span className={`px-1 py-0.2 rounded-full text-[9px] font-black shrink-0 ${
-                  activeTab === 'pedidos' ? 'bg-slate-950 text-cyan-300' : 'bg-cyan-500/30 text-cyan-300'
-                }`}>
-                  {pendingOrdersCount}
+      {/* Barra de navegación inferior (celular y computadora) */}
+      <nav
+        aria-label="Secciones del panel"
+        className="fixed bottom-safe left-0 right-0 mx-auto z-40 w-[calc(100%-1rem)] sm:w-11/12 max-w-3xl animate-slideUp print:hidden admin-floating-dock"
+        data-no-print="true"
+      >
+        <div className="p-1.5 rounded-3xl bg-slate-950/90 border border-white/15 backdrop-blur-3xl shadow-2xl shadow-black/50 flex items-stretch justify-between gap-1">
+          {dockItems.map(item => {
+            const isActive = activeTab === item.id;
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                aria-current={isActive ? 'page' : undefined}
+                className={`relative flex-1 min-w-0 min-h-13 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 px-0.5 sm:px-2 rounded-2xl text-[10.5px] sm:text-xs font-bold transition-all ${
+                  isActive ? item.activeClass : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <span className="relative">
+                  <Icon className="w-5 h-5 sm:w-4 sm:h-4 shrink-0" />
+                  {item.badge ? (
+                    <span className={`sm:hidden absolute -top-1.5 -right-3 min-w-4 h-4 px-1 rounded-full text-[10px] leading-4 font-black text-center ${
+                      isActive ? 'bg-slate-950 text-cyan-300' : 'bg-cyan-500 text-slate-950'
+                    }`}>
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  ) : null}
+                  {item.id === 'inventario' && liveState.isLive && (
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 border border-slate-900" />
+                  )}
                 </span>
-              )}
-            </button>
-          )}
-
-          {/* 2. Agendas CRM */}
-          {sec.agendas !== false && (
-            <button
-              onClick={() => setActiveTab('agendas')}
-              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'agendas'
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Users className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">Agendas</span>
-            </button>
-          )}
-
-          {/* 3. Estadísticas Vision */}
-          {sec.estadisticas !== false && (
-            <button
-              onClick={() => setActiveTab('estadisticas')}
-              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'estadisticas'
-                  ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">Métricas</span>
-            </button>
-          )}
-
-          {/* 4. Inventario / Catálogo */}
-          {sec.inventario && (
-            <button
-              onClick={() => setActiveTab('inventario')}
-              className={`relative flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'inventario'
-                  ? 'bg-linear-to-r from-pink-600 to-purple-600 text-white shadow-md shadow-pink-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Store className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">Inventario</span>
-              {liveState.isLive && (
-                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border border-slate-900"></span>
+                <span className="truncate max-w-full leading-none tracking-tight">
+                  <span className="sm:hidden">{item.short || item.label}</span>
+                  <span className="hidden sm:inline">{item.label}</span>
                 </span>
-              )}
-            </button>
-          )}
-
-          {/* 5. Agencias de Envío (Shalom, Olva, Motorizado, etc.) */}
-          {sec.agencias !== false && (
-            <button
-              onClick={() => setActiveTab('agencias')}
-              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'agencias'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Truck className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">Agencias</span>
-            </button>
-          )}
-
-          {/* 6. Ajustes de la Empresa */}
-          {sec.ajustes !== false && (
-            <button
-              onClick={() => setActiveTab('ajustes')}
-              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'ajustes'
-                  ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Settings className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-full">Ajustes</span>
-            </button>
-          )}
-
-          {/* 7. Encomi AI (Admin Ilimitado) */}
-          {sec.encomi_ai !== false && (
-            <button
-              onClick={() => setActiveTab('encomi_ai')}
-              className={`flex-1 min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1 py-2 px-1 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-2xl text-[10px] sm:text-xs font-black transition-all cursor-pointer ${
-                activeTab === 'encomi_ai'
-                  ? 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30'
-                  : 'text-cyan-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 shrink-0 animate-pulse" />
-              <span className="truncate max-w-full">IA</span>
-            </button>
-          )}
-
+                {item.badge ? (
+                  <span className={`hidden sm:inline px-1.5 rounded-full text-[10px] font-black ${
+                    isActive ? 'bg-slate-950/80 text-cyan-300' : 'bg-cyan-500/25 text-cyan-300'
+                  }`}>
+                    {item.badge}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </nav>
 
       {/* Taller Config Modal */}
       {showConfigModal && (
@@ -358,8 +313,8 @@ export const AdminPortal: React.FC = () => {
 
       {/* Modal Clásico de Registro de Pedido para ComiKids (Directo y Sin Salir) */}
       {showCreateOrderModal && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
-          <div className="relative w-full max-w-2xl max-h-[92vh] rounded-3xl bg-slate-950 border border-cyan-500/40 shadow-2xl flex flex-col overflow-hidden animate-scaleUp">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" data-no-print="true">
+          <div role="dialog" aria-modal="true" aria-label="Registrar nuevo pedido" className="relative w-full max-w-2xl max-h-[96dvh] sm:max-h-[92vh] rounded-t-3xl sm:rounded-3xl bg-slate-950 border border-cyan-500/40 shadow-2xl flex flex-col overflow-hidden animate-slideUp sm:animate-scaleUp">
             {/* Header Modal */}
             <div className="p-3.5 sm:p-4 border-b border-white/10 bg-slate-900 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
@@ -368,10 +323,10 @@ export const AdminPortal: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-sm sm:text-base font-black text-white">
-                    Registrar Nuevo Envío (ComiKids)
+                    Registrar nuevo pedido
                   </h3>
-                  <p className="text-[10px] text-slate-400">
-                    Interfaz de despacho oficial para Shalom y Motorizado
+                  <p className="text-[11px] text-slate-400">
+                    {companyName} • Shalom, Olva y motorizado
                   </p>
                 </div>
               </div>
@@ -380,7 +335,8 @@ export const AdminPortal: React.FC = () => {
                   setShowCreateOrderModal(false);
                   refreshData();
                 }}
-                className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="min-w-10 min-h-10 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                aria-label="Cerrar"
               >
                 <X className="w-5 h-5" />
               </button>

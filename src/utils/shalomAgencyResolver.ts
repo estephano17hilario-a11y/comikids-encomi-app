@@ -86,7 +86,8 @@ for (const ag of SHALOM_AGENCIES) {
  * Extrae el nombre canónico EXACTO de la agencia de destino (Columna G de Excel Oficial Shalom)
  * Garantiza 100% de coherencia entre la exportación de Excel y la API.
  */
-export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string | null): string => {
+// Devuelve null cuando NO se pudo identificar la agencia (en vez de asumir Lima Tingo María).
+const tryExtractShalomDestino = (destinoDetalle: string, agencyCode?: string | null): string | null => {
   if (agencyCode) {
     const codeClean = agencyCode.toUpperCase().trim();
     if (SHALOM_CODE_TO_OFFICIAL_MAP[codeClean]) {
@@ -99,7 +100,7 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
     }
   }
 
-  if (!destinoDetalle) return 'LIMA AV TINGO MARÍA';
+  if (!destinoDetalle) return null;
 
 
   // 1. Extraer código de agencia si viene embebido en el texto (ej: "(CÓDIGO: CBT)", "(CODIGO: SRA)", "(COD: OVM)")
@@ -217,8 +218,11 @@ export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string
     if (off) return off;
   }
 
-  return 'LIMA AV TINGO MARÍA';
+  return null;
 };
+
+export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string | null): string =>
+  tryExtractShalomDestino(destinoDetalle, agencyCode) ?? 'LIMA AV TINGO MARÍA';
 
 /**
  * Resuelve la agencia de Shalom de forma 100% determinista, canónica y ANTI-ERRORES.
@@ -312,10 +316,11 @@ export const resolveShalomAgencyDetails = (
   }
 
   // 3. Extraer nombre canónico oficial (exactamente como se hace para el Excel)
-  const officialDest = extractShalomDestino(queryText, directCode);
+  const extractedDest = tryExtractShalomDestino(queryText, directCode);
+  const officialDest = extractedDest ?? '';
   const offNorm = normalizeCompactKey(officialDest);
 
-  if (agencyByOfficial.has(offNorm)) {
+  if (extractedDest && agencyByOfficial.has(offNorm)) {
     const matches = agencyByOfficial.get(offNorm)!;
     if (matches.length === 1) {
       const ag = matches[0];

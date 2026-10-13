@@ -35,15 +35,8 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
     return resolveOrderShippingMethod(pedido, methods);
   }, [pedido, methods]);
 
-  const [orientacion, setOrientacion] = useState<'horizontal' | 'vertical'>(
-    () => agencyMethod?.config_rotulado?.orientacion || 'horizontal'
-  );
-
-  useEffect(() => {
-    if (agencyMethod?.config_rotulado?.orientacion) {
-      setOrientacion(agencyMethod.config_rotulado.orientacion);
-    }
-  }, [agencyMethod?.id, agencyMethod?.config_rotulado?.orientacion]);
+  // El rótulo siempre se imprime parado
+  const orientacion = 'vertical' as const;
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -92,40 +85,6 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
           >
             <X className="w-5 h-5" />
           </button>
-        </div>
-
-        {/* SELECTOR DE ORIENTACIÓN: ECHADO (HORIZONTAL) VS PARADO (VERTICAL) */}
-        <div className="mb-3 p-2.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-2 print:hidden" data-no-print="true">
-          <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-            <span>📐</span>
-            <span>Orientación:</span>
-          </span>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setOrientacion('horizontal')}
-              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                orientacion === 'horizontal'
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black shadow-md shadow-cyan-500/20 scale-[1.02]'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>🖼️</span>
-              <span>Echado (Horizontal)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setOrientacion('vertical')}
-              className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                orientacion === 'vertical'
-                  ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-black shadow-md shadow-purple-500/20 scale-[1.02]'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>📄</span>
-              <span>Parado (Vertical)</span>
-            </button>
-          </div>
         </div>
 
         {/* SELECTOR DE AHORRO DE TINTA / ECO-PRINT (0%, 25%, 50%, 75%, 90%) */}

@@ -162,7 +162,7 @@ const AgencyCard: React.FC<{
   const system = isSystemAgency(method);
   const color = method.color_borde || '#06b6d4';
   const preguntas = (method.campos_personalizados || []).filter(c => !isNativeDuplicateField(c)).length;
-  const orient = method.config_rotulado?.orientacion === 'vertical' ? 'parado' : 'echado';
+  const disenoRotulo = method.config_rotulado?.estilo_rotulo === 'eco_ink_saving' ? 'blanco y negro' : 'a color';
   const modo = method.disponibilidad?.modo_horario;
   const dias = modo === 'predeterminado' || (!modo && !method.disponibilidad?.dias_semana?.length)
     ? 'Mismos días que tu negocio'
@@ -190,7 +190,7 @@ const AgencyCard: React.FC<{
         <ul className="space-y-1.5 text-sm text-slate-300">
           <li className="flex items-start gap-2"><span aria-hidden="true">📅</span><span className="min-w-0">{dias}</span></li>
           <li className="flex items-start gap-2"><span aria-hidden="true">📝</span><span>{preguntas === 0 ? 'Solo los datos básicos' : `${preguntas} ${preguntas === 1 ? 'pregunta extra' : 'preguntas extra'}`}</span></li>
-          <li className="flex items-start gap-2"><span aria-hidden="true">🏷️</span><span>Rótulo {orient}{method.config_rotulado?.bloques_personalizados?.length ? ` • ${method.config_rotulado.bloques_personalizados.length} aviso(s)` : ''}</span></li>
+          <li className="flex items-start gap-2"><span aria-hidden="true">🏷️</span><span>Rótulo {disenoRotulo}{method.config_rotulado?.bloques_personalizados?.length ? ` • ${method.config_rotulado.bloques_personalizados.length} aviso(s)` : ''}</span></li>
         </ul>
 
         <BigSwitch

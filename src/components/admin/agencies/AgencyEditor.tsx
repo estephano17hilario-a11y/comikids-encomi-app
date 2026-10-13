@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ArrowLeft, ArrowRight, Check, Eye, Save, Maximize2, HelpCircle } from 'lucide-react';
+import { X, ArrowLeft, ArrowRight, Check, Eye, Save, Maximize2, HelpCircle, Tag } from 'lucide-react';
 import { MetodoEnvio, TallerConfig } from '../../../types/database.types';
 import { useFeedback } from '../../../context/FeedbackContext';
 import {
@@ -233,8 +233,18 @@ export const AgencyEditor: React.FC<Props> = ({ method, taller, companyName, ini
           </div>
           <button
             type="button"
+            onClick={() => setShowFullLabel(true)}
+            className="min-h-11 min-w-11 px-2.5 md:px-3.5 rounded-2xl bg-pink-500/15 hover:bg-pink-500/25 border border-pink-400/40 text-sm font-bold text-pink-100 flex items-center justify-center gap-1.5 shrink-0"
+            aria-label="Ver cómo queda el rótulo"
+            title="Ver cómo queda el rótulo con todos tus cambios"
+          >
+            <Tag className="w-5 h-5" />
+            <span className="hidden md:inline">Ver rótulo</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setShowIntro(true)}
-            className="min-h-11 min-w-11 px-2.5 md:px-3 rounded-2xl bg-white/5 hover:bg-white/10 text-sm font-bold text-slate-200 flex items-center justify-center gap-1.5 shrink-0"
+            className="hidden min-[440px]:flex min-h-11 min-w-11 px-2.5 md:px-3 rounded-2xl bg-white/5 hover:bg-white/10 text-sm font-bold text-slate-200 items-center justify-center gap-1.5 shrink-0"
             aria-label="Cómo funciona"
           >
             <HelpCircle className="w-5 h-5" />
@@ -417,9 +427,12 @@ export const AgencyEditor: React.FC<Props> = ({ method, taller, companyName, ini
       {/* Rótulo en grande */}
       {showFullLabel && (
         <div className="fixed inset-0 z-30 bg-black/85 flex items-center justify-center p-3 sm:p-6 animate-fadeIn" onClick={() => setShowFullLabel(false)}>
-          <div className="w-full max-w-4xl max-h-full overflow-y-auto space-y-3" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-md max-h-full overflow-y-auto space-y-3" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <p className="text-base font-black">Tu rótulo ({draft.rotulo.orientacion === 'horizontal' ? 'echado' : 'parado'})</p>
+              <div>
+                <p className="text-lg font-black">Así queda tu rótulo</p>
+                <p className="text-sm text-slate-400">Con todos los cambios que hiciste hasta ahora{isDirty ? ' (aún sin guardar)' : ''}.</p>
+              </div>
               <button type="button" onClick={() => setShowFullLabel(false)} className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center" aria-label="Cerrar">
                 <X className="w-5 h-5" />
               </button>

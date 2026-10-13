@@ -128,7 +128,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     config_rotulado: {
       incluir_campos_personalizados: true,
       campos_visibles: ['c-shalom-dni'],
-      incluir_remitente: true,
+      incluir_remitente: false, // el remitente solo se imprime si la empresa lo activa
       mostrar_remitente_nombre: true,
       mostrar_remitente_ruc_dni: true,
       mostrar_remitente_telefono: true,
@@ -200,7 +200,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     config_rotulado: {
       incluir_campos_personalizados: true,
       campos_visibles: ['c-mot-nombre', 'c-mot-tel', 'c-mot-ref', 'c-mot-tiktok'],
-      incluir_remitente: true,
+      incluir_remitente: false,
       mostrar_remitente_nombre: true,
       mostrar_remitente_ruc_dni: true,
       mostrar_remitente_telefono: true,
@@ -252,7 +252,7 @@ export const DEFAULT_METODOS_ENVIO: MetodoEnvio[] = [
     config_rotulado: {
       incluir_campos_personalizados: true,
       campos_visibles: ['c-olva-dni', 'c-olva-dir'],
-      incluir_remitente: true,
+      incluir_remitente: false,
       mostrar_remitente_nombre: true,
       mostrar_remitente_ruc_dni: true,
       mostrar_remitente_telefono: true,

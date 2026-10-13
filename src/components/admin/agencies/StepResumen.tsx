@@ -8,10 +8,8 @@ import { AgencyLogo, isNativeDuplicateField } from './previews';
 import type { EditorStep } from './AgencyEditor';
 
 const ESTILO_NOMBRE: Record<string, string> = {
-  '': 'el de tu negocio',
-  estandar_oficial: 'Clásico',
-  vision_modern: 'Moderno',
-  eco_ink_saving: 'Ahorra tinta',
+  estandar_oficial: 'a color',
+  eco_ink_saving: 'en blanco y negro',
 };
 
 const primeraLinea = (t: string) => {
@@ -31,9 +29,10 @@ export const StepResumen: React.FC<StepProps & { live: MetodoEnvio; goTo: (s: Ed
   const r = draft.rotulo;
   const extras = draft.campos.filter(c => !isNativeDuplicateField(c));
   const partes = [
+    r.mostrar_cliente_nombre && 'nombre',
+    r.mostrar_cliente_dni && 'DNI',
+    r.mostrar_cliente_telefono && 'celular',
     r.mostrar_destino && 'destino',
-    r.incluir_destinatario && 'quién recibe',
-    r.incluir_remitente && 'quién envía',
     (r.mostrar_barcode || r.mostrar_tracking) && 'código',
   ].filter(Boolean) as string[];
 
@@ -104,10 +103,11 @@ export const StepResumen: React.FC<StepProps & { live: MetodoEnvio; goTo: (s: Ed
       titulo: 'Rótulo',
       contenido: (
         <>
-          <strong className="text-white">{r.orientacion === 'horizontal' ? 'Echado' : 'Parado'}</strong>, diseño {ESTILO_NOMBRE[r.estilo] || r.estilo}.
+          Parado y <strong className="text-white">{ESTILO_NOMBRE[r.estilo] || 'a color'}</strong>.{' '}
+          {r.incluir_remitente ? 'Con tus datos (remitente).' : 'Sin tus datos (remitente).'}
           <br />
           <span className="text-slate-400 text-sm">
-            Muestra: {partes.length ? partes.join(', ') : 'casi nada'}
+            De tu clienta sale: {partes.length ? partes.join(', ') : 'casi nada'}
             {r.bloques.length > 0 ? ` • ${r.bloques.length} ${r.bloques.length === 1 ? 'aviso' : 'avisos'}` : ''}
           </span>
         </>

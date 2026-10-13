@@ -109,10 +109,9 @@ export const ShalomLabelPrint: React.FC<Props> = ({
   }, [pedido]);
 
   // Orientación efectiva: 'horizontal' (Echado - Primera Imagen) | 'vertical' (Parado - Segunda Imagen)
-  const effectiveOrientation: 'horizontal' | 'vertical' =
-    orientacionOverride ||
-    currentMethod?.config_rotulado?.orientacion ||
-    'horizontal';
+  // El rótulo siempre se imprime parado (vertical)
+  const effectiveOrientation = 'vertical' as 'horizontal' | 'vertical';
+  void orientacionOverride;
 
   // Estilo de rotulado efectivo
   const effectiveStyle: 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving' =
@@ -423,7 +422,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         )}
 
         {/* Remitente opcional en modo horizontal */}
-        {cfgRotulado?.incluir_remitente !== false && (
+        {cfgRotulado?.incluir_remitente === true && (
           <div className="mb-2 p-2 rounded-xl bg-slate-50 border border-slate-200 text-[9.5px] text-slate-700">
             <span className="font-black text-black uppercase block">
               {cfgRotulado?.titulo_remitente || 'REMITENTE:'} {cfgRotulado?.mostrar_remitente_nombre !== false ? senderNombre : ''}
@@ -615,7 +614,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         {renderBloquesPersonalizados('medio')}
 
         {/* Card Remitente (Personalizado o Global) */}
-        {cfgRotulado?.incluir_remitente !== false && (
+        {cfgRotulado?.incluir_remitente === true && (
           <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-[10.5px] space-y-1">
             <div className="flex items-center justify-between font-black text-slate-800 text-[10px] uppercase">
               <span>{cfgRotulado?.titulo_remitente || '🏢 REMITENTE OFICIAL:'}</span>
@@ -784,7 +783,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         {renderBloquesPersonalizados('medio')}
 
         {/* Remitente Eco */}
-        {cfgRotulado?.incluir_remitente !== false && (
+        {cfgRotulado?.incluir_remitente === true && (
           <div className="p-2 border border-slate-400 rounded-xl text-[9.5px] space-y-0.5 text-slate-800">
             <p className="font-black text-black uppercase">
               {cfgRotulado?.titulo_remitente || 'REMITENTE:'} {cfgRotulado?.mostrar_remitente_nombre !== false ? senderNombre : ''}
@@ -1012,7 +1011,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
       {renderBloquesPersonalizados('medio')}
 
       {/* SECCIÓN REMITENTE (100% PERSONALIZABLE O GLOBAL) */}
-      {cfgRotulado?.incluir_remitente !== false && (
+      {cfgRotulado?.incluir_remitente === true && (
         <div className={`rounded-xl p-2.5 mb-2 text-[10.5px] ${eco.sectionBg} space-y-0.5`}>
           <div className="font-black uppercase text-slate-800 mb-0.5 flex items-center justify-between">
             <span>{cfgRotulado?.titulo_remitente || 'REMITENTE OFICIAL:'}</span>

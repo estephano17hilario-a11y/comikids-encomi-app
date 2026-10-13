@@ -93,7 +93,8 @@ export const VARIABLES_MENSAJE = [
 // ---------------------------------------------------------------------------
 // Borrador editable de una agencia (todo el editor trabaja sobre este objeto)
 // ---------------------------------------------------------------------------
-export type EstiloRotulo = '' | 'estandar_oficial' | 'vision_modern' | 'eco_ink_saving';
+// Solo hay 2 diseños: a color (clásico) y blanco y negro (ahorra tinta)
+export type EstiloRotulo = 'estandar_oficial' | 'eco_ink_saving';
 
 export interface RotuloDraft {
   orientacion: 'horizontal' | 'vertical';
@@ -183,8 +184,8 @@ export const draftFromMethod = (m: MetodoEnvio, taller: TallerConfig): AgencyDra
     restringirFecha: disp?.restringir_fecha_envio !== false,
     mensajeDisponibilidad: disp?.mensaje_disponibilidad || '',
     rotulo: {
-      orientacion: cfg?.orientacion || 'horizontal',
-      estilo: (cfg?.estilo_rotulo || '') as EstiloRotulo,
+      orientacion: 'vertical', // el rótulo siempre se imprime parado
+      estilo: cfg?.estilo_rotulo === 'eco_ink_saving' ? 'eco_ink_saving' : 'estandar_oficial',
       mostrar_logo_empresa: cfg?.mostrar_logo_empresa !== false,
       mostrar_logo_agencia: cfg?.mostrar_logo_agencia !== false,
       subtitulo_cabecera: cfg?.subtitulo_cabecera || '',
@@ -192,7 +193,7 @@ export const draftFromMethod = (m: MetodoEnvio, taller: TallerConfig): AgencyDra
       mostrar_tracking: cfg?.mostrar_tracking !== false,
       mostrar_destino: cfg?.mostrar_destino !== false,
       titulo_destino: cfg?.titulo_destino || '',
-      incluir_destinatario: cfg?.incluir_destinatario !== false,
+      incluir_destinatario: true,
       titulo_destinatario: cfg?.titulo_destinatario || '',
       mostrar_badge_modalidad: cfg?.mostrar_badge_modalidad !== false,
       texto_badge_modalidad: cfg?.texto_badge_modalidad || '',
@@ -203,7 +204,7 @@ export const draftFromMethod = (m: MetodoEnvio, taller: TallerConfig): AgencyDra
       tamano_dni: cfg?.tamano_dni || 'gigante',
       mostrar_cliente_telefono: cfg?.mostrar_cliente_telefono !== false,
       titulo_cliente_telefono: cfg?.titulo_cliente_telefono || '',
-      incluir_remitente: cfg?.incluir_remitente !== false,
+      incluir_remitente: cfg?.incluir_remitente === true,
       titulo_remitente: cfg?.titulo_remitente || '',
       mostrar_remitente_nombre: cfg?.mostrar_remitente_nombre !== false,
       mostrar_remitente_ruc_dni: cfg?.mostrar_remitente_ruc_dni !== false,
@@ -240,8 +241,8 @@ const disponibilidadFromDraft = (d: AgencyDraft) => ({
 const rotuloFromDraft = (d: AgencyDraft) => {
   const r = d.rotulo;
   return {
-    orientacion: r.orientacion,
-    estilo_rotulo: r.estilo ? r.estilo : undefined,
+    orientacion: 'vertical' as const,
+    estilo_rotulo: r.estilo,
     mostrar_logo_empresa: r.mostrar_logo_empresa,
     mostrar_logo_agencia: r.mostrar_logo_agencia,
     subtitulo_cabecera: opt(r.subtitulo_cabecera),
@@ -333,7 +334,8 @@ export const newAgencyMethod = (nombre: string, foto_url: string, color: string,
     config_rotulado: {
       incluir_campos_personalizados: true,
       campos_visibles: [],
-      incluir_remitente: true,
+      orientacion: 'vertical',
+      incluir_remitente: false,
       mostrar_remitente_nombre: true,
       mostrar_remitente_ruc_dni: true,
       mostrar_remitente_telefono: true,
@@ -352,13 +354,34 @@ export const newAgencyMethod = (nombre: string, foto_url: string, color: string,
 // ---------------------------------------------------------------------------
 // Atajos del rótulo
 // ---------------------------------------------------------------------------
-export type RotuloPreset = 'completo' | 'solo_destinatario' | 'eco_ahorro' | 'con_alertas';
+export type RotuloPreset = 'completo' | 'solo_destinatario' | 'eco_ahorro';
 
-export const ROTULO_PRESETS: { id: RotuloPreset; emoji: string; title: string; desc: string }[] = [
-  { id: 'completo', emoji: '📦', title: 'Completo', desc: 'Quién envía, quién recibe, destino y código' },
-  { id: 'solo_destinatario', emoji: '👤', title: 'Solo quien recibe', desc: 'Sin datos de tu negocio' },
-  { id: 'eco_ahorro', emoji: '🌿', title: 'Ahorra tinta', desc: 'Diseño en blanco y negro' },
-  { id: 'con_alertas', emoji: '⚠️', title: 'Con aviso FRÁGIL', desc: 'Agrega "Frágil" y "Flete en destino"' },
+export const ROTULO_PRESETS: { id: RotuloPreset; emoji: string; title: string; desc: string; sale: string[]; noSale: string[]; recomendado?: boolean }[] = [
+  {
+    id: 'solo_destinatario',
+    emoji: '👤',
+    title: 'Solo los datos de tu clienta',
+    desc: 'Lo más usado. La agencia ve a quién entregar y a dónde. Tus datos NO se imprimen.',
+    sale: ['Nombre, DNI y celular de tu clienta', 'A dónde va el paquete', 'Código de barras'],
+    noSale: ['Tus datos (remitente)'],
+    recomendado: true,
+  },
+  {
+    id: 'completo',
+    emoji: '📦',
+    title: 'Completo',
+    desc: 'Todo lo de tu clienta y además TUS datos, por si la agencia necesita llamarte o devolverte el paquete.',
+    sale: ['Todo lo de tu clienta', 'Tus datos: nombre, DNI/RUC, celular y dirección', 'Código de barras y número del pedido'],
+    noSale: [],
+  },
+  {
+    id: 'eco_ahorro',
+    emoji: '🌿',
+    title: 'Ahorra tinta',
+    desc: 'Cambia el rótulo a blanco y negro y achica un poco el DNI. Gastas mucho menos tinta. No cambia qué datos salen.',
+    sale: ['Diseño en blanco y negro', 'DNI en tamaño grande'],
+    noSale: ['Colores'],
+  },
 ];
 
 export const applyRotuloPreset = (r: RotuloDraft, preset: RotuloPreset): RotuloDraft => {
@@ -393,21 +416,10 @@ export const applyRotuloPreset = (r: RotuloDraft, preset: RotuloPreset): RotuloD
       tamano_dni: 'gigante',
     };
   }
-  if (preset === 'eco_ahorro') {
-    return { ...r, estilo: 'eco_ink_saving', tamano_dni: 'grande', incluir_remitente: true, incluir_destinatario: true };
-  }
-  const stamp = Date.now().toString(36);
-  return {
-    ...r,
-    bloques: [
-      { id: 'b-fragil-' + stamp, titulo: '⚠️ ¡FRÁGIL! MANEJAR CON CUIDADO', contenido: 'Prendas delicadas. No golpear ni presionar.', tipo: 'aviso', posicion: 'medio' },
-      { id: 'b-flete-' + stamp, titulo: '💰 FLETE PAGO DESTINO', contenido: 'Cliente abona el costo del envío al recoger en agencia.', tipo: 'flete', posicion: 'medio' },
-    ],
-  };
+  return { ...r, estilo: 'eco_ink_saving', tamano_dni: 'grande' };
 };
 
 export const AVISO_PLANTILLAS: { emoji: string; label: string; bloque: Omit<BloqueRotuladoPersonalizado, 'id'> }[] = [
-  { emoji: '⚠️', label: 'Frágil', bloque: { titulo: '⚠️ ¡FRÁGIL! MANEJAR CON CUIDADO', contenido: 'No golpear ni presionar.', tipo: 'aviso', posicion: 'medio' } },
   { emoji: '💰', label: 'Flete en destino', bloque: { titulo: '💰 FLETE PAGO DESTINO', contenido: 'La clienta paga el envío al recoger.', tipo: 'flete', posicion: 'medio' } },
   { emoji: '⭐', label: 'Prioritario', bloque: { titulo: '⭐ ENVÍO PRIORITARIO', contenido: 'Despachar con prioridad.', tipo: 'destacado', posicion: 'arriba' } },
   { emoji: '↕️', label: 'No voltear', bloque: { titulo: '↕️ ESTE LADO ARRIBA', contenido: 'No voltear la caja.', tipo: 'aviso', posicion: 'abajo' } },
@@ -424,7 +436,7 @@ export const BLOQUE_TIPOS: { id: BloqueRotuladoPersonalizado['tipo']; label: str
 // Pedido de ejemplo para la vista previa del rótulo
 // ---------------------------------------------------------------------------
 export const buildMockPedido = (d: AgencyDraft, base: MetodoEnvio): Pedido => {
-  const isEchado = d.rotulo.orientacion === 'horizontal';
+  const isEchado = false; // el rótulo siempre es parado
   return {
     id: 'ped-live-demo',
     codigo_seguimiento: isEchado ? 'BYT-2026-5328' : 'ENCOMI-9428',

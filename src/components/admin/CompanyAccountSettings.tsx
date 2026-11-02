@@ -567,12 +567,12 @@ export const CompanyAccountSettings: React.FC = () => {
   };
 
   // URL Distintiva de Clientes para esta Empresa
-  const originUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://comikids-encomi-app.vercel.app';
+  const originUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://encomi.89.117.73.97.sslip.io';
   const publicOrderUrl = isComikidsAccount
     ? originUrl
     : `${originUrl}/?empresa=${encodeURIComponent(companyCode)}`;
 
-  const shareText = encodeURIComponent(`¡Hola! 👋 Puedes registrar tu pedido y datos de envío de forma rápida y segura en nuestro portal oficial aquí:\n\n🔗 ${publicOrderUrl}\n\n✨ Tus datos se guardarán al instante y tu comprobante se enviará directamente a nuestro WhatsApp.`);
+  const shareText = encodeURIComponent(`Registra tu pedido en menos de 30 segundos con Encomi:\n${publicOrderUrl}`);
   const shareWhatsAppUrl = `https://wa.me/?text=${shareText}`;
 
   const handleCopyLink = () => {

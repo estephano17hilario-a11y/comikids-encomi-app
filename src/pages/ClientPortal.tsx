@@ -61,7 +61,7 @@ export const ClientPortal: React.FC = () => {
                 <h1 className="text-base sm:text-lg font-black text-white leading-tight truncate">
                   {tallerConfig?.nombre_taller || 'Encomi'}
                 </h1>
-                <p className="text-xs text-slate-400 truncate">Registra tu envío en menos de 30 segundos</p>
+                <p className="text-xs text-slate-400 truncate">Registra tu pedido en menos de 30 segundos con Encomi</p>
               </div>
             </div>
 

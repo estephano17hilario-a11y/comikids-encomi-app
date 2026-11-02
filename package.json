@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "deploy:vps": "npm run build && python scripts/deploy_frontend_vps.py",
     "sync:shalom": "node scripts/sync-shalom.mjs"
   },
   "dependencies": {

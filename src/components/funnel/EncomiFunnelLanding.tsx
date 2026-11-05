@@ -107,7 +107,7 @@ export const EncomiFunnelLanding: React.FC = () => {
         'Tablero Kanban sincronizado en tiempo real con Supabase',
         'Cola de bordados priorizada por fecha límite y estado de urgencia',
         'Sistema de puntos de experiencia (XP), niveles y logros para colaboradores',
-        'Alertas audibles para nuevas órdenes y pagos vía Yape'
+        'Alertas audibles para cada nueva orden'
       ],
       metrics: [
         { label: 'Eficiencia de Taller', value: '+45%', detail: 'menor tiempo ocioso' },

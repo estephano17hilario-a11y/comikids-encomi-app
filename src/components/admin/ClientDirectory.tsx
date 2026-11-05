@@ -5,7 +5,6 @@ import { ordersService } from '../../services/ordersService';
 import { Usuario, Pedido } from '../../types/database.types';
 import { formatDate } from '../../utils/formatters';
 import { calculateLevel } from '../../data/achievementsList';
-import { yapeReaderService } from '../../services/yapeReaderService';
 import { supabase, isSupabaseConfigured } from '../../services/supabaseClient';
 import {
   Users,
@@ -79,11 +78,6 @@ export const ClientDirectory: React.FC = () => {
     }
   });
   const clientsList = Array.from(clientsMap.values());
-
-  const [yapes, setYapes] = useState(() => yapeReaderService.getLocalYapes());
-  React.useEffect(() => {
-    yapeReaderService.syncNativeYapes().then(setYapes);
-  }, []);
 
   const filteredClients = clientsList.filter(c => {
     const query = searchTerm.toLowerCase().trim();

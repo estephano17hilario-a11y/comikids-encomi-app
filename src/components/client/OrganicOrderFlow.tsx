@@ -800,7 +800,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
         const id = (c.id || '').toLowerCase();
         const lbl = (c.label || '').toLowerCase();
         if (['c-shalom-dni', 'c-olva-dni', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
-        if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
+        if (selectedMethod?.tipo_formulario !== 'personalizado' && (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento'))) return true;
         if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
         if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
         if (lbl.includes('dirección') || lbl.includes('direccion') || lbl.includes('agencia olva') || lbl.includes('agencia shalom')) return true;
@@ -808,6 +808,14 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       };
 
       for (const campo of selectedMethod.campos_personalizados) {
+        if (selectedMethod.tipo_formulario === 'personalizado' && /dni|carnet|documento/i.test(campo.label)) {
+          const digits = String(customFieldValues[campo.id] ?? '').replace(/\D/g, '');
+          if ((campo.requerido || digits.length > 0) && digits.length < 8) {
+            setErrorMsg(`Revisa "${campo.label}": debe tener mínimo 8 dígitos.`);
+            scrollToField(`custom-field-${campo.id}`);
+            return;
+          }
+        }
         if (campo.requerido && !isNativeDuplicateField(campo)) {
           const val = customFieldValues[campo.id] ?? customFieldValues[campo.label];
           if (!val || String(val).trim() === '') {
@@ -841,7 +849,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     if (olvaReferencia) localStorage.setItem('incomi_saved_olva_reference', olvaReferencia.trim());
     localStorage.setItem('incomi_saved_olva_modalidad', olvaModalidad);
 
-    const cleanDocVal = dniShalom.trim().replace(/\D/g, '');
+    // Agencias propias: si piden DNI como pregunta, ese valor identifica a la clienta
+    const customDniField = selectedMethod?.tipo_formulario === 'personalizado'
+      ? (selectedMethod.campos_personalizados || []).find(c => /dni|carnet|documento/i.test(c.label))
+      : undefined;
+    const customDniValue = customDniField ? String(customFieldValues[customDniField.id] ?? '').replace(/\D/g, '') : '';
+    const cleanDocVal = dniShalom.trim().replace(/\D/g, '') || customDniValue;
     const validDni = cleanDocVal.length >= 8 ? cleanDocVal : (currentUser?.dni && currentUser.dni.length >= 8 && !currentUser.dni.startsWith('9') && !currentUser.dni.startsWith('usr-') ? currentUser.dni : '');
     const userIdentifier = validDni || whatsapp.trim();
 
@@ -2717,7 +2730,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
                   const id = (campo.id || '').toLowerCase();
                   const lbl = (campo.label || '').toLowerCase();
                   if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
-                  if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
+                  if (selectedMethod?.tipo_formulario !== 'personalizado' && (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento'))) return true;
                   if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
                   if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
                   if (lbl.includes('dirección') || lbl.includes('direccion') || lbl.includes('agencia olva') || lbl.includes('agencia shalom')) return true;

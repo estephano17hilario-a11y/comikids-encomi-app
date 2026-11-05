@@ -177,6 +177,13 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return run;
   }, [fetchAll]);
 
+  // Cuando las agencias cambian (por la empresa o por la nube) se refrescan al instante
+  useEffect(() => {
+    const onMethods = () => setShippingMethods(ordersService.getShippingMethods(activeEmpresaId));
+    window.addEventListener('incomi_shipping_methods_updated', onMethods);
+    return () => window.removeEventListener('incomi_shipping_methods_updated', onMethods);
+  }, [activeEmpresaId]);
+
   // Agrupa ráfagas de eventos (p. ej. 20 pedidos actualizados en masa) en una sola descarga
   const scheduleRefresh = useCallback((delayMs = 600) => {
     if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);

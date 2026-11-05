@@ -15,40 +15,58 @@ export const StepHeader: React.FC<{ emoji: string; title: string; subtitle: stri
   </div>
 );
 
-// Portada de cada paso: qué es, para qué sirve y cómo se usa, en palabras simples
+// Explicación corta de cada pantalla: una frase y, si se quiere, los pasos escondidos
 export const StepIntro: React.FC<{
   emoji: string;
   title: string;
   queEs: string;
   pasos: string[];
   accent: string;
-}> = ({ emoji, title, queEs, pasos, accent }) => (
-  <div
-    className="relative overflow-hidden rounded-3xl border p-5 sm:p-6 space-y-4"
-    style={{ borderColor: `${accent}55`, background: `linear-gradient(135deg, ${accent}26 0%, rgba(15,23,42,0.85) 55%)` }}
+}> = ({ emoji, title, queEs, pasos, accent }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-3xl border p-4 space-y-2.5" style={{ borderColor: `${accent}44`, background: `linear-gradient(135deg, ${accent}1f 0%, rgba(15,23,42,0.7) 70%)` }}>
+      <div className="flex items-start gap-3">
+        <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ backgroundColor: `${accent}33` }} aria-hidden="true">{emoji}</div>
+        <div className="min-w-0">
+          <h2 className="text-lg font-black text-white leading-tight">{title}</h2>
+          <p className="text-[14px] text-slate-300 mt-0.5 leading-snug">{queEs}</p>
+        </div>
+      </div>
+      {pasos.length > 0 && (
+        <>
+          <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="text-[13px] font-bold underline-offset-2 hover:underline" style={{ color: accent }}>
+            {open ? 'Ocultar pasos' : '¿Cómo se hace?'}
+          </button>
+          {open && (
+            <ol className="space-y-1.5 animate-fadeIn">
+              {pasos.map((p, i) => (
+                <li key={i} className="flex items-start gap-2 text-[14px] text-slate-200 leading-snug">
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-black text-slate-950 shrink-0 mt-px" style={{ backgroundColor: accent }}>{i + 1}</span>
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// Interruptor estilo iPhone
+export const IosSwitch: React.FC<{ checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }> = ({ checked, onChange, label, disabled }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
+    disabled={disabled}
+    onClick={e => { e.stopPropagation(); onChange(!checked); }}
+    className={`relative shrink-0 w-[3.25rem] h-8 rounded-full transition-colors duration-200 ${checked ? 'bg-emerald-500' : 'bg-slate-600'} ${disabled ? 'opacity-50' : ''}`}
   >
-    <div className="absolute -right-6 -top-6 text-[110px] leading-none opacity-15 select-none pointer-events-none" aria-hidden="true">{emoji}</div>
-    <div className="relative flex items-start gap-3 sm:gap-4">
-      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl shrink-0 shadow-lg" style={{ backgroundColor: `${accent}33` }} aria-hidden="true">
-        {emoji}
-      </div>
-      <div className="min-w-0">
-        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">{title}</h2>
-        <p className="text-[15px] sm:text-base text-slate-200 mt-1.5 leading-relaxed">{queEs}</p>
-      </div>
-    </div>
-    <div className="relative rounded-2xl bg-slate-950/50 border border-white/10 p-3.5 sm:p-4">
-      <p className="text-xs font-black uppercase tracking-wider mb-2" style={{ color: accent }}>Así se hace</p>
-      <ol className="space-y-2">
-        {pasos.map((p, i) => (
-          <li key={i} className="flex items-start gap-2.5 text-[15px] text-slate-200 leading-snug">
-            <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black text-slate-950 shrink-0 mt-px" style={{ backgroundColor: accent }}>{i + 1}</span>
-            <span>{p}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  </div>
+    <span className={`absolute top-0.5 left-0.5 w-7 h-7 rounded-full bg-white shadow-md transition-transform duration-200 ${checked ? 'translate-x-5' : ''}`} />
+  </button>
 );
 
 // Caja de explicación / ejemplo dentro de una sección

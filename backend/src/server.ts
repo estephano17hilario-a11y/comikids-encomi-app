@@ -7,6 +7,7 @@ import { healthRoutes } from './routes/health.routes.js';
 import { tenantRoutes } from './routes/tenant.routes.js';
 import { shalomRoutes } from './routes/shalom.routes.js';
 import { dniRoutes } from './routes/dni.routes.js';
+import { aiRoutes } from './routes/ai.routes.js';
 import { ingestionWorker } from './workers/ingestion.worker.js';
 import { copilotWorker } from './workers/copilot.worker.js';
 import { redisClient } from './config/redis.js';
@@ -56,6 +57,7 @@ async function start() {
     await app.register(tenantRoutes);
     await app.register(shalomRoutes);
     await app.register(dniRoutes);
+    await app.register(aiRoutes);
 
 
     // 3. Iniciar Servidor HTTP

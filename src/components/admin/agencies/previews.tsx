@@ -5,22 +5,24 @@ import { ShalomLabelPrint } from '../ShalomLabelPrint';
 import { DIAS_SEMANA_ORDEN, DIAS_SEMANA_ABREV, getAgencyDaysSummary, formatHorarioAmigable } from '../../../utils/agencyAvailability';
 import { AgencyDraft, RECEIPT_DIVIDER, VARIABLES_MENSAJE, construirMensajeComprobacion } from './agencyDraft';
 import { PhoneFrame, FitToWidth } from './ui';
+import { logoBgFor } from '../../../data/agencyTemplates';
 
-export const AgencyLogo: React.FC<{ method: Pick<MetodoEnvio, 'codigo' | 'tipo_formulario' | 'foto_url' | 'nombre'>; size?: 'md' | 'lg' }> = ({ method, size = 'md' }) => {
-  const box = size === 'lg' ? 'w-14 h-14' : 'w-12 h-12';
+export const AgencyLogo: React.FC<{ method: Pick<MetodoEnvio, 'codigo' | 'tipo_formulario' | 'foto_url' | 'nombre'>; size?: 'md' | 'lg' | 'xl' }> = ({ method, size = 'md' }) => {
+  const box = size === 'xl' ? 'w-20 h-20 rounded-[1.4rem]' : size === 'lg' ? 'w-14 h-14 rounded-2xl' : 'w-12 h-12 rounded-2xl';
   const isOlva = method.codigo === 'olva' || method.tipo_formulario === 'olva';
   const isShalom = method.codigo === 'shalom' || method.tipo_formulario === 'shalom';
   const src = method.foto_url || (isShalom ? '/Shalom-Courier-Logo.webp' : isOlva ? '/Olva-Courier-Logo.svg' : '');
   if (src) {
+    const bg = logoBgFor(src);
     return (
-      <div className={`${box} rounded-2xl flex items-center justify-center p-1.5 overflow-hidden shrink-0 border ${isOlva ? 'bg-[#FFDE00] border-yellow-400/60' : 'bg-white border-white/20'}`}>
+      <div className={`${box} flex items-center justify-center p-1.5 overflow-hidden shrink-0 border border-black/10`} style={{ backgroundColor: bg }}>
         <img src={src} alt="" className="w-full h-full object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} />
       </div>
     );
   }
   return (
-    <div className={`${box} rounded-2xl bg-white/8 border border-white/10 text-cyan-300 flex items-center justify-center shrink-0`}>
-      <Truck className="w-6 h-6" />
+    <div className={`${box} bg-white/8 border border-white/10 text-cyan-300 flex items-center justify-center shrink-0`}>
+      <Truck className={size === 'xl' ? 'w-9 h-9' : 'w-6 h-6'} />
     </div>
   );
 };
@@ -121,12 +123,14 @@ export const nativeFieldsFor = (live: MetodoEnvio): string[] => {
 };
 
 // Igual que el formulario de la clienta: estos datos los pide el sistema por su cuenta
-export const isNativeDuplicateField = (campo: { id: string; label: string; sistema?: boolean }) => {
+// Las agencias creadas por la empresa ('personalizado') NO piden DNI por su cuenta:
+// si tienen un campo de DNI, ese campo SÍ se muestra a la clienta.
+export const isNativeDuplicateField = (campo: { id: string; label: string; sistema?: boolean }, tipo?: string) => {
   if (campo.sistema) return true;
   const id = (campo.id || '').toLowerCase();
   const lbl = (campo.label || '').toLowerCase();
   if (['c-shalom-dni', 'c-shalom-tel', 'c-olva-dni', 'c-olva-tel', 'c-olva-dir', 'c-mot-nombre', 'c-mot-tel', 'c-mot-ref'].includes(id)) return true;
-  if (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento')) return true;
+  if (tipo !== 'personalizado' && (lbl.includes('dni') || lbl.includes('carnet') || lbl.includes('documento'))) return true;
   if (lbl.includes('teléfono') || lbl.includes('telefono') || lbl.includes('celular') || lbl.includes('whatsapp')) return true;
   if (lbl.includes('nombres y apellidos') || lbl.includes('nombre completo')) return true;
   if (lbl.includes('dirección') || lbl.includes('direccion') || lbl.includes('agencia olva') || lbl.includes('agencia shalom')) return true;
@@ -135,7 +139,7 @@ export const isNativeDuplicateField = (campo: { id: string; label: string; siste
 
 // Paso 3: el formulario que llena la clienta
 export const FormPreview: React.FC<{ draft: AgencyDraft; live: MetodoEnvio; highlightKey?: string }> = ({ draft, live, highlightKey }) => {
-  const extras = draft.campos.filter(c => !isNativeDuplicateField(c));
+  const extras = draft.campos.filter(c => !isNativeDuplicateField(c, draft.tipo));
   return (
     <PhoneFrame title="Formulario de tu clienta">
       <div className="space-y-2">
@@ -175,7 +179,7 @@ const fillExample = (text: string, draft: AgencyDraft) => {
   let out = text;
   for (const v of VARIABLES_MENSAJE) out = out.split(v.token).join(v.ejemplo);
   const extras = draft.campos
-    .filter(c => c.mostrar_en_comprobante && !isNativeDuplicateField(c))
+    .filter(c => c.mostrar_en_comprobante && !isNativeDuplicateField(c, draft.tipo))
     .map(c => `📌 *${c.label}:* ${c.placeholder?.replace(/^Ej:?\s*/i, '') || 'respuesta'}`)
     .join('\n');
   return out

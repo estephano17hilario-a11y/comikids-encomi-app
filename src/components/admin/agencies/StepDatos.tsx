@@ -13,8 +13,8 @@ export const StepDatos: React.FC<StepProps> = ({ draft, update, base, accent, op
   const { toast, confirm } = useFeedback();
   const [wizard, setWizard] = useState<{ campo?: CampoPersonalizadoAgencia } | null>(null);
 
-  const extras = draft.campos.filter(c => !isNativeDuplicateField(c));
-  const internos = draft.campos.filter(c => isNativeDuplicateField(c));
+  const extras = draft.campos.filter(c => !isNativeDuplicateField(c, draft.tipo));
+  const internos = draft.campos.filter(c => isNativeDuplicateField(c, draft.tipo));
 
   const setCampos = (campos: CampoPersonalizadoAgencia[]) => update({ campos });
   const patchCampo = (id: string, patch: Partial<CampoPersonalizadoAgencia>) =>

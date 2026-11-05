@@ -48,7 +48,7 @@ export const StepMensaje: React.FC<StepProps> = ({ draft, update, accent }) => {
   const { toast } = useFeedback();
   const saludo = useInsert(draft.mensajeInicio, v => update({ mensajeInicio: v }));
   const despedida = useInsert(draft.mensajeFin, v => update({ mensajeFin: v }));
-  const extras = draft.campos.filter(c => c.mostrar_en_comprobante && !isNativeDuplicateField(c));
+  const extras = draft.campos.filter(c => c.mostrar_en_comprobante && !isNativeDuplicateField(c, draft.tipo));
 
   return (
     <div className="space-y-5">

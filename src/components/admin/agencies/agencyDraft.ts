@@ -136,6 +136,7 @@ export interface RotuloDraft {
 }
 
 export interface AgencyDraft {
+  tipo: string; // tipo_formulario de la agencia (solo lectura)
   nombre: string;
   descripcion: string;
   icono: string;
@@ -166,6 +167,7 @@ export const draftFromMethod = (m: MetodoEnvio, taller: TallerConfig): AgencyDra
   const rem = cfg?.remitente_personalizado;
 
   return {
+    tipo: m.tipo_formulario,
     nombre: m.nombre,
     descripcion: m.descripcion || '',
     icono: m.icono || 'Truck',
@@ -483,11 +485,15 @@ export const buildMockPedido = (d: AgencyDraft, base: MetodoEnvio): Pedido => {
 export const LOGO_PRESETS = [
   { label: 'Shalom', url: '/Shalom-Courier-Logo.webp' },
   { label: 'Olva Courier', url: '/Olva-Courier-Logo.svg' },
+  { label: 'Marvisur', url: '/logos/marvisur.svg' },
+  { label: 'Flores', url: '/logos/flores.svg' },
+  { label: 'Cruz del Sur', url: '/logos/cruzdelsur.webp' },
+  { label: 'Serpost', url: '/logos/serpost.png' },
+  { label: 'Civa', url: '/logos/civa.svg' },
+  { label: 'Urbano', url: '/logos/urbano.svg' },
+  { label: 'DHL', url: '/logos/dhl.svg' },
+  { label: 'Movil Bus', url: '/logos/movilbus.png' },
   { label: 'Motorizado', url: 'https://cdn-icons-png.flaticon.com/512/2830/2830305.png' },
-  { label: 'Encomi', url: 'https://cdn-icons-png.flaticon.com/512/7542/7542670.png' },
-  { label: 'Transportes Flores', url: 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=120&auto=format&fit=crop&q=60' },
-  { label: 'Marvisur', url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=120&auto=format&fit=crop&q=60' },
-  { label: 'Carhua', url: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=120&auto=format&fit=crop&q=60' },
 ];
 
 export const COLOR_PRESETS = [

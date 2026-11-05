@@ -119,7 +119,7 @@ export const StepRotulo: React.FC<StepProps> = ({ draft, updateRotulo, update, a
     const next = { ...r, ...patch };
     updateRotulo({ ...patch, incluir_remitente: remitenteActivo(next) });
   };
-  const preguntas = draft.campos.filter(c => !isNativeDuplicateField(c));
+  const preguntas = draft.campos.filter(c => !isNativeDuplicateField(c, draft.tipo));
 
   const setBloques = (bloques: BloqueRotuladoPersonalizado[]) => updateRotulo({ bloques });
   const addBloque = (b: Omit<BloqueRotuladoPersonalizado, 'id'>) => {

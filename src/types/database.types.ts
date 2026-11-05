@@ -26,7 +26,6 @@ export interface EmpresaConfig {
   shalom_modo: 'api' | 'excel'; // 'api' (automático Pro) o 'excel' (solo exportar/cargar Excel)
   vps_whatsapp_entregado: boolean; // Enviar "entregado" mediante un click en el sistema de vps de whatsapp
   secciones_activas: EmpresaSeccionesActivas;
-  desactivar_yape?: boolean; // Desactivar interfaz y métricas de Yape para cuentas de empresa
   
   // Credenciales técnicas exclusivas que solo Matrix puede configurar
   shalom_email?: string;
@@ -202,6 +201,22 @@ export interface MetodoEnvio {
   disponibilidad?: DisponibilidadAgencia; // Configuración inteligente de días y fechas
   config_rotulado?: ConfigRotuladoAgencia;
   color_borde?: string; // Color personalizado de borde/etiqueta para los pedidos de esta agencia (hex, ej: '#ef4444')
+  plantilla_id?: string; // Id de la plantilla de agencia peruana de la que nació (ej: 'marvisur')
+  requisitos?: RequisitosAgencia; // Qué datos pide la agencia (informativo, viene de la plantilla)
+}
+
+export interface RequisitoAgenciaItem {
+  label: string;
+  emoji?: string;
+  obligatorio: boolean;
+}
+
+export interface RequisitosAgencia {
+  remitente: RequisitoAgenciaItem[];
+  destinatario: RequisitoAgenciaItem[];
+  recojo?: string;
+  pago?: string;
+  notas?: string[];
 }
 
 export interface Pedido {
@@ -282,6 +297,7 @@ export interface TallerConfig {
     celular?: string;
     direccion?: string;
     observaciones?: string;
+    __metodos_envio?: MetodoEnvio[]; // Reservado: agencias sincronizadas en la nube
   };
 }
 

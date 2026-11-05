@@ -1393,18 +1393,91 @@ class OrdersService {
     }
 
     if (modified) {
-      this.saveShippingMethods(list, empresaId);
+      this.saveShippingMethods(list, empresaId, { skipCloud: true });
     }
     return list;
   }
 
-  saveShippingMethods(methods: MetodoEnvio[], empresaId?: string) {
+  // --- Sincronización en la nube de las agencias (para que tus clientas vean lo mismo que tú) ---
+  // Se guardan dentro de taller_config.remitente_default (jsonb) bajo la clave reservada
+  // `__metodos_envio`, así no hace falta cambiar la base de datos.
+  private shippingPushTimers: Record<string, number> = {};
+  private shippingPushInFlight: Record<string, boolean> = {};
+
+  private shippingCloudId(empresaId?: string): string {
+    return !empresaId || empresaId === 'empresa-master-comikids' ? 'config-main' : empresaId;
+  }
+
+  private async pushShippingMethodsToCloud(methods: MetodoEnvio[], empresaId?: string): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) return;
+    const rowId = this.shippingCloudId(empresaId);
+    const targetEmp = empresaId || 'empresa-master-comikids';
+    this.shippingPushInFlight[rowId] = true;
+    try {
+      const { data: row } = await supabase.from('taller_config').select('remitente_default').eq('id', rowId).maybeSingle();
+      const merged = { ...((row as any)?.remitente_default || {}), __metodos_envio: methods };
+      if (row) {
+        const { error } = await supabase.from('taller_config').update({ remitente_default: merged }).eq('id', rowId);
+        if (error) throw error;
+      } else {
+        // La empresa aún no tiene fila de configuración: se crea con lo que ya conocemos
+        await this.saveTallerConfig({ remitente_default: merged as any }, targetEmp);
+      }
+    } catch (e) {
+      console.warn('[AGENCIAS] No se pudo sincronizar en la nube (se queda guardado en este equipo):', e);
+    } finally {
+      this.shippingPushInFlight[rowId] = false;
+    }
+  }
+
+  /** Aplica las agencias que vienen de la nube. Devuelve true si cambió algo. */
+  applyCloudShippingMethods(cloud: unknown, empresaId?: string): boolean {
+    const rowId = this.shippingCloudId(empresaId);
+    if (this.shippingPushTimers[rowId] || this.shippingPushInFlight[rowId]) return false; // hay cambios locales sin subir
+    if (!Array.isArray(cloud) || cloud.length === 0) return false;
+    const valid = (cloud as any[]).filter(m => m && typeof m.id === 'string' && typeof m.nombre === 'string');
+    if (valid.length === 0) return false;
     const key = empresaId && empresaId !== 'empresa-master-comikids'
       ? `${STORAGE_KEYS.SHIPPING_METHODS}_${empresaId}`
       : STORAGE_KEYS.SHIPPING_METHODS;
-    localStorage.setItem(key, JSON.stringify(methods));
+    const next = JSON.stringify(valid);
+    if (localStorage.getItem(key) === next) return false;
+    this.saveShippingMethods(valid as MetodoEnvio[], empresaId, { skipCloud: true });
+    // Re-normaliza (por si falta Shalom/Olva) sin subir nada
+    this.getShippingMethods(empresaId);
+    return true;
+  }
+
+  /** Si la nube está vacía y este equipo ya tiene agencias propias, las sube (migración de una sola vez) */
+  maybeSeedShippingCloud(cloud: unknown, empresaId?: string): void {
+    if (Array.isArray(cloud) && cloud.length > 0) return;
+    const local = this.getShippingMethods(empresaId);
+    const hasCustom = local.some(m => !m.es_sistema && m.codigo !== 'motorizado');
+    const hasEdits = local.some(m => m.es_sistema && (m.disponibilidad || m.mensaje_inicio_comprobante || (m.config_rotulado?.bloques_personalizados || []).length));
+    if (hasCustom || hasEdits) {
+      this.pushShippingMethodsToCloud(local, empresaId).catch(() => {});
+    }
+  }
+
+  saveShippingMethods(methods: MetodoEnvio[], empresaId?: string, opts?: { skipCloud?: boolean }) {
+    const key = empresaId && empresaId !== 'empresa-master-comikids'
+      ? `${STORAGE_KEYS.SHIPPING_METHODS}_${empresaId}`
+      : STORAGE_KEYS.SHIPPING_METHODS;
+    try {
+      localStorage.setItem(key, JSON.stringify(methods));
+    } catch (e) {
+      console.warn('[AGENCIAS] No hay espacio para guardar en este equipo (¿logo muy pesado?):', e);
+    }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('incomi_shipping_methods_updated', { detail: methods }));
+    }
+    if (!opts?.skipCloud && typeof window !== 'undefined') {
+      const rowId = this.shippingCloudId(empresaId);
+      if (this.shippingPushTimers[rowId]) window.clearTimeout(this.shippingPushTimers[rowId]);
+      this.shippingPushTimers[rowId] = window.setTimeout(() => {
+        delete this.shippingPushTimers[rowId];
+        this.pushShippingMethodsToCloud(methods, empresaId).catch(() => {});
+      }, 700);
     }
   }
 
@@ -2401,6 +2474,10 @@ class OrdersService {
             ...data,
           };
           localStorage.setItem(key, JSON.stringify(merged));
+          const cloudMethods = (data as any).remitente_default?.__metodos_envio;
+          if (!this.applyCloudShippingMethods(cloudMethods, targetEmpId)) {
+            this.maybeSeedShippingCloud(cloudMethods, targetEmpId);
+          }
           return merged;
         }
       } catch (err) {
@@ -2413,6 +2490,10 @@ class OrdersService {
   async saveTallerConfig(config: Partial<TallerConfig>, empresaId?: string): Promise<TallerConfig> {
     const targetEmpId = empresaId || config.empresa_id || 'empresa-master-comikids';
     const current = this.getTallerConfig(targetEmpId);
+    // La clave reservada con las agencias nunca se pierde al editar el remitente
+    if (config.remitente_default && current.remitente_default?.__metodos_envio && !config.remitente_default.__metodos_envio) {
+      config = { ...config, remitente_default: { ...config.remitente_default, __metodos_envio: current.remitente_default.__metodos_envio } };
+    }
     const updated: TallerConfig = {
       ...current,
       ...config,
@@ -2457,6 +2538,8 @@ class OrdersService {
         }
         payloadToSupabase.id = targetEmpId === 'empresa-master-comikids' ? 'config-main' : targetEmpId;
         payloadToSupabase.empresa_id = targetEmpId;
+        // Las agencias viajan junto al remitente: siempre la versión más reciente de este equipo
+        payloadToSupabase.remitente_default = { ...(updated.remitente_default || {}), __metodos_envio: this.getShippingMethods(targetEmpId) };
 
         const { error } = await supabase.from('taller_config').upsert(payloadToSupabase);
         if (error) {

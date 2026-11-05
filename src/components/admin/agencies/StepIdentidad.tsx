@@ -3,22 +3,21 @@ import { Upload, Check, Link2 } from 'lucide-react';
 import { useFeedback } from '../../../context/FeedbackContext';
 import { StepProps, LOGO_PRESETS, COLOR_PRESETS } from './agencyDraft';
 import { StepIntro, Card, Field, inputClass, Disclosure } from './ui';
+import { resizeLogoFile } from './imageUtils';
 
 export const StepIdentidad: React.FC<StepProps> = ({ draft, update, base, accent }) => {
   const { toast } = useFeedback();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast('La imagen es muy pesada. Usa una de menos de 2 MB.', 'warning');
-      return;
+    try {
+      update({ foto_url: await resizeLogoFile(file) });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'No se pudo usar esa imagen.', 'warning');
     }
-    const reader = new FileReader();
-    reader.onload = () => update({ foto_url: reader.result as string });
-    reader.readAsDataURL(file);
   };
 
   const isCustomColor = !COLOR_PRESETS.some(c => c.hex.toLowerCase() === draft.color.toLowerCase());

@@ -1706,13 +1706,56 @@ class OrdersService {
             query = query.eq('empresa_id', targetEmpresaId);
           }
         }
-        const { data: dbOrders, error: ordersError } = await query;
+        const PAGE_SIZE = 1000;
+        const dbOrders: any[] = [];
+        let ordersError: any = null;
+        for (let from = 0; ; from += PAGE_SIZE) {
+          const { data: pageData, error: pageError } = await query.range(from, from + PAGE_SIZE - 1);
+          if (pageError) {
+            ordersError = pageError;
+            break;
+          }
+          if (!pageData || pageData.length === 0) break;
+          dbOrders.push(...pageData);
+          if (pageData.length < PAGE_SIZE) break;
+        }
         
-        // Sincronizar usuarios de Supabase en la memoria local.
+        // Sincronizar usuarios de Supabase en la memoria local (paginado > 1,000 registros).
         // Un cliente solo necesita su propio registro: no se descarga la tabla completa a su navegador.
-        const { data: dbUsers } = userId
-          ? await supabase.from('usuarios').select('*').eq('id', userId)
-          : await supabase.from('usuarios').select('*');
+        const dbUsers: any[] = [];
+        if (userId) {
+          const { data: singleUser } = await supabase.from('usuarios').select('*').eq('id', userId);
+          if (singleUser) dbUsers.push(...singleUser);
+        } else {
+          for (let from = 0; ; from += PAGE_SIZE) {
+            const { data: usersPage, error: usersErr } = await supabase
+              .from('usuarios')
+              .select('*')
+              .order('created_at', { ascending: false, nullsFirst: false })
+              .order('id', { ascending: true })
+              .range(from, from + PAGE_SIZE - 1);
+            if (usersErr || !usersPage || usersPage.length === 0) break;
+            dbUsers.push(...usersPage);
+            if (usersPage.length < PAGE_SIZE) break;
+          }
+
+          // Salvaguarda adicional: si algún pedido referencia un usuario_id aún no cargado, traerlo explícitamente
+          if (dbOrders.length > 0) {
+            const loadedUserIds = new Set(dbUsers.map((u: any) => u.id));
+            const missingUserIds = Array.from(
+              new Set(
+                dbOrders
+                  .map((o: any) => o.usuario_id)
+                  .filter((uid: any) => typeof uid === 'string' && uid.trim() !== '' && !loadedUserIds.has(uid))
+              )
+            );
+            for (let i = 0; i < missingUserIds.length; i += 100) {
+              const chunk = missingUserIds.slice(i, i + 100);
+              const { data: extraUsers } = await supabase.from('usuarios').select('*').in('id', chunk);
+              if (extraUsers) dbUsers.push(...extraUsers);
+            }
+          }
+        }
         if (dbUsers && dbUsers.length > 0) {
           const localUsers = this.getUsers();
           const mergedMap = new Map<string, Usuario>();

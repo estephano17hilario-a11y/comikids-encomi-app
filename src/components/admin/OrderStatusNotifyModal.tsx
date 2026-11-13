@@ -44,7 +44,7 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
   const { currentEmpresa, empresaConfig } = useAuth();
   const { tallerConfig } = useOrders();
 
-  const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids_tienda';
+  const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids';
   const senderPhone = currentEmpresa?.telefono_contacto || tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '51927781412';
 
   // Inicializar estado de tareas con los teléfonos disponibles
@@ -78,26 +78,32 @@ export const OrderStatusNotifyModal: React.FC<Props> = ({
     if (isSendingAllAuto) return;
     setIsSendingAllAuto(true);
     const pendingItemsList = items.filter(it => !it.sent);
-    const payload = pendingItemsList.map(it => {
-      const o = orders.find(ord => ord.id === it.orderId);
-      return {
-        phone: it.phone,
-        customerName: o?.usuario?.nombre_completo || 'Clienta',
-        trackingCode: o?.codigo_seguimiento || '',
-        guideNumber: o?.shalom_numero_guia || (statusName.includes('Shalom') ? 'En camino a Agencia Shalom' : statusName),
-        agencyName: o?.destino_detalle || 'Destino',
-        orderCode: o?.codigo_seguimiento || it.orderId,
-      };
-    });
-
 
     try {
-      const res = await ShalomApiService.syncDispatchedWhatsApp(payload, undefined, subInstance);
-      if (!res.success) {
-        alert(`⚠️ ${res.error || 'Error al notificar por WhatsApp. Verifica la conexión del Sub-QR.'}`);
-        return;
+      for (let i = 0; i < pendingItemsList.length; i++) {
+        const it = pendingItemsList[i];
+        if (i > 0) {
+          const antiBanDelay = Math.floor(Math.random() * 1200) + 2500;
+          await new Promise(r => setTimeout(r, antiBanDelay));
+        }
+
+        const o = orders.find(ord => ord.id === it.orderId);
+        const singlePayload = [{
+          phone: it.phone,
+          customerName: o?.usuario?.nombre_completo || 'Clienta',
+          trackingCode: o?.codigo_seguimiento || '',
+          guideNumber: o?.shalom_numero_guia || (statusName.includes('Shalom') ? 'En camino a Agencia Shalom' : statusName),
+          agencyName: o?.destino_detalle || 'Destino',
+          orderCode: o?.codigo_seguimiento || it.orderId,
+        }];
+
+        const res = await ShalomApiService.syncDispatchedWhatsApp(singlePayload, undefined, subInstance);
+        if (!res.success) {
+          alert(`⚠️ ${res.error || 'Error al notificar por WhatsApp. Verifica la conexión del Sub-QR.'}`);
+          break;
+        }
+        setItems(prev => prev.map(item => item.orderId === it.orderId ? { ...item, sent: true } : item));
       }
-      setItems(prev => prev.map(it => ({ ...it, sent: true })));
     } catch (err: any) {
       alert(`⚠️ Error al enviar por WhatsApp: ${err.message}`);
       console.error('[AUTO WHATSAPP NOTIFY ERROR]', err);

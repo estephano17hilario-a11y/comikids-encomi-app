@@ -741,12 +741,29 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       };
     });
 
+    const targetSubInstance = tallerConfig?.copilot_sub_instance || 'tenant_Comikids';
+    let notifiedTotal = 0;
+
     try {
-      const syncRes = await ShalomApiService.syncDispatchedWhatsApp(ordersToSync, pickupCode);
-      setWhatsAppSyncDone(true);
-      setWhatsAppSyncCount(syncRes.notifiedCount || ordersToSync.length);
-    } catch (err) {
+      for (let i = 0; i < ordersToSync.length; i++) {
+        if (i > 0) {
+          const antiBanDelay = Math.floor(Math.random() * 1200) + 2500;
+          await new Promise(r => setTimeout(r, antiBanDelay));
+        }
+        const syncRes = await ShalomApiService.syncDispatchedWhatsApp([ordersToSync[i]], pickupCode, targetSubInstance);
+        if (!syncRes.success) {
+          alert(`⚠️ ${syncRes.error || 'Error enviando notificación por WhatsApp.'}`);
+          break;
+        }
+        notifiedTotal += (syncRes.notifiedCount || 1);
+        setWhatsAppSyncCount(notifiedTotal);
+      }
+      if (notifiedTotal > 0) {
+        setWhatsAppSyncDone(true);
+      }
+    } catch (err: any) {
       console.error('[WHATSAPP DISPATCH ERROR]', err);
+      alert(`⚠️ Error de conexión al enviar WhatsApp: ${err?.message || 'Error desconocido'}`);
     } finally {
       setIsSyncingWhatsApp(false);
     }

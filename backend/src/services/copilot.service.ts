@@ -467,6 +467,533 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
     };
   }
 
+  private static cutoffCache: { dateStr: string; expiresAt: number } | null = null;
+
+  private static async getCachedCutoffShippingDate(): Promise<string> {
+    const now = Date.now();
+    if (this.cutoffCache && this.cutoffCache.expiresAt > now) {
+      return this.cutoffCache.dateStr;
+    }
+    const dateStr = await this.getCutoffShippingDate();
+    this.cutoffCache = { dateStr, expiresAt: now + 5 * 60 * 1000 };
+    return dateStr;
+  }
+
+  private static normalizePhone(rawPhone: string): { display: string; full: string } {
+    const digits = (rawPhone || '').replace(/\D/g, '');
+    const display = digits.length >= 9 ? digits.slice(-9) : digits;
+    const full = display.length === 9 ? `51${display}` : digits;
+    return { display, full };
+  }
+
+  private static normalizeDni(rawDni: string): string {
+    return (rawDni || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  }
+
+  /**
+   * Persiste cliente en `usuarios` (garantizando ID real sin huérfanos) y pedido en `pedidos`
+   * con todos los campos sincronizados para Encomi Web.
+   */
+  private static async persistRegisteredOrder(params: {
+    clienteNombre: string;
+    clienteDni: string;
+    clienteTelefono: string;
+    metodoEnvio: 'shalom' | 'motorizado';
+    destinoDetalle: string;
+    referencia?: string | null;
+    prendasBordado?: string | null;
+    empresaId?: string | null;
+  }) {
+    const cleanName = (params.clienteNombre || '').trim() || 'Cliente';
+    const cleanDni = this.normalizeDni(params.clienteDni);
+    const { display: cleanPhoneDisplay, full: cleanPhoneFull } = this.normalizePhone(params.clienteTelefono);
+    const targetEmpresaId = params.empresaId || 'empresa-master-comikids';
+
+    let targetUserId: string | null = null;
+    if (cleanDni) {
+      const { data: byDni } = await supabaseAdmin
+        .from('usuarios')
+        .select('id')
+        .or(`dni.eq.${cleanDni},dni_default.eq.${cleanDni}`)
+        .limit(1);
+      if (byDni && byDni.length > 0) targetUserId = byDni[0].id;
+    } else if (cleanPhoneFull) {
+      const orClause =
+        cleanPhoneDisplay && cleanPhoneDisplay !== cleanPhoneFull
+          ? `telefono_default.eq.${cleanPhoneFull},telefono_default.eq.${cleanPhoneDisplay}`
+          : `telefono_default.eq.${cleanPhoneFull}`;
+      const { data: byPhone } = await supabaseAdmin
+        .from('usuarios')
+        .select('id')
+        .or(orClause)
+        .limit(1);
+      if (byPhone && byPhone.length > 0) targetUserId = byPhone[0].id;
+    }
+
+    const userUpdatePayload: Record<string, any> = {
+      nombre_completo: cleanName,
+      telefono_default: cleanPhoneFull || cleanPhoneDisplay || '',
+      dni_default: cleanDni || null,
+      direccion_default: params.destinoDetalle,
+      referencia_default: params.referencia || null,
+    };
+
+    if (targetUserId) {
+      const { error: updErr } = await supabaseAdmin
+        .from('usuarios')
+        .update(userUpdatePayload)
+        .eq('id', targetUserId);
+      if (updErr) {
+        console.warn('[Copilot persistRegisteredOrder] Error actualizando usuario:', updErr.message);
+      }
+    } else {
+      const generatedId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
+      const uniqueDniKey = cleanDni || `BOT-${cleanPhoneDisplay || Date.now().toString(36)}`;
+      const { data: insertedUser, error: insErr } = await supabaseAdmin
+        .from('usuarios')
+        .upsert(
+          {
+            id: generatedId,
+            dni: uniqueDniKey,
+            nombre_completo: cleanName,
+            telefono_default: cleanPhoneFull || cleanPhoneDisplay || '',
+            dni_default: cleanDni || null,
+            direccion_default: params.destinoDetalle,
+            referencia_default: params.referencia || null,
+            avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(uniqueDniKey)}`,
+            password_hash: cleanDni || cleanPhoneDisplay || '1234',
+            rol: 'client',
+            puntos_xp: 0,
+            nivel: 1,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'dni' }
+        )
+        .select('id')
+        .maybeSingle();
+
+      if (insertedUser?.id) {
+        targetUserId = insertedUser.id;
+      } else {
+        if (insErr) {
+          console.warn('[Copilot persistRegisteredOrder] Error en upsert usuario:', insErr.message);
+        }
+        const { data: fallbackUser } = await supabaseAdmin
+          .from('usuarios')
+          .select('id')
+          .eq('dni', uniqueDniKey)
+          .limit(1);
+        if (fallbackUser && fallbackUser.length > 0) {
+          targetUserId = fallbackUser[0].id;
+          await supabaseAdmin.from('usuarios').update(userUpdatePayload).eq('id', targetUserId);
+        } else {
+          const retryId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+          const { error: retryErr } = await supabaseAdmin.from('usuarios').insert({
+            id: retryId,
+            dni: `${uniqueDniKey}-${Math.random().toString(36).substr(2, 3)}`,
+            nombre_completo: cleanName,
+            telefono_default: cleanPhoneFull || cleanPhoneDisplay || '',
+            dni_default: cleanDni || null,
+            direccion_default: params.destinoDetalle,
+            referencia_default: params.referencia || null,
+            avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(retryId)}`,
+            password_hash: cleanDni || cleanPhoneDisplay || '1234',
+            rol: 'client',
+            puntos_xp: 0,
+            nivel: 1,
+            created_at: new Date().toISOString(),
+          });
+          if (retryErr) {
+            throw new Error(`Error creando usuario en Supabase: ${retryErr.message}`);
+          }
+          targetUserId = retryId;
+        }
+      }
+    }
+
+    const cleanPrendas = (params.prendasBordado || '').trim();
+    const detallesBordado = cleanPrendas && cleanPrendas.toLowerCase() !== 'bordado personalizado'
+      ? `${cleanPrendas} (Cliente: ${cleanName})`
+      : `Pedido de ${cleanName}`;
+
+    const camposPersonalizados: Record<string, string> =
+      params.metodoEnvio === 'shalom'
+        ? {
+            'c-shalom-nombre': cleanName,
+            'c-shalom-celular': cleanPhoneDisplay,
+            ...(cleanDni ? { 'c-shalom-dni': cleanDni } : {}),
+            ...(params.referencia ? { 'c-shalom-ref': params.referencia } : {}),
+          }
+        : {
+            'c-mot-nombre': cleanName,
+            'c-mot-celular': cleanPhoneDisplay,
+            ...(cleanDni ? { 'c-mot-dni': cleanDni } : {}),
+            'c-mot-direccion': params.destinoDetalle,
+            ...(params.referencia ? { 'c-mot-ref': params.referencia } : {}),
+          };
+
+    const randomCode = Math.floor(1000 + Math.random() * 9000);
+    const trackingCode = `COM-2026-${randomCode}`;
+    const orderId = `ped-${Date.now()}`;
+    const targetFechaLimite = await this.getCachedCutoffShippingDate();
+    const nowIso = new Date().toISOString();
+
+    const { error: orderErr } = await supabaseAdmin.from('pedidos').insert({
+      id: orderId,
+      codigo_seguimiento: trackingCode,
+      usuario_id: targetUserId,
+      empresa_id: targetEmpresaId,
+      detalles_bordado: detallesBordado,
+      metodo_envio_codigo: params.metodoEnvio,
+      metodo_envio_nombre: params.metodoEnvio === 'shalom' ? 'Agencia Shalom Nacional' : 'Motorizado Local',
+      destino_detalle: params.destinoDetalle,
+      campos_personalizados: camposPersonalizados,
+      estado_produccion: 'en_cola',
+      estado_envio: 'pendiente',
+      fecha_limite: targetFechaLimite,
+      shalom_clave_recojo: params.metodoEnvio === 'shalom' ? '0808' : null,
+      observaciones_cliente: params.referencia ? `Ref: ${params.referencia}` : null,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+    if (orderErr) {
+      throw new Error(`Error guardando pedido en Supabase: ${orderErr.message}`);
+    }
+
+    return {
+      orderId,
+      trackingCode,
+      targetUserId,
+      targetFechaLimite,
+      cleanName,
+      cleanDni,
+      cleanPhoneDisplay,
+      cleanPhoneFull,
+    };
+  }
+
+  private static async executeCreateOrderAction(params: {
+    actionData: any;
+    textTrimmed: string;
+    masterInstance: string;
+    remoteJid: string;
+    pendingAgencyKey: string;
+    sessionData: any;
+  }): Promise<string> {
+    const { actionData, textTrimmed, masterInstance, remoteJid, pendingAgencyKey, sessionData } = params;
+
+    let clienteNombre = String(
+      actionData.clienteNombre ||
+      actionData.nombre ||
+      actionData.nombreCompleto ||
+      actionData.cliente ||
+      actionData.customerName ||
+      ''
+    ).trim();
+
+    let clienteDni = this.normalizeDni(
+      String(
+        actionData.clienteDni ||
+        actionData.dni ||
+        actionData.documento ||
+        actionData.doc ||
+        ''
+      )
+    );
+
+    let clienteTelefono = this.normalizePhone(
+      String(
+        actionData.clienteTelefono ||
+        actionData.telefono ||
+        actionData.phone ||
+        actionData.celular ||
+        ''
+      )
+    ).display;
+
+    let destino = String(
+      actionData.destino ||
+      actionData.direccion ||
+      actionData.agencia ||
+      actionData.agency ||
+      actionData.lugarDestino ||
+      ''
+    ).trim();
+
+    const referencia = String(actionData.referencia || actionData.ref || '').trim();
+    const prendasBordado = String(
+      actionData.prendasBordado ||
+      actionData.prendas ||
+      actionData.detalles ||
+      actionData.detallesBordado ||
+      actionData.items ||
+      actionData.producto ||
+      'Bordado personalizado'
+    ).trim();
+
+    const metodoEnvioRaw = String(actionData.metodoEnvio || '').toLowerCase();
+    const isMotorizado =
+      metodoEnvioRaw.includes('motorizado') ||
+      destino.toLowerCase().includes('motorizado') ||
+      destino.toLowerCase().includes('delivery') ||
+      destino.toLowerCase().includes('domicilio');
+
+    const metodoEnvioNombre = isMotorizado ? 'Motorizado Local' : 'Agencia Shalom Nacional';
+    const metodoEnvioCodigo: 'shalom' | 'motorizado' = isMotorizado ? 'motorizado' : 'shalom';
+
+    if (!clienteDni || clienteDni.length < 8) {
+      const dniMatch = textTrimmed.match(/(?:DNI|doc|documento|ce)\s*[:#]?\s*([0-9A-Za-z]{8,12})\b|\b([0-9]{8})\b/i);
+      const rawMatchedDni = dniMatch ? (dniMatch[1] || dniMatch[2] || '') : '';
+      if (rawMatchedDni) clienteDni = this.normalizeDni(rawMatchedDni);
+    }
+
+    if (!clienteTelefono || clienteTelefono.length < 9) {
+      const phoneMatch = textTrimmed.match(/(?:cel|celular|tel[eé]fono|tel|whatsapp|wa|ws)?\s*[:#]?\s*(?:\+?51[\s-]*)?(9(?:[\s-]?\d){8})\b/i);
+      if (phoneMatch && phoneMatch[1]) {
+        clienteTelefono = this.normalizePhone(phoneMatch[1]).display;
+      }
+    }
+
+    if (!clienteNombre || clienteNombre.toLowerCase() === 'clienta' || clienteNombre.toLowerCase() === 'cliente') {
+      const nameMatch = textTrimmed.match(/(?:para|cliente|nombre)\s*[:#]?\s*([A-Za-záéíóúÁÉÍÓÚñÑ\s]{3,40}?)(?=\s*(?:\n|DNI|doc|cel|tel|destino|con|de|\d))/i);
+      if (nameMatch && nameMatch[1]) {
+        clienteNombre = nameMatch[1].trim();
+      }
+    }
+
+    if (!destino) {
+      const destMatch = textTrimmed.match(/(?:destino|agencia|direcci[oó]n|para|enviar a|sede)\s*[:#]?\s*([A-Za-záéíóúÁÉÍÓÚñÑ0-9\s,.-]{3,60})/i);
+      if (destMatch && destMatch[1]) {
+        destino = destMatch[1].trim();
+      }
+    }
+
+    const missingList: string[] = [];
+    if (!clienteNombre || ['clienta', 'cliente'].includes(clienteNombre.toLowerCase())) {
+      missingList.push('• Nombre completo de la clienta');
+    }
+    if (!clienteDni || clienteDni.length < 8) {
+      missingList.push('• DNI o Carnet de Extranjería (8 dígitos)');
+    }
+    if (!clienteTelefono || clienteTelefono.length < 9) {
+      missingList.push('• Teléfono WhatsApp (9 dígitos, ej: 987654321)');
+    }
+    if (!destino) {
+      missingList.push('• Destino (Agencia Shalom o Dirección para Motorizado)');
+    }
+
+    if (missingList.length > 0) {
+      const missingFieldsMsg = `📋 *Para registrar el pedido, solo necesito estos 4 datos obligatorios:*\n\n${missingList.join('\n')}\n\n💬 *Por favor envíame los datos completos para emitir tu Comprobante Oficial.*`;
+      await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, missingFieldsMsg);
+      return missingFieldsMsg;
+    }
+
+    const cleanPhoneDisplay = this.normalizePhone(clienteTelefono).display;
+
+    let resolvedDestination = '';
+    if (isMotorizado) {
+      resolvedDestination = destino.replace(/^motorizado\s*:?\s*/i, '').trim();
+    } else {
+      const matchResult = ShalomMatcherService.resolveDestination(destino, clienteDni);
+
+      if (matchResult.isUnambiguousMatch) {
+        resolvedDestination = matchResult.resolvedDestination;
+      } else if (matchResult.matches.length > 1) {
+        const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣'];
+        const options = matchResult.matches.slice(0, 6).map((m, idx) => ({
+          index: idx + 1,
+          id: m.agency.id,
+          formatted: ShalomMatcherService.formatAgencyDestination(m.agency, clienteDni),
+          title: m.displayTitle,
+          address: m.displayAddress,
+        }));
+
+        const pendingOrderData = {
+          clienteNombre,
+          clienteDni,
+          clienteTelefono,
+          referencia,
+          prendasBordado,
+          originalDestino: destino,
+          options,
+        };
+
+        await redisClient.set(pendingAgencyKey, JSON.stringify(pendingOrderData), 'EX', 1200);
+
+        const optionsListText = options
+          .map((opt, i) => {
+            const emoji = numberEmojis[i] || `${i + 1}️⃣`;
+            return `${emoji} *${opt.title}*\n   📍 ${opt.address || 'Dirección de agencia'}`;
+          })
+          .join('\n\n');
+
+        const disambiguationMsg = `🏢 *He encontrado ${options.length} agencias Shalom para "${destino}":*\n\n¿A cuál de ellas te refieres?\n\n${optionsListText}\n\n💬 *Por favor responde con el número de la opción (ej: 1 o 2) o el nombre de la sede:*`;
+
+        await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, disambiguationMsg);
+        return disambiguationMsg;
+      } else {
+        resolvedDestination = matchResult.resolvedDestination;
+      }
+    }
+
+    const { orderId, trackingCode, targetFechaLimite } = await this.persistRegisteredOrder({
+      clienteNombre,
+      clienteDni,
+      clienteTelefono,
+      metodoEnvio: metodoEnvioCodigo,
+      destinoDetalle: resolvedDestination,
+      referencia,
+      prendasBordado,
+      empresaId: sessionData?.empresaId || 'empresa-master-comikids',
+    });
+
+    const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
+    const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* ${metodoEnvioNombre}\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
+
+    await Promise.allSettled([
+      EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, receiptMsg),
+      this.recordIncrementalBackup(sessionData?.empresaId || 'empresa-master-comikids', 'CREATE_ORDER', {
+        orderId,
+        trackingCode,
+        clienteNombre,
+        clienteDni,
+        destino: resolvedDestination,
+        metodoEnvio: metodoEnvioNombre,
+        fechaLimite: targetFechaLimite,
+      }),
+    ]);
+
+    return receiptMsg;
+  }
+
+  private static looksLikeOrderRegistration(text: string): boolean {
+    const trimmed = (text || '').trim();
+    if (!trimmed || trimmed.length < 10) return false;
+
+    const lower = trimmed.toLowerCase();
+    const hasExplicitRegVerb = /\b(registra|registrar|nuevo\s+pedido|agrega\s+pedido|agregar\s+pedido|crea\s+pedido|crear\s+pedido|anota\s+pedido|ingresa\s+pedido)\b/i.test(lower);
+    if (hasExplicitRegVerb) return true;
+
+    const looksLikeQuestionOrCommand =
+      trimmed.includes('?') ||
+      /\b(cu[aá]ntos|cu[aá]nto|lista|busca|estado|env[ií]a|manda|cambia|edita|actualiza|elimina|borra|reporte|pendientes)\b/i.test(lower);
+    if (looksLikeQuestionOrCommand) return false;
+
+    const hasDni = /\b\d{8}\b/.test(trimmed) || /\bdni\b|\bce\b/i.test(lower);
+    const hasPhone = /(?:\+?51[\s-]*)?9(?:[\s-]?\d){8}\b/.test(trimmed);
+    const hasShippingHint = /\b(shalom|motorizado|delivery|agencia|olva|domicilio|destino)\b/i.test(lower);
+
+    return (hasDni && hasPhone) || (hasPhone && hasShippingHint);
+  }
+
+  private static tryParseStructuredOrderDirect(text: string): Record<string, any> | null {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length < 4) return null;
+
+    let clienteNombre = '';
+    let clienteDni = '';
+    let clienteTelefono = '';
+    let destino = '';
+    let referencia = '';
+    let prendasBordado = '';
+    const lowerAll = text.toLowerCase();
+
+    for (const line of lines) {
+      const m = line.match(/^([A-Za-záéíóúÁÉÍÓÚñÑ\s/.-]{2,25})\s*[:\-]\s*(.+)$/);
+      if (!m) continue;
+      const key = m[1].toLowerCase().trim();
+      const val = m[2].trim();
+      if (/^(nombre|destinatario|cliente|consignado)$/.test(key)) clienteNombre = val;
+      else if (/^(dni|ce|documento|doc|dni\/ce)$/.test(key)) clienteDni = val;
+      else if (/^(cel|celular|tel|telefono|teléfono|whatsapp|wa|ws)$/.test(key)) clienteTelefono = val;
+      else if (/^(destino|agencia|direccion|dirección|sede|envio|envío)$/.test(key)) destino = val;
+      else if (/^(ref|referencia)$/.test(key)) referencia = val;
+      else if (/^(prenda|prendas|bordado|producto|productos|detalle|detalles|items)$/.test(key)) prendasBordado = val;
+    }
+
+    const dniNorm = this.normalizeDni(clienteDni);
+    const phoneNorm = this.normalizePhone(clienteTelefono).display;
+    if (!clienteNombre || dniNorm.length < 8 || phoneNorm.length < 9 || !destino) {
+      return null;
+    }
+
+    let metodoEnvio: 'SHALOM' | 'MOTORIZADO' | null = null;
+    if (/\b(motorizado|delivery|domicilio)\b/i.test(lowerAll)) metodoEnvio = 'MOTORIZADO';
+    else if (/\b(shalom|agencia)\b/i.test(lowerAll)) metodoEnvio = 'SHALOM';
+    else return null; // Si no especifica método claro, dejar que la IA rápida lo infiera por dirección/ciudad
+
+    return {
+      isRegistration: true,
+      metodoEnvio,
+      clienteNombre,
+      clienteDni: dniNorm,
+      clienteTelefono: phoneNorm,
+      destino,
+      referencia,
+      prendasBordado: prendasBordado || 'Bordado personalizado',
+    };
+  }
+
+  private static async tryFastOrderRegistration(params: {
+    masterInstance: string;
+    remoteJid: string;
+    textTrimmed: string;
+    pendingAgencyKey: string;
+    sessionData: any;
+  }): Promise<string | null> {
+    const { masterInstance, remoteJid, textTrimmed, pendingAgencyKey, sessionData } = params;
+    try {
+      let parsed = this.tryParseStructuredOrderDirect(textTrimmed);
+      let tokensUsed = 0;
+
+      if (!parsed) {
+        const fastSystemPrompt = `Eres un extractor ultrarrápido de pedidos de ComiKids. Analiza el mensaje y responde ÚNICAMENTE con JSON válido (sin markdown):
+{"isRegistration":boolean,"metodoEnvio":"SHALOM"|"MOTORIZADO"|null,"clienteNombre":string|null,"clienteDni":string|null,"clienteTelefono":string|null,"destino":string|null,"referencia":string|null,"prendasBordado":string|null}
+Reglas:
+- isRegistration=true SOLO si el mensaje pide registrar un nuevo pedido o envía datos de un cliente para despacho. Si pregunta estado, busca o modifica un pedido existente, devuelve isRegistration=false.
+- metodoEnvio="MOTORIZADO" si dice motorizado/delivery/domicilio o dirección urbana de Lima; "SHALOM" si dice shalom/agencia/provincia o no parece delivery urbano.
+- clienteTelefono: solo 9 dígitos peruanos (sin +51). clienteDni: 8-12 dígitos/CE.`;
+
+        const aiRes = await queryCopilotWithUsage(fastSystemPrompt, textTrimmed, {
+          temperature: 0.0,
+          maxTokens: 320,
+          timeoutMs: 6500,
+          modelOverride: 'google/gemini-2.5-flash-lite',
+        });
+        tokensUsed = aiRes.tokensUsed || 250;
+
+        const raw = (aiRes.content || '').replace(/```json|```/gi, '').trim();
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return null;
+
+        parsed = JSON.parse(jsonMatch[0]);
+      }
+
+      if (!parsed || !parsed.isRegistration) return null;
+
+      const tasks: Promise<any>[] = [
+        this.executeCreateOrderAction({
+          actionData: parsed,
+          textTrimmed,
+          masterInstance,
+          remoteJid,
+          pendingAgencyKey,
+          sessionData,
+        }),
+      ];
+      if (tokensUsed > 0) {
+        tasks.push(this.incrementTokenUsage(sessionData.accountCode, tokensUsed).catch(() => 0));
+      }
+
+      const [receiptMsg] = await Promise.all(tasks);
+      return receiptMsg;
+    } catch (fastErr: any) {
+      console.warn('[COPILOT FAST PATH] Fallback a flujo completo:', fastErr?.message);
+      return null;
+    }
+  }
+
   /**
    * Resuelve la consulta o ejecuta la acción solicitada por el administrador del negocio
    * con acceso completo a la base de datos de su cuenta según el Sub-QR autenticado.
@@ -673,65 +1200,17 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
           const resolvedDestination = chosenOption.formatted;
           const { clienteNombre, clienteDni, clienteTelefono, referencia, prendasBordado } = pendingChoice;
 
-          const cleanPhoneDisplay = clienteTelefono.length === 9 ? clienteTelefono : clienteTelefono.slice(-9);
-          const cleanPhoneFull = clienteTelefono.length === 9 ? `51${clienteTelefono}` : clienteTelefono;
+          const cleanPhoneDisplay = this.normalizePhone(clienteTelefono).display;
 
-          // 1. Upsert Usuario en Supabase
-          const { data: existingUser } = await supabaseAdmin
-            .from('usuarios')
-            .select('id')
-            .eq('dni', clienteDni)
-            .maybeSingle();
-
-          let targetUserId = existingUser?.id;
-          if (targetUserId) {
-            await supabaseAdmin.from('usuarios').update({
-              nombre_completo: clienteNombre.trim(),
-              telefono_default: cleanPhoneFull,
-              dni_default: clienteDni,
-              direccion_default: resolvedDestination,
-              referencia_default: referencia || null,
-            }).eq('id', targetUserId);
-          } else {
-            targetUserId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
-            await supabaseAdmin.from('usuarios').upsert({
-              id: targetUserId,
-              dni: clienteDni,
-              nombre_completo: clienteNombre.trim(),
-              telefono_default: cleanPhoneFull,
-              dni_default: clienteDni,
-              direccion_default: resolvedDestination,
-              referencia_default: referencia || null,
-              avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${clienteDni}`,
-              password_hash: clienteDni,
-              rol: 'client',
-              puntos_xp: 0,
-              nivel: 1,
-              created_at: new Date().toISOString(),
-            }, { onConflict: 'dni' });
-          }
-
-          // 2. Insertar Pedido con Fecha Límite calculada
-          const randomCode = Math.floor(1000 + Math.random() * 9000);
-          const trackingCode = `COM-2026-${randomCode}`;
-          const orderId = `ped-${Date.now()}`;
-          const targetFechaLimite = await this.getCutoffShippingDate();
-
-          await supabaseAdmin.from('pedidos').insert({
-            id: orderId,
-            codigo_seguimiento: trackingCode,
-            usuario_id: targetUserId,
-            detalles_bordado: prendasBordado || 'Bordado personalizado',
-            metodo_envio_codigo: 'shalom',
-            metodo_envio_nombre: 'Agencia Shalom Nacional',
-            destino_detalle: resolvedDestination,
-            estado_produccion: 'en_cola',
-            estado_envio: 'pendiente',
-            fecha_limite: targetFechaLimite,
-            shalom_clave_recojo: '0808',
-            observaciones_cliente: referencia ? `Ref: ${referencia}` : null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+          const { orderId, trackingCode, targetFechaLimite } = await this.persistRegisteredOrder({
+            clienteNombre,
+            clienteDni,
+            clienteTelefono,
+            metodoEnvio: 'shalom',
+            destinoDetalle: resolvedDestination,
+            referencia,
+            prendasBordado,
+            empresaId: (sessionData as any)?.empresaId || 'empresa-master-comikids',
           });
 
           // 3. Registrar Backup Incremental
@@ -772,26 +1251,40 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
       }
 
       // -------------------------------------------------------------
-      // PASO 5: SESIÓN AUTORIZADA — RESOLVER SUB-INSTANCIA VINCULADA
+      // PASO 5: SESIÓN AUTORIZADA — EVITAR LLAMADAS REDUNDANTES A EVOLUTION
       // -------------------------------------------------------------
-      let linkedSub = await this.getSubInstanceByName(sessionData.instanceName);
-      if (!linkedSub) {
-        linkedSub = await this.getSubInstanceByName(env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp');
+      let userSenderInstance = sessionData.instanceName || '';
+      let userSenderPhone = sessionData.ownerPhone || '';
+      if (!userSenderInstance) {
+        const linkedSub = await this.getSubInstanceByName(env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp');
+        userSenderInstance = linkedSub?.instanceName || env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
+        userSenderPhone = linkedSub?.ownerPhone || userSenderPhone;
       }
-
-      const userSenderInstance = linkedSub?.instanceName || sessionData.instanceName || env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp';
-      const userSenderPhone = linkedSub?.ownerPhone || sessionData.ownerPhone || '';
       const userName = sessionData.displayName || 'ComiKids Envíos';
+
+      const isImage = Boolean(messageData?.message?.imageMessage);
+      const isDoc = Boolean(messageData?.message?.documentMessage);
+      const hasAttachedMedia = isImage || isDoc;
+
+      // -------------------------------------------------------------
+      // PASO 5.5: RUTA RÁPIDA DE REGISTRO (SIN DESCARGAR 1000+ ÓRDENES NI PROMPT PESADO)
+      // -------------------------------------------------------------
+      if (!hasAttachedMedia && this.looksLikeOrderRegistration(textTrimmed)) {
+        const fastResponse = await this.tryFastOrderRegistration({
+          masterInstance,
+          remoteJid,
+          textTrimmed,
+          pendingAgencyKey,
+          sessionData,
+        });
+        if (fastResponse) return fastResponse;
+      }
 
       // -------------------------------------------------------------
       // PASO 6: VISTA COMPLETA Y EN TIEMPO REAL DE LA BASE DE DATOS
       // -------------------------------------------------------------
       const { fullOrdersText, statsSummary, todayOrdersCount, totalCount, rawOrders } = await this.getCompleteDatabaseView(textTrimmed);
       const todayString = this.getTodayDateString();
-
-      const isImage = Boolean(messageData?.message?.imageMessage);
-      const isDoc = Boolean(messageData?.message?.documentMessage);
-      const hasAttachedMedia = isImage || isDoc;
       const attachedFileName =
         messageData?.message?.documentMessage?.fileName ||
         messageData?.message?.documentMessage?.title ||
@@ -969,240 +1462,14 @@ Responde en texto plano con tono profesional, amable y conciso, utilizando la in
           // ACCIÓN A: CREAR PEDIDO EN BASE DE DATOS (CON DESAMBIGUACIÓN SHALOM)
           // =========================================================
           if (actionData.action === 'CREATE_ORDER' || actionData.action === 'REGISTRAR_PEDIDO') {
-            // 1. Extracción robusta de campos
-            let clienteNombre = String(
-              actionData.clienteNombre ||
-              actionData.nombre ||
-              actionData.nombreCompleto ||
-              actionData.cliente ||
-              actionData.customerName ||
-              ''
-            ).trim();
-
-            let clienteDni = String(
-              actionData.clienteDni ||
-              actionData.dni ||
-              actionData.documento ||
-              actionData.doc ||
-              ''
-            ).replace(/[^0-9A-Za-z]/g, '').trim();
-
-            let clienteTelefono = String(
-              actionData.clienteTelefono ||
-              actionData.telefono ||
-              actionData.phone ||
-              actionData.celular ||
-              ''
-            ).replace(/[^0-9]/g, '').trim();
-            if (clienteTelefono.length > 9 && clienteTelefono.startsWith('51')) {
-              clienteTelefono = clienteTelefono.slice(2);
-            }
-
-            let destino = String(
-              actionData.destino ||
-              actionData.direccion ||
-              actionData.agencia ||
-              actionData.agency ||
-              actionData.lugarDestino ||
-              ''
-            ).trim();
-
-            const referencia = String(actionData.referencia || actionData.ref || '').trim();
-            const prendasBordado = String(
-              actionData.prendasBordado ||
-              actionData.prendas ||
-              actionData.detalles ||
-              actionData.detallesBordado ||
-              actionData.items ||
-              actionData.producto ||
-              'Bordado personalizado'
-            ).trim();
-
-            const metodoEnvioRaw = String(actionData.metodoEnvio || '').toLowerCase();
-            const isMotorizado =
-              metodoEnvioRaw.includes('motorizado') ||
-              destino.toLowerCase().includes('motorizado') ||
-              destino.toLowerCase().includes('delivery') ||
-              destino.toLowerCase().includes('domicilio');
-
-            const metodoEnvioNombre = isMotorizado ? 'Motorizado Local' : 'Agencia Shalom Nacional';
-            const metodoEnvioCodigo = isMotorizado ? 'motorizado' : 'shalom';
-
-            // 2. Extracción de respaldo por Regex del texto original si faltó algo
-            if (!clienteDni || clienteDni.length < 8) {
-              const dniMatch = textTrimmed.match(/(?:DNI|doc|documento|ce)?\s*[:#]?\s*([0-9]{8,12})\b/i);
-              if (dniMatch && dniMatch[1]) clienteDni = dniMatch[1].trim();
-            }
-
-            if (!clienteTelefono || clienteTelefono.length < 9) {
-              const phoneMatch = textTrimmed.match(/(?:cel|celular|telefono|tel|whatsapp|wa|ws)?\s*[:#]?\s*(?:51)?(9\d{8})\b/i);
-              if (phoneMatch && phoneMatch[1]) clienteTelefono = phoneMatch[1].trim();
-            }
-
-            if (!clienteNombre || clienteNombre.toLowerCase() === 'clienta' || clienteNombre.toLowerCase() === 'cliente') {
-              const nameMatch = textTrimmed.match(/(?:para|cliente|nombre)\s*[:#]?\s*([A-Za-záéíóúÁÉÍÓÚñÑ\s]{3,35}?)(?=\s+(?:DNI|doc|cel|telefono|tel|destino|con|de|\d))/i);
-              if (nameMatch && nameMatch[1]) {
-                clienteNombre = nameMatch[1].trim();
-              }
-            }
-
-            if (!destino) {
-              const destMatch = textTrimmed.match(/(?:destino|agencia|para|enviar a|sede)\s*[:#]?\s*([A-Za-záéíóúÁÉÍÓÚñÑ0-9\s,.-]{3,45})/i);
-              if (destMatch && destMatch[1]) {
-                destino = destMatch[1].trim();
-              }
-            }
-
-            // 3. Validación estricta de SOLO los 4 campos requeridos
-            const missingList: string[] = [];
-            if (!clienteNombre || clienteNombre.toLowerCase() === 'clienta') missingList.push('• Nombre completo de la clienta');
-            if (!clienteDni || clienteDni.length < 8) missingList.push('• DNI o Carnet de Extranjería (8 dígitos)');
-            if (!clienteTelefono || clienteTelefono.length < 9) missingList.push('• Teléfono WhatsApp (9 dígitos, ej: 987654321)');
-            if (!destino) missingList.push('• Destino (Agencia Shalom o Dirección para Motorizado)');
-
-            if (missingList.length > 0) {
-              const missingFieldsMsg = `📋 *Para registrar el pedido, solo necesito estos 4 datos obligatorios:*\n\n${missingList.join('\n')}\n\n💬 *Por favor envíame los datos completos para emitir tu Comprobante Oficial.*`;
-              await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, missingFieldsMsg);
-              return missingFieldsMsg;
-            }
-
-            const cleanPhoneDisplay = clienteTelefono.length === 9 ? clienteTelefono : clienteTelefono.slice(-9);
-            const cleanPhoneFull = clienteTelefono.length === 9 ? `51${clienteTelefono}` : clienteTelefono;
-
-            // 4. DESAMBIGUACIÓN INTERACTIVA DE AGENCIAS SHALOM CON SHALOM MATCHER
-            let resolvedDestination = '';
-            if (isMotorizado) {
-              resolvedDestination = destino.replace(/^motorizado\s*:?\s*/i, '').trim();
-            } else {
-              const matchResult = ShalomMatcherService.resolveDestination(destino, clienteDni);
-
-              // Si es una coincidencia inambigua (exacta o dominante como "satipo pangoa", "av pastor"), usarla directamente
-              if (matchResult.isUnambiguousMatch) {
-                resolvedDestination = matchResult.resolvedDestination;
-              } else if (matchResult.matches.length > 1) {
-                const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣'];
-                const options = matchResult.matches.slice(0, 6).map((m, idx) => ({
-                  index: idx + 1,
-                  id: m.agency.id,
-                  formatted: ShalomMatcherService.formatAgencyDestination(m.agency, clienteDni),
-                  title: m.displayTitle,
-                  address: m.displayAddress,
-                }));
-
-                const pendingOrderData = {
-                  clienteNombre,
-                  clienteDni,
-                  clienteTelefono,
-                  referencia,
-                  prendasBordado,
-                  originalDestino: destino,
-                  options,
-                };
-
-                // Guardar estado de selección en Redis por 20 minutos
-                await redisClient.set(pendingAgencyKey, JSON.stringify(pendingOrderData), 'EX', 1200);
-
-                const optionsListText = options
-                  .map((opt, i) => {
-                    const emoji = numberEmojis[i] || `${i + 1}️⃣`;
-                    return `${emoji} *${opt.title}*\n   📍 ${opt.address || 'Dirección de agencia'}`;
-                  })
-                  .join('\n\n');
-
-                const disambiguationMsg = `🏢 *He encontrado ${options.length} agencias Shalom para "${destino}":*\n\n¿A cuál de ellas te refieres?\n\n${optionsListText}\n\n💬 *Por favor responde con el número de la opción (ej: 1 o 2) o el nombre de la sede:*`;
-
-                await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, disambiguationMsg);
-                return disambiguationMsg;
-              } else {
-                resolvedDestination = matchResult.resolvedDestination;
-              }
-            }
-
-            // 5. Upsert de Usuario en Supabase con rol válido 'client'
-            const { data: existingUser } = await supabaseAdmin
-              .from('usuarios')
-              .select('id')
-              .eq('dni', clienteDni)
-              .maybeSingle();
-
-            let targetUserId = existingUser?.id;
-
-            if (targetUserId) {
-              await supabaseAdmin.from('usuarios').update({
-                nombre_completo: clienteNombre.trim(),
-                telefono_default: cleanPhoneFull,
-                dni_default: clienteDni,
-                direccion_default: resolvedDestination,
-                referencia_default: referencia || null,
-              }).eq('id', targetUserId);
-            } else {
-              targetUserId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
-              const { error: insUserErr } = await supabaseAdmin.from('usuarios').upsert({
-                id: targetUserId,
-                dni: clienteDni,
-                nombre_completo: clienteNombre.trim(),
-                telefono_default: cleanPhoneFull,
-                dni_default: clienteDni,
-                direccion_default: resolvedDestination,
-                referencia_default: referencia || null,
-                avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${clienteDni}`,
-                password_hash: clienteDni,
-                rol: 'client',
-                puntos_xp: 0,
-                nivel: 1,
-                created_at: new Date().toISOString(),
-              }, { onConflict: 'dni' });
-
-              if (insUserErr) {
-                console.error('[USER INSERT ERROR]', insUserErr);
-              }
-            }
-
-            // 6. Generar Código de Seguimiento Único y Fecha Programada con Corte Horario
-            const randomCode = Math.floor(1000 + Math.random() * 9000);
-            const trackingCode = `COM-2026-${randomCode}`;
-            const orderId = `ped-${Date.now()}`;
-            const targetFechaLimite = await this.getCutoffShippingDate();
-
-            // 7. Insertar Pedido en Supabase vinculado al usuario
-            const { error: orderErr } = await supabaseAdmin.from('pedidos').insert({
-              id: orderId,
-              codigo_seguimiento: trackingCode,
-              usuario_id: targetUserId,
-              detalles_bordado: prendasBordado,
-              metodo_envio_codigo: metodoEnvioCodigo,
-              metodo_envio_nombre: metodoEnvioNombre,
-              destino_detalle: resolvedDestination,
-              estado_produccion: 'en_cola',
-              estado_envio: 'pendiente',
-              fecha_limite: targetFechaLimite,
-              shalom_clave_recojo: isMotorizado ? null : '0808',
-              observaciones_cliente: referencia ? `Ref: ${referencia}` : null,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+            return await this.executeCreateOrderAction({
+              actionData,
+              textTrimmed,
+              masterInstance,
+              remoteJid,
+              pendingAgencyKey,
+              sessionData,
             });
-
-            if (orderErr) {
-              throw new Error(`Error guardando pedido en Supabase: ${orderErr.message}`);
-            }
-
-            // 8. Registrar Backup Incremental
-            await this.recordIncrementalBackup(sessionData.empresaId, 'CREATE_ORDER', {
-              orderId,
-              trackingCode,
-              clienteNombre,
-              clienteDni,
-              destino: resolvedDestination,
-              metodoEnvio: metodoEnvioNombre,
-              fechaLimite: targetFechaLimite,
-            });
-
-            // 9. Emitir Comprobante Oficial Idéntico al de la Web Encomi / Comikids
-            const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
-            const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* ${metodoEnvioNombre}\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
-
-            await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, receiptMsg);
-            return receiptMsg;
           }
 
           // =========================================================

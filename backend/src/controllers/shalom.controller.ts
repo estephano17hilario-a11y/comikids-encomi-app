@@ -528,8 +528,8 @@ export class ShalomController {
       const targetDni = SHOP_DNIS.includes(rawDni) ? '' : rawDni;
       const targetPhone = SHOP_PHONES.includes(rawPhone) || SHOP_PHONES.some(p => rawPhone.endsWith(p)) ? '' : rawPhone;
 
-      // Obtener lista fresca de órdenes recientes de Shalom Pro
-      let ordersList = await ShalomController.getAllShalomOrders(headers, params.forceRefresh !== false);
+      // Obtener lista fresca de órdenes recientes de Shalom Pro (reutiliza caché reciente para evitar 429)
+      let ordersList = await ShalomController.getAllShalomOrders(headers, Boolean(params.forceRefresh));
 
       const getOrderReceiverDni = (o: any): string => {
         return String(
@@ -632,27 +632,45 @@ export class ShalomController {
         return null;
       }
 
-      // Descargar PDF del voucher (y fallback a label con QR si voucher no responde)
-      let docRes: any = null;
-      for (const endpoint of ['voucher', 'label']) {
-        try {
-          docRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${endpoint}`,
-            {
-              headers,
-              responseType: 'arraybuffer',
-              timeout: 15000,
+      // Verificar caché en memoria RAM primero para evitar 429 en Shalom Pro
+      const directCacheKey = `${matchedOrder.id}_voucher`;
+      const memCached = ShalomController.pdfMemoryCache.get(directCacheKey);
+      let pdfBufferData: Buffer | null = null;
+
+      if (memCached && memCached.buffer && memCached.buffer.length > 100 && (Date.now() - memCached.timestamp < 300000)) {
+        pdfBufferData = Buffer.from(memCached.buffer);
+      } else {
+        // Descargar PDF del voucher (y fallback a label con QR si voucher no responde, con reintento ante 429)
+        let docRes: any = null;
+        for (const endpoint of ['voucher', 'label']) {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              if (attempt > 0) {
+                await new Promise(r => setTimeout(r, 1400));
+              }
+              docRes = await axios.get(
+                `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${endpoint}`,
+                {
+                  headers,
+                  responseType: 'arraybuffer',
+                  timeout: 15000,
+                }
+              );
+              if (docRes.status === 200 && docRes.data && docRes.data.length > 100) {
+                pdfBufferData = Buffer.from(docRes.data);
+                break;
+              }
+            } catch (e: any) {
+              const status = e?.response?.status;
+              console.warn(`[SHALOM DIRECT FETCH ${endpoint} WARN] #${matchedOrder.id} (attempt ${attempt + 1}):`, e?.message);
+              if (status !== 429) break;
             }
-          );
-          if (docRes.status === 200 && docRes.data && docRes.data.length > 100) {
-            break;
           }
-        } catch (e: any) {
-          console.warn(`[SHALOM DIRECT FETCH ${endpoint} WARN] #${matchedOrder.id}:`, e?.message);
+          if (pdfBufferData) break;
         }
       }
 
-      if (!docRes || !docRes.data || docRes.data.length < 100) {
+      if (!pdfBufferData || pdfBufferData.length < 100) {
         return null;
       }
 
@@ -687,11 +705,11 @@ export class ShalomController {
       const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
       const filename = `Ticket_Oficial_Shalom_${matchedOrder.serie || 'V204'}_${matchedOrder.guia || matchedOrder.id}_${clientCleanDni}.pdf`;
 
-      console.log(`[SHALOM DIRECT FETCH SUCCESS] ✓ Obtenido PDF Oficial de Shalom con QR para Orden #${matchedOrder.id} (${docRes.data.length} bytes, Guía: ${fullGuia}, Clave: ${realPickupCode})`);
+      console.log(`[SHALOM DIRECT FETCH SUCCESS] ✓ Obtenido PDF Oficial de Shalom con QR para Orden #${matchedOrder.id} (${pdfBufferData.length} bytes, Guía: ${fullGuia}, Clave: ${realPickupCode})`);
 
       return {
-        pdfBuffer: Buffer.from(docRes.data),
-        pdfBase64: Buffer.from(docRes.data).toString('base64'),
+        pdfBuffer: pdfBufferData,
+        pdfBase64: pdfBufferData.toString('base64'),
         pickupCode: realPickupCode,
         guia: fullGuia,
         oseId: String(matchedOrder.id),
@@ -720,8 +738,9 @@ export class ShalomController {
     forceRefresh: boolean = false
   ): Promise<any[]> {
     const now = Date.now();
-    // Reutilizar caché en memoria si tiene menos de 15 segundos y no se pide refresco forzado
-    if (!forceRefresh && ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < 15000)) {
+    // Reutilizar caché en memoria: 30s normal, o 10s incluso con forceRefresh para evitar ráfagas 429 en lotes
+    const cacheTtl = forceRefresh ? 10000 : 30000;
+    if (ShalomController.cachedAllOrders.length > 0 && (now - ShalomController.lastAllOrdersFetch < cacheTtl)) {
       return ShalomController.cachedAllOrders;
     }
 
@@ -1047,8 +1066,8 @@ export class ShalomController {
 
       let matchedOrder = findMatchingOrder(ordersList);
 
-      // Si no se encontró en caché, forzar refresco fresco desde Shalom Pro
-      if (!matchedOrder) {
+      // Si no se encontró en caché y no se había pedido refresco forzado, refrescar desde Shalom Pro
+      if (!matchedOrder && !forceRefresh) {
         ordersList = await ShalomController.getAllShalomOrders(headers, true);
         matchedOrder = findMatchingOrder(ordersList);
       }
@@ -1088,32 +1107,49 @@ export class ShalomController {
 
       const cacheKey = `${matchedOrder.id}_${endpoint}`;
 
-      // A. SERVIR DESDE CACHÉ EN MEMORIA RAM (0ms) SI YA SE DESCARGÓ RECIENTEMENTE (excepto si se solicita refresco forzado)
+      // A. SERVIR DESDE CACHÉ EN MEMORIA RAM (0ms) SI YA SE DESCARGÓ RECIENTEMENTE (45s incluso con forceRefresh, 180s normal)
       const cachedPdf = ShalomController.pdfMemoryCache.get(cacheKey);
-      if (!forceRefresh && cachedPdf && (Date.now() - cachedPdf.timestamp < 180000)) {
+      const pdfCacheTtl = forceRefresh ? 45000 : 180000;
+      if (cachedPdf && (Date.now() - cachedPdf.timestamp < pdfCacheTtl)) {
         Object.entries(cachedPdf.headers).forEach(([k, v]) => reply.header(k, v));
         return reply.send(cachedPdf.buffer);
       }
 
-      // B. Descargar el documento oficial con QR desde Shalom Pro (con fallback entre voucher y label)
+      // B. Descargar el documento oficial con QR desde Shalom Pro (con fallback entre voucher y label y reintento ante 429)
       let docRes: any = null;
       const endpointsToTry = [endpoint, endpoint === 'voucher' ? 'label' : 'voucher'];
       for (const ep of endpointsToTry) {
-        try {
-          docRes = await axios.get(
-            `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${ep}`,
-            {
-              headers,
-              responseType: 'arraybuffer',
-              timeout: 15000,
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            if (attempt > 0) {
+              await new Promise(r => setTimeout(r, 1400));
             }
-          );
-          if (docRes.status === 200 && docRes.data && docRes.data.length > 100) {
-            break;
+            docRes = await axios.get(
+              `${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(String(matchedOrder.id))}/${ep}`,
+              {
+                headers,
+                responseType: 'arraybuffer',
+                timeout: 15000,
+              }
+            );
+            if (docRes.status === 200 && docRes.data && docRes.data.length > 100) {
+              break;
+            }
+          } catch (dlErr: any) {
+            const status = dlErr?.response?.status;
+            console.warn(`[SHALOM PROXY DOWNLOAD WARN] Endpoint ${ep} para orden #${matchedOrder.id} (attempt ${attempt + 1}):`, dlErr?.message);
+            if (status !== 429) break;
           }
-        } catch (dlErr: any) {
-          console.warn(`[SHALOM PROXY DOWNLOAD WARN] Endpoint ${ep} para orden #${matchedOrder.id}:`, dlErr?.message);
         }
+        if (docRes && docRes.status === 200 && docRes.data && docRes.data.length > 100) {
+          break;
+        }
+      }
+
+      // Si Shalom Pro bloqueó temporalmente con 429 pero tenemos caché previa en RAM, usarla como respaldo
+      if ((!docRes || !docRes.data || docRes.data.length < 100) && cachedPdf && cachedPdf.buffer) {
+        Object.entries(cachedPdf.headers).forEach(([k, v]) => reply.header(k, v));
+        return reply.send(cachedPdf.buffer);
       }
 
       if (!docRes || !docRes.data || docRes.data.length < 100) {

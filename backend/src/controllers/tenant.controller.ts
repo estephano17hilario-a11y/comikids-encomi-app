@@ -65,10 +65,10 @@ export class TenantController {
         return {
           instanceName: inst.name,
           isMaster:
-            inst.name === 'tenant_Comikids' ||
             inst.name === 'main_bot' ||
             inst.name === 'comikids_whatsapp' ||
-            inst.name === env.EVOLUTION_INSTANCE_NAME,
+            inst.name === env.EVOLUTION_INSTANCE_NAME ||
+            ownerPhone.includes('901985319'),
           connectionStatus: inst.connectionStatus || 'close',
           ownerJid: inst.ownerJid,
           ownerPhone: ownerPhone || undefined,
@@ -139,7 +139,27 @@ export class TenantController {
           ? tenantId
           : `tenant_${tenantId}`;
 
-      const result = await EvolutionService.getTenantStatus(formattedTenantId);
+      let result = await EvolutionService.getTenantStatus(formattedTenantId);
+
+      // Si se consultó una sub-instancia de empresa que está desconectada/en conflicto (ej. tenant_Comikids_tienda)
+      // pero existe otra sub-instancia de empresa activa (ej. tenant_Comikids), resolver automáticamente a la activa
+      const isMasterQuery =
+        formattedTenantId === 'main_bot' ||
+        formattedTenantId === 'comikids_whatsapp' ||
+        formattedTenantId === env.EVOLUTION_INSTANCE_NAME;
+
+      if (!isMasterQuery && result.state !== 'open') {
+        const resolution = await TenantController.resolveEmpresaSenderInstance(formattedTenantId);
+        if (!resolution.error && resolution.instanceName) {
+          result = {
+            instanceName: resolution.instanceName,
+            tenantId: resolution.instanceName,
+            state: 'open',
+            ownerPhone: resolution.ownerPhone,
+            ownerJid: resolution.ownerPhone ? `${resolution.ownerPhone}@s.whatsapp.net` : undefined,
+          };
+        }
+      }
 
       // Si la sub-instancia está conectada y tiene un teléfono emisor real, sincronizarlo en la BD
       if (result.state === 'open' && result.ownerPhone) {
@@ -147,11 +167,12 @@ export class TenantController {
           await supabaseAdmin
             .from('taller_config')
             .update({
+              copilot_sub_instance: result.instanceName || formattedTenantId,
               copilot_owner_phone: result.ownerPhone,
               whatsapp_pedidos: result.ownerPhone,
               celular_taller: `+${result.ownerPhone}`,
             })
-            .or(`copilot_sub_instance.eq.${formattedTenantId},copilot_sub_instance.eq.${formattedTenantId.replace(/^tenant_/, '')}`);
+            .or(`id.eq.config-main,copilot_sub_instance.eq.${formattedTenantId},copilot_sub_instance.eq.${formattedTenantId.replace(/^tenant_/, '')}`);
         } catch {}
       }
 
@@ -571,23 +592,25 @@ export class TenantController {
         let pdfToSend = order.pdfBase64;
         let individualPickupCode = String((order as any).pickupCode || (order as any).claveRecojo || (order as any).shalom_clave_recojo || '').trim();
 
-        // 1. OBLIGATORIO: Búsqueda en vivo del Ticket/Rótulo OFICIAL emitido y recibido por Shalom Pro (con QR oficial y datos actualizados)
+        // 1. Si el cliente no adjuntó ya el PDF oficial auditado, o falta la guía/clave, buscar en Shalom Pro reutilizando la caché reciente
         const searchKey = clientDni || (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G' ? order.guideNumber : '') || numbersOnly || order.trackingCode || phoneClean.slice(-9);
         
         let officialDoc = null;
-        try {
-          console.log(`[DELIVERY VOUCHER FETCH] Consultando Ticket/Rótulo Oficial con QR en Shalom Pro para clienta ${order.customerName} (DNI: "${clientDni}", Key: "${searchKey}")...`);
-          officialDoc = await ShalomController.fetchOfficialOrderPdfDirect({
-            searchKey,
-            dni: clientDni,
-            name: order.customerName,
-            phone: phoneClean,
-            guia: (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G') ? order.guideNumber : undefined,
-            internalCode: numbersOnly,
-            forceRefresh: true, // SIEMPRE traer la versión más actualizada recibida por Shalom
-          });
-        } catch (dirErr: any) {
-          console.warn(`[DELIVERY VOUCHER DIRECT FETCH WARN]`, dirErr?.message);
+        if (!pdfToSend || pdfToSend.length <= 100 || !individualPickupCode || !order.guideNumber || order.guideNumber === 'S/G' || order.guideNumber.startsWith('SH-')) {
+          try {
+            console.log(`[DELIVERY VOUCHER FETCH] Consultando Ticket/Rótulo Oficial con QR en Shalom Pro para clienta ${order.customerName} (DNI: "${clientDni}", Key: "${searchKey}")...`);
+            officialDoc = await ShalomController.fetchOfficialOrderPdfDirect({
+              searchKey,
+              dni: clientDni,
+              name: order.customerName,
+              phone: phoneClean,
+              guia: (order.guideNumber && !order.guideNumber.startsWith('SH-') && order.guideNumber !== 'S/G') ? order.guideNumber : undefined,
+              internalCode: numbersOnly,
+              forceRefresh: false, // Reutilizar caché reciente de la auditoría para evitar bloqueo 429 de Shalom Pro
+            });
+          } catch (dirErr: any) {
+            console.warn(`[DELIVERY VOUCHER DIRECT FETCH WARN]`, dirErr?.message);
+          }
         }
 
         if (officialDoc && officialDoc.pdfBase64) {

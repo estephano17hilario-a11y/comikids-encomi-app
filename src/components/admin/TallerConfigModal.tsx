@@ -60,7 +60,7 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
   };
 
   const handleOpenQrModal = async () => {
-    const targetInst = formData.copilot_sub_instance || 'tenant_Comikids_tienda';
+    const targetInst = formData.copilot_sub_instance || 'tenant_Comikids';
     setQrLoading(true);
     setShowQrModal(true);
     setQrBase64(null);
@@ -273,9 +273,9 @@ export const TallerConfigModal: React.FC<Props> = ({ onClose }) => {
                 <label className="block text-[11px] text-slate-300 mb-1">Instancia Sub-QR</label>
                 <input
                   type="text"
-                  value={formData.copilot_sub_instance || 'tenant_Comikids_tienda'}
+                  value={formData.copilot_sub_instance || 'tenant_Comikids'}
                   onChange={e => setFormData({ ...formData, copilot_sub_instance: e.target.value })}
-                  placeholder="tenant_Comikids_tienda"
+                  placeholder="tenant_Comikids"
                   className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
                 />
               </div>

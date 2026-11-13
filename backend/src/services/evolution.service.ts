@@ -369,7 +369,7 @@ export class EvolutionService {
     to: string,
     text: string
   ): Promise<any> {
-    const targetInstance = instanceName || 'tenant_Comikids_tienda';
+    const targetInstance = instanceName || 'tenant_Comikids';
     let phoneClean = to.replace(/[^0-9]/g, '');
     if (phoneClean.length === 9) {
       phoneClean = `51${phoneClean}`;
@@ -391,15 +391,15 @@ export class EvolutionService {
       return response.data;
     } catch (error: any) {
       console.warn(`[EVOLUTION SEND WARN en ${targetInstance}] Error enviando mensaje a ${phoneClean}:`, error?.response?.data || error?.message);
-      // Solo reintentar con tenant_Comikids_tienda si se llamó con otro nombre no-bot
-      if (targetInstance !== 'tenant_Comikids_tienda' && targetInstance !== 'comikids_whatsapp') {
+      // Solo reintentar con tenant_Comikids si se llamó con otro nombre no-bot
+      if (targetInstance !== 'tenant_Comikids' && targetInstance !== 'comikids_whatsapp') {
         try {
           const altResponse = await axios.post(
-            `${env.EVOLUTION_API_URL}/message/sendText/tenant_Comikids_tienda`,
+            `${env.EVOLUTION_API_URL}/message/sendText/tenant_Comikids`,
             { number: phoneClean, text },
             { headers: this.getHeaders(), timeout: 15000 }
           );
-          console.log(`[EVOLUTION SEND SUCCESS via fallback "tenant_Comikids_tienda"]`);
+          console.log(`[EVOLUTION SEND SUCCESS via fallback "tenant_Comikids"]`);
           return altResponse.data;
         } catch {}
       }
@@ -422,7 +422,7 @@ export class EvolutionService {
       mimeType?: string;
     }
   ): Promise<any> {
-    const targetInstance = instanceName || 'tenant_Comikids_tienda';
+    const targetInstance = instanceName || 'tenant_Comikids';
     let phoneClean = to.replace(/[^0-9]/g, '');
     if (phoneClean.length === 9) {
       phoneClean = `51${phoneClean}`;
@@ -462,13 +462,13 @@ export class EvolutionService {
     const docFileName = options?.fileName || (detectedType === 'document' ? 'Guia_Shalom.pdf' : 'imagen.jpg');
     let lastError: any = null;
 
-    // Intento 1: con Data URI Prefix
+    // Intento 1: con Pure Base64 (formato nativo de Evolution API v2.3+)
     try {
       const payload1 = {
         number: phoneClean,
         mediatype: detectedType,
         mediaType: detectedType,
-        media: formattedMedia,
+        media: cleanMedia,
         caption: options?.caption || '',
         fileName: docFileName,
         mimetype: defaultMime,
@@ -489,19 +489,19 @@ export class EvolutionService {
       lastError = err1;
     }
 
-    // Intento 2: con Pure Base64 (sin data: prefix)
+    // Intento 2: con Data URI Prefix (data:...;base64,)
     try {
       const payload2 = {
         number: phoneClean,
         mediatype: detectedType,
         mediaType: detectedType,
-        media: cleanMedia,
+        media: formattedMedia,
         caption: options?.caption || '',
         fileName: docFileName,
         mimetype: defaultMime,
       };
 
-      console.log(`[EVOLUTION SEND MEDIA T2] Reintentando con pure base64 a ${phoneClean} via ${targetInstance}...`);
+      console.log(`[EVOLUTION SEND MEDIA T2] Reintentando con Data URI a ${phoneClean} via ${targetInstance}...`);
       const response2 = await axios.post(
         `${env.EVOLUTION_API_URL}/message/sendMedia/${targetInstance}`,
         payload2,

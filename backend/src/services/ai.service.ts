@@ -7,7 +7,11 @@ export const OPENROUTER_API_KEY =
   env.OPENROUTER_API_KEY ||
   '';
 
-export const AI_MODEL = process.env.AI_MODEL || env.AI_MODEL || 'qwen/qwen3.7-flash';
+const configuredModel = process.env.AI_MODEL || env.AI_MODEL;
+export const AI_MODEL =
+  configuredModel && configuredModel !== 'qwen/qwen3.7-flash'
+    ? configuredModel
+    : 'google/gemini-2.5-flash';
 
 export const aiClient = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
@@ -18,14 +22,13 @@ export const aiClient = new OpenAI({
   },
 });
 
-// Lista de modelos de respaldo en caso de 429 / sobrecarga / límites de tasa
+// Lista de modelos de respaldo rápidos en caso de 429 / sobrecarga / límites de tasa
 const FALLBACK_MODELS = [
   'google/gemini-2.5-flash',
-  'google/gemini-2.0-flash-001',
-  'meta-llama/llama-3.3-70b-instruct',
-  'deepseek/deepseek-chat',
   'openai/gpt-4o-mini',
-  'qwen/qwen-2.5-72b-instruct',
+  'google/gemini-2.5-flash-lite',
+  'deepseek/deepseek-chat',
+  'meta-llama/llama-3.3-70b-instruct',
 ];
 
 // A. OCR y Auditoría de Comprobantes (Yape, Plin, Transferencias)
@@ -146,8 +149,13 @@ export interface AICopilotResult {
 }
 
 // B. Consulta Copiloto / Indagación sobre Historial con Cadena de Respaldo Multi-Modelo
-export async function queryCopilotWithUsage(systemContext: string, userPrompt: string): Promise<AICopilotResult> {
-  const modelsToTry = [AI_MODEL, ...FALLBACK_MODELS.filter(m => m !== AI_MODEL)];
+export async function queryCopilotWithUsage(
+  systemContext: string,
+  userPrompt: string,
+  options: { temperature?: number; maxTokens?: number; timeoutMs?: number; modelOverride?: string } = {}
+): Promise<AICopilotResult> {
+  const primaryModel = options.modelOverride || AI_MODEL;
+  const modelsToTry = [primaryModel, ...FALLBACK_MODELS.filter(m => m !== primaryModel)];
   let lastError: any = null;
 
   for (const model of modelsToTry) {
@@ -159,9 +167,10 @@ export async function queryCopilotWithUsage(systemContext: string, userPrompt: s
             { role: 'system', content: systemContext },
             { role: 'user', content: userPrompt },
           ],
-          temperature: 0.3,
+          temperature: options.temperature ?? 0.3,
+          ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
         },
-        { timeout: 15000 }
+        { timeout: options.timeoutMs ?? 10000 }
       );
 
       const content = response.choices[0]?.message?.content || '';

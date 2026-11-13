@@ -16,9 +16,9 @@ const envSchema = z.object({
 
   // OpenRouter & Gemini AI Engines
   OPENROUTER_API_KEY: z.string().optional().default(''),
-  AI_MODEL: z.string().default('qwen/qwen3.7-flash'),
+  AI_MODEL: z.string().default('google/gemini-2.5-flash'),
   GEMINI_API_KEY: z.string().optional().default(''),
-  GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
+  GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
 
 
 

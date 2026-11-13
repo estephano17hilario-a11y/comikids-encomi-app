@@ -65,7 +65,7 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   onOrdersDelivered,
 }) => {
   const { empresaConfig, currentEmpresa } = useAuth();
-  const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids_tienda';
+  const subInstance = currentEmpresa?.config?.vps_instance_name || currentEmpresa?.sub_instance || tallerConfig?.copilot_sub_instance || 'tenant_Comikids';
   const rawSender = currentEmpresa?.telefono_contacto || tallerConfig?.copilot_owner_phone || tallerConfig?.whatsapp_pedidos || '';
   const initialSenderPhone = (rawSender && !rawSender.includes('963097546')) ? rawSender : '51927781412';
   const [senderPhone, setSenderPhone] = useState<string>(initialSenderPhone);
@@ -128,10 +128,10 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         : `Consultando tickets oficiales en Shalom Pro API (0/${itemsToAudit.length})...`
     );
 
-    const CONCURRENCY = 4;
+    const CONCURRENCY = 3;
     let completedCount = 0;
 
-    const auditSingleItem = async (item: DeliveryOrderProgress) => {
+    const auditSingleItem = async (item: DeliveryOrderProgress, isFirstItem = false) => {
       if (cancelledAuditRef.current) return;
       const originalOrder = orders.find((o) => o.id === item.orderId);
       const cleanDni = (item.dni || '').replace(/\D/g, '').trim();
@@ -142,7 +142,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         guia: item.manualGuideInput || item.guideNumber,
         orderDate: originalOrder?.created_at || originalOrder?.fecha_limite,
         internalCode: item.trackingCode,
-        refresh: forceRefresh,
+        // Solo pedir refresh=true en el primer ítem del lote para actualizar la caché del backend sin disparar 429 en Shalom Pro
+        refresh: forceRefresh && isFirstItem,
       };
 
       let pdfData: string | null = null;
@@ -193,11 +194,18 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       }
     };
 
-    // Ejecutar en lotes concurrentes de 4 para máxima velocidad
-    for (let i = 0; i < itemsToAudit.length; i += CONCURRENCY) {
+    // Si forceRefresh está activo, ejecutar primero el ítem 0 para poblar la caché del backend y evitar ráfagas 429
+    let startIndex = 0;
+    if (forceRefresh && itemsToAudit.length > 0) {
+      await auditSingleItem(itemsToAudit[0], true);
+      startIndex = 1;
+    }
+
+    // Ejecutar el resto en lotes concurrentes de 3
+    for (let i = startIndex; i < itemsToAudit.length; i += CONCURRENCY) {
       if (cancelledAuditRef.current) break;
       const chunk = itemsToAudit.slice(i, i + CONCURRENCY);
-      await Promise.all(chunk.map(auditSingleItem));
+      await Promise.all(chunk.map((it) => auditSingleItem(it, false)));
     }
 
     if (!cancelledAuditRef.current) {
@@ -383,37 +391,36 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
     }
   };
 
-  // 2. ENVÍO DE GUÍAS POR WHATSAPP CON ANTI-BAN
+  // 2. ENVÍO DE GUÍAS POR WHATSAPP CON ANTI-BAN (Secuencial 1 por 1 para evitar error 413 Payload Too Large y 504 Timeout en Proxy Web)
   const handleStartDeliveryFlow = async () => {
     setProcessing(true);
     setOverallSuccess(false);
 
     const updatedList = [...progressList];
-    const payloadForWhatsApp: Array<{
-      orderId?: string;
-      pedidoId?: string;
-      phone: string;
-      customerName: string;
-      dni: string;
-      trackingCode: string;
-      guideNumber: string;
-      agencyName: string;
-      orderCode?: string;
-      pdfBase64?: string;
-      fileName?: string;
-      pickupCode?: string;
-    }> = [];
+    const displayPhone = senderPhone ? `(+${senderPhone.replace(/^51/, '')})` : '';
+    let deliveredSuccessCount = 0;
+    let firstFatalError: string | null = null;
 
     for (let i = 0; i < updatedList.length; i++) {
       const item = updatedList[i];
       item.sendStatus = 'sending';
+      item.errorMsg = undefined;
       setProgressList([...updatedList]);
+
+      // Pausa Anti-Ban en el cliente entre envíos consecutivos (2.5 a 4 segundos)
+      if (i > 0) {
+        const antiBanDelay = Math.floor(Math.random() * 1500) + 2500;
+        setCurrentStepText(`Protección Anti-Ban: esperando ${(antiBanDelay / 1000).toFixed(1)}s antes de enviar a ${item.customerName} (${i + 1}/${updatedList.length})...`);
+        await new Promise((r) => setTimeout(r, antiBanDelay));
+      }
+
+      setCurrentStepText(`Enviando Guía PDF (${i + 1}/${updatedList.length}) a ${item.customerName} vía Sub-QR ${subInstance} ${displayPhone}...`);
 
       const rawCode = String(item.trackingCode || '').trim();
       const numbersOnly = rawCode.replace(/^[^\d]*/, '').replace(/\D/g, '') || rawCode;
       const itemPickupCode = item.pickupCode || pickupCode;
 
-      payloadForWhatsApp.push({
+      const singleOrderPayload = [{
         orderId: item.orderId,
         pedidoId: item.orderId,
         phone: item.phone,
@@ -426,66 +433,85 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         pdfBase64: item.pdfBase64 || undefined,
         fileName: item.pdfBase64 ? (item.fileName || 'guia_shalom.pdf') : undefined,
         pickupCode: itemPickupCode,
-      });
+      }];
+
+      const sendRes = await ShalomApiService.sendDeliveryVouchers(singleOrderPayload, itemPickupCode, subInstance);
+
+      if (!sendRes.success) {
+        const errorMsg = sendRes.error || 'No se pudo enviar el comprobante por WhatsApp.';
+        item.sendStatus = 'error';
+        item.errorMsg = errorMsg;
+        setProgressList([...updatedList]);
+
+        // Si el error es porque la línea Sub-QR está desconectada, detener el lote de inmediato y avisar
+        if (errorMsg.toLowerCase().includes('no está conectada') || errorMsg.toLowerCase().includes('sub-qr')) {
+          firstFatalError = errorMsg;
+          for (let j = i + 1; j < updatedList.length; j++) {
+            updatedList[j].sendStatus = 'error';
+            updatedList[j].errorMsg = errorMsg;
+          }
+          setProgressList([...updatedList]);
+          break;
+        }
+        continue;
+      }
+
+      const resItem = sendRes.results?.[0];
+      if (resItem && resItem.status === 'error') {
+        item.sendStatus = 'error';
+        item.errorMsg = resItem.error || 'Error al enviar por WhatsApp';
+      } else {
+        item.sendStatus = 'completed';
+        if (resItem?.guideNumber && resItem.guideNumber !== 'S/G') {
+          item.guideNumber = resItem.guideNumber;
+        }
+        if (resItem?.pickupCode) {
+          item.pickupCode = resItem.pickupCode;
+        }
+        deliveredSuccessCount++;
+      }
+      setProgressList([...updatedList]);
     }
 
+    setProcessing(false);
 
-    const displayPhone = senderPhone ? `(+${senderPhone.replace(/^51/, '')})` : '';
-    setCurrentStepText(`Despachando Guías Oficiales de Shalom vía Sub-QR ${subInstance} ${displayPhone}...`);
-
-    const sendRes = await ShalomApiService.sendDeliveryVouchers(payloadForWhatsApp, pickupCode, subInstance);
-
-    if (!sendRes.success) {
-      const errorMsg = sendRes.error || 'No se pudieron despachar los comprobantes por WhatsApp. Verifica la conexión del Sub-QR.';
-      alert(`⚠️ ${errorMsg}`);
-      setCurrentStepText(`⚠️ ${errorMsg}`);
-      updatedList.forEach((it) => {
-        if (it.sendStatus === 'sending') {
-          it.sendStatus = 'error';
-          it.errorMsg = errorMsg;
-        }
-      });
-      setProgressList([...updatedList]);
-      setProcessing(false);
+    if (firstFatalError) {
+      alert(`⚠️ ${firstFatalError}`);
+      setCurrentStepText(`⚠️ ${firstFatalError}`);
       return;
     }
 
-    if (sendRes.results && sendRes.results.length > 0) {
-      sendRes.results.forEach((resItem: any) => {
-        const target = updatedList.find((p) => p.phone.endsWith(resItem.phone.slice(-9)));
-        if (target) {
-          if (resItem.status === 'success') {
-            target.sendStatus = 'completed';
-          } else {
-            target.sendStatus = 'error';
-            target.errorMsg = resItem.error || 'Error al enviar por WhatsApp';
-          }
-        }
-      });
-    } else {
-      updatedList.forEach((it) => {
-        it.sendStatus = 'completed';
-      });
+    if (deliveredSuccessCount === 0) {
+      const lastErr = updatedList.find((it) => it.errorMsg)?.errorMsg || 'No se pudieron despachar los comprobantes por WhatsApp.';
+      alert(`⚠️ ${lastErr}`);
+      setCurrentStepText(`⚠️ ${lastErr}`);
+      return;
     }
 
-    setProgressList([...updatedList]);
-    setProcessing(false);
-    setOverallSuccess(true);
-    setCurrentStepText(`¡Guías oficiales en PDF entregadas exitosamente por WhatsApp desde Sub-QR (${subInstance})!`);
+    setOverallSuccess(deliveredSuccessCount === updatedList.length);
+    setCurrentStepText(
+      deliveredSuccessCount === updatedList.length
+        ? `¡${deliveredSuccessCount} guía(s) oficial(es) en PDF entregadas exitosamente por WhatsApp desde Sub-QR (${subInstance})!`
+        : `Se enviaron ${deliveredSuccessCount} de ${updatedList.length} guías por WhatsApp. Revisa los pedidos con alerta.`
+    );
 
     const metaMap: Record<string, { guia?: string; pickupCode?: string; oseId?: string }> = {};
     for (const item of updatedList) {
-      const pinToSave = item.pickupCode || pickupCode || undefined;
-      if (item.guideNumber || item.manualGuideInput || pinToSave) {
-        metaMap[item.orderId] = {
-          guia: item.manualGuideInput || item.guideNumber || undefined,
-          pickupCode: pinToSave,
-        };
+      if (item.sendStatus === 'completed') {
+        const pinToSave = item.pickupCode || pickupCode || undefined;
+        if (item.guideNumber || item.manualGuideInput || pinToSave) {
+          metaMap[item.orderId] = {
+            guia: item.manualGuideInput || item.guideNumber || undefined,
+            pickupCode: pinToSave,
+          };
+        }
       }
     }
 
-    const successIds = updatedList.map((p) => p.orderId);
-    onOrdersDelivered(successIds, metaMap);
+    const successIds = updatedList.filter((p) => p.sendStatus === 'completed').map((p) => p.orderId);
+    if (successIds.length > 0) {
+      onOrdersDelivered(successIds, metaMap);
+    }
   };
 
   const handleOnlyMarkDelivered = () => {

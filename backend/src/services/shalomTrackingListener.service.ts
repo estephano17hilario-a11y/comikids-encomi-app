@@ -69,7 +69,7 @@ export class ShalomTrackingListenerService {
    * garantizando que NUNCA se utilice el bot maestro (+51 901 985 319)
    */
   public static async resolveComikidsMainSenderInstance(): Promise<string> {
-    const DEFAULT_STORE_INSTANCE = 'tenant_Comikids_tienda';
+    const DEFAULT_STORE_INSTANCE = 'tenant_Comikids';
     try {
       const fetchRes = await axios.get(`${env.EVOLUTION_API_URL}/instance/fetchInstances`, {
         headers: { apikey: env.EVOLUTION_API_KEY },

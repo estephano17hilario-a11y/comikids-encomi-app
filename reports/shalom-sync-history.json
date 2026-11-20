@@ -1,0 +1,19 @@
+[
+  {
+    "timestamp": "2026-11-20T23:01:22.602Z",
+    "hasChanges": true,
+    "totalChangesCount": 69,
+    "activeValid": 504,
+    "newCount": 0,
+    "reactivatedCount": 0,
+    "renamedCount": 0,
+    "codeChangedCount": 0,
+    "addressChangedCount": 0,
+    "locationChangedCount": 0,
+    "scheduleOrPhoneCount": 0,
+    "deactivatedRealCount": 31,
+    "deactivatedInternalOrQaCount": 35,
+    "ordersUpdatedCount": 3,
+    "ordersWarningsCount": 0
+  }
+]

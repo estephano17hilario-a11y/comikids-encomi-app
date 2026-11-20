@@ -1,35 +1,175 @@
-name: Sincronización Diaria 23:59 de Agencias Shalom
+name: Sincronización Diaria 05:00 AM de Agencias Shalom
 
 on:
-  # Ejecución automática todas las noches a las 23:59 (Hora Perú UTC-5 = 04:59 UTC)
+  # Ejecución automática todos los días a las 05:00 AM Hora Perú (America/Lima UTC-5 = 10:00 UTC)
   schedule:
-    - cron: '59 4 * * *'
+    - cron: '0 10 * * *'
   # Permite ejecución manual desde la pestaña Actions en GitHub
   workflow_dispatch:
+    inputs:
+      force_issue:
+        description: 'Crear reporte en GitHub Issue incluso si no hubo cambios'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-shalom-daily
+  cancel-in-progress: false
 
 jobs:
   sync-shalom-agencies:
-    name: Sincronización Inteligente Shalom (Diff, Nuevas, Modificadas y Bajas)
+    name: Sincronización Inteligente Shalom 05:00 AM (BD + Catálogo + Reporte GitHub)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - name: 📥 Clonar repositorio
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: ⚙️ Configurar Node.js (v20)
+      - name: ⚙️ Configurar Node.js (v22 LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: 📦 Instalar dependencias
         run: npm ci
 
-      - name: 🚀 Ejecutar Pipeline de Ingesta Inteligente
+      - name: 🚀 Ejecutar Sincronización Inteligente de Agencias Shalom
+        id: sync
         env:
           SHALOM_API_KEY: ${{ secrets.SHALOM_API_KEY || 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma' }}
           SHALOM_API_URL: ${{ secrets.SHALOM_API_URL || 'https://api.shalom-api-peru.com' }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://api.89.117.73.97.sslip.io' }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4Nzg0OTc2MCwiZXhwIjo0OTQzNTIzMzYwLCJyb2xlIjoiYW5vbiJ9._DvifLx6sViDd5UePak7xswzmT6dQp9FoQZqPnyxeRU' }}
-        run: node scripts/sync-shalom.mjs
+        run: |
+          node scripts/sync-shalom.mjs \
+            --report-md reports/shalom-sync-latest.md \
+            --report-json reports/shalom-sync-latest.json
+
+      - name: 📊 Publicar Resumen en GitHub Actions Summary
+        if: always()
+        run: |
+          if [ -f reports/shalom-sync-latest.md ]; then
+            cat reports/shalom-sync-latest.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "⚠️ No se generó el archivo de reporte." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 📎 Subir Reporte Diario como Artefacto (90 días)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shalom-sync-report-${{ github.run_id }}
+          path: |
+            reports/shalom-sync-latest.md
+            reports/shalom-sync-latest.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: 💾 Confirmar y subir catálogo actualizado al repositorio
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            data/shalom_agencies_full.json \
+            src/data/shalomAgencies.ts \
+            src/data/shalom_official_agencies.json \
+            src/data/shalomAgencyCanonicalMap.ts \
+            backend/src/data/shalomAgencies.ts \
+            backend/src/data/shalom_official_agencies.json \
+            backend/src/data/shalomAgencyCanonicalMap.ts \
+            reports/shalom-sync-latest.md \
+            reports/shalom-sync-latest.json \
+            reports/shalom-sync-history.json
+
+          if git diff --cached --quiet; then
+            echo "✨ Sin cambios en los archivos del repositorio."
+          else
+            DATE_PE=$(TZ='America/Lima' date +'%Y-%m-%d %H:%M')
+            git commit -m "chore(shalom): actualización automática diaria 05:00 AM (${DATE_PE} PET) [skip ci]"
+            git push
+            echo "✅ Cambios subidos a master correctamente."
+          fi
+
+      - name: 📬 Publicar Reporte de Cambios en GitHub Issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('reports/shalom-sync-latest.json') || !fs.existsSync('reports/shalom-sync-latest.md')) {
+              core.warning('No se encontraron los archivos de reporte.');
+              return;
+            }
+            const report = JSON.parse(fs.readFileSync('reports/shalom-sync-latest.json', 'utf8'));
+            const md = fs.readFileSync('reports/shalom-sync-latest.md', 'utf8');
+            const forceIssue = '${{ inputs.force_issue }}' === 'true';
+
+            if (!report.hasChanges && report.orders.warnings.length === 0 && !forceIssue) {
+              core.info('✨ Sin cambios detectados hoy. No se creará un Issue redundante (el resumen completo quedó en Actions Summary y reports/shalom-sync-latest.md).');
+              return;
+            }
+
+            // Asegurar etiqueta shalom-sync
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'shalom-sync'
+              });
+            } catch {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'shalom-sync',
+                color: 'E11D48',
+                description: 'Reportes automáticos diarios de sincronización de agencias Shalom'
+              });
+            }
+
+            const peruDate = new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'America/Lima',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit'
+            }).format(new Date(report.timestamp));
+
+            const c = report.changes;
+            const summaryParts = [];
+            if (c.newAgencies.length) summaryParts.push(`+${c.newAgencies.length} nuevas`);
+            if (c.reactivated.length) summaryParts.push(`+${c.reactivated.length} reactivadas`);
+            if (c.renamed.length) summaryParts.push(`~${c.renamed.length} renombradas`);
+            if (c.codeChanged.length) summaryParts.push(`~${c.codeChanged.length} códigos`);
+            if (c.addressChanged.length) summaryParts.push(`~${c.addressChanged.length} direcciones`);
+            if (c.locationChanged.length) summaryParts.push(`~${c.locationChanged.length} GPS/ubigeo`);
+            if (c.scheduleOrPhoneChanged.length) summaryParts.push(`~${c.scheduleOrPhoneChanged.length} horarios`);
+            if (c.deactivatedReal.length) summaryParts.push(`-${c.deactivatedReal.length} bajas`);
+            if (c.deactivatedInternalOrQa.length) summaryParts.push(`🧹${c.deactivatedInternalOrQa.length} depuradas`);
+            if (report.orders.warnings.length) summaryParts.push(`⚠️${report.orders.warnings.length} alertas pedidos`);
+
+            const suffix = summaryParts.length > 0 ? summaryParts.join(', ') : 'Sin cambios (verificación manual)';
+            const title = `📦 Reporte Shalom (${peruDate}): ${suffix}`;
+
+            // Limitar cuerpo al máximo de GitHub Issues (65,536 chars)
+            const maxLen = 62000;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = (md.length > maxLen ? md.slice(0, maxLen) + '\n\n...(truncado, ver reporte completo en el artefacto del workflow)...' : md)
+              + `\n\n🔗 **Ejecución completa en GitHub Actions:** ${runUrl}`;
+
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['shalom-sync']
+            });
+
+            core.info(`✅ GitHub Issue creado: #${issue.data.number} (${issue.data.html_url})`);

@@ -1,10 +1,20 @@
 import axios from 'axios';
 import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
-import { resolveShalomAgencyDetails, extractShalomDestino } from './shalomAgencyResolver.js';
+import { resolveShalomAgencyDetails } from './shalomAgencyResolver.js';
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
 const DEFAULT_API_KEY = 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
+const EXPIRED_DELETED_AT = '2025-01-01T00:00:00.000Z';
+const MIN_EXPECTED_API_AGENCIES = 400;
+
+function sameTimestamp(a?: string | null, b?: string | null): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  return !Number.isNaN(ta) && !Number.isNaN(tb) && ta === tb;
+}
 
 export interface ShalomRawApiAgency {
   id: number;
@@ -30,18 +40,73 @@ export interface ShalomRawApiAgency {
     [key: string]: any;
   } | string;
   estado?: string;
+  categoria?: string;
+  habilitado?: boolean;
   principal?: boolean;
 }
 
 export interface SyncReport {
   timestamp: string;
   totalAgenciesFromApi: number;
+  activeValidCount: number;
   newAgenciesCount: number;
   updatedAgenciesCount: number;
+  deactivatedAgenciesCount: number;
   unchangedAgenciesCount: number;
   updatedOrdersCount: number;
   updatedOrders: Array<{ orderId: string; trackingCode: string; oldDestino: string; newDestino: string }>;
   errors: string[];
+}
+
+function cleanText(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  let s = String(value);
+  s = s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  s = s.replace(/Â[\u00a0\s]/g, ' ').replace(/Â/g, '');
+  s = s.replace(/[\u00a0\r\n\t]+/g, ' ');
+  s = s.replace(/\bN\?\s*(\d)/gi, 'N° $1');
+  s = s.replace(/\s{2,}/g, ' ').trim();
+  return s;
+}
+
+function isQaOrTestAgency(name: string, address: string): boolean {
+  const n = cleanText(name).toUpperCase();
+  const a = cleanText(address).toUpperCase();
+  return (
+    /\bPRUEBA\b|PRUEBA[A-Z0-9_]|_PRUEBA|\bTEST\b|PRUEBATEST|\bZZ\s*QA\b|TERMINAL DE PRUEBA|AV\s+PRUEBAS|NO USAR DE PRE?UBA/i.test(n) ||
+    /\bPRUEBA\b|PRUEBA_DE_ALMACEN|TERMINAL DE PRUEBA|AV\s+PRUEBAS/i.test(a)
+  );
+}
+
+function classifyApiAgency(raw: ShalomRawApiAgency): { isActive: boolean; hideImmediately: boolean } {
+  const nameUpper = cleanText(raw.nombre).toUpperCase();
+  const addrUpper = cleanText(raw.direccion).toUpperCase();
+  const catUpper = cleanText(raw.categoria).toUpperCase();
+  const habilitado = raw.habilitado === true;
+
+  if (isQaOrTestAgency(nameUpper, addrUpper)) {
+    return { isActive: false, hideImmediately: true };
+  }
+  if (habilitado) {
+    return { isActive: true, hideImmediately: false };
+  }
+  if (
+    nameUpper.includes('(POR DEFINIR)') ||
+    nameUpper.includes('AEROPUERTO') ||
+    nameUpper.includes('APEROPUERTO') ||
+    catUpper === 'SOLO ENVÍOS' ||
+    catUpper === 'SOLO ENVIOS' ||
+    nameUpper.includes('CAJA ') ||
+    nameUpper.includes('AREA SHALOM') ||
+    nameUpper.includes('TALLERES-HUACHIPA') ||
+    nameUpper.includes('REPARTO SAN LUIS') ||
+    nameUpper.includes('ALMACENES BSF') ||
+    nameUpper.includes('PUERTO YURIMAGUAS') ||
+    nameUpper.includes('PUERTO IQUITOS')
+  ) {
+    return { isActive: false, hideImmediately: true };
+  }
+  return { isActive: false, hideImmediately: false };
 }
 
 export class ShalomSyncService {
@@ -49,9 +114,6 @@ export class ShalomSyncService {
   private static isSyncing = false;
   private static cronTimer: NodeJS.Timeout | null = null;
 
-  /**
-   * Obtiene la API Key de Shalom (de variables de entorno o taller_config en Supabase)
-   */
   private static async getApiKey(): Promise<string> {
     try {
       const { data } = await supabaseAdmin
@@ -65,12 +127,9 @@ export class ShalomSyncService {
     }
   }
 
-  /**
-   * Descarga todas las agencias activas desde la API oficial de Shalom Pro
-   */
   public static async fetchAllAgenciesFromApi(apiKey?: string): Promise<ShalomRawApiAgency[]> {
     const key = apiKey || await this.getApiKey();
-    let allAgencies: ShalomRawApiAgency[] = [];
+    const allAgencies: ShalomRawApiAgency[] = [];
     let page = 1;
     const perPage = 100;
     let hasMore = true;
@@ -83,9 +142,9 @@ export class ShalomSyncService {
           params: { page, per_page: perPage },
           headers: {
             'X-API-Key': key,
-            'User-Agent': 'Incomi-AutoSync-Service/1.0',
+            'User-Agent': 'Incomi-AutoSync-Service/2.0',
           },
-          timeout: 15000,
+          timeout: 20000,
         });
 
         const items: ShalomRawApiAgency[] = Array.isArray(response.data)
@@ -101,12 +160,12 @@ export class ShalomSyncService {
             hasMore = false;
           } else {
             page++;
-            await new Promise(r => setTimeout(r, 400)); // Rate limit buffer
+            await new Promise(r => setTimeout(r, 350));
           }
         }
       } catch (err: any) {
         console.error(`[SHALOM SYNC API ERROR] Fallo al consultar página ${page}:`, err?.message);
-        break;
+        throw err;
       }
     }
 
@@ -115,11 +174,11 @@ export class ShalomSyncService {
   }
 
   /**
-   * Ejecuta la sincronización completa:
-   * 1. Consulta la API oficial de Shalom.
-   * 2. Compara con la base de datos Supabase para detectar nuevas o modificadas.
-   * 3. Guarda cambios en `shalom_agencies`.
-   * 4. Si una agencia cambió su nombre, dirección o referencia, actualiza automáticamente los pedidos activos afectados.
+   * Sincronización inteligente completa:
+   * - Respeta `habilitado: true` y excluye terminales QA/prueba, aeropuertos, SOLO ENVÍOS, cajas internas y (POR DEFINIR).
+   * - Sanea texto/encoding (mojibake, \u00b0, N?, códigos con espacios).
+   * - Mantiene vigencia informativa de 30 días para sedes reales cerradas o renombradas.
+   * - Propaga cambios de nombre solo a pedidos activos (ni cancelados ni entregados).
    */
   public static async syncAgenciesAndPropagateOrders(): Promise<SyncReport> {
     if (this.isSyncing) {
@@ -127,8 +186,10 @@ export class ShalomSyncService {
       return this.lastSyncReport || {
         timestamp: new Date().toISOString(),
         totalAgenciesFromApi: 0,
+        activeValidCount: 0,
         newAgenciesCount: 0,
         updatedAgenciesCount: 0,
+        deactivatedAgenciesCount: 0,
         unchangedAgenciesCount: 0,
         updatedOrdersCount: 0,
         updatedOrders: [],
@@ -138,54 +199,66 @@ export class ShalomSyncService {
 
     this.isSyncing = true;
     const startTime = new Date();
+    const nowIso = startTime.toISOString();
     const errors: string[] = [];
     const updatedOrdersList: Array<{ orderId: string; trackingCode: string; oldDestino: string; newDestino: string }> = [];
+    let activeValidCount = 0;
     let newAgenciesCount = 0;
     let updatedAgenciesCount = 0;
+    let deactivatedAgenciesCount = 0;
     let unchangedAgenciesCount = 0;
 
     try {
-      // 1. Obtener agencias desde API
+      // 1. Obtener agencias desde API con guardia de seguridad
       const apiAgencies = await this.fetchAllAgenciesFromApi();
-      if (apiAgencies.length === 0) {
-        throw new Error('No se recibieron agencias de la API de Shalom Pro. Verifica la API Key y conexión.');
+      if (apiAgencies.length < MIN_EXPECTED_API_AGENCIES) {
+        throw new Error(`Safety guard: API devolvió solo ${apiAgencies.length} agencias (< ${MIN_EXPECTED_API_AGENCIES}).`);
       }
 
-      // 2. Obtener agencias actuales de la base de datos Supabase
-      const { data: dbAgenciesData, error: dbError } = await supabaseAdmin
-        .from('shalom_agencies')
-        .select('*');
-
-      if (dbError) {
-        console.error('[SHALOM SYNC DB ERROR] Error consultando shalom_agencies:', dbError.message);
-        errors.push(`Error consultando BD: ${dbError.message}`);
+      // 2. Obtener todas las agencias actuales de Supabase (paginado >1000 safe)
+      const dbAgenciesData: any[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error: dbError } = await supabaseAdmin
+          .from('shalom_agencies')
+          .select('*')
+          .order('id', { ascending: true })
+          .range(offset, offset + 499);
+        if (dbError) {
+          errors.push(`Error consultando BD: ${dbError.message}`);
+          break;
+        }
+        if (!data || data.length === 0) break;
+        dbAgenciesData.push(...data);
+        if (data.length < 500) break;
+        offset += 500;
       }
 
       const dbAgenciesMap = new Map<number, any>();
-      if (Array.isArray(dbAgenciesData)) {
-        for (const ag of dbAgenciesData) {
-          dbAgenciesMap.set(Number(ag.id), ag);
-        }
+      for (const ag of dbAgenciesData) {
+        dbAgenciesMap.set(Number(ag.id), ag);
       }
 
       const agenciesToUpsert: any[] = [];
-      const changedAgenciesForOrders: Array<{ id: number; oldData?: any; newData: any; isModified: boolean }> = [];
+      const changedAgenciesForOrders: Array<{ id: number; oldData?: any; newData: any }> = [];
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
-      // 3. Comparar cada agencia de la API
+      // 3. Clasificar y comparar cada agencia de la API
       for (const raw of apiAgencies) {
         const agId = Number(raw.id);
-        const department = (raw.departamento || 'LIMA').toUpperCase().trim();
-        const province = (raw.provincia || 'LIMA').toUpperCase().trim();
-        const district = (raw.distrito || raw.lugar_over || raw.zona || 'CENTRO').toUpperCase().trim();
-        const code = raw.abrebiatura || raw.code || null;
-        const name = (raw.nombre || '').trim();
-        const address = (raw.direccion || '').trim();
+        const department = cleanText(raw.departamento || 'LIMA').toUpperCase();
+        const province = cleanText(raw.provincia || 'LIMA').toUpperCase();
+        const district = cleanText(raw.distrito || raw.lugar_over || raw.zona || 'CENTRO').toUpperCase();
+        const rawCode = raw.abrebiatura || raw.code || null;
+        const code = rawCode ? cleanText(rawCode) : null;
+        const name = cleanText(raw.nombre || '');
+        const address = cleanText(raw.direccion || '');
 
         let scheduleText = 'Lunes a Sábado: 8:00 AM - 8:00 PM';
         if (typeof raw.horario === 'string' && raw.horario.trim()) {
-          scheduleText = raw.horario.trim();
+          scheduleText = cleanText(raw.horario);
         } else if (raw.horario && typeof raw.horario === 'object' && (raw.horario as any).hora_atencion) {
-          scheduleText = (raw.horario as any).hora_atencion.trim();
+          scheduleText = cleanText((raw.horario as any).hora_atencion);
         }
 
         let ubigeo: string | null = null;
@@ -195,8 +268,17 @@ export class ShalomSyncService {
           ubigeo = String(raw.ubigeo).padStart(6, '0');
         }
 
+        let phone = cleanText(raw.telefono || '');
+        if (!phone || phone.toLowerCase() === 'null' || phone.toLowerCase() === 'none') {
+          phone = '(01) 500-7878';
+        }
+
         const codeTag = code ? ` (CÓDIGO: ${code})` : '';
-        const fullName = `${department} / ${province} / ${district} / ${name}${address ? ` - ${address}` : ''}${codeTag}`.toUpperCase();
+        const basePath = name.includes('/') ? name : `${department} / ${province} / ${district} / ${name}`;
+        const fullName = `${basePath}${address ? ` - ${address}` : ''}${codeTag}`.toUpperCase();
+
+        const cls = classifyApiAgency(raw);
+        if (cls.isActive) activeValidCount++;
 
         const normalizedDBRecord: any = {
           id: agId,
@@ -211,12 +293,12 @@ export class ShalomSyncService {
           prov_id: typeof raw.prov_id === 'number' ? raw.prov_id : null,
           dist_id: typeof raw.dist_id === 'number' ? raw.dist_id : null,
           address,
-          phone: raw.telefono || '(01) 500-7878',
+          phone,
           schedule: scheduleText,
           latitude: typeof raw.latitud === 'number' ? raw.latitud : null,
           longitude: typeof raw.longitud === 'number' ? raw.longitud : null,
-          is_active: true,
-          updated_at: new Date().toISOString(),
+          is_active: cls.isActive,
+          updated_at: nowIso,
           previous_name: null,
           previous_address: null,
           previous_agency_info: null,
@@ -227,118 +309,134 @@ export class ShalomSyncService {
         const existing = dbAgenciesMap.get(agId);
 
         if (!existing) {
-          newAgenciesCount++;
-          agenciesToUpsert.push(normalizedDBRecord);
-          changedAgenciesForOrders.push({ id: agId, newData: normalizedDBRecord, isModified: true });
-        } else {
-          // Comprobar si hubo cambios significativos en nombre, dirección, código o distrito
-          const isNameChanged = (existing.name || '').trim().toUpperCase() !== name.toUpperCase();
-          const isAddressChanged = (existing.address || '').trim().toUpperCase() !== address.toUpperCase();
-          const isDistrictChanged = (existing.district || '').trim().toUpperCase() !== district.toUpperCase();
-          const isCodeChanged = (existing.code || '').trim().toUpperCase() !== (code || '').toUpperCase();
-          const isScheduleChanged = (existing.schedule || '').trim() !== scheduleText;
-          const isLocationChanged = existing.latitude !== normalizedDBRecord.latitude || existing.longitude !== normalizedDBRecord.longitude;
-
-          const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-          if (isNameChanged) {
-            normalizedDBRecord.previous_name = existing.name;
-            normalizedDBRecord.previous_address = existing.address;
-            normalizedDBRecord.previous_agency_info = existing.full_name || `${existing.name} - ${existing.address}`;
-            normalizedDBRecord.name_changed_at = new Date().toISOString();
-          } else if (existing.previous_name) {
-            const changedTime = existing.name_changed_at ? new Date(existing.name_changed_at).getTime() : 0;
-            if (changedTime && Date.now() - changedTime <= thirtyDaysMs) {
-              normalizedDBRecord.previous_name = existing.previous_name;
-              normalizedDBRecord.previous_address = existing.previous_address;
-              normalizedDBRecord.previous_agency_info = existing.previous_agency_info;
-              normalizedDBRecord.name_changed_at = existing.name_changed_at;
-            }
+          if (cls.isActive) {
+            newAgenciesCount++;
+          } else {
+            normalizedDBRecord.deleted_at = cls.hideImmediately ? EXPIRED_DELETED_AT : nowIso;
+            normalizedDBRecord.previous_name = name;
+            normalizedDBRecord.previous_agency_info = fullName;
           }
+          agenciesToUpsert.push(normalizedDBRecord);
+          continue;
+        }
 
-          if (existing.is_active === false) {
-            normalizedDBRecord.is_active = true;
-            normalizedDBRecord.deleted_at = null;
-            updatedAgenciesCount++;
+        const wasActive = existing.is_active !== false;
+
+        if (!cls.isActive) {
+          normalizedDBRecord.deleted_at = cls.hideImmediately
+            ? EXPIRED_DELETED_AT
+            : (wasActive ? nowIso : (existing.deleted_at || nowIso));
+          normalizedDBRecord.previous_name = existing.previous_name || existing.name || name;
+          normalizedDBRecord.previous_address = existing.previous_address || existing.address || address;
+          normalizedDBRecord.previous_agency_info = existing.previous_agency_info || existing.full_name || fullName;
+
+          if (wasActive) {
+            deactivatedAgenciesCount++;
             agenciesToUpsert.push(normalizedDBRecord);
-            changedAgenciesForOrders.push({ id: agId, oldData: existing, newData: normalizedDBRecord, isModified: true });
-          } else if (isNameChanged || isAddressChanged || isDistrictChanged || isCodeChanged || isScheduleChanged || isLocationChanged) {
-            updatedAgenciesCount++;
+          } else if (!sameTimestamp(existing.deleted_at, normalizedDBRecord.deleted_at) || (existing.full_name || '') !== fullName) {
             agenciesToUpsert.push(normalizedDBRecord);
-            changedAgenciesForOrders.push({ id: agId, oldData: existing, newData: normalizedDBRecord, isModified: true });
           } else {
             unchangedAgenciesCount++;
           }
+          continue;
+        }
+
+        const isNameChanged = cleanText(existing.name || '').toUpperCase() !== name.toUpperCase();
+        const isAddressChanged = (existing.address || '') !== address;
+        const isDistrictChanged = cleanText(existing.district || '').toUpperCase() !== district;
+        const isCodeChanged = (existing.code || '') !== (code || '');
+        const isScheduleChanged = cleanText(existing.schedule || '') !== scheduleText;
+        const isLocationChanged =
+          (existing.latitude === null) !== (normalizedDBRecord.latitude === null) ||
+          (existing.longitude === null) !== (normalizedDBRecord.longitude === null) ||
+          (existing.latitude !== null && normalizedDBRecord.latitude !== null && Math.abs(Number(existing.latitude) - Number(normalizedDBRecord.latitude)) > 0.0002) ||
+          (existing.longitude !== null && normalizedDBRecord.longitude !== null && Math.abs(Number(existing.longitude) - Number(normalizedDBRecord.longitude)) > 0.0002);
+
+        if (isNameChanged || isDistrictChanged) {
+          normalizedDBRecord.previous_name = existing.name;
+          normalizedDBRecord.previous_address = existing.address;
+          normalizedDBRecord.previous_agency_info = existing.full_name || `${existing.name} - ${existing.address}`;
+          normalizedDBRecord.name_changed_at = nowIso;
+        } else if (existing.previous_name) {
+          const changedTime = existing.name_changed_at ? new Date(existing.name_changed_at).getTime() : 0;
+          if (changedTime && Date.now() - changedTime <= thirtyDaysMs) {
+            normalizedDBRecord.previous_name = existing.previous_name;
+            normalizedDBRecord.previous_address = existing.previous_address;
+            normalizedDBRecord.previous_agency_info = existing.previous_agency_info;
+            normalizedDBRecord.name_changed_at = existing.name_changed_at;
+          }
+        }
+
+        if (!wasActive || isNameChanged || isAddressChanged || isDistrictChanged || isCodeChanged || isScheduleChanged || isLocationChanged || (existing.full_name || '') !== fullName) {
+          updatedAgenciesCount++;
+          agenciesToUpsert.push(normalizedDBRecord);
+          if (isNameChanged || isDistrictChanged) {
+            changedAgenciesForOrders.push({ id: agId, oldData: existing, newData: normalizedDBRecord });
+          }
+        } else {
+          unchangedAgenciesCount++;
         }
       }
 
-      // Detectar agencias cerradas/borradas que estaban en BD pero ya no existen en la API oficial
+      // Agencias completamente eliminadas de la API
       const apiIdsSet = new Set(apiAgencies.map(a => Number(a.id)));
       const toDeactivateAgencies: any[] = [];
-      const nowIso = new Date().toISOString();
       for (const [dbId, existing] of dbAgenciesMap.entries()) {
-        if (existing.is_active !== false && !apiIdsSet.has(dbId)) {
-          toDeactivateAgencies.push({
-            id: dbId,
-            is_active: false,
-            deleted_at: existing.deleted_at || nowIso,
-            previous_name: existing.previous_name || existing.name,
-            previous_agency_info: existing.previous_agency_info || existing.full_name || `${existing.name} - ${existing.address}`,
-            updated_at: nowIso,
-          });
+        if (!apiIdsSet.has(dbId)) {
+          const isJunk = isQaOrTestAgency(existing.name || '', existing.address || '');
+          const targetDeletedAt = isJunk ? EXPIRED_DELETED_AT : (existing.deleted_at || nowIso);
+          if (existing.is_active !== false || !sameTimestamp(existing.deleted_at, targetDeletedAt)) {
+            if (existing.is_active !== false) deactivatedAgenciesCount++;
+            toDeactivateAgencies.push({
+              id: dbId,
+              is_active: false,
+              deleted_at: targetDeletedAt,
+              previous_name: existing.previous_name || existing.name,
+              previous_agency_info: existing.previous_agency_info || existing.full_name || `${existing.name} - ${existing.address}`,
+              updated_at: nowIso,
+            });
+          }
         }
       }
 
       // 4. Guardar en Supabase `shalom_agencies` en lotes
       if (agenciesToUpsert.length > 0) {
-        console.log(`[SHALOM SYNC UPSERT] Guardando ${agenciesToUpsert.length} agencias nuevas/actualizadas en Supabase...`);
         const batchSize = 100;
         for (let i = 0; i < agenciesToUpsert.length; i += batchSize) {
           const batch = agenciesToUpsert.slice(i, i + batchSize);
           const { error: upsertErr } = await supabaseAdmin
             .from('shalom_agencies')
             .upsert(batch, { onConflict: 'id' });
-
           if (upsertErr) {
-            console.error(`[SHALOM SYNC UPSERT BATCH ERROR] Lote ${Math.floor(i / batchSize) + 1}:`, upsertErr.message);
             errors.push(`Error en upsert lote ${Math.floor(i / batchSize) + 1}: ${upsertErr.message}`);
           }
         }
       }
 
-      // Desactivar agencias cerradas/eliminadas (con vigencia de 30 días)
-      if (toDeactivateAgencies.length > 0) {
-        console.log(`[SHALOM SYNC DEACTIVATE] Marcando ${toDeactivateAgencies.length} agencias cerradas/eliminadas con vigencia de 30 días...`);
-        for (const deact of toDeactivateAgencies) {
-          const { error: deactErr } = await supabaseAdmin
-            .from('shalom_agencies')
-            .update({
-              is_active: false,
-              deleted_at: deact.deleted_at,
-              previous_name: deact.previous_name,
-              previous_agency_info: deact.previous_agency_info,
-              updated_at: deact.updated_at,
-            })
-            .eq('id', deact.id);
-
-          if (deactErr) {
-            console.error(`[SHALOM SYNC DEACTIVATE ERROR] ID ${deact.id}:`, deactErr.message);
-          }
+      for (const deact of toDeactivateAgencies) {
+        const { error: deactErr } = await supabaseAdmin
+          .from('shalom_agencies')
+          .update({
+            is_active: false,
+            deleted_at: deact.deleted_at,
+            previous_name: deact.previous_name,
+            previous_agency_info: deact.previous_agency_info,
+            updated_at: deact.updated_at,
+          })
+          .eq('id', deact.id);
+        if (deactErr) {
+          errors.push(`Error desactivando ID ${deact.id}: ${deactErr.message}`);
         }
       }
 
-      // 5. PROPAGACIÓN DE CAMBIOS A PEDIDOS ACTIVOS:
-      // Si alguna agencia cambió de nombre o dirección, actualizar los pedidos cuyo destino haga referencia a esa agencia
+      // 5. Propagar cambios de nombre SOLO a pedidos activos en curso (no entregados ni cancelados)
       if (changedAgenciesForOrders.length > 0) {
-        console.log(`[SHALOM SYNC ORDER PROPAGATION] Analizando pedidos activos para propagar ${changedAgenciesForOrders.length} agencias modificadas...`);
-
-        // Consultar pedidos activos o en proceso
         const { data: activeOrders, error: ordersErr } = await supabaseAdmin
           .from('pedidos')
           .select('id, codigo_seguimiento, destino_detalle, metodo_envio_codigo, estado_envio')
-          .neq('estado_envio', 'cancelado');
+          .not('estado_envio', 'in', '("cancelado","entregado")');
 
         if (ordersErr) {
-          console.error('[SHALOM SYNC ORDERS FETCH ERROR]', ordersErr.message);
           errors.push(`Error consultando pedidos activos: ${ordersErr.message}`);
         } else if (Array.isArray(activeOrders)) {
           for (const order of activeOrders) {
@@ -346,45 +444,26 @@ export class ShalomSyncService {
             const isShalom = order.metodo_envio_codigo === 'shalom' || rawDest.toLowerCase().includes('shalom');
             if (!isShalom || !rawDest) continue;
 
-            // Extraer identificadores del pedido
             const currentAgencyDetails = resolveShalomAgencyDetails(rawDest);
-
-            // Verificar si este pedido corresponde a alguna de las agencias modificadas
             const matchedChange = changedAgenciesForOrders.find(ch => {
-              if (currentAgencyDetails.terminalId && ch.id === currentAgencyDetails.terminalId) return true;
-              if (currentAgencyDetails.code && ch.newData.code && currentAgencyDetails.code.toUpperCase() === ch.newData.code.toUpperCase()) return true;
-              if (ch.oldData && ch.oldData.name && rawDest.toUpperCase().includes(ch.oldData.name.toUpperCase())) return true;
+              if (currentAgencyDetails.isVerified && currentAgencyDetails.terminalId === ch.id) return true;
+              if (currentAgencyDetails.isVerified && currentAgencyDetails.code && ch.newData.code && currentAgencyDetails.code.toUpperCase() === ch.newData.code.toUpperCase()) return true;
               return false;
             });
 
             if (matchedChange) {
               const newAgency = matchedChange.newData;
-              const newOfficialDest = extractShalomDestino(newAgency.full_name, newAgency.code);
-
-              // Preservar DNI de recojo del cliente
-              const dniMatch = rawDest.match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);
-              let clientDni = dniMatch ? dniMatch[1].trim() : '';
-              if (clientDni && (clientDni.toUpperCase() === 'NCIADOS' || clientDni.replace(/\D/g, '').length < 6)) {
-                clientDni = '';
-              }
-              const dniTag = clientDni ? ` (DNI/CE Recojo: ${clientDni})` : '';
-
-              const updatedDestinoDetalle = `Agencia Shalom: ${newAgency.full_name}${dniTag}`;
+              const tailMatch = rawDest.match(/(\((?:DNI|CE|Doc)[^)]*\)\s*)$/i);
+              const tailTag = tailMatch ? ` ${tailMatch[1].trim()}` : '';
+              const updatedDestinoDetalle = `Agencia Shalom: ${newAgency.department} / ${newAgency.province} / ${newAgency.district} (CÓDIGO: ${newAgency.code}) – ${newAgency.address}${tailTag}`;
 
               if (updatedDestinoDetalle !== rawDest) {
-                console.log(`[SHALOM SYNC UPDATE ORDER] Pedido #${order.codigo_seguimiento} actualizado de "${rawDest}" -> "${updatedDestinoDetalle}"`);
-
                 const { error: updateOrderErr } = await supabaseAdmin
                   .from('pedidos')
-                  .update({
-                    destino_detalle: updatedDestinoDetalle,
-                    updated_at: new Date().toISOString(),
-                  })
+                  .update({ destino_detalle: updatedDestinoDetalle, updated_at: nowIso })
                   .eq('id', order.id);
 
-                if (updateOrderErr) {
-                  console.error(`[SHALOM SYNC ORDER UPDATE ERROR] Pedido ${order.id}:`, updateOrderErr.message);
-                } else {
+                if (!updateOrderErr) {
                   updatedOrdersList.push({
                     orderId: order.id,
                     trackingCode: order.codigo_seguimiento,
@@ -399,10 +478,12 @@ export class ShalomSyncService {
       }
 
       const report: SyncReport = {
-        timestamp: startTime.toISOString(),
+        timestamp: nowIso,
         totalAgenciesFromApi: apiAgencies.length,
+        activeValidCount,
         newAgenciesCount,
         updatedAgenciesCount,
+        deactivatedAgenciesCount,
         unchangedAgenciesCount,
         updatedOrdersCount: updatedOrdersList.length,
         updatedOrders: updatedOrdersList,
@@ -410,16 +491,18 @@ export class ShalomSyncService {
       };
 
       this.lastSyncReport = report;
-      console.log(`[SHALOM SYNC COMPLETED] ✓ Sincronización 23:59 exitosa: ${apiAgencies.length} agencias analizadas, ${newAgenciesCount} nuevas, ${updatedAgenciesCount} modificadas, ${updatedOrdersList.length} pedidos actualizados.`);
+      console.log(`[SHALOM SYNC COMPLETED] ✓ Sincronización 05:00 AM exitosa: ${activeValidCount} activas válidas de ${apiAgencies.length} en API (${newAgenciesCount} nuevas, ${updatedAgenciesCount} modificadas, ${deactivatedAgenciesCount} desactivadas, ${updatedOrdersList.length} pedidos actualizados).`);
       return report;
     } catch (err: any) {
       console.error('[SHALOM SYNC CRITICAL ERROR]', err?.message);
       errors.push(err?.message || 'Error desconocido durante la sincronización');
       const report: SyncReport = {
-        timestamp: startTime.toISOString(),
+        timestamp: nowIso,
         totalAgenciesFromApi: 0,
+        activeValidCount: 0,
         newAgenciesCount: 0,
         updatedAgenciesCount: 0,
+        deactivatedAgenciesCount: 0,
         unchangedAgenciesCount: 0,
         updatedOrdersCount: 0,
         updatedOrders: [],
@@ -433,18 +516,16 @@ export class ShalomSyncService {
   }
 
   /**
-   * Calcula los milisegundos exactos hasta las 23:59:00 en la zona horaria de Perú (America/Lima / UTC-5)
+   * Calcula los milisegundos exactos hasta las 05:00:00 AM en zona horaria de Perú (America/Lima / UTC-5)
    */
-  public static getMsUntilNext2359(): number {
+  public static getMsUntilNext0500(): number {
     const now = new Date();
-    // Obtener fecha/hora actual en hora peruana (UTC-5)
     const peruTimeStr = now.toLocaleString('en-US', { timeZone: 'America/Lima' });
     const peruDate = new Date(peruTimeStr);
 
     const target = new Date(peruDate);
-    target.setHours(23, 59, 0, 0);
+    target.setHours(5, 0, 0, 0);
 
-    // Si ya pasó las 23:59 hoy, programar para mañana a las 23:59
     if (peruDate.getTime() >= target.getTime()) {
       target.setDate(target.getDate() + 1);
     }
@@ -453,8 +534,13 @@ export class ShalomSyncService {
     return Math.max(diffMs, 1000);
   }
 
+  /** Alias de compatibilidad hacia atrás */
+  public static getMsUntilNext2359(): number {
+    return this.getMsUntilNext0500();
+  }
+
   /**
-   * Inicializa el Cron Job diario para que se ejecute a las 23:59 de todos los días automáticamente.
+   * Inicializa el Cron Job diario para ejecutarse automáticamente cada día a las 05:00 AM hora Perú.
    */
   public static initDailyCron(): void {
     if (this.cronTimer) {
@@ -462,29 +548,25 @@ export class ShalomSyncService {
       this.cronTimer = null;
     }
 
-    const msUntilNext = this.getMsUntilNext2359();
+    const msUntilNext = this.getMsUntilNext0500();
     const hours = Math.floor(msUntilNext / (1000 * 60 * 60));
     const minutes = Math.floor((msUntilNext % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((msUntilNext % (1000 * 60)) / 1000);
 
-    console.log(`⏰ [SHALOM CRON SCHEDULER] Próxima sincronización automática de agencias Shalom programada para hoy a las 23:59:00 (en ${hours}h ${minutes}m ${seconds}s).`);
+    console.log(`⏰ [SHALOM CRON SCHEDULER] Próxima sincronización automática de agencias Shalom programada a las 05:00:00 AM PET (en ${hours}h ${minutes}m ${seconds}s).`);
 
     this.cronTimer = setTimeout(async () => {
-      console.log('🌟 [SHALOM CRON TRIGGER 23:59] Ejecutando sincronización diaria nocturna de agencias y pedidos...');
+      console.log('🌟 [SHALOM CRON TRIGGER 05:00 AM] Ejecutando sincronización diaria automática de agencias Shalom...');
       try {
         await this.syncAgenciesAndPropagateOrders();
       } catch (e) {
         console.error('[SHALOM CRON TRIGGER ERROR]', e);
       } finally {
-        // Reprogramar para la siguiente noche a las 23:59
         this.initDailyCron();
       }
     }, msUntilNext);
   }
 
-  /**
-   * Obtiene el reporte del último sync ejecutado
-   */
   public static getLastSyncReport(): SyncReport | null {
     return this.lastSyncReport;
   }

@@ -64,7 +64,7 @@ async function start() {
     await app.listen({ port: env.PORT, host: env.HOST });
     console.log(`🚀 [BACKEND MASTER & MULTI-TENANT] Fastify escuchando en http://${env.HOST}:${env.PORT}`);
 
-    // Iniciar Cron Job Diario de Shalom (23:59 todos los días con propagación a pedidos)
+    // Iniciar Cron Job Diario de Shalom (05:00 AM hora Perú todos los días con propagación a pedidos)
     ShalomSyncService.initDailyCron();
 
     // Iniciar Listener 24/7 de Tracking Shalom (cada 35 minutos con aviso WhatsApp)

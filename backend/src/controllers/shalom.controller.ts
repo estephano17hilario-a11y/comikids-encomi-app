@@ -1251,11 +1251,11 @@ export class ShalomController {
   }
 
   /**
-   * Consulta el estado del último sync y la hora del próximo cron 23:59
+   * Consulta el estado del último sync y la hora del próximo cron diario 05:00 AM
    */
   public static async getSyncStatus(request: FastifyRequest, reply: FastifyReply) {
     const lastReport = ShalomSyncService.getLastSyncReport();
-    const msUntilNext = ShalomSyncService.getMsUntilNext2359();
+    const msUntilNext = ShalomSyncService.getMsUntilNext0500();
     const nextCronDate = new Date(Date.now() + msUntilNext);
 
     return reply.code(200).send({

@@ -1022,10 +1022,10 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                   onClick={handleSyncAgenciesApi}
                   disabled={isSyncingAgencies}
                   className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                  title="Sincroniza el catálogo completo con Shalom Pro y propaga cambios de nombres a pedidos activos (Automático cada noche a las 23:59)"
+                  title="Sincroniza el catálogo completo con Shalom Pro y propaga cambios de nombres a pedidos activos (Automático cada día a las 05:00 AM)"
                 >
                   {isSyncingAgencies ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                  <span>{isSyncingAgencies ? 'Sincronizando...' : '🔄 Sincronizar API (23:59)'}</span>
+                  <span>{isSyncingAgencies ? 'Sincronizando...' : '🔄 Sincronizar API (05:00 AM)'}</span>
                 </button>
                 <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
                   allValid ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'

@@ -5,6 +5,7 @@ import { InkSavingLevel, getInkSavingStyles } from '../../utils/inkSavingService
 import { extractShalomDni } from '../../utils/shalomExcelExporter';
 import { ordersService } from '../../services/ordersService';
 import { resolveOrderShippingMethod } from '../../utils/shippingMethodMatcher';
+import { isIgnoredCustomField } from '../../utils/customFields';
 
 interface Props {
   pedido: Pedido;
@@ -192,8 +193,7 @@ export const ShalomLabelPrint: React.FC<Props> = ({
         if (!val || String(val).trim() === '') continue;
         if (seenFieldIds.has(key)) continue;
 
-        const lowerK = key.toLowerCase();
-        if (['c-shalom-dni', 'c-olva-dni', 'c-mot-tel', 'c-mot-nombre'].includes(lowerK)) continue;
+        if (isIgnoredCustomField(key, val, { dni: clientDni, phone: clientPhone, name: clientRecipientName })) continue;
 
         if (cfgRotulado?.campos_visibles && !cfgRotulado.campos_visibles.includes(key)) {
           continue;

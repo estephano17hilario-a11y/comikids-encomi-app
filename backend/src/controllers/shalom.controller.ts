@@ -1117,6 +1117,7 @@ export class ShalomController {
 
       // B. Descargar el documento oficial con QR desde Shalom Pro (con fallback entre voucher y label y reintento ante 429)
       let docRes: any = null;
+      let matchedDocSource: string = endpoint;
       const endpointsToTry = [endpoint, endpoint === 'voucher' ? 'label' : 'voucher'];
       for (const ep of endpointsToTry) {
         for (let attempt = 0; attempt < 2; attempt++) {
@@ -1133,6 +1134,7 @@ export class ShalomController {
               }
             );
             if (docRes.status === 200 && docRes.data && docRes.data.length > 100) {
+              matchedDocSource = ep;
               break;
             }
           } catch (dlErr: any) {
@@ -1188,16 +1190,23 @@ export class ShalomController {
           ).trim();
         }
         const receiverFullName = `${matchedOrder.receiver?.name || ''} ${matchedOrder.receiver?.last_name || ''}`.trim();
+        const shalomOrderStatus = String(matchedOrder.status || matchedOrder.estado || '').trim();
+        const shalomCreatedAt = String(matchedOrder.created_at || matchedOrder.fecha || '').trim();
+        const shalomAgencyName = String(matchedOrder.destiny?.name || matchedOrder.destination_agency || matchedOrder.destino || '').trim();
 
         const headersToSet: Record<string, string> = {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="${filename}"`,
-          'Access-Control-Expose-Headers': 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni, X-Shalom-Receiver-Name, X-Shalom-Ose-Id',
+          'Access-Control-Expose-Headers': 'X-Shalom-Pickup-Code, X-Shalom-Guia, X-Shalom-Receiver-Dni, X-Shalom-Receiver-Name, X-Shalom-Ose-Id, X-Shalom-Order-Status, X-Shalom-Doc-Source, X-Shalom-Created-At, X-Shalom-Agency',
           ...(realPickupCode ? { 'X-Shalom-Pickup-Code': realPickupCode } : {}),
           'X-Shalom-Guia': fullGuia,
           'X-Shalom-Receiver-Dni': clientCleanDni,
           ...(receiverFullName ? { 'X-Shalom-Receiver-Name': encodeURIComponent(receiverFullName) } : {}),
           'X-Shalom-Ose-Id': String(matchedOrder.id),
+          ...(shalomOrderStatus ? { 'X-Shalom-Order-Status': encodeURIComponent(shalomOrderStatus) } : {}),
+          'X-Shalom-Doc-Source': matchedDocSource,
+          ...(shalomCreatedAt ? { 'X-Shalom-Created-At': encodeURIComponent(shalomCreatedAt) } : {}),
+          ...(shalomAgencyName ? { 'X-Shalom-Agency': encodeURIComponent(shalomAgencyName) } : {}),
         };
 
         // Guardar en caché RAM por 3 minutos

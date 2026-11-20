@@ -19,6 +19,7 @@ import { getRandomAvatar } from '../data/avatarsData';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { generateOrderTrackingCode } from '../utils/formatters';
 import { calculateLevel } from '../data/achievementsList';
+import { cleanCustomFieldsRecord } from '../utils/customFields';
 
 export const STORAGE_KEYS = {
   USERS: 'incomi_users_v2',
@@ -1567,6 +1568,14 @@ class OrdersService {
     } catch {}
   }
 
+  private removeDeletedOrderIds(ids: string[]): void {
+    try {
+      const current = this.getDeletedOrderIds();
+      ids.forEach(id => current.delete(id));
+      localStorage.setItem('incomi_deleted_order_ids_v1', JSON.stringify(Array.from(current)));
+    } catch {}
+  }
+
   public getLocalOrders(empresaId?: string): Pedido[] {
     const raw = localStorage.getItem(STORAGE_KEYS.ORDERS);
     if (!raw) return [];
@@ -1574,13 +1583,23 @@ class OrdersService {
       const parsed: Pedido[] = JSON.parse(raw);
       const deletedIds = this.getDeletedOrderIds();
       const nonDeleted = parsed.filter(o => !deletedIds.has(o.id));
-      if (empresaId) {
-        if (empresaId === 'empresa-master-comikids') {
-          return nonDeleted.filter(o => !o.empresa_id || o.empresa_id === 'empresa-master-comikids');
-        }
-        return nonDeleted.filter(o => o.empresa_id === empresaId);
-      }
-      return nonDeleted;
+      const filtered = empresaId
+        ? (empresaId === 'empresa-master-comikids'
+            ? nonDeleted.filter(o => !o.empresa_id || o.empresa_id === 'empresa-master-comikids')
+            : nonDeleted.filter(o => o.empresa_id === empresaId))
+        : nonDeleted;
+
+      return filtered.map(o => {
+        if (!o.campos_personalizados || Object.keys(o.campos_personalizados).length === 0) return o;
+        return {
+          ...o,
+          campos_personalizados: cleanCustomFieldsRecord(o.campos_personalizados, {
+            dni: o.usuario?.dni,
+            phone: o.usuario?.telefono_default,
+            name: o.usuario?.nombre_completo,
+          }),
+        };
+      });
     } catch {
       return [];
     }
@@ -1700,8 +1719,8 @@ class OrdersService {
             query = query.eq('usuario_id', userId);
           }
         } else if (targetEmpresaId) {
-          if (targetEmpresaId === 'empresa-master-comikids') {
-            query = query.or('empresa_id.eq.empresa-master-comikids,empresa_id.is.null,empresa_id.eq.');
+          if (targetEmpresaId === 'empresa-master-comikids' || targetEmpresaId?.toLowerCase()?.includes('comikids')) {
+            query = query.or('empresa_id.eq.empresa-master-comikids,empresa_id.eq.empresa-Comikids,empresa_id.is.null,empresa_id.eq.');
           } else {
             query = query.eq('empresa_id', targetEmpresaId);
           }
@@ -1812,24 +1831,46 @@ class OrdersService {
 
               // 4. Extraer el nombre real de la clienta
               let clientName = matchedUser?.nombre_completo;
-              if (!clientName || clientName === 'Encomi Envíos' || clientName === 'ComiKids' || clientName.trim() === '') {
-                if (p.detalles_bordado && p.detalles_bordado.includes('Envío de Mercadería para ')) {
-                  clientName = p.detalles_bordado.replace(/^Envío de Mercadería para\s+/i, '').trim();
+              if (!clientName || clientName === 'Encomi Envíos' || clientName === 'ComiKids' || clientName.trim() === '' || clientName === 'Cliente') {
+                if (p.campos_personalizados?.cliente_nombre && String(p.campos_personalizados.cliente_nombre).trim()) {
+                  clientName = String(p.campos_personalizados.cliente_nombre).trim();
+                } else if (p.campos_personalizados?.['c-shalom-nombre'] && String(p.campos_personalizados['c-shalom-nombre']).trim()) {
+                  clientName = String(p.campos_personalizados['c-shalom-nombre']).trim();
+                } else if (p.campos_personalizados?.['c-mot-nombre'] && String(p.campos_personalizados['c-mot-nombre']).trim()) {
+                  clientName = String(p.campos_personalizados['c-mot-nombre']).trim();
+                } else if (p.detalles_bordado && p.detalles_bordado.includes('Envío de Mercadería para ')) {
+                  clientName = p.detalles_bordado.replace(/^.*Envío de Mercadería para\s+/i, '').trim();
                 } else if (p.detalles_bordado && p.detalles_bordado.includes('Venta directa a ')) {
-                  clientName = p.detalles_bordado.replace(/^Venta directa a\s+/i, '').trim();
+                  clientName = p.detalles_bordado.replace(/^.*Venta directa a\s+/i, '').trim();
+                } else if (p.detalles_bordado && p.detalles_bordado.includes('Pedido de ')) {
+                  clientName = p.detalles_bordado.replace(/^.*Pedido de\s+/i, '').trim();
+                } else if (p.detalles_bordado && p.detalles_bordado.includes('Cliente: ')) {
+                  const mCl = p.detalles_bordado.match(/Cliente:\s*([^)]+)/i);
+                  if (mCl) clientName = mCl[1].trim();
                 }
               }
 
               // 5. Normalizar DNI
               let realDni = matchedUser?.dni;
               if (!realDni || realDni.startsWith('usr-') || realDni === '00000000') {
-                realDni = extractedDni || matchedUser?.dni_default || '';
+                realDni =
+                  (p.campos_personalizados?.cliente_dni ? String(p.campos_personalizados.cliente_dni).trim() : null) ||
+                  (p.campos_personalizados?.['c-shalom-dni'] ? String(p.campos_personalizados['c-shalom-dni']).trim() : null) ||
+                  (p.campos_personalizados?.['c-mot-dni'] ? String(p.campos_personalizados['c-mot-dni']).trim() : null) ||
+                  extractedDni ||
+                  matchedUser?.dni_default ||
+                  '';
               }
 
               // 6. Normalizar Teléfono
               let realPhone = matchedUser?.telefono_default;
-              if (!realPhone) {
-                realPhone = extractedPhone || '';
+              if (!realPhone || realPhone === '-' || realPhone.trim() === '') {
+                realPhone =
+                  (p.campos_personalizados?.cliente_telefono ? String(p.campos_personalizados.cliente_telefono).trim() : null) ||
+                  (p.campos_personalizados?.['c-shalom-celular'] ? String(p.campos_personalizados['c-shalom-celular']).trim() : null) ||
+                  (p.campos_personalizados?.['c-mot-celular'] ? String(p.campos_personalizados['c-mot-celular']).trim() : null) ||
+                  extractedPhone ||
+                  '';
               }
 
               if (matchedUser) {
@@ -1850,8 +1891,15 @@ class OrdersService {
                 };
               }
 
+              const cleanedCampos = cleanCustomFieldsRecord(p.campos_personalizados, {
+                dni: realDni,
+                phone: realPhone,
+                name: clientName,
+              });
+
               return {
                 ...p,
+                campos_personalizados: cleanedCampos,
                 empresa_id: p.empresa_id || 'empresa-master-comikids',
                 usuario: matchedUser
               };
@@ -2229,6 +2277,34 @@ class OrdersService {
     }
 
     return true;
+  }
+
+  async restorePedido(order: Pedido): Promise<Pedido> {
+    this.removeDeletedOrderIds([order.id]);
+    const targetEmpresaId = order.empresa_id || 'empresa-master-comikids';
+    const restored: Pedido = {
+      ...order,
+      empresa_id: targetEmpresaId,
+      updated_at: new Date().toISOString(),
+    };
+
+    const existing = this.getLocalOrders(targetEmpresaId);
+    const merged = [restored, ...existing.filter(o => o.id !== restored.id)];
+    this.saveLocalOrders(merged, targetEmpresaId);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const dbPayload = this.sanitizePedidoForDb(restored);
+        const { error } = await supabase.from('pedidos').upsert(dbPayload, { onConflict: 'id' });
+        if (error) {
+          console.error('[RESTORE PEDIDO SUPABASE ERROR]', error);
+        }
+      } catch (e) {
+        console.warn('Error restaurando pedido en Supabase:', e);
+      }
+    }
+
+    return restored;
   }
 
   async updateMultipleEstados(pedidoIds: string[], estadoEnvio: EstadoEnvio, estadoProduccion?: EstadoProduccion): Promise<void> {

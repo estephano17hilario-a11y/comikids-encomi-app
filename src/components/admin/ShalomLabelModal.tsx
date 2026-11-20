@@ -12,9 +12,10 @@ interface Props {
   pedido: Pedido;
   tallerConfig: TallerConfig;
   onClose: () => void;
+  onPrinted?: (pedidoId: string) => void;
 }
 
-export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClose }) => {
+export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClose, onPrinted }) => {
   const [printing, setPrinting] = useState(false);
   const [inkSavingLevel, setInkSavingLevel] = useState<InkSavingLevel>(0);
   const [methods, setMethods] = useState<MetodoEnvio[]>(() => ordersService.getShippingMethods());
@@ -49,9 +50,11 @@ export const ShalomLabelModal: React.FC<Props> = ({ pedido, tallerConfig, onClos
     setPrinting(true);
     try {
       await printElement('shalom-print-area', `Rotulo_${pedido.codigo_seguimiento}_Eco${inkSavingLevel}_${orientacion}`);
+      onPrinted?.(pedido.id);
     } catch (err) {
       console.error('Error al imprimir:', err);
       window.print();
+      onPrinted?.(pedido.id);
     } finally {
       setPrinting(false);
     }

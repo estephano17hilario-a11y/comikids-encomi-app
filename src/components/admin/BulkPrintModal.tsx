@@ -7,6 +7,7 @@ import { InkSavingLevel, INK_SAVING_LEVELS, getInkSavingStyles } from '../../uti
 import { extractShalomDni } from '../../utils/shalomExcelExporter';
 import { ordersService } from '../../services/ordersService';
 import { resolveOrderShippingMethod } from '../../utils/shippingMethodMatcher';
+import { isIgnoredCustomField } from '../../utils/customFields';
 
 interface Props {
   pedidos: Pedido[];
@@ -215,6 +216,8 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                         const lowerKey = key.toLowerCase();
                         if (
                           lowerKey === 'c-mot-nombre' ||
+                          lowerKey === 'c-shalom-nombre' ||
+                          lowerKey === 'cliente_nombre' ||
                           lowerKey.includes('recibe') ||
                           lowerKey.includes('destinatario') ||
                           lowerKey.includes('consignatario')
@@ -300,8 +303,7 @@ export const BulkPrintModal: React.FC<Props> = ({ pedidos, tallerConfig, onClose
                         if (!val || String(val).trim() === '') continue;
                         if (seenFieldIds.has(key)) continue;
 
-                        const lowerK = key.toLowerCase();
-                        if (['c-shalom-dni', 'c-olva-dni', 'c-mot-tel', 'c-mot-nombre'].includes(lowerK)) continue;
+                        if (isIgnoredCustomField(key, val, { dni: clientDni, phone: clientPhone, name: recipientName })) continue;
 
                         if (cfgRotulado?.campos_visibles && !cfgRotulado.campos_visibles.includes(key)) {
                           continue;

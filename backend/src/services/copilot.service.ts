@@ -111,13 +111,16 @@ export class CopilotService {
       subInsts.forEach((sub: any, idx: number) => {
         const subPhone = (sub.ownerJid?.replace('@s.whatsapp.net', '') || '').replace(/\D/g, '');
         const cleanName = sub.name.replace(/^tenant_/, '').replace(/^tienda_/, '');
+        const subEmpresaId = cleanName.toLowerCase().includes('comikids')
+          ? 'empresa-master-comikids'
+          : `empresa-${cleanName}`;
         accounts.push({
           code: cleanName.toUpperCase(),
           aliases: [String(idx + 2), cleanName.toLowerCase(), cleanName.toUpperCase(), subPhone],
           instanceName: sub.name,
           ownerPhone: subPhone || mainOwnerPhone,
           displayName: sub.profileName || `Tienda ${cleanName}`,
-          empresaId: `empresa-${cleanName}`,
+          empresaId: subEmpresaId,
           defaultPassword: defaultPass,
         });
       });
@@ -507,24 +510,30 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
     const cleanName = (params.clienteNombre || '').trim() || 'Cliente';
     const cleanDni = this.normalizeDni(params.clienteDni);
     const { display: cleanPhoneDisplay, full: cleanPhoneFull } = this.normalizePhone(params.clienteTelefono);
-    const targetEmpresaId = params.empresaId || 'empresa-master-comikids';
+
+    // Normalizar empresaId: cualquier variante de comikids apunta a la cuenta maestra
+    let targetEmpresaId = (params.empresaId || 'empresa-master-comikids').trim();
+    if (!targetEmpresaId || targetEmpresaId.toLowerCase().includes('comikids')) {
+      targetEmpresaId = 'empresa-master-comikids';
+    }
 
     let targetUserId: string | null = null;
     if (cleanDni) {
       const { data: byDni } = await supabaseAdmin
         .from('usuarios')
-        .select('id')
+        .select('id, nombre_completo, telefono_default')
         .or(`dni.eq.${cleanDni},dni_default.eq.${cleanDni}`)
         .limit(1);
       if (byDni && byDni.length > 0) targetUserId = byDni[0].id;
-    } else if (cleanPhoneFull) {
+    }
+    if (!targetUserId && cleanPhoneDisplay) {
       const orClause =
         cleanPhoneDisplay && cleanPhoneDisplay !== cleanPhoneFull
-          ? `telefono_default.eq.${cleanPhoneFull},telefono_default.eq.${cleanPhoneDisplay}`
-          : `telefono_default.eq.${cleanPhoneFull}`;
+          ? `telefono_default.eq.${cleanPhoneDisplay},telefono_default.eq.${cleanPhoneFull}`
+          : `telefono_default.eq.${cleanPhoneDisplay}`;
       const { data: byPhone } = await supabaseAdmin
         .from('usuarios')
-        .select('id')
+        .select('id, nombre_completo, telefono_default')
         .or(orClause)
         .limit(1);
       if (byPhone && byPhone.length > 0) targetUserId = byPhone[0].id;
@@ -532,7 +541,7 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
 
     const userUpdatePayload: Record<string, any> = {
       nombre_completo: cleanName,
-      telefono_default: cleanPhoneFull || cleanPhoneDisplay || '',
+      telefono_default: cleanPhoneDisplay, // 9 dígitos estándar en Encomi
       dni_default: cleanDni || null,
       direccion_default: params.destinoDetalle,
       referencia_default: params.referencia || null,
@@ -556,7 +565,7 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
             id: generatedId,
             dni: uniqueDniKey,
             nombre_completo: cleanName,
-            telefono_default: cleanPhoneFull || cleanPhoneDisplay || '',
+            telefono_default: cleanPhoneDisplay,
             dni_default: cleanDni || null,
             direccion_default: params.destinoDetalle,
             referencia_default: params.referencia || null,
@@ -587,50 +596,32 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
           targetUserId = fallbackUser[0].id;
           await supabaseAdmin.from('usuarios').update(userUpdatePayload).eq('id', targetUserId);
         } else {
-          const retryId = 'usr-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-          const { error: retryErr } = await supabaseAdmin.from('usuarios').insert({
-            id: retryId,
-            dni: `${uniqueDniKey}-${Math.random().toString(36).substr(2, 3)}`,
-            nombre_completo: cleanName,
-            telefono_default: cleanPhoneFull || cleanPhoneDisplay || '',
-            dni_default: cleanDni || null,
-            direccion_default: params.destinoDetalle,
-            referencia_default: params.referencia || null,
-            avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(retryId)}`,
-            password_hash: cleanDni || cleanPhoneDisplay || '1234',
-            rol: 'client',
-            puntos_xp: 0,
-            nivel: 1,
-            created_at: new Date().toISOString(),
-          });
-          if (retryErr) {
-            throw new Error(`Error creando usuario en Supabase: ${retryErr.message}`);
-          }
-          targetUserId = retryId;
+          targetUserId = generatedId;
         }
       }
     }
 
+    // Enriquecer destino_detalle con teléfono para que el regex en Encomi siempre lo extraiga
+    let enrichedDestino = params.destinoDetalle;
+    if (cleanPhoneDisplay && !enrichedDestino.includes(cleanPhoneDisplay)) {
+      if (enrichedDestino.includes('DNI/CE Recojo:')) {
+        enrichedDestino = enrichedDestino.replace(/(DNI\/CE Recojo:\s*[0-9A-Za-z]+)/i, `$1 • Tel: ${cleanPhoneDisplay}`);
+      } else if (enrichedDestino.includes('DNI:')) {
+        enrichedDestino = enrichedDestino.replace(/(DNI:\s*[0-9A-Za-z]+)/i, `$1 • Tel: ${cleanPhoneDisplay}`);
+      } else {
+        enrichedDestino = `${enrichedDestino} (Tel: ${cleanPhoneDisplay})`;
+      }
+    }
+
+    // Formatear detalles_bordado con el nombre explícito para extracción inmediata en Encomi
     const cleanPrendas = (params.prendasBordado || '').trim();
     const detallesBordado = cleanPrendas && cleanPrendas.toLowerCase() !== 'bordado personalizado'
-      ? `${cleanPrendas} (Cliente: ${cleanName})`
-      : `Pedido de ${cleanName}`;
+      ? `${cleanPrendas} - Envío de Mercadería para ${cleanName}`
+      : `Envío de Mercadería para ${cleanName}`;
 
-    const camposPersonalizados: Record<string, string> =
-      params.metodoEnvio === 'shalom'
-        ? {
-            'c-shalom-nombre': cleanName,
-            'c-shalom-celular': cleanPhoneDisplay,
-            ...(cleanDni ? { 'c-shalom-dni': cleanDni } : {}),
-            ...(params.referencia ? { 'c-shalom-ref': params.referencia } : {}),
-          }
-        : {
-            'c-mot-nombre': cleanName,
-            'c-mot-celular': cleanPhoneDisplay,
-            ...(cleanDni ? { 'c-mot-dni': cleanDni } : {}),
-            'c-mot-direccion': params.destinoDetalle,
-            ...(params.referencia ? { 'c-mot-ref': params.referencia } : {}),
-          };
+    // En pedidos creados por el bot los datos viajan en sus columnas oficiales (usuarios y pedidos).
+    // campos_personalizados queda limpio para no ensuciar la ficha del pedido con etiquetas redundantes.
+    const camposPersonalizados: Record<string, string> = {};
 
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const trackingCode = `COM-2026-${randomCode}`;
@@ -646,7 +637,7 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
       detalles_bordado: detallesBordado,
       metodo_envio_codigo: params.metodoEnvio,
       metodo_envio_nombre: params.metodoEnvio === 'shalom' ? 'Agencia Shalom Nacional' : 'Motorizado Local',
-      destino_detalle: params.destinoDetalle,
+      destino_detalle: enrichedDestino,
       campos_personalizados: camposPersonalizados,
       estado_produccion: 'en_cola',
       estado_envio: 'pendiente',
@@ -670,6 +661,7 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
       cleanDni,
       cleanPhoneDisplay,
       cleanPhoneFull,
+      resolvedDestination: enrichedDestino,
     };
   }
 
@@ -888,8 +880,10 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
   }
 
   private static tryParseStructuredOrderDirect(text: string): Record<string, any> | null {
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    if (lines.length < 4) return null;
+    // Normalizar texto: aceptar separadores por salto de línea o comas
+    const normalizedText = text.replace(/[,;]\s*(?=(?:dni|ce|doc|tel|cel|whatsapp|agencia|destino|ref|para)\b)/gi, '\n');
+    const rawLines = normalizedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (rawLines.length === 0) return null;
 
     let clienteNombre = '';
     let clienteDni = '';
@@ -897,31 +891,155 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
     let destino = '';
     let referencia = '';
     let prendasBordado = '';
-    const lowerAll = text.toLowerCase();
 
-    for (const line of lines) {
-      const m = line.match(/^([A-Za-záéíóúÁÉÍÓÚñÑ\s/.-]{2,25})\s*[:\-]\s*(.+)$/);
-      if (!m) continue;
-      const key = m[1].toLowerCase().trim();
-      const val = m[2].trim();
-      if (/^(nombre|destinatario|cliente|consignado)$/.test(key)) clienteNombre = val;
-      else if (/^(dni|ce|documento|doc|dni\/ce)$/.test(key)) clienteDni = val;
-      else if (/^(cel|celular|tel|telefono|teléfono|whatsapp|wa|ws)$/.test(key)) clienteTelefono = val;
-      else if (/^(destino|agencia|direccion|dirección|sede|envio|envío)$/.test(key)) destino = val;
-      else if (/^(ref|referencia)$/.test(key)) referencia = val;
-      else if (/^(prenda|prendas|bordado|producto|productos|detalle|detalles|items)$/.test(key)) prendasBordado = val;
+    // Pasada 1: Extraer líneas con etiquetas explícitas (clave: valor o clave - valor)
+    const unconsumedLines: string[] = [];
+    for (const line of rawLines) {
+      const cleanLine = line.trim();
+      const m = cleanLine.match(/^([A-Za-záéíóúÁÉÍÓÚñÑ\s/.-]{2,25})\s*[:\-]\s*(.+)$/);
+      if (m) {
+        const key = m[1].toLowerCase().trim();
+        const val = m[2].trim();
+        if (/^(nombre|destinatario|cliente|consignado|para|nombre completo)$/.test(key)) {
+          clienteNombre = val;
+          continue;
+        } else if (/^(dni|ce|documento|doc|dni\/ce|carnet|cedula|c\.e)$/.test(key)) {
+          clienteDni = val;
+          continue;
+        } else if (/^(cel|celular|tel|telefono|teléfono|whatsapp|wa|ws|movil|móvil)$/.test(key)) {
+          clienteTelefono = val;
+          continue;
+        } else if (/^(destino|agencia|direccion|dirección|sede|envio|envío|sucursal|lugar)$/.test(key)) {
+          destino = val;
+          continue;
+        } else if (/^(ref|referencia|obs|observacion|observación)$/.test(key)) {
+          referencia = val;
+          continue;
+        } else if (/^(prenda|prendas|bordado|producto|productos|detalle|detalles|items)$/.test(key)) {
+          prendasBordado = val;
+          continue;
+        }
+      }
+      unconsumedLines.push(cleanLine);
+    }
+
+    // Pasada 2: Teléfono móvil peruano (9 dígitos que empiezan con 9)
+    if (!clienteTelefono) {
+      for (let i = 0; i < unconsumedLines.length; i++) {
+        const line = unconsumedLines[i];
+        const phoneMatch = line.match(/(?:(?:cel|celular|tel|telefono|wa|ws|whatsapp)\s*[:#]?\s*)?(?:(?:\+?51[\s-]*)|\(51\)\s*)?(9\d{8})\b/i);
+        if (phoneMatch) {
+          clienteTelefono = phoneMatch[1];
+          const rem = line.replace(phoneMatch[0], '').trim();
+          if (!rem || rem.length < 3) {
+            unconsumedLines.splice(i, 1);
+            i--;
+          } else {
+            unconsumedLines[i] = rem;
+          }
+          break;
+        }
+      }
+    }
+
+    // Pasada 3: DNI o CE (etiqueta sin dos puntos, e.g. "DNI 43599676")
+    if (!clienteDni) {
+      for (let i = 0; i < unconsumedLines.length; i++) {
+        const line = unconsumedLines[i];
+        const labeledDni = line.match(/(?:dni|ce|doc|documento|carnet|c\.e)\s*[:#]?\s*([0-9A-Za-z]{8,12})\b/i);
+        if (labeledDni) {
+          clienteDni = labeledDni[1];
+          const rem = line.replace(labeledDni[0], '').trim();
+          if (!rem || rem.length < 3) {
+            unconsumedLines.splice(i, 1);
+            i--;
+          } else {
+            unconsumedLines[i] = rem;
+          }
+          break;
+        }
+      }
+    }
+
+    // Pasada 4: DNI independiente de 8 dígitos (que no coincida con el teléfono)
+    if (!clienteDni) {
+      for (let i = 0; i < unconsumedLines.length; i++) {
+        const line = unconsumedLines[i];
+        const dniMatches = line.match(/\b([0-9]{8})\b/g);
+        if (dniMatches) {
+          const cand = dniMatches.find(d => d !== clienteTelefono);
+          if (cand) {
+            clienteDni = cand;
+            const rem = line.replace(cand, '').trim();
+            if (!rem || rem.length < 3) {
+              unconsumedLines.splice(i, 1);
+              i--;
+            } else {
+              unconsumedLines[i] = rem;
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // Pasada 5: Nombre del cliente (línea alfabética de 2 a 6 palabras sin números ni términos de agencia)
+    if (!clienteNombre) {
+      for (let i = 0; i < unconsumedLines.length; i++) {
+        const line = unconsumedLines[i];
+        const cleanCand = line.replace(/^(para|cliente|destinatario|nombre|registra(?:r)?(?:\s+a)?)\s*[:#]?\s*/i, '').trim();
+        const lower = cleanCand.toLowerCase();
+        if (
+          !cleanCand ||
+          cleanCand.length < 3 ||
+          cleanCand.length > 55 ||
+          /\d/.test(cleanCand) ||
+          /^(shalom|motorizado|delivery|agencia|pedido|nuevo|hola|gracias|por favor)$/i.test(cleanCand) ||
+          lower.includes('shalom') ||
+          lower.includes('agencia') ||
+          lower.includes('motorizado') ||
+          /\b(av|calle|jr|mz|lote|dpto|piso|frente)\b/i.test(lower)
+        ) {
+          continue;
+        }
+        const words = cleanCand.split(/\s+/).filter(w => w.length > 1);
+        if (words.length >= 2 && words.length <= 6) {
+          clienteNombre = cleanCand;
+          unconsumedLines.splice(i, 1);
+          break;
+        }
+      }
+    }
+
+    // Pasada 6: Todo lo restante es el Destino y Referencia
+    if (!destino) {
+      const destParts: string[] = [];
+      for (const line of unconsumedLines) {
+        if (/^(registrar|registra|nuevo pedido|pedido|hola|buenas|buenas tardes|buenos dias|encomi|por favor)\b/i.test(line)) {
+          continue;
+        }
+        const cleanL = line.replace(/^(destino|agencia|direccion|dirección|sede|envio|envío|sucursal|lugar)\s*[:#]?\s*/i, '').trim();
+        if (cleanL) destParts.push(cleanL);
+      }
+      if (destParts.length > 0) {
+        destino = destParts.join(' ').trim();
+      }
     }
 
     const dniNorm = this.normalizeDni(clienteDni);
     const phoneNorm = this.normalizePhone(clienteTelefono).display;
+
+    // Se requieren obligatoriamente los 4 datos mínimos
     if (!clienteNombre || dniNorm.length < 8 || phoneNorm.length < 9 || !destino) {
       return null;
     }
 
-    let metodoEnvio: 'SHALOM' | 'MOTORIZADO' | null = null;
-    if (/\b(motorizado|delivery|domicilio)\b/i.test(lowerAll)) metodoEnvio = 'MOTORIZADO';
-    else if (/\b(shalom|agencia)\b/i.test(lowerAll)) metodoEnvio = 'SHALOM';
-    else return null; // Si no especifica método claro, dejar que la IA rápida lo infiera por dirección/ciudad
+    const lowerAll = text.toLowerCase();
+    const isMotorizado =
+      /\b(motorizado|delivery|domicilio)\b/i.test(lowerAll) ||
+      /\b(motorizado|delivery|domicilio)\b/i.test(destino.toLowerCase());
+
+    const metodoEnvio: 'SHALOM' | 'MOTORIZADO' = isMotorizado ? 'MOTORIZADO' : 'SHALOM';
 
     return {
       isRegistration: true,
@@ -947,6 +1065,7 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
       let parsed = this.tryParseStructuredOrderDirect(textTrimmed);
       let tokensUsed = 0;
 
+      // Si el parser directo no pudo extraer todos los campos, usar IA compacta ultra-rápida (sin base de datos)
       if (!parsed) {
         const fastSystemPrompt = `Eres un extractor ultrarrápido de pedidos de ComiKids. Analiza el mensaje y responde ÚNICAMENTE con JSON válido (sin markdown):
 {"isRegistration":boolean,"metodoEnvio":"SHALOM"|"MOTORIZADO"|null,"clienteNombre":string|null,"clienteDni":string|null,"clienteTelefono":string|null,"destino":string|null,"referencia":string|null,"prendasBordado":string|null}
@@ -958,8 +1077,8 @@ Reglas:
         const aiRes = await queryCopilotWithUsage(fastSystemPrompt, textTrimmed, {
           temperature: 0.0,
           maxTokens: 320,
-          timeoutMs: 6500,
-          modelOverride: 'google/gemini-2.5-flash-lite',
+          timeoutMs: 5000,
+          modelOverride: 'google/gemini-2.5-flash',
         });
         tokensUsed = aiRes.tokensUsed || 250;
 

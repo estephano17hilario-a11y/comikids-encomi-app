@@ -26,9 +26,10 @@ export const aiClient = new OpenAI({
 const FALLBACK_MODELS = [
   'google/gemini-2.5-flash',
   'openai/gpt-4o-mini',
-  'google/gemini-2.5-flash-lite',
+  'google/gemini-2.0-flash-001',
   'deepseek/deepseek-chat',
   'meta-llama/llama-3.3-70b-instruct',
+  'qwen/qwen-2.5-72b-instruct',
 ];
 
 // A. OCR y Auditoría de Comprobantes (Yape, Plin, Transferencias)

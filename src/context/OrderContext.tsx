@@ -11,6 +11,13 @@ import {
   ShalomAgency
 } from '../types/database.types';
 import { ordersService } from '../services/ordersService';
+import {
+  activityLogService,
+  buildOrderSnapshot,
+  computeOrderChanges,
+  getCarpetaLabel,
+  TipoMovimiento,
+} from '../services/activityLogService';
 import { soundService } from '../services/soundService';
 import { NativeNotificationService } from '../services/nativeNotificationService';
 import { WidgetService } from '../services/widgetService';
@@ -29,12 +36,13 @@ interface OrderContextType {
   masterCode: string;
   loading: boolean;
   createPedido: (data: Omit<Pedido, 'id' | 'codigo_seguimiento' | 'created_at' | 'estado_produccion' | 'estado_envio'>) => Promise<Pedido>;
-  updatePedido: (pedidoId: string, updates: Partial<Pedido>) => Promise<Pedido | null>;
-  deletePedido: (pedidoId: string) => Promise<boolean>;
-  deleteMultiplePedidos: (pedidoIds: string[]) => Promise<boolean>;
-  updateMultipleEstados: (pedidoIds: string[], estadoEnvio: EstadoEnvio, estadoProduccion?: EstadoProduccion) => Promise<void>;
-  updateEstadoProduccion: (pedidoId: string, nuevoEstado: EstadoProduccion) => Promise<Pedido | null>;
-  updateEstadoEnvio: (pedidoId: string, nuevoEstado: EstadoEnvio) => Promise<Pedido | null>;
+  updatePedido: (pedidoId: string, updates: Partial<Pedido>, options?: { skipLog?: boolean }) => Promise<Pedido | null>;
+  deletePedido: (pedidoId: string, options?: { skipLog?: boolean }) => Promise<boolean>;
+  deleteMultiplePedidos: (pedidoIds: string[], options?: { skipLog?: boolean }) => Promise<boolean>;
+  restorePedido: (order: Pedido) => Promise<Pedido>;
+  updateMultipleEstados: (pedidoIds: string[], estadoEnvio: EstadoEnvio, estadoProduccion?: EstadoProduccion, options?: { skipLog?: boolean }) => Promise<void>;
+  updateEstadoProduccion: (pedidoId: string, nuevoEstado: EstadoProduccion, options?: { skipLog?: boolean }) => Promise<Pedido | null>;
+  updateEstadoEnvio: (pedidoId: string, nuevoEstado: EstadoEnvio, options?: { skipLog?: boolean }) => Promise<Pedido | null>;
   addShippingMethod: (method: Omit<MetodoEnvio, 'id'>) => MetodoEnvio;
   updateShippingMethod: (id: string, updates: Partial<MetodoEnvio>) => void;
   deleteShippingMethod: (id: string) => void;
@@ -319,6 +327,9 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }));
   }, []);
 
+  const pedidosRef = useRef<Pedido[]>(pedidos);
+  pedidosRef.current = pedidos;
+
   const handleCreatePedido = async (data: Omit<Pedido, 'id' | 'codigo_seguimiento' | 'created_at' | 'estado_produccion' | 'estado_envio'>) => {
     const payloadWithEmpresa = {
       ...data,
@@ -331,6 +342,29 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       created.usuario?.nombre_completo || 'Cliente',
       created.destino_detalle || 'Destino'
     );
+
+    // Registrar en historial de movimientos
+    const snapAfter = buildOrderSnapshot(created);
+    activityLogService.recordMovimiento(payloadWithEmpresa.empresa_id, {
+      tipo: 'nuevo_pedido',
+      titulo: `Nuevo pedido #${created.codigo_seguimiento}`,
+      detalle: `${snapAfter.cliente_nombre} • ${created.metodo_envio_nombre || created.metodo_envio_codigo || 'Envío'}`,
+      origen: role === 'empresa' ? 'admin' : 'cliente',
+      puede_revertir: false,
+      pedidos_afectados: [
+        {
+          pedido_id: created.id,
+          codigo_seguimiento: created.codigo_seguimiento,
+          cliente_nombre: snapAfter.cliente_nombre,
+          metodo_envio: created.metodo_envio_nombre || created.metodo_envio_codigo,
+          despues: snapAfter,
+          cambios_legibles: [
+            `Entró en ${getCarpetaLabel(created.estado_envio, created.estado_produccion)}`,
+            created.fecha_limite ? `Envío: ${created.fecha_limite}` : 'Sin fecha programada',
+          ],
+        },
+      ],
+    });
 
     // Notificar instantáneamente a todas las pestañas abiertas
     try {
@@ -348,63 +382,293 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return created;
   };
 
-  const handleUpdatePedido = async (pedidoId: string, updates: Partial<Pedido>) => {
+  const handleUpdatePedido = async (
+    pedidoId: string,
+    updates: Partial<Pedido>,
+    options?: { skipLog?: boolean }
+  ) => {
+    const prevOrder = pedidosRef.current.find(p => p.id === pedidoId);
+    const snapBefore = prevOrder ? buildOrderSnapshot(prevOrder) : undefined;
+
     applyLocalPatch([pedidoId], updates);
     const updated = await ordersService.updatePedido(pedidoId, updates);
     if (updated) {
       soundService.playStatusChangeSuccess();
       setPedidos(prev => prev.map(p => (p.id === pedidoId ? { ...p, ...updated } : p)));
     }
+
+    if (!options?.skipLog && prevOrder && snapBefore) {
+      const mergedAfterOrder: Pedido = {
+        ...prevOrder,
+        ...updates,
+        ...(updated || {}),
+        usuario: updates.usuario
+          ? ({ ...prevOrder.usuario, ...updates.usuario } as Pedido['usuario'])
+          : prevOrder.usuario,
+      };
+      const snapAfter = buildOrderSnapshot(mergedAfterOrder);
+      const changes = computeOrderChanges(snapBefore, snapAfter);
+
+      if (changes.length > 0) {
+        let tipo: TipoMovimiento = 'edicion';
+        let titulo = `Editaste pedido #${prevOrder.codigo_seguimiento}`;
+
+        const onlyRotulado =
+          updates.rotulado !== undefined &&
+          Object.keys(updates).every(k => k === 'rotulado');
+        const isShalomChange =
+          updates.registrado_shalom !== undefined ||
+          updates.shalom_numero_guia !== undefined ||
+          updates.shalom_ose_id !== undefined;
+        const carpetaChanged =
+          getCarpetaLabel(snapBefore.estado_envio, snapBefore.estado_produccion) !==
+          getCarpetaLabel(snapAfter.estado_envio, snapAfter.estado_produccion);
+
+        if (onlyRotulado) {
+          tipo = 'rotulado';
+          titulo = updates.rotulado
+            ? `Rotulaste #${prevOrder.codigo_seguimiento}`
+            : `Quitaste rótulo a #${prevOrder.codigo_seguimiento}`;
+        } else if (isShalomChange) {
+          tipo = 'registro_shalom';
+          titulo = updates.registrado_shalom === false
+            ? `Desvinculaste Shalom de #${prevOrder.codigo_seguimiento}`
+            : `Actualizaste Shalom en #${prevOrder.codigo_seguimiento}`;
+        } else if (carpetaChanged && Object.keys(updates).length <= 3) {
+          tipo = 'mover_carpeta';
+          titulo = `Moviste #${prevOrder.codigo_seguimiento} a ${getCarpetaLabel(snapAfter.estado_envio, snapAfter.estado_produccion)}`;
+        }
+
+        activityLogService.recordMovimiento(activeEmpresaId, {
+          tipo,
+          titulo,
+          detalle: `${snapAfter.cliente_nombre} • ${changes.join(' · ')}`,
+          origen: 'admin',
+          puede_revertir: true,
+          pedidos_afectados: [
+            {
+              pedido_id: prevOrder.id,
+              codigo_seguimiento: prevOrder.codigo_seguimiento,
+              cliente_nombre: snapAfter.cliente_nombre,
+              metodo_envio: prevOrder.metodo_envio_nombre || prevOrder.metodo_envio_codigo,
+              antes: snapBefore,
+              despues: snapAfter,
+              cambios_legibles: changes,
+            },
+          ],
+        });
+      }
+    }
+
     scheduleRefresh();
     return updated;
   };
 
-  const handleDeletePedido = async (pedidoId: string) => {
+  const handleDeletePedido = async (pedidoId: string, options?: { skipLog?: boolean }) => {
+    const prevOrder = pedidosRef.current.find(p => p.id === pedidoId);
     setPedidos(prev => prev.filter(p => p.id !== pedidoId));
     const ok = await ordersService.deletePedido(pedidoId);
     if (ok) {
       soundService.playStatusChangeSuccess();
+      if (!options?.skipLog && prevOrder) {
+        const snap = buildOrderSnapshot(prevOrder, true);
+        activityLogService.recordMovimiento(activeEmpresaId, {
+          tipo: 'eliminacion',
+          titulo: `Eliminaste pedido #${prevOrder.codigo_seguimiento}`,
+          detalle: `${snap.cliente_nombre} • Puedes restaurarlo con Revertir`,
+          origen: 'admin',
+          puede_revertir: true,
+          pedidos_afectados: [
+            {
+              pedido_id: prevOrder.id,
+              codigo_seguimiento: prevOrder.codigo_seguimiento,
+              cliente_nombre: snap.cliente_nombre,
+              metodo_envio: prevOrder.metodo_envio_nombre || prevOrder.metodo_envio_codigo,
+              antes: snap,
+              cambios_legibles: [
+                `Eliminado (estaba en ${getCarpetaLabel(prevOrder.estado_envio, prevOrder.estado_produccion)})`,
+              ],
+            },
+          ],
+        });
+      }
     }
     scheduleRefresh();
     return ok;
   };
 
-  const handleDeleteMultiplePedidos = async (pedidoIds: string[]) => {
+  const handleDeleteMultiplePedidos = async (pedidoIds: string[], options?: { skipLog?: boolean }) => {
     const setIds = new Set(pedidoIds);
+    const affected = pedidosRef.current.filter(p => setIds.has(p.id));
     setPedidos(prev => prev.filter(p => !setIds.has(p.id)));
     const ok = await ordersService.deleteMultiplePedidos(pedidoIds);
     if (ok) {
       soundService.playStatusChangeSuccess();
+      if (!options?.skipLog && affected.length > 0) {
+        activityLogService.recordMovimiento(activeEmpresaId, {
+          tipo: 'eliminacion',
+          titulo:
+            affected.length === 1
+              ? `Eliminaste pedido #${affected[0].codigo_seguimiento}`
+              : `Eliminaste ${affected.length} pedidos`,
+          detalle: 'Puedes restaurarlos cuando quieras con Revertir',
+          origen: 'admin',
+          puede_revertir: true,
+          pedidos_afectados: affected.map(o => {
+            const snap = buildOrderSnapshot(o, true);
+            return {
+              pedido_id: o.id,
+              codigo_seguimiento: o.codigo_seguimiento,
+              cliente_nombre: snap.cliente_nombre,
+              metodo_envio: o.metodo_envio_nombre || o.metodo_envio_codigo,
+              antes: snap,
+              cambios_legibles: [`Eliminado (estaba en ${getCarpetaLabel(o.estado_envio, o.estado_produccion)})`],
+            };
+          }),
+        });
+      }
     }
     scheduleRefresh();
     return ok;
   };
 
-  const handleUpdateMultipleEstados = async (pedidoIds: string[], estadoEnvio: EstadoEnvio, estadoProduccion?: EstadoProduccion) => {
+  const handleRestorePedido = async (order: Pedido): Promise<Pedido> => {
+    const restored = await ordersService.restorePedido(order);
+    setPedidos(prev => [restored, ...prev.filter(p => p.id !== restored.id)]);
+    soundService.playStatusChangeSuccess();
+    scheduleRefresh();
+    return restored;
+  };
+
+  const handleUpdateMultipleEstados = async (
+    pedidoIds: string[],
+    estadoEnvio: EstadoEnvio,
+    estadoProduccion?: EstadoProduccion,
+    options?: { skipLog?: boolean }
+  ) => {
+    const setIds = new Set(pedidoIds);
+    const affected = pedidosRef.current.filter(p => setIds.has(p.id));
+
     applyLocalPatch(pedidoIds, {
       estado_envio: estadoEnvio,
       ...(estadoProduccion ? { estado_produccion: estadoProduccion } : {}),
     });
     await ordersService.updateMultipleEstados(pedidoIds, estadoEnvio, estadoProduccion);
     soundService.playStatusChangeSuccess();
+
+    if (!options?.skipLog && affected.length > 0) {
+      const targetFolder = getCarpetaLabel(estadoEnvio, estadoProduccion);
+      activityLogService.recordMovimiento(activeEmpresaId, {
+        tipo: 'mover_carpeta',
+        titulo:
+          affected.length === 1
+            ? `Moviste #${affected[0].codigo_seguimiento} a ${targetFolder}`
+            : `Moviste ${affected.length} pedidos a ${targetFolder}`,
+        detalle: affected.length === 1
+          ? `${affected[0].usuario?.nombre_completo || 'Cliente'} • ${getCarpetaLabel(affected[0].estado_envio, affected[0].estado_produccion)} → ${targetFolder}`
+          : `Destino: ${targetFolder}`,
+        origen: 'admin',
+        puede_revertir: true,
+        pedidos_afectados: affected.map(o => {
+          const antes = buildOrderSnapshot(o);
+          const despues = {
+            ...antes,
+            estado_envio: estadoEnvio,
+            estado_produccion: estadoProduccion || o.estado_produccion,
+          };
+          return {
+            pedido_id: o.id,
+            codigo_seguimiento: o.codigo_seguimiento,
+            cliente_nombre: antes.cliente_nombre,
+            metodo_envio: o.metodo_envio_nombre || o.metodo_envio_codigo,
+            antes,
+            despues,
+            cambios_legibles: [
+              `Carpeta: ${getCarpetaLabel(o.estado_envio, o.estado_produccion)} → ${targetFolder}`,
+            ],
+          };
+        }),
+      });
+    }
+
     scheduleRefresh();
   };
 
-  const handleUpdateEstadoProduccion = async (pedidoId: string, nuevoEstado: EstadoProduccion) => {
+  const handleUpdateEstadoProduccion = async (
+    pedidoId: string,
+    nuevoEstado: EstadoProduccion,
+    options?: { skipLog?: boolean }
+  ) => {
+    const prevOrder = pedidosRef.current.find(p => p.id === pedidoId);
     applyLocalPatch([pedidoId], { estado_produccion: nuevoEstado });
     const updated = await ordersService.updateEstadoProduccion(pedidoId, nuevoEstado);
     if (updated) {
       soundService.playStatusChangeSuccess();
     }
+    if (!options?.skipLog && prevOrder) {
+      const antes = buildOrderSnapshot(prevOrder);
+      const despues = { ...antes, estado_produccion: nuevoEstado };
+      const toLabel = getCarpetaLabel(despues.estado_envio, despues.estado_produccion);
+      activityLogService.recordMovimiento(activeEmpresaId, {
+        tipo: 'mover_carpeta',
+        titulo: `Moviste #${prevOrder.codigo_seguimiento} a ${toLabel}`,
+        detalle: `${antes.cliente_nombre} • ${getCarpetaLabel(prevOrder.estado_envio, prevOrder.estado_produccion)} → ${toLabel}`,
+        origen: 'admin',
+        puede_revertir: true,
+        pedidos_afectados: [
+          {
+            pedido_id: prevOrder.id,
+            codigo_seguimiento: prevOrder.codigo_seguimiento,
+            cliente_nombre: antes.cliente_nombre,
+            metodo_envio: prevOrder.metodo_envio_nombre || prevOrder.metodo_envio_codigo,
+            antes,
+            despues,
+            cambios_legibles: [
+              `Carpeta: ${getCarpetaLabel(prevOrder.estado_envio, prevOrder.estado_produccion)} → ${toLabel}`,
+            ],
+          },
+        ],
+      });
+    }
     scheduleRefresh();
     return updated;
   };
 
-  const handleUpdateEstadoEnvio = async (pedidoId: string, nuevoEstado: EstadoEnvio) => {
+  const handleUpdateEstadoEnvio = async (
+    pedidoId: string,
+    nuevoEstado: EstadoEnvio,
+    options?: { skipLog?: boolean }
+  ) => {
+    const prevOrder = pedidosRef.current.find(p => p.id === pedidoId);
     applyLocalPatch([pedidoId], { estado_envio: nuevoEstado });
     const updated = await ordersService.updateEstadoEnvio(pedidoId, nuevoEstado);
     if (updated) {
       soundService.playStatusChangeSuccess();
+    }
+    if (!options?.skipLog && prevOrder) {
+      const antes = buildOrderSnapshot(prevOrder);
+      const despues = { ...antes, estado_envio: nuevoEstado };
+      const toLabel = getCarpetaLabel(despues.estado_envio, despues.estado_produccion);
+      activityLogService.recordMovimiento(activeEmpresaId, {
+        tipo: 'mover_carpeta',
+        titulo: `Moviste #${prevOrder.codigo_seguimiento} a ${toLabel}`,
+        detalle: `${antes.cliente_nombre} • ${getCarpetaLabel(prevOrder.estado_envio, prevOrder.estado_produccion)} → ${toLabel}`,
+        origen: 'admin',
+        puede_revertir: true,
+        pedidos_afectados: [
+          {
+            pedido_id: prevOrder.id,
+            codigo_seguimiento: prevOrder.codigo_seguimiento,
+            cliente_nombre: antes.cliente_nombre,
+            metodo_envio: prevOrder.metodo_envio_nombre || prevOrder.metodo_envio_codigo,
+            antes,
+            despues,
+            cambios_legibles: [
+              `Carpeta: ${getCarpetaLabel(prevOrder.estado_envio, prevOrder.estado_produccion)} → ${toLabel}`,
+            ],
+          },
+        ],
+      });
     }
     scheduleRefresh();
     return updated;
@@ -495,6 +759,7 @@ export const OrderProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         updatePedido: handleUpdatePedido,
         deletePedido: handleDeletePedido,
         deleteMultiplePedidos: handleDeleteMultiplePedidos,
+        restorePedido: handleRestorePedido,
         updateMultipleEstados: handleUpdateMultipleEstados,
         updateEstadoProduccion: handleUpdateEstadoProduccion,
         updateEstadoEnvio: handleUpdateEstadoEnvio,

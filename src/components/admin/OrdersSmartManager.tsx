@@ -2,14 +2,27 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, EstadoEnvio, EstadoProduccion } from '../../types/database.types';
 import { useOrders } from '../../context/OrderContext';
+import { useAuth } from '../../context/AuthContext';
 import { useFeedback } from '../../context/FeedbackContext';
 import { EditOrderModal } from './EditOrderModal';
+import { getVisibleCustomFields } from '../../utils/customFields';
 
 import { BulkPrintModal } from './BulkPrintModal';
 import { ShalomLabelModal } from './ShalomLabelModal';
 import { ShalomRegisterModal } from './ShalomRegisterModal';
-import { ShalomDeliveryModal } from './ShalomDeliveryModal';
+import {
+  ShalomDeliveryModal,
+  DeliveryCompletionResult,
+  DeliveryFolderChoice,
+} from './ShalomDeliveryModal';
 import { OrderStatusNotifyModal } from './OrderStatusNotifyModal';
+import { MovementsHistoryModal } from './MovementsHistoryModal';
+import {
+  activityLogService,
+  ACTIVITY_LOG_EVENT,
+  buildOrderSnapshot,
+  getCarpetaLabel,
+} from '../../services/activityLogService';
 
 import {
   CheckSquare,
@@ -31,12 +44,13 @@ import {
   ArrowRight,
   Clock,
   Flame,
-  PackageCheck,
-  Boxes,
   SlidersHorizontal,
-  ArrowUpDown,
   Check,
   Users,
+  FolderInput,
+  History,
+  Tag,
+  ShieldCheck,
 } from 'lucide-react';
 import { getApiBaseUrl } from '../../config/api';
 import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
@@ -58,11 +72,12 @@ export const getCleanClientPhone = (order: Pedido): string => {
 };
 
 // ---------------------------------------------------------------------------
-// Flujo de trabajo: En almacén → Alistando → Despachado → Entregado
+// Flujo de trabajo (Carpetas): Almacén → Alistando → Despachados → Entregados
 // ---------------------------------------------------------------------------
 type Stage = 'almacen' | 'alistando' | 'despachando' | 'entregado';
 type StatusFilter = 'all' | 'almacen' | 'alistando' | 'dejando_shalom' | 'entregado';
-type QuickFilter = 'none' | 'hoy' | 'atrasados' | 'duplicados' | 'entregados_hoy';
+type PrepFilter = 'all' | 'sin_rotular' | 'rotulados' | 'sin_registrar' | 'registrados';
+type QuickFilter = 'none' | 'hoy' | 'atrasados' | 'duplicados';
 type SortMode = 'fecha_envio' | 'recientes' | 'antiguos';
 
 const PAGE_SIZE = 24;
@@ -73,29 +88,90 @@ const getStage = (order: Pedido): Stage => {
     order.estado_envio === 'en_camino' ||
     order.estado_envio === 'listo_para_recojo' ||
     (order.estado_produccion === 'completado' && order.estado_envio === 'pendiente')
-  ) return 'despachando';
+  ) {
+    return 'despachando';
+  }
   if (order.estado_produccion === 'bordando') return 'alistando';
   return 'almacen';
 };
 
-const NEXT_STEP: Record<Exclude<Stage, 'entregado'>, { label: string; envio: EstadoEnvio; prod: EstadoProduccion; className: string }> = {
+const FOLDER_DEFS: {
+  stage: Stage;
+  envio: EstadoEnvio;
+  prod: EstadoProduccion;
+  icon: string;
+  title: string;
+  desc: string;
+  cls: string;
+}[] = [
+  {
+    stage: 'almacen',
+    envio: 'pendiente',
+    prod: 'en_cola',
+    icon: '🏬',
+    title: 'En almacén',
+    desc: 'Recibido, pendiente de alistar',
+    cls: 'bg-amber-950/35 border-amber-500/35',
+  },
+  {
+    stage: 'alistando',
+    envio: 'pendiente',
+    prod: 'bordando',
+    icon: '🪡',
+    title: 'Alistando',
+    desc: 'Empaquetando y rotulando',
+    cls: 'bg-purple-950/35 border-purple-500/35',
+  },
+  {
+    stage: 'despachando',
+    envio: 'en_camino',
+    prod: 'completado',
+    icon: '🚚',
+    title: 'Despachados',
+    desc: 'Dejado en agencia o en ruta',
+    cls: 'bg-blue-950/35 border-blue-500/35',
+  },
+  {
+    stage: 'entregado',
+    envio: 'entregado',
+    prod: 'completado',
+    icon: '✅',
+    title: 'Entregados',
+    desc: 'Revisar guía / enviar PDF y cerrar',
+    cls: 'bg-emerald-950/35 border-emerald-500/35',
+  },
+];
+
+const folderChoiceToEstados = (
+  folder: Exclude<DeliveryFolderChoice, 'keep'>
+): { envio: EstadoEnvio; prod: EstadoProduccion } => {
+  if (folder === 'entregado') return { envio: 'entregado', prod: 'completado' };
+  if (folder === 'despachando') return { envio: 'en_camino', prod: 'completado' };
+  if (folder === 'alistando') return { envio: 'pendiente', prod: 'bordando' };
+  return { envio: 'pendiente', prod: 'en_cola' };
+};
+
+const NEXT_STEP: Record<
+  Exclude<Stage, 'entregado'>,
+  { label: string; envio: EstadoEnvio; prod: EstadoProduccion; className: string }
+> = {
   almacen: {
     label: 'Empezar a alistar',
     envio: 'pendiente',
     prod: 'bordando',
-    className: 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/30',
+    className: 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/25',
   },
   alistando: {
-    label: 'Marcar como despachado',
+    label: 'Pasar a Despachados',
     envio: 'en_camino',
     prod: 'completado',
-    className: 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30',
+    className: 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/25',
   },
   despachando: {
-    label: 'Marcar como entregado',
+    label: 'Entregar y revisar envío',
     envio: 'entregado',
     prod: 'completado',
-    className: 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/30',
+    className: 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/25',
   },
 };
 
@@ -106,7 +182,6 @@ const toLocalDate = (d: Date): string => {
   return `${y}-${m}-${day}`;
 };
 
-// Normaliza cualquier fecha (ISO o YYYY-MM-DD) a YYYY-MM-DD local
 const getOrderDateOnly = (dateStr?: string): string => {
   if (!dateStr) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
@@ -122,42 +197,48 @@ const getOrderDateOnly = (dateStr?: string): string => {
 const daysBetween = (fromYmd: string, toYmd: string): number => {
   const [y1, m1, d1] = fromYmd.split('-').map(Number);
   const [y2, m2, d2] = toYmd.split('-').map(Number);
-  const a = Date.UTC(y1, m1 - 1, d1);
-  const b = Date.UTC(y2, m2 - 1, d2);
-  return Math.round((b - a) / 86400000);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
 };
 
-const isShalomOrder = (o: Pedido) => o.metodo_envio_codigo === 'shalom' || Boolean(o.destino_detalle?.toLowerCase().includes('shalom'));
-const isOlvaOrder = (o: Pedido) => o.metodo_envio_codigo === 'olva' || Boolean(o.destino_detalle?.toLowerCase().includes('olva'));
-const isMotoOrder = (o: Pedido) => o.metodo_envio_codigo === 'motorizado' || Boolean(o.destino_detalle?.toLowerCase().includes('motorizado'));
+const isShalomOrder = (o: Pedido) =>
+  o.metodo_envio_codigo === 'shalom' || Boolean(o.destino_detalle?.toLowerCase().includes('shalom'));
+const isOlvaOrder = (o: Pedido) =>
+  o.metodo_envio_codigo === 'olva' || Boolean(o.destino_detalle?.toLowerCase().includes('olva'));
+const isMotoOrder = (o: Pedido) =>
+  o.metodo_envio_codigo === 'motorizado' || Boolean(o.destino_detalle?.toLowerCase().includes('motorizado'));
 
-const getDeliveryDate = (o: Pedido) => getOrderDateOnly((o as any).campos_personalizados?.fecha_entrega || o.updated_at);
+const getDeliveryDate = (o: Pedido) =>
+  getOrderDateOnly((o as any).campos_personalizados?.fecha_entrega || o.updated_at);
 
-// Documento de la clienta (DNI/CE), también extraído del texto del destino si hace falta
 const getOrderDni = (order: Pedido): string => {
   let dni = order.usuario?.dni || order.usuario?.dni_default || '';
   if (!dni || dni.startsWith('usr-') || dni === '00000000' || dni === 'NCIADOS') {
-    const matchDoc = String(order.destino_detalle || '').match(/\b(?:DNI[\s\/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i);
+    const matchDoc = String(order.destino_detalle || '').match(
+      /\b(?:DNI[\s/]*CE|DNI|CE|C\.?E\.?|Doc|Documento|RUC)\b[\s:#]*(?:Recojo:?\s*)?([A-Za-z0-9]{6,12})\b/i
+    );
     const docCandidate = matchDoc && matchDoc[1] ? matchDoc[1].trim() : '';
-    dni = (docCandidate && !docCandidate.startsWith('usr-') && docCandidate.toUpperCase() !== 'NCIADOS' && docCandidate.replace(/\D/g, '').length >= 6) ? docCandidate : '';
+    dni =
+      docCandidate &&
+      !docCandidate.startsWith('usr-') &&
+      docCandidate.toUpperCase() !== 'NCIADOS' &&
+      docCandidate.replace(/\D/g, '').length >= 6
+        ? docCandidate
+        : '';
   }
   return dni;
 };
 
-// Llave única de la clienta: se usa para detectar pedidos repetidos
 const getClientKey = (order: Pedido): string => {
   const dni = getOrderDni(order).trim();
-  const key = (
+  const key =
     dni ||
     getCleanClientPhone(order) ||
     order.usuario?.nombre_completo?.trim().toLowerCase() ||
-    ''
-  );
+    '';
   if (!key || key === 'cliente' || key === '00000000' || key.toLowerCase() === 'encomi envíos') return '';
   return key;
 };
 
-// "mar 13 oct" — fecha corta sin la etiqueta relativa (la urgencia ya dice Hoy/Mañana)
 const formatShortDate = (ymd?: string): string => {
   const clean = getOrderDateOnly(ymd);
   if (!clean) return '';
@@ -184,11 +265,11 @@ export const OrdersSmartManager: React.FC = () => {
     deleteMultiplePedidos,
     deletePedido,
     updatePedido,
-    updateEstadoEnvio,
-    updateEstadoProduccion,
     refreshData,
   } = useOrders();
+  const { currentEmpresa } = useAuth();
   const { toast, confirm } = useFeedback();
+  const empresaId = currentEmpresa?.id || 'empresa-master-comikids';
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleManualRefresh = async () => {
@@ -201,91 +282,63 @@ export const OrdersSmartManager: React.FC = () => {
     }
   };
 
-  // Búsqueda, filtros y orden
+  // Filtros simplificados y claros
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [transportFilter, setTransportFilter] = useState<'all' | 'shalom' | 'motorizado' | 'olva'>('all');
+  const [prepFilter, setPrepFilter] = useState<PrepFilter>('all');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('none');
   const [sortMode, setSortMode] = useState<SortMode>('fecha_envio');
-  const [showDateTools, setShowDateTools] = useState(false);
+  const [dateFilterType, setDateFilterType] = useState<'none' | 'registrado' | 'programado' | 'entregado'>('none');
+  const [dateFilterValue, setDateFilterValue] = useState<string>(() => toLocalDate(new Date()));
+
+  // Paneles y modales
+  const [showFiltersSheet, setShowFiltersSheet] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showBulkMoveSheet, setShowBulkMoveSheet] = useState(false);
   const [isTrackingSyncing, setIsTrackingSyncing] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const today = toLocalDate(new Date());
+  // Contador de movimientos de hoy para badge del botón Historial
+  const [historyTick, setHistoryTick] = useState(0);
+  useEffect(() => {
+    const onLog = () => setHistoryTick(t => t + 1);
+    window.addEventListener(ACTIVITY_LOG_EVENT, onLog);
+    return () => window.removeEventListener(ACTIVITY_LOG_EVENT, onLog);
+  }, []);
 
+  const today = toLocalDate(new Date());
   const yesterday = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
     return toLocalDate(d);
   }, []);
-
   const tomorrow = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
     return toLocalDate(d);
   }, []);
-
   const dayAfterTomorrow = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 2);
     return toLocalDate(d);
   }, []);
 
-  // Clasificación por Fechas: 'none' | 'registrado' | 'programado' | 'entregado'
-  const [dateFilterType, setDateFilterType] = useState<'none' | 'registrado' | 'programado' | 'entregado'>('none');
-  const [dateFilterValue, setDateFilterValue] = useState<string>(today);
-
-  const toggleQuickDate = (offsetDays: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + offsetDays);
-    const targetDate = toLocalDate(d);
-    if (dateFilterType !== 'none' && dateFilterValue === targetDate) {
-      setDateFilterType('none');
-    } else {
-      setDateFilterValue(targetDate);
-      if (dateFilterType === 'none') {
-        setDateFilterType('programado');
-      }
-      setQuickFilter('none');
-    }
-  };
-
-  const handleManualDateChange = (val: string) => {
-    if (!val) return;
-    setDateFilterValue(val);
-    if (dateFilterType === 'none') {
-      setDateFilterType('programado');
-    }
-    setQuickFilter('none');
-  };
-
-  // Conteos dinámicos para la fecha seleccionada en dateFilterValue
-  const dateCounts = useMemo(() => {
-    if (!dateFilterValue) return { registrados: 0, programados: 0, entregados: 0 };
-    let registrados = 0;
-    let programados = 0;
-    let entregados = 0;
-    for (const p of pedidos) {
-      if (getOrderDateOnly(p.created_at) === dateFilterValue) registrados++;
-      if (getOrderDateOnly(p.fecha_limite) === dateFilterValue) programados++;
-      if (
-        p.estado_envio === 'entregado' &&
-        (getOrderDateOnly((p as any).campos_personalizados?.fecha_entrega) === dateFilterValue ||
-          getOrderDateOnly(p.updated_at) === dateFilterValue)
-      ) entregados++;
-    }
-    return { registrados, programados, entregados };
-  }, [pedidos, dateFilterValue]);
+  const todayHistoryCount = useMemo(() => {
+    void historyTick;
+    const all = activityLogService.buildUnifiedHistory(empresaId, pedidos);
+    return all.filter(m => getOrderDateOnly(m.created_at) === today).length;
+  }, [empresaId, pedidos, today, historyTick]);
 
   // Selección múltiple
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectionMode = selectedIds.length > 0;
 
-  // Modales
+  // Modales operativos
   const [showBulkPrint, setShowBulkPrint] = useState(false);
   const [selectedLabelOrder, setSelectedLabelOrder] = useState<Pedido | null>(null);
-  const [showShalomRegister, setShowShalomRegister] = useState(false);
+  const [shalomRegisterOrders, setShalomRegisterOrders] = useState<Pedido[] | null>(null);
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [swipeTargetOrder, setSwipeTargetOrder] = useState<Pedido | null>(null);
@@ -299,30 +352,31 @@ export const OrdersSmartManager: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
 
-  // Helper para nombre legible del estado
   const getStatusLabel = (envio: EstadoEnvio, prod?: EstadoProduccion): string => {
-    if (envio === 'entregado') return 'Entregado';
-    if (envio === 'listo_para_recojo') return 'Listo para Recoger en Agencia';
-    if (envio === 'en_camino' || (prod === 'completado' && envio === 'pendiente')) return 'Dejando en Shalom / En Ruta';
-    if (prod === 'bordando') return 'Alistándolo';
-    return 'En Almacén';
+    if (envio === 'entregado') return 'Entregados';
+    if (envio === 'listo_para_recojo') return 'Listo para recoger';
+    if (envio === 'en_camino' || (prod === 'completado' && envio === 'pendiente')) return 'Despachados';
+    if (prod === 'bordando') return 'Alistando';
+    return 'En almacén';
   };
 
   const wasEdited = (createdAt?: string, updatedAt?: string): boolean => {
     if (!createdAt || !updatedAt) return false;
-    const t1 = new Date(createdAt).getTime();
-    const t2 = new Date(updatedAt).getTime();
-    return Math.abs(t2 - t1) > 60000;
+    return Math.abs(new Date(updatedAt).getTime() - new Date(createdAt).getTime()) > 60000;
   };
 
-  // Detección de pedidos simultáneos de la misma clienta (misma llave en pedido y tarjeta)
+  // Pedidos repetidos de la misma clienta
   const duplicateOrdersMap = useMemo(() => {
     const map = new Map<string, { count: number; orderIds: string[]; clientName: string }>();
     for (const order of pedidos) {
       if (order.estado_envio === 'entregado') continue;
       const key = getClientKey(order);
       if (!key) continue;
-      const item = map.get(key) || { count: 0, orderIds: [], clientName: order.usuario?.nombre_completo || 'Cliente' };
+      const item = map.get(key) || {
+        count: 0,
+        orderIds: [],
+        clientName: order.usuario?.nombre_completo || 'Cliente',
+      };
       item.count += 1;
       item.orderIds.push(order.id);
       map.set(key, item);
@@ -338,22 +392,44 @@ export const OrdersSmartManager: React.FC = () => {
     return count;
   }, [duplicateOrdersMap]);
 
-  // Indicadores del día (lo primero que un dueño necesita ver)
-  const kpis = useMemo(() => {
-    let hoy = 0;
-    let atrasados = 0;
-    let entregadosHoy = 0;
+  // Contadores globales rápidos
+  const counts = useMemo(() => {
+    const c = {
+      all: 0,
+      almacen: 0,
+      alistando: 0,
+      dejando_shalom: 0,
+      entregado: 0,
+      shalom: 0,
+      olva: 0,
+      motorizado: 0,
+      hoy: 0,
+      atrasados: 0,
+      sinRotular: 0,
+      sinRegistrar: 0,
+    };
     for (const p of pedidos) {
-      if (p.estado_envio === 'entregado') {
-        if (getDeliveryDate(p) === today) entregadosHoy++;
+      const stage = getStage(p);
+      if (stage === 'entregado') {
+        c.entregado++;
         continue;
       }
+      c.all++;
+      if (stage === 'almacen') c.almacen++;
+      if (stage === 'alistando') c.alistando++;
+      if (stage === 'despachando') c.dejando_shalom++;
+      if (isShalomOrder(p)) {
+        c.shalom++;
+        if (!p.registrado_shalom) c.sinRegistrar++;
+      }
+      if (isOlvaOrder(p)) c.olva++;
+      if (isMotoOrder(p)) c.motorizado++;
+      if (!p.rotulado) c.sinRotular++;
       const f = getOrderDateOnly(p.fecha_limite);
-      if (!f) continue;
-      if (f === today) hoy++;
-      else if (f < today) atrasados++;
+      if (f === today) c.hoy++;
+      else if (f && f < today) c.atrasados++;
     }
-    return { hoy, atrasados, entregadosHoy };
+    return c;
   }, [pedidos, today]);
 
   const matchesSearch = (order: Pedido, query: string): boolean => {
@@ -362,14 +438,14 @@ export const OrdersSmartManager: React.FC = () => {
     const queryDigits = query.replace(/\D/g, '');
     return Boolean(
       order.codigo_seguimiento.toLowerCase().includes(query) ||
-      order.destino_detalle.toLowerCase().includes(query) ||
-      (order.usuario?.nombre_completo && order.usuario.nombre_completo.toLowerCase().includes(query)) ||
-      (order.usuario?.dni && order.usuario.dni.toLowerCase().includes(query)) ||
-      (order.usuario?.telefono_default && order.usuario.telefono_default.includes(query)) ||
-      (cleanPhone && queryDigits && cleanPhone.includes(queryDigits)) ||
-      (order.observaciones_cliente && order.observaciones_cliente.toLowerCase().includes(query)) ||
-      (order.shalom_clave_recojo && order.shalom_clave_recojo.toLowerCase().includes(query)) ||
-      (order.shalom_numero_guia && order.shalom_numero_guia.toLowerCase().includes(query))
+        order.destino_detalle.toLowerCase().includes(query) ||
+        (order.usuario?.nombre_completo && order.usuario.nombre_completo.toLowerCase().includes(query)) ||
+        (order.usuario?.dni && order.usuario.dni.toLowerCase().includes(query)) ||
+        (order.usuario?.telefono_default && order.usuario.telefono_default.includes(query)) ||
+        (cleanPhone && queryDigits && cleanPhone.includes(queryDigits)) ||
+        (order.observaciones_cliente && order.observaciones_cliente.toLowerCase().includes(query)) ||
+        (order.shalom_clave_recojo && order.shalom_clave_recojo.toLowerCase().includes(query)) ||
+        (order.shalom_numero_guia && order.shalom_numero_guia.toLowerCase().includes(query))
     );
   };
 
@@ -380,6 +456,14 @@ export const OrdersSmartManager: React.FC = () => {
     return isMotoOrder(order);
   };
 
+  const matchesPrep = (order: Pedido): boolean => {
+    if (prepFilter === 'all') return true;
+    if (prepFilter === 'sin_rotular') return !order.rotulado;
+    if (prepFilter === 'rotulados') return Boolean(order.rotulado);
+    if (prepFilter === 'sin_registrar') return isShalomOrder(order) && !order.registrado_shalom;
+    return isShalomOrder(order) && Boolean(order.registrado_shalom);
+  };
+
   // Pedidos filtrados y ordenados
   const filteredOrders = useMemo(() => {
     const query = searchTerm.toLowerCase().trim();
@@ -387,12 +471,12 @@ export const OrdersSmartManager: React.FC = () => {
     const list = pedidos.filter(order => {
       if (!matchesSearch(order, query)) return false;
       if (!matchesTransport(order)) return false;
+      if (!matchesPrep(order)) return false;
 
-      // Atajos de indicadores (tienen prioridad sobre las pestañas de estado)
+      // Atajos rápidos
       if (quickFilter !== 'none') {
-        const f = getOrderDateOnly(order.fecha_limite);
-        if (quickFilter === 'entregados_hoy') return order.estado_envio === 'entregado' && getDeliveryDate(order) === today;
         if (order.estado_envio === 'entregado') return false;
+        const f = getOrderDateOnly(order.fecha_limite);
         if (quickFilter === 'hoy') return f === today;
         if (quickFilter === 'atrasados') return Boolean(f) && f < today;
         if (quickFilter === 'duplicados') {
@@ -401,7 +485,7 @@ export const OrdersSmartManager: React.FC = () => {
         }
       }
 
-      // Clasificación por Fecha
+      // Filtro por fecha
       if (dateFilterType !== 'none' && dateFilterValue) {
         if (dateFilterType === 'registrado') {
           if (getOrderDateOnly(order.created_at) !== dateFilterValue) return false;
@@ -425,8 +509,6 @@ export const OrdersSmartManager: React.FC = () => {
       if (statusFilter === 'entregado') return stage === 'entregado';
 
       if (dateFilterType === 'registrado' || dateFilterType === 'programado') return true;
-
-      // Vista "Activos": todo lo vigente excepto lo ya entregado
       return order.estado_envio !== 'entregado';
     });
 
@@ -443,12 +525,23 @@ export const OrdersSmartManager: React.FC = () => {
     }
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pedidos, searchTerm, statusFilter, transportFilter, dateFilterType, dateFilterValue, quickFilter, sortMode, duplicateOrdersMap, today]);
+  }, [
+    pedidos,
+    searchTerm,
+    statusFilter,
+    transportFilter,
+    prepFilter,
+    dateFilterType,
+    dateFilterValue,
+    quickFilter,
+    sortMode,
+    duplicateOrdersMap,
+    today,
+  ]);
 
-  // Al cambiar filtros se vuelve a la primera página
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [searchTerm, statusFilter, transportFilter, dateFilterType, dateFilterValue, quickFilter, sortMode]);
+  }, [searchTerm, statusFilter, transportFilter, prepFilter, dateFilterType, dateFilterValue, quickFilter, sortMode]);
 
   const visibleOrders = filteredOrders.slice(0, visibleCount);
 
@@ -456,16 +549,14 @@ export const OrdersSmartManager: React.FC = () => {
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => (prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]));
   };
-
   const allFilteredSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedIds.includes(o.id));
   const selectAll = () => {
     if (allFilteredSelected) setSelectedIds([]);
     else setSelectedIds(filteredOrders.map(o => o.id));
   };
-
   const clearSelection = () => setSelectedIds([]);
 
-  // Atajos de teclado: "/" busca, "Esc" limpia la selección
+  // Atajos de teclado
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -481,23 +572,24 @@ export const OrdersSmartManager: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Cambio masivo de estado
+  // Cambio masivo de carpeta
   const handleMassStatusUpdate = async (envio: EstadoEnvio, prod?: EstadoProduccion) => {
     if (selectedIds.length === 0) return;
     const affectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
     const statusName = getStatusLabel(envio, prod);
 
-    // Si se marca como Entregado y hay pedidos de Shalom, abrir ShalomDeliveryModal
-    // para buscar el voucher oficial y enviar la clave y PDF por WhatsApp
+    // Al elegir Entregados: abrir siempre el Revisor & Bot de Entrega para revisar quién tiene envío en Shalom Pro / API
     if (envio === 'entregado') {
-      const shalomOrders = affectedOrders.filter(isShalomOrder);
-      if (shalomOrders.length > 0) {
-        setDeliveryTargetOrders(shalomOrders);
+      const hasShalom = affectedOrders.some(isShalomOrder);
+      if (hasShalom) {
+        setShowBulkMoveSheet(false);
+        setDeliveryTargetOrders(affectedOrders);
         return;
       }
     }
 
     setIsProcessing(true);
+    setShowBulkMoveSheet(false);
     try {
       await updateMultipleEstados(selectedIds, envio, prod);
       clearSelection();
@@ -521,7 +613,7 @@ export const OrdersSmartManager: React.FC = () => {
       await deleteMultiplePedidos(selectedIds);
       clearSelection();
       setShowDeleteConfirm(false);
-      toast(`${n} ${n === 1 ? 'pedido eliminado' : 'pedidos eliminados'}`);
+      toast(`${n} ${n === 1 ? 'pedido eliminado' : 'pedidos eliminados'} (puedes restaurarlo en Historial)`);
     } finally {
       setIsProcessing(false);
     }
@@ -531,7 +623,7 @@ export const OrdersSmartManager: React.FC = () => {
     const targetOrder = pedidos.find(p => p.id === orderId);
     const statusName = getStatusLabel(envio, prod);
 
-    // Entregado + Shalom → flujo oficial con voucher
+    // Entregado + Shalom → abrir Revisor oficial Shalom Pro & Bot
     if (envio === 'entregado' && targetOrder && isShalomOrder(targetOrder)) {
       setSwipeTargetOrder(null);
       setDeliveryTargetOrders([targetOrder]);
@@ -540,18 +632,137 @@ export const OrdersSmartManager: React.FC = () => {
 
     setBusyOrderId(orderId);
     try {
-      if (prod) await updateEstadoProduccion(orderId, prod);
-      await updateEstadoEnvio(orderId, envio);
+      // Un solo updatePedido para generar UN solo registro limpio en el historial
+      await updatePedido(orderId, {
+        estado_envio: envio,
+        ...(prod ? { estado_produccion: prod } : {}),
+      });
       setSwipeTargetOrder(null);
+      toast(`#${targetOrder?.codigo_seguimiento || ''} movido a ${statusName}`);
       if (targetOrder) {
         setNotifyModalData({ orders: [targetOrder], statusName });
       }
     } catch (err) {
       console.error(err);
-      toast('No se pudo cambiar el estado. Intenta de nuevo.', 'error');
+      toast('No se pudo cambiar la carpeta. Intenta de nuevo.', 'error');
     } finally {
       setBusyOrderId(null);
     }
+  };
+
+  // Callback completo del modal de Entrega & Revisión Shalom/Bot
+  const handleDeliveryComplete = async (result: DeliveryCompletionResult) => {
+    const historyItems: Array<{
+      pedido_id: string;
+      codigo_seguimiento: string;
+      cliente_nombre: string;
+      metodo_envio?: string;
+      antes?: ReturnType<typeof buildOrderSnapshot>;
+      despues?: ReturnType<typeof buildOrderSnapshot>;
+      cambios_legibles: string[];
+    }> = [];
+
+    const nowDate = toLocalDate(new Date());
+
+    // 1. Los enviados por Bot se mueven automáticamente a Entregados
+    for (const id of result.botSentIds) {
+      const orig = pedidos.find(p => p.id === id);
+      if (!orig) continue;
+      const meta = result.updatedMeta[id];
+      const isRealGuia = meta?.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-');
+      const updates: Partial<Pedido> = {
+        estado_envio: 'entregado',
+        estado_produccion: 'completado',
+        ...(meta?.verifiedInShalom || isRealGuia ? { registrado_shalom: true } : {}),
+        ...(isRealGuia ? { shalom_numero_guia: meta!.guia } : {}),
+        ...(meta?.pickupCode ? { shalom_clave_recojo: meta.pickupCode } : {}),
+        ...(meta?.oseId ? { shalom_ose_id: meta.oseId } : {}),
+        campos_personalizados: {
+          ...(orig.campos_personalizados || {}),
+          fecha_entrega: nowDate,
+        },
+      };
+
+      const antes = buildOrderSnapshot(orig);
+      await updatePedido(id, updates, { skipLog: true });
+      const despues = buildOrderSnapshot({ ...orig, ...updates });
+
+      historyItems.push({
+        pedido_id: orig.id,
+        codigo_seguimiento: orig.codigo_seguimiento,
+        cliente_nombre: antes.cliente_nombre,
+        metodo_envio: orig.metodo_envio_nombre || orig.metodo_envio_codigo,
+        antes,
+        despues,
+        cambios_legibles: [
+          'Bot WA enviado',
+          `Carpeta: ${getCarpetaLabel(orig.estado_envio, orig.estado_produccion)} → Entregados`,
+          ...(isRealGuia ? [`Guía: ${meta!.guia}`] : []),
+        ],
+      });
+    }
+
+    // 2. Los demás movidos según la elección del usuario
+    for (const move of result.otherMoves) {
+      const orig = pedidos.find(p => p.id === move.orderId);
+      if (!orig) continue;
+      const meta = result.updatedMeta[move.orderId];
+      const isRealGuia = meta?.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-');
+      const { envio, prod } = folderChoiceToEstados(move.targetFolder);
+      const targetLabel = getCarpetaLabel(envio, prod);
+
+      const updates: Partial<Pedido> = {
+        estado_envio: envio,
+        estado_produccion: prod,
+        ...(meta?.verifiedInShalom || isRealGuia ? { registrado_shalom: true } : {}),
+        ...(isRealGuia ? { shalom_numero_guia: meta!.guia } : {}),
+        ...(meta?.pickupCode ? { shalom_clave_recojo: meta.pickupCode } : {}),
+        ...(meta?.oseId ? { shalom_ose_id: meta.oseId } : {}),
+        ...(envio === 'entregado'
+          ? {
+              campos_personalizados: {
+                ...(orig.campos_personalizados || {}),
+                fecha_entrega: nowDate,
+              },
+            }
+          : {}),
+      };
+
+      const antes = buildOrderSnapshot(orig);
+      await updatePedido(move.orderId, updates, { skipLog: true });
+      const despues = buildOrderSnapshot({ ...orig, ...updates });
+
+      historyItems.push({
+        pedido_id: orig.id,
+        codigo_seguimiento: orig.codigo_seguimiento,
+        cliente_nombre: antes.cliente_nombre,
+        metodo_envio: orig.metodo_envio_nombre || orig.metodo_envio_codigo,
+        antes,
+        despues,
+        cambios_legibles: [
+          'Sin bot',
+          `Carpeta: ${getCarpetaLabel(orig.estado_envio, orig.estado_produccion)} → ${targetLabel}`,
+        ],
+      });
+    }
+
+    // Guardar UN solo movimiento claro y revertible en el Historial
+    if (historyItems.length > 0) {
+      activityLogService.recordMovimiento(empresaId, {
+        tipo: result.botSentIds.length > 0 ? 'entrega_bot' : 'mover_carpeta',
+        titulo:
+          result.botSentIds.length > 0
+            ? `Entrega con Bot (${result.botSentIds.length} enviado${result.botSentIds.length === 1 ? '' : 's'})`
+            : `Moviste ${historyItems.length} ${historyItems.length === 1 ? 'pedido' : 'pedidos'} en revisión de entrega`,
+        detalle: result.summaryText,
+        origen: 'admin',
+        puede_revertir: true,
+        pedidos_afectados: historyItems,
+      });
+    }
+
+    clearSelection();
+    toast(result.summaryText || 'Entrega procesada', 'success');
   };
 
   const handleSaveOrderDate = async (orderId: string, newDate: string | null) => {
@@ -560,9 +771,7 @@ export const OrdersSmartManager: React.FC = () => {
       await updatePedido(orderId, { fecha_limite: (newDate ? newDate : null) as any });
       setChangeDateOrder(null);
       toast(
-        newDate
-          ? `Fecha de envío cambiada a ${formatFechaConDia(newDate)}`
-          : 'Fecha programada eliminada',
+        newDate ? `Fecha de envío cambiada a ${formatFechaConDia(newDate)}` : 'Fecha programada eliminada',
         'info'
       );
     } catch (err: any) {
@@ -575,19 +784,19 @@ export const OrdersSmartManager: React.FC = () => {
   const handleDeleteSingle = async (order: Pedido) => {
     const ok = await confirm({
       title: `¿Eliminar el pedido #${order.codigo_seguimiento}?`,
-      message: `${order.usuario?.nombre_completo || 'Cliente'} • Esta acción no se puede deshacer.`,
+      message: `${order.usuario?.nombre_completo || 'Cliente'} • Podrás restaurarlo desde el Historial si lo necesitas.`,
       confirmLabel: 'Sí, eliminar',
       tone: 'danger',
     });
     if (!ok) return;
     await deletePedido(order.id);
-    toast('Pedido eliminado');
+    toast('Pedido eliminado (restaurable en Historial)');
   };
 
   const handleUnlinkShalom = async (order: Pedido) => {
     const ok = await confirm({
       title: '¿Desvincular el despacho de Shalom?',
-      message: 'Se borrará la guía y la clave de este pedido para que puedas registrarlo de nuevo o ingresar otra guía.',
+      message: 'Se borrará la guía y la clave de este pedido para que puedas registrarlo de nuevo.',
       confirmLabel: 'Desvincular',
       tone: 'danger',
     });
@@ -604,14 +813,43 @@ export const OrdersSmartManager: React.FC = () => {
   const selectedOrders = pedidos.filter(p => selectedIds.includes(p.id));
   const selectedShalomOrders = useMemo(() => selectedOrders.filter(isShalomOrder), [selectedOrders]);
 
-  // Al terminar de imprimir rótulos se marcan como rotulados
+  // Al terminar de imprimir rótulos en lote: marcar rotulado + guardar 1 registro en historial
   const handleBulkPrintComplete = async (orderIds: string[]) => {
+    const affected: Pedido[] = [];
+    const items = [];
     for (const id of orderIds) {
-      await updatePedido(id, { rotulado: true });
+      const orig = pedidos.find(p => p.id === id);
+      if (!orig) continue;
+      affected.push(orig);
+      const antes = buildOrderSnapshot(orig);
+      await updatePedido(id, { rotulado: true }, { skipLog: true });
+      const despues = buildOrderSnapshot({ ...orig, rotulado: true });
+      items.push({
+        pedido_id: orig.id,
+        codigo_seguimiento: orig.codigo_seguimiento,
+        cliente_nombre: antes.cliente_nombre,
+        metodo_envio: orig.metodo_envio_nombre || orig.metodo_envio_codigo,
+        antes,
+        despues,
+        cambios_legibles: ['Rotulado: Sí (impresión de rótulo)'],
+      });
+    }
+    if (items.length > 0) {
+      activityLogService.recordMovimiento(empresaId, {
+        tipo: 'rotulado',
+        titulo:
+          items.length === 1
+            ? `Rotulaste #${items[0].codigo_seguimiento}`
+            : `Rotulaste ${items.length} paquetes`,
+        detalle: `Impresión de rótulos (${affected.length})`,
+        origen: 'admin',
+        puede_revertir: true,
+        pedidos_afectados: items,
+      });
+      toast(`${items.length} ${items.length === 1 ? 'paquete marcado' : 'paquetes marcados'} como rotulados`);
     }
   };
 
-  // Forzar sincronización del listener de tracking de Shalom
   const handleSyncShalomTracking = async () => {
     setIsTrackingSyncing(true);
     try {
@@ -623,7 +861,7 @@ export const OrdersSmartManager: React.FC = () => {
       const data = await response.json().catch(() => ({}));
       if (data?.success) {
         toast(
-          `Shalom verificado: ${data.report?.totalShippedOrdersChecked || 0} paquetes, ${data.report?.newlyArrivedCount || 0} nuevos en destino, ${data.report?.notifiedCount || 0} avisos enviados`,
+          `Shalom verificado: ${data.report?.totalShippedOrdersChecked || 0} paquetes, ${data.report?.newlyArrivedCount || 0} nuevos en destino`,
           'success'
         );
       } else {
@@ -637,33 +875,29 @@ export const OrdersSmartManager: React.FC = () => {
     }
   };
 
-  // Contadores para pestañas y filtros
-  const counts = useMemo(() => {
-    const c = { all: 0, almacen: 0, alistando: 0, dejando_shalom: 0, entregado: 0, shalom: 0, olva: 0, motorizado: 0 };
-    for (const p of pedidos) {
-      const stage = getStage(p);
-      if (stage === 'entregado') {
-        c.entregado++;
-        continue;
-      }
-      c.all++;
-      if (stage === 'almacen') c.almacen++;
-      if (stage === 'alistando') c.alistando++;
-      if (stage === 'despachando') c.dejando_shalom++;
-      if (isShalomOrder(p)) c.shalom++;
-      if (isOlvaOrder(p)) c.olva++;
-      if (isMotoOrder(p)) c.motorizado++;
-    }
-    return c;
-  }, [pedidos]);
+  // Conteo de filtros activos dentro del panel "Filtros"
+  const activeDrawerFiltersCount =
+    (transportFilter !== 'all' ? 1 : 0) +
+    (prepFilter !== 'all' ? 1 : 0) +
+    (dateFilterType !== 'none' ? 1 : 0) +
+    (sortMode !== 'fecha_envio' ? 1 : 0);
 
-  const hasActiveFilters = Boolean(searchTerm) || statusFilter !== 'all' || transportFilter !== 'all' || dateFilterType !== 'none' || quickFilter !== 'none';
+  const hasAnyFilter =
+    Boolean(searchTerm) ||
+    statusFilter !== 'all' ||
+    transportFilter !== 'all' ||
+    prepFilter !== 'all' ||
+    dateFilterType !== 'none' ||
+    quickFilter !== 'none';
+
   const resetFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
     setTransportFilter('all');
+    setPrepFilter('all');
     setDateFilterType('none');
     setQuickFilter('none');
+    setSortMode('fecha_envio');
   };
 
   const applyQuickFilter = (qf: QuickFilter) => {
@@ -672,40 +906,75 @@ export const OrdersSmartManager: React.FC = () => {
     setDateFilterType('none');
   };
 
+  const selectQuickDate = (offsetDays: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const targetDate = toLocalDate(d);
+    if (dateFilterType !== 'none' && dateFilterValue === targetDate) {
+      setDateFilterType('none');
+    } else {
+      setDateFilterValue(targetDate);
+      if (dateFilterType === 'none') setDateFilterType('programado');
+      setQuickFilter('none');
+    }
+  };
+
   // -------------------------------------------------------------------------
-  // Tarjeta de pedido
+  // Tarjeta de pedido: Súper clara para celular, estado de rótulo y registro imposible de confundir
   // -------------------------------------------------------------------------
   const renderStageBadge = (order: Pedido) => {
     const stage = getStage(order);
     const isOlva = isOlvaOrder(order);
     const isMoto = order.metodo_envio_codigo === 'motorizado';
     if (stage === 'entregado') {
-      return { text: isOlva ? 'Entregado a Olva' : isMoto ? 'Entregado' : 'Entregado a Shalom', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', icon: '✓' };
+      return { text: 'Entregado', cls: 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40', icon: '✅' };
     }
     if (order.estado_envio === 'listo_para_recojo') {
-      return { text: 'Listo para recoger', cls: 'bg-teal-500/20 text-teal-200 border-teal-500/40', icon: '🏢' };
+      return { text: 'En agencia', cls: 'bg-teal-500/20 text-teal-200 border-teal-500/40', icon: '🏢' };
     }
     if (stage === 'despachando') {
-      return { text: isOlva ? 'Dejando en Olva' : isMoto ? 'En ruta' : 'Dejando en Shalom', cls: 'bg-blue-500/15 text-blue-300 border-blue-500/30', icon: isMoto ? '🛵' : '🚚' };
+      return {
+        text: isMoto ? 'En ruta' : isOlva ? 'En Olva' : 'Despachado',
+        cls: 'bg-blue-500/20 text-blue-200 border-blue-500/40',
+        icon: isMoto ? '🛵' : '🚚',
+      };
     }
     if (stage === 'alistando') {
-      return { text: 'Alistando', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30', icon: '🪡' };
+      return { text: 'Alistando', cls: 'bg-purple-500/20 text-purple-200 border-purple-500/40', icon: '🪡' };
     }
-    return { text: 'En almacén', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30', icon: '🏬' };
+    return { text: 'Almacén', cls: 'bg-amber-500/20 text-amber-200 border-amber-500/40', icon: '🏬' };
   };
 
   const renderUrgency = (order: Pedido) => {
     const f = getOrderDateOnly(order.fecha_limite);
     if (!f) return { label: 'Sin fecha de envío', cls: 'bg-white/5 text-slate-400 border-white/10' };
-    if (order.estado_envio === 'entregado') return { label: `Envío ${formatShortDate(order.fecha_limite)}`, cls: 'bg-white/5 text-slate-300 border-white/10' };
+    if (order.estado_envio === 'entregado') {
+      return { label: `Envío ${formatShortDate(order.fecha_limite)}`, cls: 'bg-white/5 text-slate-300 border-white/10' };
+    }
     const diff = daysBetween(today, f);
     if (diff < 0) {
       const n = Math.abs(diff);
-      return { label: `Atrasado ${n} ${n === 1 ? 'día' : 'días'} • ${formatShortDate(order.fecha_limite)}`, cls: 'bg-rose-500/15 text-rose-200 border-rose-500/40' };
+      return {
+        label: `Atrasado ${n}d · ${formatShortDate(order.fecha_limite)}`,
+        cls: 'bg-rose-500/15 text-rose-200 border-rose-500/40',
+      };
     }
-    if (diff === 0) return { label: `Sale HOY • ${formatShortDate(order.fecha_limite)}`, cls: 'bg-amber-500/15 text-amber-200 border-amber-500/40' };
-    if (diff === 1) return { label: `Mañana • ${formatShortDate(order.fecha_limite)}`, cls: 'bg-cyan-500/10 text-cyan-200 border-cyan-500/30' };
-    return { label: `Sale ${formatShortDate(order.fecha_limite)} • en ${diff} días`, cls: 'bg-white/5 text-slate-200 border-white/10' };
+    if (diff === 0) {
+      return {
+        label: `Sale HOY · ${formatShortDate(order.fecha_limite)}`,
+        cls: 'bg-amber-500/15 text-amber-200 border-amber-500/40',
+      };
+    }
+    if (diff === 1) {
+      return {
+        label: `Mañana · ${formatShortDate(order.fecha_limite)}`,
+        cls: 'bg-cyan-500/10 text-cyan-200 border-cyan-500/30',
+      };
+    }
+    return {
+      label: `${formatShortDate(order.fecha_limite)} (en ${diff}d)`,
+      cls: 'bg-white/5 text-slate-200 border-white/10',
+    };
   };
 
   const renderOrderCard = (order: Pedido) => {
@@ -721,11 +990,18 @@ export const OrdersSmartManager: React.FC = () => {
     const stage = getStage(order);
     const next = stage !== 'entregado' ? NEXT_STEP[stage] : null;
     const isBusy = busyOrderId === order.id;
+    const isRotulado = Boolean(order.rotulado);
+    const isRegistrado = Boolean(order.registrado_shalom);
+    const hasShalomGuide = Boolean(
+      order.shalom_numero_guia && order.shalom_numero_guia !== 'S/G' && !order.shalom_numero_guia.startsWith('SH-')
+    );
+    const isFullyPrepared = isRotulado && (!isShalom || isRegistrado);
 
-    const matchedMethod = (shippingMethods || []).find(m =>
-      m.codigo === order.metodo_envio_codigo ||
-      m.id === order.metodo_envio_codigo ||
-      (order.metodo_envio_nombre && m.nombre.toLowerCase() === order.metodo_envio_nombre.toLowerCase())
+    const matchedMethod = (shippingMethods || []).find(
+      m =>
+        m.codigo === order.metodo_envio_codigo ||
+        m.id === order.metodo_envio_codigo ||
+        (order.metodo_envio_nombre && m.nombre.toLowerCase() === order.metodo_envio_nombre.toLowerCase())
     );
 
     let agencyColor = matchedMethod?.color_borde;
@@ -742,7 +1018,7 @@ export const OrdersSmartManager: React.FC = () => {
       ? 'Motorizado'
       : isOlva
       ? 'Olva'
-      : (matchedMethod?.nombre || order.metodo_envio_nombre || 'Agencia');
+      : matchedMethod?.nombre || order.metodo_envio_nombre || 'Agencia';
 
     const clientPhone = getCleanClientPhone(order);
     const clientName = order.usuario?.nombre_completo || 'Cliente';
@@ -755,207 +1031,319 @@ export const OrdersSmartManager: React.FC = () => {
         onClick={selectionMode ? () => toggleSelect(order.id) : undefined}
         aria-label={`Pedido ${order.codigo_seguimiento} de ${clientName}`}
         style={{ borderLeftColor: agencyColor }}
-        className={`relative flex flex-col rounded-3xl border border-l-4 backdrop-blur-xl transition-all ${
+        className={`relative flex flex-col rounded-3xl border border-l-4 backdrop-blur-xl transition-all overflow-hidden ${
           selectionMode ? 'cursor-pointer select-none' : ''
         } ${
           isSelected
-            ? 'bg-cyan-950/50 border-cyan-400 ring-2 ring-cyan-400/60'
+            ? 'bg-cyan-950/55 border-cyan-400 ring-2 ring-cyan-400/70'
+            : isFullyPrepared && stage !== 'entregado'
+            ? 'bg-emerald-950/20 border-emerald-500/35'
             : isReadyForPickup
-            ? 'bg-teal-950/30 border-white/10 hover:border-white/20'
-            : 'bg-slate-950/50 border-white/10 hover:border-white/20'
+            ? 'bg-teal-950/30 border-teal-500/30'
+            : 'bg-slate-950/60 border-white/10 hover:border-white/20'
         }`}
       >
-        <div className="p-4 space-y-3 flex-1">
-          {/* Fila superior: selección, código y agencia */}
+        <div className="p-3.5 sm:p-4 space-y-2.5 flex-1">
+          {/* FILA 1: Checkbox + Código + Agencia + Carpeta */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <button
                 type="button"
-                onClick={(e) => {
+                onClick={e => {
                   e.stopPropagation();
                   toggleSelect(order.id);
                 }}
                 aria-pressed={isSelected}
-                aria-label={isSelected ? 'Quitar de la selección' : 'Seleccionar pedido'}
-                className="-m-1.5 p-1.5 shrink-0"
+                aria-label={isSelected ? 'Quitar selección' : 'Seleccionar pedido'}
+                className="-m-1.5 p-1.5 shrink-0 cursor-pointer"
               >
-                <span className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors border-2 ${
-                  isSelected ? 'bg-cyan-400 border-cyan-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-transparent hover:border-cyan-400'
-                }`}>
+                <span
+                  className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors border-2 ${
+                    isSelected
+                      ? 'bg-cyan-400 border-cyan-400 text-slate-950'
+                      : 'border-slate-600 bg-slate-900 text-transparent hover:border-cyan-400'
+                  }`}
+                >
                   <Check className="w-4 h-4 stroke-[3]" />
                 </span>
               </button>
-              <span className="font-mono text-xs font-bold text-slate-300 tracking-wider truncate">
+              <span className="font-mono text-xs font-black text-slate-200 truncate">
                 #{order.codigo_seguimiento}
+              </span>
+              <span
+                className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase border shrink-0"
+                style={{
+                  backgroundColor: `${agencyColor}20`,
+                  borderColor: `${agencyColor}55`,
+                  color: agencyColor === '#ffffff' ? '#ffffff' : agencyColor,
+                }}
+              >
+                {agencyBadgeLabel}
               </span>
             </div>
 
-            <span
-              className="px-2.5 py-1 rounded-xl text-[11px] font-black uppercase tracking-wide border shrink-0"
-              style={{
-                backgroundColor: `${agencyColor}1f`,
-                borderColor: `${agencyColor}55`,
-                color: agencyColor === '#ffffff' ? '#ffffff' : agencyColor,
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation();
+                setSwipeTargetOrder(order);
               }}
+              className={`min-h-7 px-2.5 rounded-xl text-[11px] font-black border flex items-center gap-1 shrink-0 cursor-pointer hover:brightness-125 ${badge.cls}`}
+              title="Toca para mover de carpeta"
             >
-              {agencyBadgeLabel}
-            </span>
+              <span>{badge.icon}</span>
+              <span>{badge.text}</span>
+            </button>
           </div>
 
-          {/* Clienta */}
-          <div className="space-y-1.5">
+          {/* FILA 2: ESTADO DE ROTULADO Y REGISTRADO (IMPOSIBLE DE NO VER EN CELULAR) */}
+          <div
+            className={`grid gap-1.5 ${isShalom ? 'grid-cols-2' : 'grid-cols-1'}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => updatePedido(order.id, { rotulado: !isRotulado })}
+              aria-pressed={isRotulado}
+              className={`min-h-9 px-2.5 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer ${
+                isRotulado
+                  ? 'bg-cyan-500/20 border-cyan-400/70 text-cyan-200 shadow-sm shadow-cyan-500/15'
+                  : 'bg-slate-900/70 border-dashed border-amber-400/45 text-amber-200/90 hover:bg-amber-500/10'
+              }`}
+              title={isRotulado ? 'Ya rotulado (toca para desmarcar)' : 'Toca para marcar como rotulado'}
+            >
+              {isRotulado ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-cyan-300 shrink-0" />
+                  <span>ROTULADO</span>
+                </>
+              ) : (
+                <>
+                  <Tag className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span>SIN ROTULAR</span>
+                </>
+              )}
+            </button>
+
+            {isShalom && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isRegistrado) {
+                    setShalomRegisterOrders([order]);
+                  } else {
+                    updatePedido(order.id, { registrado_shalom: false });
+                  }
+                }}
+                aria-pressed={isRegistrado}
+                className={`min-h-9 px-2.5 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer ${
+                  isRegistrado
+                    ? hasShalomGuide || order.shalom_ose_id
+                      ? 'bg-emerald-500/20 border-emerald-400/70 text-emerald-200 shadow-sm shadow-emerald-500/15'
+                      : 'bg-indigo-500/20 border-indigo-400/70 text-indigo-200'
+                    : 'bg-slate-900/70 border-dashed border-rose-400/45 text-rose-200/90 hover:bg-rose-500/10'
+                }`}
+                title={
+                  isRegistrado
+                    ? 'Registrado en Shalom (toca para desmarcar)'
+                    : 'Sin registrar en Shalom — toca para registrar ahora'
+                }
+              >
+                {isRegistrado ? (
+                  <>
+                    <ShieldCheck className="w-4 h-4 text-emerald-300 shrink-0" />
+                    <span>REGISTRADO</span>
+                  </>
+                ) : (
+                  <>
+                    <Truck className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                    <span>SIN REGISTRAR</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* FILA 3: CLIENTA + TELÉFONO + WHATSAPP */}
+          <div className="space-y-1">
             <div className="flex items-baseline justify-between gap-2">
               <h4 className="text-[15px] font-black text-white tracking-tight truncate">{clientName}</h4>
-              {dni && (
-                <span className="text-[11px] font-mono text-slate-400 shrink-0">DNI {dni}</span>
-              )}
+              {dni && <span className="text-[11px] font-mono text-slate-400 shrink-0">DNI {dni}</span>}
             </div>
 
             <div className="flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
               <span className="text-xs font-mono font-semibold text-slate-300 truncate">
-                {clientPhone ? `+51 ${clientPhone.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}` : 'Sin teléfono'}
+                {clientPhone ? `+51 ${clientPhone.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}` : 'Sin celular'}
               </span>
               {clientPhone ? (
                 <a
-                  href={`https://wa.me/51${clientPhone}?text=${encodeURIComponent(`¡Hola ${clientName}! Te escribimos de ${tallerConfig?.nombre_taller || 'Encomi Envíos'} respecto a tu pedido #${order.codigo_seguimiento}.`)}`}
+                  href={`https://wa.me/51${clientPhone}?text=${encodeURIComponent(
+                    `¡Hola ${clientName}! Te escribimos de ${
+                      tallerConfig?.nombre_taller || 'Encomi Envíos'
+                    } respecto a tu pedido #${order.codigo_seguimiento}.`
+                  )}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 min-h-9 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black active:scale-95 transition-all shrink-0"
-                  title={`Escribir a ${clientName} por WhatsApp`}
+                  className="inline-flex items-center gap-1 min-h-8 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black active:scale-95 transition-all shrink-0"
                 >
-                  <MessageCircle className="w-4 h-4 fill-current" />
+                  <MessageCircle className="w-3.5 h-3.5 fill-current" />
                   <span>WhatsApp</span>
                 </a>
               ) : (
                 <button
                   type="button"
                   onClick={() => setEditingPedido(order)}
-                  className="min-h-9 px-3 rounded-xl border border-dashed border-white/20 text-xs font-bold text-slate-300 hover:text-cyan-300 hover:border-cyan-400/50"
+                  className="min-h-8 px-2.5 rounded-xl border border-dashed border-white/20 text-[11px] font-bold text-slate-300 hover:text-cyan-300 cursor-pointer"
                 >
-                  + Agregar teléfono
+                  + Celular
                 </button>
               )}
             </div>
           </div>
 
-          {/* Fecha de envío con urgencia */}
-          <div className={`flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border ${urgency.cls}`} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 min-w-0">
-              <Calendar className="w-4 h-4 shrink-0 opacity-80" />
+          {/* FILA 4: FECHA DE ENVÍO */}
+          <div
+            className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl border ${urgency.cls}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Calendar className="w-3.5 h-3.5 shrink-0 opacity-85" />
               <span className="text-xs font-bold truncate">{urgency.label}</span>
             </div>
             {stage !== 'entregado' && (
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={() => {
                   setChangeDateOrder(order);
                   setChangeDateCustomValue(getOrderDateOnly(order.fecha_limite) || today);
                 }}
-                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/20 hover:bg-black/40 text-xs font-bold opacity-90 hover:opacity-100 transition-all border border-white/10 active:scale-95"
-                title="Cambiar fecha programada de envío"
+                className="shrink-0 px-2 py-0.5 rounded-lg bg-black/25 hover:bg-black/45 text-[11px] font-bold border border-white/10 cursor-pointer"
               >
-                <span>Cambiar</span>
+                Cambiar
               </button>
             )}
           </div>
 
-          {/* Destino */}
-          <div className="flex items-start gap-2">
-            <MapPin className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-            <p className="text-xs leading-relaxed text-slate-300 break-words line-clamp-3" title={order.destino_detalle}>
-              {order.destino_detalle}
-            </p>
+          {/* FILA 5: DESTINO + AGENCIA SHALOM + GUÍA */}
+          <div className="space-y-1.5">
+            <div className="flex items-start gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+              <p className="text-xs leading-snug text-slate-300 break-words line-clamp-2" title={order.destino_detalle}>
+                {order.destino_detalle}
+              </p>
+            </div>
+
+            {isShalom &&
+              (() => {
+                const agencyInfo = resolveShalomAgencyDetails(order.destino_detalle);
+                return (
+                  <div className="space-y-1.5">
+                    {!agencyInfo.isVerified ? (
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setEditingPedido(order);
+                        }}
+                        className="w-full flex items-center gap-1.5 text-left text-[11px] text-amber-100 bg-amber-500/15 px-2.5 py-1.5 rounded-xl border border-amber-500/40 cursor-pointer"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>
+                          <strong>Agencia no reconocida.</strong> Toca para corregir.
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-[11px] text-rose-200 bg-rose-950/40 px-2.5 py-1 rounded-xl border border-rose-500/25">
+                        <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span className="truncate">
+                          <strong className="text-white">{agencyInfo.officialDestination}</strong>
+                        </span>
+                        {agencyInfo.code && (
+                          <span className="text-[10px] font-mono text-rose-200 bg-rose-900/60 px-1.5 rounded font-black shrink-0 ml-auto">
+                            {agencyInfo.code}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {isRegistrado && (
+                      <div
+                        className="flex items-center justify-between gap-2 text-[11px] text-emerald-200 bg-emerald-950/50 px-2.5 py-1.5 rounded-xl border border-emerald-500/35"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span className="truncate">
+                            {order.shalom_numero_guia || order.shalom_ose_id ? (
+                              <>
+                                Guía:{' '}
+                                <strong className="text-white font-mono">
+                                  {order.shalom_numero_guia || `OSE #${order.shalom_ose_id}`}
+                                </strong>
+                              </>
+                            ) : (
+                              <span className="text-amber-300">Registrado (sin guía aún)</span>
+                            )}
+                          </span>
+                          {order.shalom_clave_recojo && (
+                            <span className="text-[10px] font-mono font-black text-amber-200 bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-500/35 shrink-0">
+                              PIN {order.shalom_clave_recojo}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleUnlinkShalom(order)}
+                          className="p-1 -m-1 rounded-lg text-slate-400 hover:text-rose-400 shrink-0 cursor-pointer"
+                          title="Desvincular guía Shalom"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
           </div>
 
-          {/* Agencia destino Shalom y guía */}
-          {isShalom && (() => {
-            const agencyInfo = resolveShalomAgencyDetails(order.destino_detalle);
-            return (
-              <div className="space-y-1.5">
-                {!agencyInfo.isVerified ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingPedido(order);
-                    }}
-                    className="w-full flex items-center gap-1.5 text-left text-xs text-amber-100 bg-amber-500/15 px-3 py-2 rounded-xl border border-amber-500/40"
-                  >
-                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span><strong>Agencia Shalom no reconocida.</strong> Toca para corregir el destino antes de registrar.</span>
-                  </button>
-                ) : (
-                <div className="flex items-center gap-1.5 text-xs text-rose-200 bg-rose-950/40 px-3 py-1.5 rounded-xl border border-rose-500/25">
-                  <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                  <span className="truncate">Agencia: <strong className="text-white">{agencyInfo.officialDestination}</strong></span>
-                  {agencyInfo.code && (
-                    <span className="text-[10px] font-mono text-rose-200 bg-rose-900/60 px-1.5 rounded-md font-black shrink-0">
-                      {agencyInfo.code}
-                    </span>
-                  )}
-                </div>
-                )}
-
-                {order.registrado_shalom && (
-                  <div className="flex items-center justify-between gap-2 text-xs text-emerald-200 bg-emerald-950/40 px-3 py-1.5 rounded-xl border border-emerald-500/30" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      <span className="truncate">
-                        {order.shalom_numero_guia || order.shalom_ose_id ? (
-                          <>Guía: <strong className="text-white">{order.shalom_numero_guia || `OSE #${order.shalom_ose_id}`}</strong></>
-                        ) : (
-                          <span className="text-amber-300">Registrado (sin guía)</span>
-                        )}
-                      </span>
-                      {order.shalom_clave_recojo && (
-                        <span className="text-[11px] font-mono text-amber-200 bg-amber-950/70 px-1.5 rounded-md border border-amber-500/30 shrink-0">
-                          Clave {order.shalom_clave_recojo}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleUnlinkShalom(order)}
-                      className="p-1 -m-1 rounded-lg text-slate-400 hover:text-rose-400 shrink-0"
-                      title="Desvincular guía para registrar de nuevo"
-                      aria-label="Desvincular guía de Shalom"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
           {isReadyForPickup && (
-            <div className="px-3 py-2 rounded-2xl bg-teal-950/60 border border-teal-500/40 text-teal-100 text-xs">
-              <strong className="block text-teal-300">🏢 Llegó a la agencia de destino</strong>
-              <span className="font-mono text-[11px] text-teal-200/80">
-                N° envío {order.shalom_numero_guia?.replace(/\D/g, '') || order.codigo_seguimiento}
-                {order.shalom_clave_recojo ? ` • Clave ${order.shalom_clave_recojo}` : ''}
+            <div className="px-2.5 py-1.5 rounded-xl bg-teal-950/60 border border-teal-500/40 text-teal-100 text-xs">
+              <strong className="text-teal-300">🏢 Llegó a agencia destino</strong>
+              <span className="block font-mono text-[11px] text-teal-200/80">
+                Envío {order.shalom_numero_guia?.replace(/\D/g, '') || order.codigo_seguimiento}
+                {order.shalom_clave_recojo ? ` · Clave ${order.shalom_clave_recojo}` : ''}
               </span>
             </div>
           )}
 
-          {/* Datos adicionales de la agencia */}
-          {order.campos_personalizados && Object.keys(order.campos_personalizados).length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(order.campos_personalizados)
-                .filter(([, val]) => val !== undefined && val !== null && String(val).trim() !== '')
-                .map(([label, val]) => (
-                  <span key={label} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-950/70 border border-indigo-500/30 text-indigo-200 text-[11px]">
-                    <span className="text-slate-400">{label}:</span>
-                    <strong className="text-white">{String(val)}</strong>
+          {/* Campos extra y notas */}
+          {(() => {
+            const visibleExtras = getVisibleCustomFields(order.campos_personalizados, matchedMethod, {
+              dni,
+              phone: clientPhone,
+              name: clientName,
+              destination: order.destino_detalle,
+            });
+            if (visibleExtras.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-1">
+                {visibleExtras.map(field => (
+                  <span
+                    key={field.key}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-950/70 border border-indigo-500/30 text-indigo-200 text-[11px]"
+                  >
+                    <span className="text-slate-400">{field.label}:</span>
+                    <strong className="text-white">{field.value}</strong>
                   </span>
                 ))}
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {order.observaciones_cliente && (
-            <p className="text-xs text-slate-300 bg-white/5 px-3 py-2 rounded-xl break-words">
-              <span className="text-slate-500 font-bold">Nota: </span>{order.observaciones_cliente}
+            <p className="text-xs text-slate-300 bg-white/5 px-2.5 py-1.5 rounded-xl break-words">
+              <span className="text-slate-400 font-bold">Nota: </span>
+              {order.observaciones_cliente}
             </p>
           )}
 
@@ -965,110 +1353,92 @@ export const OrdersSmartManager: React.FC = () => {
               target="_blank"
               rel="noopener noreferrer"
               onClick={e => e.stopPropagation()}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 hover:text-cyan-300"
+              className="inline-flex items-center gap-1 text-xs font-bold text-cyan-400 hover:text-cyan-300"
             >
               <MapPin className="w-3.5 h-3.5" />
-              <span>Ver ubicación en Google Maps</span>
+              <span>Ver mapa</span>
               <ExternalLink className="w-3 h-3" />
             </a>
           )}
 
-          {/* Indicadores: rotulado, registro Shalom, duplicado */}
-          <div className="flex flex-wrap items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          {isDuplicate && (
             <button
               type="button"
-              onClick={() => updatePedido(order.id, { rotulado: !order.rotulado })}
-              aria-pressed={Boolean(order.rotulado)}
-              className={`min-h-8 px-2.5 rounded-xl text-[11px] font-bold border transition-all flex items-center gap-1 ${
-                order.rotulado
-                  ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40'
-                  : 'bg-transparent text-slate-400 border-dashed border-white/15 hover:text-slate-200'
-              }`}
-              title={order.rotulado ? 'Rotulado (toca para quitar)' : 'Marcar como rotulado'}
+              onClick={e => {
+                e.stopPropagation();
+                applyQuickFilter('duplicados');
+              }}
+              className="w-full py-1.5 px-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              {order.rotulado ? <Check className="w-3.5 h-3.5" /> : <span>+</span>}
-              <span>Rotulado</span>
+              <Users className="w-3.5 h-3.5" />
+              <span>Esta clienta tiene {dupInfo?.count} pedidos activos (ver todos)</span>
+            </button>
+          )}
+
+          <p className="text-[10.5px] text-slate-500">
+            Creado {formatOrderTime(order.created_at)}
+            {wasEdited(order.created_at, order.updated_at) && <> · Editado {formatOrderTime(order.updated_at)}</>}
+          </p>
+        </div>
+
+        {/* PIE DE TARJETA: Acciones directas claras + Botón principal */}
+        <div className="px-3.5 pb-3.5 pt-2.5 border-t border-white/8 bg-slate-950/40 space-y-2" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSwipeTargetOrder(order)}
+              className="flex-1 min-h-9 px-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+              title="Mover de carpeta"
+            >
+              <FolderInput className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+              <span>Mover</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedLabelOrder(order)}
+              className="flex-1 min-h-9 px-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+              title="Imprimir rótulo"
+            >
+              <Printer className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+              <span>Rótulo</span>
             </button>
 
             {isShalom && (
               <button
                 type="button"
-                onClick={() => updatePedido(order.id, { registrado_shalom: !order.registrado_shalom })}
-                aria-pressed={Boolean(order.registrado_shalom)}
-                className={`min-h-8 px-2.5 rounded-xl text-[11px] font-bold border transition-all flex items-center gap-1 ${
-                  order.registrado_shalom
-                    ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                    : 'bg-transparent text-slate-400 border-dashed border-white/15 hover:text-slate-200'
+                onClick={() => setShalomRegisterOrders([order])}
+                className={`flex-1 min-h-9 px-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer ${
+                  isRegistrado
+                    ? 'bg-indigo-500/15 hover:bg-indigo-500/25 border-indigo-500/35 text-indigo-200'
+                    : 'bg-blue-600/20 hover:bg-blue-600/35 border-blue-500/40 text-blue-200'
                 }`}
-                title={order.registrado_shalom ? 'Registrado en Shalom (toca para quitar)' : 'Marcar como registrado en Shalom'}
+                title="Registrar en Shalom Pro"
               >
-                {order.registrado_shalom ? <Check className="w-3.5 h-3.5" /> : <span>+</span>}
-                <span>Registrado en Shalom</span>
+                <Truck className="w-3.5 h-3.5 shrink-0" />
+                <span>Shalom</span>
               </button>
             )}
 
-            {isDuplicate && (
-              <button
-                type="button"
-                onClick={() => applyQuickFilter('duplicados')}
-                className="min-h-8 px-2.5 rounded-xl text-[11px] font-bold border bg-amber-500/15 text-amber-200 border-amber-500/40 flex items-center gap-1"
-                title="Esta clienta tiene otros pedidos activos: revisa si se pueden juntar en un solo envío"
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>{dupInfo?.count} pedidos activos</span>
-              </button>
-            )}
-          </div>
-
-          <p className="text-[11px] text-slate-500">
-            Creado {formatOrderTime(order.created_at)}
-            {wasEdited(order.created_at, order.updated_at) && <> • Editado {formatOrderTime(order.updated_at)}</>}
-          </p>
-        </div>
-
-        {/* Pie: estado + acciones */}
-        <div className="px-4 pb-4 pt-3 border-t border-white/8 space-y-2.5" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={() => setSwipeTargetOrder(order)}
-              className={`min-h-9 px-3 rounded-xl text-xs font-black border flex items-center gap-1.5 hover:brightness-125 transition-all ${badge.cls}`}
-              title="Cambiar estado"
+              onClick={() => setEditingPedido(order)}
+              className="min-h-9 min-w-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center justify-center cursor-pointer shrink-0"
+              title="Editar pedido"
+              aria-label="Editar pedido"
             >
-              <span>{badge.icon}</span>
-              <span>{badge.text}</span>
-              <ArrowUpDown className="w-3 h-3 opacity-60" />
+              <Edit3 className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setSelectedLabelOrder(order)}
-                className="min-h-9 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-bold flex items-center gap-1.5"
-                title="Ver e imprimir rótulo"
-              >
-                <Printer className="w-4 h-4 text-cyan-300" />
-                <span className="hidden min-[400px]:inline">Rótulo</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditingPedido(order)}
-                className="min-h-9 min-w-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center justify-center"
-                title="Editar pedido"
-                aria-label="Editar pedido"
-              >
-                <Edit3 className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteSingle(order)}
-                className="min-h-9 min-w-9 rounded-xl bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-400 flex items-center justify-center"
-                title="Eliminar pedido"
-                aria-label="Eliminar pedido"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleDeleteSingle(order)}
+              className="min-h-9 min-w-9 rounded-xl bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-400 flex items-center justify-center cursor-pointer shrink-0"
+              title="Eliminar pedido"
+              aria-label="Eliminar pedido"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
 
           {next && (
@@ -1076,13 +1446,19 @@ export const OrdersSmartManager: React.FC = () => {
               type="button"
               disabled={isBusy}
               onClick={() => handleSingleOrderMove(order.id, next.envio, next.prod)}
-              className={`w-full min-h-11 rounded-2xl text-sm font-black flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all disabled:opacity-60 ${next.className}`}
+              className={`w-full min-h-10 rounded-2xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 shadow-lg active:scale-[0.98] transition-all disabled:opacity-60 cursor-pointer ${next.className}`}
             >
               {isBusy ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
                 <>
-                  <span>{stage === 'alistando' && isMoto ? 'Enviar con motorizado' : next.label}</span>
+                  <span>
+                    {stage === 'alistando' && isMoto
+                      ? 'Enviar con motorizado'
+                      : stage === 'despachando' && !isShalom
+                      ? 'Marcar como Entregado'
+                      : next.label}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -1094,19 +1470,21 @@ export const OrdersSmartManager: React.FC = () => {
   };
 
   const isAnyModalOpen = Boolean(
-    showShalomRegister ||
-    showBulkPrint ||
-    selectedLabelOrder ||
-    editingPedido ||
-    showDeleteConfirm ||
-    notifyModalData ||
-    deliveryTargetOrders ||
-    swipeTargetOrder ||
-    changeDateOrder ||
-    isProcessing
+    shalomRegisterOrders ||
+      showBulkPrint ||
+      selectedLabelOrder ||
+      editingPedido ||
+      showDeleteConfirm ||
+      notifyModalData ||
+      deliveryTargetOrders ||
+      swipeTargetOrder ||
+      changeDateOrder ||
+      showFiltersSheet ||
+      showHistoryModal ||
+      showBulkMoveSheet ||
+      isProcessing
   );
 
-  // Ocultar dock y encabezado del panel mientras hay un modal abierto
   useEffect(() => {
     if (isAnyModalOpen) {
       document.body.classList.add('has-active-modal');
@@ -1121,217 +1499,127 @@ export const OrdersSmartManager: React.FC = () => {
     };
   }, [isAnyModalOpen]);
 
-  // Con pedidos seleccionados, la barra de acciones ocupa el lugar del dock inferior
   useEffect(() => {
     document.body.classList.toggle('has-order-selection', selectionMode);
     return () => document.body.classList.remove('has-order-selection');
   }, [selectionMode]);
 
-  const statusTabs: { id: StatusFilter; label: string; count: number; active: string }[] = [
-    { id: 'all', label: 'Activos', count: counts.all, active: 'bg-cyan-500 text-slate-950' },
-    { id: 'almacen', label: 'En almacén', count: counts.almacen, active: 'bg-amber-500 text-slate-950' },
-    { id: 'alistando', label: 'Alistando', count: counts.alistando, active: 'bg-purple-600 text-white' },
-    { id: 'dejando_shalom', label: 'Despachados', count: counts.dejando_shalom, active: 'bg-blue-600 text-white' },
-    { id: 'entregado', label: 'Entregados', count: counts.entregado, active: 'bg-emerald-500 text-slate-950' },
-  ];
-
-  const transportChips: { id: 'all' | 'shalom' | 'olva' | 'motorizado'; label: string; count: number; active: string }[] = [
-    { id: 'all', label: 'Todas', count: counts.all, active: 'bg-white/15 text-white border-white/30' },
-    { id: 'shalom', label: 'Shalom', count: counts.shalom, active: 'bg-red-500/20 text-red-200 border-red-500/50' },
-    { id: 'olva', label: 'Olva', count: counts.olva, active: 'bg-yellow-500/20 text-yellow-200 border-yellow-500/50' },
-    { id: 'motorizado', label: 'Motorizado', count: counts.motorizado, active: 'bg-blue-500/20 text-blue-200 border-blue-500/50' },
-  ];
-
-  const kpiCards: { id: QuickFilter; label: string; value: number; hint: string; icon: React.ElementType; tone: string; activeTone: string }[] = [
-    { id: 'hoy', label: 'Salen hoy', value: kpis.hoy, hint: 'Programados para hoy', icon: Clock, tone: 'text-amber-300', activeTone: 'border-amber-400 bg-amber-500/15' },
-    { id: 'atrasados', label: 'Atrasados', value: kpis.atrasados, hint: 'Pasó su fecha de envío', icon: Flame, tone: kpis.atrasados > 0 ? 'text-rose-300' : 'text-slate-400', activeTone: 'border-rose-400 bg-rose-500/15' },
-    { id: 'none', label: 'Por alistar', value: counts.almacen, hint: 'En almacén', icon: Boxes, tone: 'text-cyan-300', activeTone: 'border-cyan-400 bg-cyan-500/15' },
-    { id: 'entregados_hoy', label: 'Entregados hoy', value: kpis.entregadosHoy, hint: 'Cerrados hoy', icon: PackageCheck, tone: 'text-emerald-300', activeTone: 'border-emerald-400 bg-emerald-500/15' },
+  const statusTabs: { id: StatusFilter; emoji: string; label: string; count: number; active: string }[] = [
+    { id: 'all', emoji: '📦', label: 'Activos', count: counts.all, active: 'bg-cyan-500 text-slate-950' },
+    { id: 'almacen', emoji: '🏬', label: 'Almacén', count: counts.almacen, active: 'bg-amber-500 text-slate-950' },
+    { id: 'alistando', emoji: '🪡', label: 'Alistando', count: counts.alistando, active: 'bg-purple-600 text-white' },
+    { id: 'dejando_shalom', emoji: '🚚', label: 'Despachados', count: counts.dejando_shalom, active: 'bg-blue-600 text-white' },
+    { id: 'entregado', emoji: '✅', label: 'Entregados', count: counts.entregado, active: 'bg-emerald-500 text-slate-950' },
   ];
 
   return (
-    <div className="space-y-4 animate-fadeIn pb-32">
-
-      {/* Barra de acciones en lote: abajo, al alcance del pulgar (reemplaza al dock mientras hay selección) */}
-      {selectionMode && !isAnyModalOpen && createPortal(
-        <div className="fixed bottom-safe left-0 right-0 mx-auto z-[9990] w-[calc(100%-1rem)] max-w-4xl animate-slideUp print:hidden admin-mass-action-bar" data-no-print="true">
-          <div className="rounded-3xl bg-slate-900/95 border-2 border-cyan-500/60 backdrop-blur-3xl shadow-2xl shadow-black/60 p-2 sm:p-2.5 space-y-2">
-            <div className="flex items-center justify-between gap-2 px-1">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="min-w-8 h-8 px-2 rounded-xl bg-cyan-400 text-slate-950 font-black text-sm flex items-center justify-center">
-                  {selectedIds.length}
-                </span>
-                <span className="text-sm font-bold text-white truncate">
-                  {selectedIds.length === 1 ? 'seleccionado' : 'seleccionados'}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  onClick={selectAll}
-                  className="min-h-9 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 text-xs font-bold"
-                >
-                  {allFilteredSelected ? 'Quitar todos' : `Todos (${filteredOrders.length})`}
-                </button>
-                <button
-                  onClick={clearSelection}
-                  className="min-h-9 min-w-9 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center"
-                  aria-label="Cancelar selección"
-                  title="Cancelar selección (Esc)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              <button
-                disabled={isProcessing}
-                onClick={() => handleMassStatusUpdate('pendiente', 'bordando')}
-                className="shrink-0 min-h-11 px-3.5 rounded-2xl bg-purple-600/25 hover:bg-purple-600 text-purple-100 border border-purple-500/40 text-xs font-black flex items-center gap-1.5"
-              >
-                🪡 Alistando
-              </button>
-              <button
-                disabled={isProcessing}
-                onClick={() => handleMassStatusUpdate('en_camino', 'completado')}
-                className="shrink-0 min-h-11 px-3.5 rounded-2xl bg-blue-600/25 hover:bg-blue-600 text-blue-100 border border-blue-500/40 text-xs font-black flex items-center gap-1.5"
-              >
-                🚚 Despachado
-              </button>
-              <button
-                disabled={isProcessing}
-                onClick={() => handleMassStatusUpdate('entregado', 'completado')}
-                className="shrink-0 min-h-11 px-3.5 rounded-2xl bg-emerald-600/25 hover:bg-emerald-600 text-emerald-100 border border-emerald-500/40 text-xs font-black flex items-center gap-1.5"
-              >
-                ✓ Entregado
-              </button>
-              <span className="w-px h-7 bg-white/10 shrink-0 mx-0.5" aria-hidden="true" />
-              <button
-                disabled={isProcessing}
-                onClick={() => {
-                  if (selectedShalomOrders.length === 0) {
-                    toast('Ninguno de los seleccionados es envío por Shalom.', 'warning');
-                    return;
-                  }
-                  setShowShalomRegister(true);
-                }}
-                className="shrink-0 min-h-11 px-3.5 rounded-2xl bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-600/30"
-              >
-                <Truck className="w-4 h-4" />
-                Registrar en Shalom{selectedShalomOrders.length > 0 ? ` (${selectedShalomOrders.length})` : ''}
-              </button>
-              <button
-                disabled={isProcessing}
-                onClick={() => setShowBulkPrint(true)}
-                className="shrink-0 min-h-11 px-3.5 rounded-2xl bg-white/5 hover:bg-white/10 text-white border border-white/15 text-xs font-black flex items-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" />
-                Rótulos ({selectedOrders.length})
-              </button>
-              <button
-                disabled={isProcessing}
-                onClick={() => setShowDeleteConfirm(true)}
-                className="shrink-0 min-h-11 min-w-11 rounded-2xl bg-rose-600/20 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 flex items-center justify-center"
-                aria-label="Eliminar seleccionados"
-                title="Eliminar seleccionados"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Indicadores del día */}
-      <section aria-label="Resumen del día" className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5">
-        {kpiCards.map(card => {
-          const isActive = card.id === 'none' ? statusFilter === 'almacen' && quickFilter === 'none' : quickFilter === card.id;
-          const Icon = card.icon;
-          return (
-            <button
-              key={card.label}
-              type="button"
-              onClick={() => {
-                if (card.id === 'none') {
-                  setQuickFilter('none');
-                  setDateFilterType('none');
-                  setStatusFilter(prev => (prev === 'almacen' ? 'all' : 'almacen'));
-                } else {
-                  applyQuickFilter(card.id);
-                }
-              }}
-              aria-pressed={isActive}
-              className={`text-left px-3 py-2.5 sm:p-4 rounded-2xl sm:rounded-3xl border transition-all active:scale-[0.98] ${
-                isActive ? card.activeTone : 'border-white/10 bg-slate-950/50 hover:bg-slate-900/60'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-slate-400">{card.label}</span>
-                <Icon className={`w-4 h-4 ${card.tone}`} />
-              </div>
-              <div className={`text-2xl sm:text-3xl font-black sm:mt-1 leading-tight ${card.tone}`}>{card.value}</div>
-              <div className="hidden sm:block text-[11px] text-slate-500 mt-0.5 truncate">{card.hint}</div>
-            </button>
-          );
-        })}
-      </section>
-
-      {/* Búsqueda y filtros */}
-      <section className="glass-panel p-3 sm:p-4 rounded-3xl border border-white/10 space-y-3 shadow-xl">
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
-          <div className="relative w-full sm:w-auto sm:flex-1 min-w-0">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              ref={searchInputRef}
-              type="search"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Buscar cliente, DNI, celular, código o guía"
-              aria-label="Buscar pedidos"
-              className="w-full min-h-11 pl-10 pr-10 bg-slate-950/60 border border-white/10 rounded-2xl text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-            />
-            {searchTerm ? (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-white"
-                aria-label="Borrar búsqueda"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            ) : (
-              <kbd className="hidden md:block absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded-md border border-white/15 text-[10px] font-mono text-slate-500">/</kbd>
-            )}
-          </div>
-
-          <label className="relative flex-1 sm:flex-none" title="Ordenar pedidos">
-            <span className="sr-only">Ordenar</span>
-            <select
-              value={sortMode}
-              onChange={e => setSortMode(e.target.value as SortMode)}
-              className="appearance-none w-full min-h-11 pl-9 pr-3 bg-slate-950/60 border border-white/10 rounded-2xl text-xs font-bold text-slate-200 focus:outline-none focus:border-cyan-500"
-            >
-              <option value="fecha_envio">Ordenar: fecha de envío</option>
-              <option value="recientes">Ordenar: más recientes</option>
-              <option value="antiguos">Ordenar: más antiguos</option>
-            </select>
-            <ArrowUpDown className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </label>
-
-          <button
-            onClick={handleManualRefresh}
-            disabled={isRefreshing}
-            title="Actualizar pedidos"
-            aria-label="Actualizar pedidos"
-            className="shrink-0 min-h-11 min-w-11 bg-slate-950/60 hover:bg-slate-900 text-slate-300 hover:text-white border border-white/10 rounded-2xl flex items-center justify-center disabled:opacity-50"
+    <div className="space-y-3 animate-fadeIn pb-32">
+      {/* BARRA DE ACCIONES EN LOTE (Compacta en 2 filas: 100% visible en celulares sin perder botones) */}
+      {selectionMode &&
+        !isAnyModalOpen &&
+        createPortal(
+          <div
+            className="fixed bottom-safe left-0 right-0 mx-auto z-[9990] w-[calc(100%-0.75rem)] max-w-3xl animate-slideUp print:hidden admin-mass-action-bar"
+            data-no-print="true"
           >
-            <RefreshCw className={`w-4 h-4 text-cyan-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+            <div className="rounded-3xl bg-slate-900/95 border-2 border-cyan-500/60 backdrop-blur-3xl shadow-2xl shadow-black/70 p-2.5 space-y-2">
+              <div className="flex items-center justify-between gap-2 px-0.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="min-w-7 h-7 px-2 rounded-xl bg-cyan-400 text-slate-950 font-black text-xs flex items-center justify-center">
+                    {selectedIds.length}
+                  </span>
+                  <span className="text-xs sm:text-sm font-black text-white truncate">
+                    {selectedIds.length === 1 ? 'paquete seleccionado' : 'paquetes seleccionados'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={selectAll}
+                    className="min-h-8 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 text-xs font-bold cursor-pointer"
+                  >
+                    {allFilteredSelected ? 'Quitar todos' : `Todos (${filteredOrders.length})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="min-h-8 min-w-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 flex items-center justify-center cursor-pointer"
+                    aria-label="Cancelar selección"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
 
-        {/* Pestañas del flujo de trabajo */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1" role="tablist" aria-label="Estado del pedido">
+              <div className="grid grid-cols-5 gap-1.5">
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => setShowBulkMoveSheet(true)}
+                  className="min-h-12 px-1.5 rounded-2xl bg-white/8 hover:bg-white/15 text-white border border-white/15 flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-black cursor-pointer"
+                >
+                  <FolderInput className="w-4 h-4 text-cyan-300" />
+                  <span>Mover</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => handleMassStatusUpdate('entregado', 'completado')}
+                  className="min-h-12 px-1.5 rounded-2xl bg-emerald-500/25 hover:bg-emerald-500 text-emerald-100 hover:text-slate-950 border border-emerald-500/50 flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-black cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Entregar</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => {
+                    if (selectedShalomOrders.length === 0) {
+                      toast('Ninguno de los seleccionados es de Shalom.', 'warning');
+                      return;
+                    }
+                    setShalomRegisterOrders(selectedShalomOrders);
+                  }}
+                  className="min-h-12 px-1.5 rounded-2xl bg-indigo-600/35 hover:bg-indigo-600 text-indigo-100 border border-indigo-400/50 flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-black cursor-pointer"
+                >
+                  <Truck className="w-4 h-4" />
+                  <span>Shalom{selectedShalomOrders.length > 0 ? ` (${selectedShalomOrders.length})` : ''}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => setShowBulkPrint(true)}
+                  className="min-h-12 px-1.5 rounded-2xl bg-purple-600/25 hover:bg-purple-600 text-purple-100 border border-purple-500/40 flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-black cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Rotular</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="min-h-12 px-1.5 rounded-2xl bg-rose-600/20 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-black cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Borrar</span>
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* 1. CARPETAS PRINCIPALES (Lo primero y más claro en celular) */}
+      <section className="glass-panel p-2.5 sm:p-3.5 rounded-3xl border border-white/10 space-y-2.5 shadow-xl">
+        <div
+          className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-0.5 px-0.5"
+          role="tablist"
+          aria-label="Carpetas de paquetes"
+        >
           {statusTabs.map(tab => {
             const isActive = statusFilter === tab.id && quickFilter === 'none';
             return (
@@ -1343,12 +1631,17 @@ export const OrdersSmartManager: React.FC = () => {
                   setStatusFilter(tab.id);
                   setQuickFilter('none');
                 }}
-                className={`shrink-0 min-h-10 px-3.5 rounded-2xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+                className={`shrink-0 min-h-10 px-3 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                   isActive ? `${tab.active} shadow-md` : 'bg-white/5 text-slate-300 hover:bg-white/10'
                 }`}
               >
+                <span>{tab.emoji}</span>
                 <span>{tab.label}</span>
-                <span className={`min-w-5 px-1.5 rounded-full text-[11px] font-black ${isActive ? 'bg-black/20' : 'bg-white/10 text-slate-400'}`}>
+                <span
+                  className={`min-w-5 px-1.5 rounded-full text-[11px] font-black ${
+                    isActive ? 'bg-black/20' : 'bg-white/10 text-slate-400'
+                  }`}
+                >
                   {tab.count}
                 </span>
               </button>
@@ -1356,216 +1649,241 @@ export const OrdersSmartManager: React.FC = () => {
           })}
         </div>
 
-        {/* Agencia + herramientas de fecha */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 max-w-full">
-            {transportChips.map(chip => {
-              const isActive = transportFilter === chip.id;
-              return (
-                <button
-                  key={chip.id}
-                  onClick={() => setTransportFilter(chip.id)}
-                  aria-pressed={isActive}
-                  className={`shrink-0 min-h-9 px-3 rounded-xl text-xs font-bold border transition-all ${
-                    isActive ? chip.active : 'border-white/10 text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  {chip.label} <span className="opacity-70">({chip.count})</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            {statusFilter === 'entregado' && (
+        {/* 2. BARRA ÚNICA: BUSCADOR + FILTROS + HISTORIAL + REFRESCAR */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Buscar clienta, DNI, celular o guía..."
+              aria-label="Buscar pedidos"
+              className="w-full min-h-10 pl-9 pr-8 bg-slate-950/70 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
+            />
+            {searchTerm && (
               <button
-                onClick={handleSyncShalomTracking}
-                disabled={isTrackingSyncing}
-                className="min-h-9 px-3 rounded-xl bg-teal-600/20 hover:bg-teal-600/40 text-teal-200 border border-teal-500/40 text-xs font-bold flex items-center gap-1.5"
-                title="Consultar a Shalom si algún paquete ya llegó a destino"
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white cursor-pointer"
+                aria-label="Limpiar búsqueda"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isTrackingSyncing ? 'animate-spin' : ''}`} />
-                <span>{isTrackingSyncing ? 'Verificando…' : 'Rastrear Shalom'}</span>
+                <X className="w-4 h-4" />
               </button>
             )}
-            <button
-              onClick={() => setShowDateTools(v => !v)}
-              aria-expanded={showDateTools}
-              className={`min-h-9 px-3 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all ${
-                showDateTools || dateFilterType !== 'none'
-                  ? 'bg-cyan-500/20 text-cyan-200 border-cyan-500/50 shadow-sm shadow-cyan-500/20'
-                  : 'border-white/10 text-slate-300 hover:bg-white/5'
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Clasificar por días</span>
-              {dateFilterType !== 'none' && (
-                <span className="px-1.5 py-0.5 rounded-md bg-cyan-400 text-slate-950 text-[10px] font-black uppercase tracking-wide">
-                  {dateFilterValue === today
-                    ? 'Hoy'
-                    : dateFilterValue === yesterday
-                    ? 'Ayer'
-                    : dateFilterValue === tomorrow
-                    ? 'Mañana'
-                    : formatShortDate(dateFilterValue)}
-                </span>
-              )}
-            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFiltersSheet(true)}
+            className={`shrink-0 min-h-10 px-3 rounded-2xl border text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+              activeDrawerFiltersCount > 0
+                ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/60'
+                : 'bg-slate-950/70 text-slate-200 border-white/10 hover:bg-white/10'
+            }`}
+            title="Filtrar por agencia, fecha, rotulado o registro"
+          >
+            <SlidersHorizontal className="w-4 h-4 text-cyan-400" />
+            <span className="hidden min-[380px]:inline">Filtros</span>
+            {activeDrawerFiltersCount > 0 && (
+              <span className="min-w-4 h-4 px-1 rounded-full bg-cyan-400 text-slate-950 text-[10px] font-black flex items-center justify-center">
+                {activeDrawerFiltersCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            className="shrink-0 min-h-10 px-3 rounded-2xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-200 border border-indigo-400/35 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Ver historial de movimientos, entrantes, ediciones y revertir"
+          >
+            <History className="w-4 h-4 text-indigo-300" />
+            <span className="hidden sm:inline">Historial</span>
+            {todayHistoryCount > 0 && (
+              <span className="min-w-4 h-4 px-1 rounded-full bg-indigo-400 text-slate-950 text-[10px] font-black flex items-center justify-center">
+                {todayHistoryCount > 99 ? '99+' : todayHistoryCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            title="Actualizar pedidos"
+            aria-label="Actualizar pedidos"
+            className="shrink-0 min-h-10 min-w-10 bg-slate-950/70 hover:bg-slate-900 text-slate-300 hover:text-white border border-white/10 rounded-2xl flex items-center justify-center disabled:opacity-50 cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 text-cyan-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
         </div>
 
-        {/* Panel de fechas (plegable) */}
-        {(showDateTools || dateFilterType !== 'none') && (() => {
-          const isAyer = dateFilterType !== 'none' && dateFilterValue === yesterday;
-          const isHoy = dateFilterType !== 'none' && dateFilterValue === today;
-          const isManana = dateFilterType !== 'none' && dateFilterValue === tomorrow;
-          const isManualCustom = dateFilterType !== 'none' && !isAyer && !isHoy && !isManana && Boolean(dateFilterValue);
+        {/* 3. ATAJOS RÁPIDOS (Una sola línea limpia y tocable con el pulgar) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-0.5 px-0.5">
+          <button
+            type="button"
+            onClick={() => applyQuickFilter('hoy')}
+            className={`shrink-0 min-h-8 px-2.5 rounded-xl text-[11px] font-bold border flex items-center gap-1 cursor-pointer ${
+              quickFilter === 'hoy'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                : 'bg-white/5 text-amber-200 border-white/10 hover:bg-white/10'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Hoy ({counts.hoy})</span>
+          </button>
 
-          return (
-            <div className="p-3 sm:p-4 rounded-2xl bg-slate-950/70 border border-cyan-500/30 space-y-3 animate-fadeIn shadow-xl">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { id: 'none' as const, label: 'Sin filtro' },
-                  { id: 'programado' as const, label: `Programados (${dateCounts.programados})` },
-                  { id: 'registrado' as const, label: `Registrados (${dateCounts.registrados})` },
-                  { id: 'entregado' as const, label: `Entregados (${dateCounts.entregados})` },
-                ].map(opt => (
-                  <button
-                    key={opt.id}
-                    onClick={() => {
-                      setDateFilterType(opt.id);
-                      setQuickFilter('none');
-                    }}
-                    aria-pressed={dateFilterType === opt.id}
-                    className={`min-h-9 px-3 rounded-xl text-xs font-bold transition-all ${
-                      dateFilterType === opt.id ? 'bg-cyan-500 text-slate-950 font-black shadow-sm' : 'bg-white/5 text-slate-300 hover:bg-white/10'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+          {counts.atrasados > 0 && (
+            <button
+              type="button"
+              onClick={() => applyQuickFilter('atrasados')}
+              className={`shrink-0 min-h-8 px-2.5 rounded-xl text-[11px] font-bold border flex items-center gap-1 cursor-pointer ${
+                quickFilter === 'atrasados'
+                  ? 'bg-rose-500 text-white border-rose-400 font-black'
+                  : 'bg-rose-500/15 text-rose-200 border-rose-500/35 hover:bg-rose-500/25'
+              }`}
+            >
+              <Flame className="w-3.5 h-3.5" />
+              <span>Atrasados ({counts.atrasados})</span>
+            </button>
+          )}
 
-              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
-                {[
-                  { label: 'Ayer', offset: -1, date: yesterday, hint: formatShortDate(yesterday), isSelected: isAyer },
-                  { label: 'Hoy', offset: 0, date: today, hint: formatShortDate(today), isSelected: isHoy },
-                  { label: 'Mañana', offset: 1, date: tomorrow, hint: formatShortDate(tomorrow), isSelected: isManana },
-                ].map(q => (
-                  <button
-                    key={q.label}
-                    type="button"
-                    onClick={() => toggleQuickDate(q.offset)}
-                    aria-pressed={q.isSelected}
-                    className={`min-h-9 px-3.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                      q.isSelected
-                        ? 'bg-cyan-400 text-slate-950 font-black shadow-md shadow-cyan-400/25 ring-2 ring-white/30'
-                        : 'bg-white/5 hover:bg-white/10 text-slate-200 border border-white/5'
-                    }`}
-                  >
-                    {q.isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    <span>{q.label}</span>
-                    <span className={`text-[10px] ${q.isSelected ? 'text-slate-950/70 font-bold' : 'text-slate-400'}`}>
-                      ({q.hint})
-                    </span>
-                  </button>
-                ))}
+          <button
+            type="button"
+            onClick={() => setPrepFilter(p => (p === 'sin_rotular' ? 'all' : 'sin_rotular'))}
+            className={`shrink-0 min-h-8 px-2.5 rounded-xl text-[11px] font-bold border flex items-center gap-1 cursor-pointer ${
+              prepFilter === 'sin_rotular'
+                ? 'bg-cyan-400 text-slate-950 border-cyan-300 font-black'
+                : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+            }`}
+          >
+            <Tag className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Sin rotular ({counts.sinRotular})</span>
+          </button>
 
-                {/* Selección manual de fecha */}
-                <div
-                  className={`flex items-center gap-1.5 min-h-9 px-2.5 rounded-xl border transition-all ${
-                    isManualCustom
-                      ? 'bg-cyan-400 text-slate-950 font-black border-cyan-300 shadow-md shadow-cyan-400/25 ring-2 ring-white/30'
-                      : 'bg-slate-900 border-white/15 text-slate-300'
-                  }`}
-                  title="Elegir cualquier otra fecha en el calendario"
+          <button
+            type="button"
+            onClick={() => setPrepFilter(p => (p === 'sin_registrar' ? 'all' : 'sin_registrar'))}
+            className={`shrink-0 min-h-8 px-2.5 rounded-xl text-[11px] font-bold border flex items-center gap-1 cursor-pointer ${
+              prepFilter === 'sin_registrar'
+                ? 'bg-indigo-500 text-white border-indigo-400 font-black'
+                : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+            }`}
+          >
+            <Truck className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Sin registrar ({counts.sinRegistrar})</span>
+          </button>
+
+          {duplicateClientsCount > 0 && (
+            <button
+              type="button"
+              onClick={() => applyQuickFilter('duplicados')}
+              className={`shrink-0 min-h-8 px-2.5 rounded-xl text-[11px] font-bold border flex items-center gap-1 cursor-pointer ${
+                quickFilter === 'duplicados'
+                  ? 'bg-amber-400 text-slate-950 border-amber-300 font-black'
+                  : 'bg-amber-500/15 text-amber-200 border-amber-500/35 hover:bg-amber-500/25'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Repetidos ({duplicateClientsCount})</span>
+            </button>
+          )}
+
+          {statusFilter === 'entregado' && (
+            <button
+              type="button"
+              onClick={handleSyncShalomTracking}
+              disabled={isTrackingSyncing}
+              className="shrink-0 min-h-8 px-2.5 rounded-xl bg-teal-600/20 hover:bg-teal-600/35 text-teal-200 border border-teal-500/40 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isTrackingSyncing ? 'animate-spin' : ''}`} />
+              <span>{isTrackingSyncing ? 'Rastreando…' : 'Rastrear Shalom'}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Chips de filtros activos (para saber siempre exactamente qué vista está activa) */}
+        {hasAnyFilter && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-white/8 text-[11px]">
+            <div className="flex flex-wrap items-center gap-1.5 text-slate-300">
+              {transportFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setTransportFilter('all')}
+                  className="px-2 py-0.5 rounded-lg bg-white/10 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
                 >
-                  {isManualCustom ? (
-                    <Check className="w-3.5 h-3.5 stroke-[3] text-slate-950 shrink-0" />
-                  ) : (
-                    <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                  )}
-                  <span className={`text-[11px] font-bold whitespace-nowrap ${isManualCustom ? 'text-slate-950 font-black' : 'text-slate-400'}`}>
-                    {isManualCustom ? 'Fecha:' : 'Otra fecha:'}
-                  </span>
-                  <input
-                    type="date"
-                    value={dateFilterValue}
-                    onChange={(e) => handleManualDateChange(e.target.value)}
-                    aria-label="Fecha personalizada a consultar"
-                    className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${
-                      isManualCustom ? 'text-slate-950 font-black' : 'text-cyan-300'
-                    }`}
-                  />
-                </div>
-
-                {dateFilterType !== 'none' && (
-                  <button
-                    type="button"
-                    onClick={() => setDateFilterType('none')}
-                    className="min-h-9 px-2.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 text-xs font-bold transition-all flex items-center gap-1 sm:ml-auto"
-                    title="Quitar filtro de fecha"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    <span>Quitar filtro</span>
-                  </button>
-                )}
-              </div>
+                  Agencia: {transportFilter} <X className="w-3 h-3" />
+                </button>
+              )}
+              {prepFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setPrepFilter('all')}
+                  className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  {prepFilter === 'sin_rotular'
+                    ? 'Sin rotular'
+                    : prepFilter === 'rotulados'
+                    ? 'Ya rotulados'
+                    : prepFilter === 'sin_registrar'
+                    ? 'Sin registrar'
+                    : 'Ya registrados'}{' '}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {dateFilterType !== 'none' && (
+                <button
+                  type="button"
+                  onClick={() => setDateFilterType('none')}
+                  className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  {dateFilterType === 'programado'
+                    ? 'Envío'
+                    : dateFilterType === 'registrado'
+                    ? 'Creado'
+                    : 'Entregado'}{' '}
+                  {formatShortDate(dateFilterValue)} <X className="w-3 h-3" />
+                </button>
+              )}
+              {quickFilter !== 'none' && (
+                <button
+                  type="button"
+                  onClick={() => setQuickFilter('none')}
+                  className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  {quickFilter === 'hoy'
+                    ? 'Salen hoy'
+                    : quickFilter === 'atrasados'
+                    ? 'Atrasados'
+                    : 'Clientas repetidas'}{' '}
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
-          );
-        })()}
 
-        {/* Resumen de filtros activos */}
-        {hasActiveFilters && (
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-            <span>
-              Mostrando <strong className="text-white">{filteredOrders.length}</strong> {filteredOrders.length === 1 ? 'pedido' : 'pedidos'}
-              {quickFilter === 'hoy' && ' que salen hoy'}
-              {quickFilter === 'atrasados' && ' atrasados'}
-              {quickFilter === 'entregados_hoy' && ' entregados hoy'}
-              {quickFilter === 'duplicados' && ' de clientas con varios pedidos activos'}
-              {dateFilterType !== 'none' && ` ${dateFilterType === 'registrado' ? 'registrados el' : dateFilterType === 'programado' ? 'programados para el' : 'entregados el'} ${formatFechaConDia(dateFilterValue)}`}
-            </span>
-            <button onClick={resetFilters} className="min-h-8 px-2.5 rounded-lg text-cyan-300 hover:text-white hover:bg-white/5 font-bold">
-              Limpiar filtros
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="text-cyan-300 hover:text-white font-black cursor-pointer shrink-0"
+            >
+              Limpiar todo
             </button>
           </div>
         )}
       </section>
 
-      {/* Aviso de clientas con pedidos simultáneos (oportunidad de juntar envíos) */}
-      {duplicateClientsCount > 0 && quickFilter !== 'duplicados' && (
-        <div className="p-3 sm:p-4 rounded-3xl bg-amber-500/10 border border-amber-500/35 text-amber-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
-              <Users className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <strong className="text-sm font-black block">
-                {duplicateClientsCount} {duplicateClientsCount === 1 ? 'clienta tiene' : 'clientas tienen'} varios pedidos activos
-              </strong>
-              <p className="text-xs text-amber-200/80">Júntalos en un solo paquete y ahorra un flete.</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => applyQuickFilter('duplicados')}
-            className="min-h-10 px-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black"
-          >
-            Revisar
-          </button>
-        </div>
-      )}
-
-      {/* Encabezado de lista + selección */}
+      {/* Encabezado de lista + Seleccionar todos */}
       <div className="flex items-center justify-between gap-2 px-1">
-        <h2 className="text-sm font-black text-white">
-          {filteredOrders.length} {filteredOrders.length === 1 ? 'pedido' : 'pedidos'}
+        <h2 className="text-xs sm:text-sm font-black text-white">
+          {filteredOrders.length} {filteredOrders.length === 1 ? 'paquete' : 'paquetes'}
         </h2>
         {filteredOrders.length > 0 && (
           <button
+            type="button"
             onClick={selectAll}
-            className="min-h-9 px-3 rounded-xl text-xs font-bold text-cyan-300 hover:bg-white/5 flex items-center gap-1.5"
+            className="min-h-8 px-2.5 rounded-xl text-xs font-bold text-cyan-300 hover:bg-white/5 flex items-center gap-1.5 cursor-pointer"
           >
             <CheckSquare className="w-4 h-4" />
             {allFilteredSelected ? 'Quitar selección' : 'Seleccionar todos'}
@@ -1573,36 +1891,41 @@ export const OrdersSmartManager: React.FC = () => {
         )}
       </div>
 
-      {/* Lista */}
+      {/* Lista de paquetes */}
       {filteredOrders.length === 0 ? (
-        <div className="glass-panel p-10 text-center rounded-3xl border border-white/10 space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mx-auto text-2xl">
-            {hasActiveFilters ? '🔍' : '🎉'}
+        <div className="glass-panel p-8 text-center rounded-3xl border border-white/10 space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto text-2xl">
+            {hasAnyFilter ? '🔍' : '🎉'}
           </div>
           <h3 className="text-base font-black text-white">
-            {hasActiveFilters ? 'No hay pedidos con estos filtros' : '¡Todo despachado!'}
+            {hasAnyFilter ? 'No hay paquetes con estos filtros' : '¡Todo al día!'}
           </h3>
-          <p className="text-sm text-slate-400 max-w-sm mx-auto">
-            {hasActiveFilters
-              ? 'Prueba con otra búsqueda o limpia los filtros.'
-              : 'No tienes pedidos pendientes. Los nuevos aparecerán aquí al instante.'}
+          <p className="text-xs sm:text-sm text-slate-400 max-w-sm mx-auto">
+            {hasAnyFilter
+              ? 'Prueba limpiando los filtros o cambiando de carpeta.'
+              : 'No tienes paquetes pendientes en esta carpeta.'}
           </p>
-          {hasActiveFilters && (
-            <button onClick={resetFilters} className="min-h-10 px-4 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-sm font-black">
+          {hasAnyFilter && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="min-h-10 px-4 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black cursor-pointer"
+            >
               Limpiar filtros
             </button>
           )}
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {visibleOrders.map(order => renderOrderCard(order))}
           </div>
           {filteredOrders.length > visibleCount && (
             <div className="flex justify-center pt-2">
               <button
+                type="button"
                 onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
-                className="min-h-11 px-6 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-bold text-white"
+                className="min-h-11 px-6 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs sm:text-sm font-bold text-white cursor-pointer"
               >
                 Ver más ({filteredOrders.length - visibleCount} restantes)
               </button>
@@ -1611,41 +1934,316 @@ export const OrdersSmartManager: React.FC = () => {
         </>
       )}
 
-      {/* Cambio de estado manual */}
-      {swipeTargetOrder && createPortal(
-        <div className="fixed inset-0 z-9999 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn" data-no-print="true" onClick={() => setSwipeTargetOrder(null)}>
+      {/* SHEET DE FILTROS SIMPLIFICADOS (Fácil, limpio y perfecto en celular) */}
+      {showFiltersSheet &&
+        createPortal(
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="move-status-title"
-            onClick={e => e.stopPropagation()}
-            className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-cyan-500/40 p-5 sm:p-6 space-y-4 shadow-2xl animate-slideUp sm:animate-scaleUp pb-safe"
+            className="fixed inset-0 z-[9998] flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+            data-no-print="true"
+            onClick={() => setShowFiltersSheet(false)}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 id="move-status-title" className="text-base font-black text-white">Cambiar estado</h3>
-                <p className="text-xs text-slate-400 font-mono">#{swipeTargetOrder.codigo_seguimiento} • {swipeTargetOrder.usuario?.nombre_completo || 'Cliente'}</p>
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filtros de paquetes"
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md max-h-[88dvh] rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-cyan-500/35 shadow-2xl flex flex-col overflow-hidden animate-slideUp sm:animate-scaleUp"
+            >
+              <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-5 h-5 text-cyan-400" />
+                  <h3 className="text-base font-black text-white">Filtrar vista</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFiltersSheet(false)}
+                  className="min-w-9 min-h-9 rounded-xl bg-white/5 text-slate-300 flex items-center justify-center cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button onClick={() => setSwipeTargetOrder(null)} className="min-w-10 min-h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-white/5" aria-label="Cerrar">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="space-y-2">
-              {([
-                { stage: 'almacen', envio: 'pendiente', prod: 'en_cola', icon: '🏬', title: 'En almacén', desc: 'Recibido, en cola para alistar', cls: 'bg-slate-800/80 border-white/10' },
-                { stage: 'alistando', envio: 'pendiente', prod: 'bordando', icon: '🪡', title: 'Alistando', desc: 'Empaquetando y rotulando', cls: 'bg-purple-950/40 border-purple-500/30' },
-                { stage: 'despachando', envio: 'en_camino', prod: 'completado', icon: '🚚', title: 'Despachado', desc: 'Dejado en la agencia o en ruta', cls: 'bg-blue-950/40 border-blue-500/30' },
-                { stage: 'entregado', envio: 'entregado', prod: 'completado', icon: '✅', title: 'Entregado', desc: 'Proceso completado', cls: 'bg-emerald-950/40 border-emerald-500/30' },
-              ] as const).map(opt => {
-                const isCurrent = getStage(swipeTargetOrder) === opt.stage;
-                return (
+              <div className="p-5 overflow-y-auto space-y-5 flex-1">
+                {/* 1. Agencia */}
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-400">
+                    1. Agencia de envío
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'all' as const, label: `Todas (${counts.all})` },
+                      { id: 'shalom' as const, label: `Shalom (${counts.shalom})` },
+                      { id: 'olva' as const, label: `Olva (${counts.olva})` },
+                      { id: 'motorizado' as const, label: `Motorizado (${counts.motorizado})` },
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setTransportFilter(opt.id)}
+                        className={`min-h-10 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          transportFilter === opt.id
+                            ? 'bg-cyan-400 text-slate-950 border-cyan-300 font-black'
+                            : 'bg-slate-950/70 text-slate-300 border-white/10 hover:bg-white/5'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Estado de Rótulo y Registro */}
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-400">
+                    2. Rótulo y Registro Shalom
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'all' as const, label: 'Todos' },
+                      { id: 'sin_rotular' as const, label: '⬜ Sin rotular' },
+                      { id: 'rotulados' as const, label: '✅ Ya rotulados' },
+                      { id: 'sin_registrar' as const, label: '⬜ Sin registrar Shalom' },
+                      { id: 'registrados' as const, label: '✅ Registrados Shalom' },
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setPrepFilter(opt.id)}
+                        className={`min-h-10 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          prepFilter === opt.id
+                            ? 'bg-cyan-400 text-slate-950 border-cyan-300 font-black'
+                            : 'bg-slate-950/70 text-slate-300 border-white/10 hover:bg-white/5'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Día */}
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-400">
+                    3. Día de envío
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDateFilterType('none')}
+                      className={`min-h-10 rounded-xl border text-xs font-bold cursor-pointer ${
+                        dateFilterType === 'none'
+                          ? 'bg-cyan-400 text-slate-950 border-cyan-300 font-black'
+                          : 'bg-slate-950/70 text-slate-300 border-white/10'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    {[
+                      { label: 'Ayer', offset: -1, date: yesterday },
+                      { label: 'Hoy', offset: 0, date: today },
+                      { label: 'Mañana', offset: 1, date: tomorrow },
+                    ].map(d => {
+                      const active = dateFilterType !== 'none' && dateFilterValue === d.date;
+                      return (
+                        <button
+                          key={d.label}
+                          type="button"
+                          onClick={() => selectQuickDate(d.offset)}
+                          className={`min-h-10 rounded-xl border text-xs font-bold cursor-pointer ${
+                            active
+                              ? 'bg-cyan-400 text-slate-950 border-cyan-300 font-black'
+                              : 'bg-slate-950/70 text-slate-300 border-white/10'
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="date"
+                      value={dateFilterValue}
+                      onChange={e => {
+                        if (!e.target.value) return;
+                        setDateFilterValue(e.target.value);
+                        if (dateFilterType === 'none') setDateFilterType('programado');
+                        setQuickFilter('none');
+                      }}
+                      className="flex-1 min-h-10 px-3 rounded-xl bg-slate-950 border border-white/15 text-xs font-bold text-cyan-300 focus:outline-none focus:border-cyan-400"
+                    />
+                    {dateFilterType !== 'none' && (
+                      <select
+                        value={dateFilterType}
+                        onChange={e => setDateFilterType(e.target.value as any)}
+                        className="min-h-10 px-2.5 rounded-xl bg-slate-950 border border-white/15 text-xs font-bold text-white"
+                      >
+                        <option value="programado">Por fecha envío</option>
+                        <option value="registrado">Por fecha creado</option>
+                        <option value="entregado">Por fecha entrega</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Orden */}
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-400">
+                    4. Ordenar paquetes
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: 'fecha_envio' as const, label: 'Fecha envío' },
+                      { id: 'recientes' as const, label: 'Más nuevos' },
+                      { id: 'antiguos' as const, label: 'Más antiguos' },
+                    ].map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setSortMode(opt.id)}
+                        className={`min-h-10 px-2 rounded-xl border text-xs font-bold cursor-pointer ${
+                          sortMode === opt.id
+                            ? 'bg-cyan-400 text-slate-950 border-cyan-300 font-black'
+                            : 'bg-slate-950/70 text-slate-300 border-white/10'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-white/10 bg-slate-950/90 flex items-center gap-2 shrink-0 pb-safe">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetFilters();
+                    setShowFiltersSheet(false);
+                  }}
+                  className="min-h-11 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Limpiar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFiltersSheet(false)}
+                  className="flex-1 min-h-11 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-sm font-black cursor-pointer"
+                >
+                  Ver {filteredOrders.length} {filteredOrders.length === 1 ? 'paquete' : 'paquetes'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* MOVER CARPETA INDIVIDUAL */}
+      {swipeTargetOrder &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-9999 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+            data-no-print="true"
+            onClick={() => setSwipeTargetOrder(null)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="move-status-title"
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-cyan-500/40 p-5 space-y-4 shadow-2xl animate-slideUp sm:animate-scaleUp pb-safe"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 id="move-status-title" className="text-base font-black text-white">
+                    Mover a carpeta
+                  </h3>
+                  <p className="text-xs text-slate-400 font-mono">
+                    #{swipeTargetOrder.codigo_seguimiento} · {swipeTargetOrder.usuario?.nombre_completo || 'Cliente'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSwipeTargetOrder(null)}
+                  className="min-w-10 min-h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {FOLDER_DEFS.map(opt => {
+                  const isCurrent = getStage(swipeTargetOrder) === opt.stage;
+                  return (
+                    <button
+                      key={opt.stage}
+                      type="button"
+                      disabled={busyOrderId === swipeTargetOrder.id}
+                      onClick={() => handleSingleOrderMove(swipeTargetOrder.id, opt.envio, opt.prod)}
+                      className={`w-full min-h-14 p-3.5 rounded-2xl border text-left flex items-center justify-between group transition-all hover:brightness-125 cursor-pointer ${
+                        opt.cls
+                      } ${isCurrent ? 'ring-2 ring-cyan-400' : ''}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{opt.icon}</span>
+                        <div>
+                          <strong className="text-sm font-black text-white block">{opt.title}</strong>
+                          <span className="text-xs text-slate-400">{opt.desc}</span>
+                        </div>
+                      </div>
+                      {isCurrent ? (
+                        <span className="text-[11px] font-black text-cyan-300">Actual</span>
+                      ) : (
+                        <MoveRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* MOVER CARPETA EN LOTE */}
+      {showBulkMoveSheet &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-9999 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+            data-no-print="true"
+            onClick={() => setShowBulkMoveSheet(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-cyan-500/40 p-5 space-y-4 shadow-2xl animate-slideUp sm:animate-scaleUp pb-safe"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-black text-white">
+                    Mover {selectedIds.length} {selectedIds.length === 1 ? 'paquete' : 'paquetes'}
+                  </h3>
+                  <p className="text-xs text-slate-400">Elige la carpeta de destino</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkMoveSheet(false)}
+                  className="min-w-10 min-h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {FOLDER_DEFS.map(opt => (
                   <button
                     key={opt.stage}
                     type="button"
-                    disabled={busyOrderId === swipeTargetOrder.id}
-                    onClick={() => handleSingleOrderMove(swipeTargetOrder.id, opt.envio, opt.prod)}
-                    className={`w-full min-h-14 p-3.5 rounded-2xl border text-left flex items-center justify-between group transition-all hover:brightness-125 ${opt.cls} ${isCurrent ? 'ring-2 ring-cyan-400' : ''}`}
+                    disabled={isProcessing}
+                    onClick={() => handleMassStatusUpdate(opt.envio, opt.prod)}
+                    className={`w-full min-h-14 p-3.5 rounded-2xl border text-left flex items-center justify-between group transition-all hover:brightness-125 cursor-pointer ${opt.cls}`}
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-xl">{opt.icon}</span>
@@ -1654,38 +2252,47 @@ export const OrdersSmartManager: React.FC = () => {
                         <span className="text-xs text-slate-400">{opt.desc}</span>
                       </div>
                     </div>
-                    {isCurrent ? (
-                      <span className="text-[11px] font-black text-cyan-300">Actual</span>
-                    ) : (
-                      <MoveRight className="w-4 h-4 text-slate-500 group-hover:translate-x-1 transition-transform" />
-                    )}
+                    <MoveRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
 
-      {/* Asistente de registro en Shalom */}
-      {showShalomRegister && (
+      {/* HISTORIAL DE MOVIMIENTOS */}
+      <MovementsHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        onEditOrder={order => {
+          setShowHistoryModal(false);
+          setEditingPedido(order);
+        }}
+      />
+
+      {/* ASISTENTE DE REGISTRO EN SHALOM (Funciona tanto para 1 pedido como para lote) */}
+      {shalomRegisterOrders && (
         <ShalomRegisterModal
-          pedidos={selectedShalomOrders}
-          totalSelectedCount={selectedOrders.length}
+          pedidos={shalomRegisterOrders}
+          totalSelectedCount={shalomRegisterOrders.length}
           tallerConfig={tallerConfig}
-          onClose={() => setShowShalomRegister(false)}
-          onRegistered={async (results) => {
+          onClose={() => setShalomRegisterOrders(null)}
+          onRegistered={async results => {
+            const logItems = [];
             for (const r of results) {
-              // SEGURIDAD CRÍTICA: SOLO actualizar pedidos que realmente tengan OSE ID o Guía oficial emitida por Shalom
               if (!r.oseId && (!r.guideNumber || r.guideNumber.startsWith('SH-') || r.guideNumber === 'S/G')) {
-                console.warn(`[ON REGISTERED SKIP] Pedido ${r.pedidoId} no fue emitido en Shalom (sin OSE ID/Guía oficial). No se modifica en base de datos.`);
                 continue;
               }
-
               const currentOrder = pedidos.find(p => p.id === r.pedidoId);
-              let newDestino = currentOrder?.destino_detalle || '';
-              if (r.dni && r.dni.toUpperCase() !== 'NCIADOS' && r.dni.replace(/\D/g, '').length >= 6 && !newDestino.includes(r.dni)) {
+              if (!currentOrder) continue;
+              let newDestino = currentOrder.destino_detalle || '';
+              if (
+                r.dni &&
+                r.dni.toUpperCase() !== 'NCIADOS' &&
+                r.dni.replace(/\D/g, '').length >= 6 &&
+                !newDestino.includes(r.dni)
+              ) {
                 if (newDestino.includes('(DNI')) {
                   newDestino = newDestino.replace(/\(DNI[^)]*\)/gi, `(DNI: ${r.dni})`);
                 } else {
@@ -1693,10 +2300,12 @@ export const OrdersSmartManager: React.FC = () => {
                 }
               }
 
-              // Si ya estaba completado en producción pasa a en_camino, sino mantiene su estado de producción actual
-              const nextEnvio = currentOrder?.estado_produccion === 'completado' ? 'en_camino' : (currentOrder?.estado_envio || 'pendiente');
+              const nextEnvio =
+                currentOrder.estado_produccion === 'completado'
+                  ? 'en_camino'
+                  : currentOrder.estado_envio || 'pendiente';
 
-              await updatePedido(r.pedidoId, {
+              const updates: Partial<Pedido> = {
                 registrado_shalom: true,
                 rotulado: true,
                 estado_envio: nextEnvio,
@@ -1704,19 +2313,52 @@ export const OrdersSmartManager: React.FC = () => {
                 shalom_numero_guia: r.guideNumber || null,
                 shalom_clave_recojo: r.pickupCode || null,
                 destino_detalle: newDestino || undefined,
-                usuario: currentOrder?.usuario ? {
-                  ...currentOrder.usuario,
-                  dni: (r.dni && r.dni !== 'NCIADOS') ? r.dni : (currentOrder.usuario.dni || ''),
-                  telefono_default: r.phone || currentOrder.usuario.telefono_default || '',
-                  nombre_completo: r.name || currentOrder.usuario.nombre_completo || '',
-                } : undefined,
+                usuario: currentOrder.usuario
+                  ? {
+                      ...currentOrder.usuario,
+                      dni: r.dni && r.dni !== 'NCIADOS' ? r.dni : currentOrder.usuario.dni || '',
+                      telefono_default: r.phone || currentOrder.usuario.telefono_default || '',
+                      nombre_completo: r.name || currentOrder.usuario.nombre_completo || '',
+                    }
+                  : undefined,
+              };
+
+              const antes = buildOrderSnapshot(currentOrder);
+              await updatePedido(r.pedidoId, updates, { skipLog: true });
+              const despues = buildOrderSnapshot({ ...currentOrder, ...updates });
+              logItems.push({
+                pedido_id: currentOrder.id,
+                codigo_seguimiento: currentOrder.codigo_seguimiento,
+                cliente_nombre: despues.cliente_nombre,
+                metodo_envio: 'Shalom',
+                antes,
+                despues,
+                cambios_legibles: [
+                  `Registrado en Shalom Pro${r.guideNumber ? ` (${r.guideNumber})` : r.oseId ? ` (OSE #${r.oseId})` : ''}`,
+                  ...(r.pickupCode ? [`Clave: ${r.pickupCode}`] : []),
+                  'Rotulado: Sí',
+                ],
+              });
+            }
+
+            if (logItems.length > 0) {
+              activityLogService.recordMovimiento(empresaId, {
+                tipo: 'registro_shalom',
+                titulo:
+                  logItems.length === 1
+                    ? `Registraste #${logItems[0].codigo_seguimiento} en Shalom Pro`
+                    : `Registraste ${logItems.length} paquetes en Shalom Pro`,
+                detalle: 'Registro oficial API + marcado como rotulado',
+                origen: 'admin',
+                puede_revertir: true,
+                pedidos_afectados: logItems,
               });
             }
           }}
         />
       )}
 
-      {/* Impresión de rótulos en lote */}
+      {/* IMPRESIÓN DE RÓTULOS EN LOTE */}
       {showBulkPrint && (
         <BulkPrintModal
           pedidos={selectedOrders.length > 0 ? selectedOrders : filteredOrders}
@@ -1726,16 +2368,22 @@ export const OrdersSmartManager: React.FC = () => {
         />
       )}
 
-      {/* Rótulo individual */}
+      {/* RÓTULO INDIVIDUAL (al imprimir marca automáticamente rotulado + historial) */}
       {selectedLabelOrder && (
         <ShalomLabelModal
           pedido={selectedLabelOrder}
           tallerConfig={tallerConfig}
           onClose={() => setSelectedLabelOrder(null)}
+          onPrinted={async pedidoId => {
+            if (!selectedLabelOrder.rotulado) {
+              await updatePedido(pedidoId, { rotulado: true });
+              toast(`#${selectedLabelOrder.codigo_seguimiento} marcado como rotulado`, 'success');
+            }
+          }}
         />
       )}
 
-      {/* Edición de pedido */}
+      {/* EDICIÓN DE PEDIDO */}
       {editingPedido && (
         <EditOrderModal
           pedido={editingPedido}
@@ -1748,40 +2396,52 @@ export const OrdersSmartManager: React.FC = () => {
         />
       )}
 
-      {/* Confirmación de borrado en lote */}
-      {showDeleteConfirm && createPortal(
-        <div className="fixed inset-0 z-9999 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn" data-no-print="true" onClick={() => setShowDeleteConfirm(false)}>
-          <div role="alertdialog" aria-modal="true" onClick={e => e.stopPropagation()} className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-rose-500/40 p-6 space-y-4 text-center shadow-2xl animate-slideUp sm:animate-scaleUp pb-safe">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
+      {/* CONFIRMACIÓN DE BORRADO EN LOTE */}
+      {showDeleteConfirm &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-9999 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+            data-no-print="true"
+            onClick={() => setShowDeleteConfirm(false)}
+          >
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-rose-500/40 p-6 space-y-4 text-center shadow-2xl animate-slideUp sm:animate-scaleUp pb-safe"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-white">
+                ¿Eliminar {selectedIds.length} {selectedIds.length === 1 ? 'pedido' : 'pedidos'}?
+              </h3>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Podrás restaurarlos más adelante desde el Historial de Movimientos si cambias de opinión.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 min-h-11 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-200 font-bold text-sm cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={isProcessing}
+                  className="flex-1 min-h-11 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm shadow-lg shadow-rose-600/30 disabled:opacity-60 cursor-pointer"
+                >
+                  Sí, eliminar
+                </button>
+              </div>
             </div>
-            <h3 className="text-lg font-black text-white">
-              ¿Eliminar {selectedIds.length} {selectedIds.length === 1 ? 'pedido' : 'pedidos'}?
-            </h3>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              Esta acción no se puede deshacer. Los pedidos se borrarán de forma permanente.
-            </p>
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 min-h-11 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-200 font-bold text-sm"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                disabled={isProcessing}
-                className="flex-1 min-h-11 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm shadow-lg shadow-rose-600/30 disabled:opacity-60"
-              >
-                Sí, eliminar
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
 
-      {/* Aviso por WhatsApp tras cambio de estado */}
+      {/* AVISO WHATSAPP TRAS CAMBIO DE ESTADO */}
       {notifyModalData && (
         <OrderStatusNotifyModal
           orders={notifyModalData.orders}
@@ -1790,156 +2450,116 @@ export const OrdersSmartManager: React.FC = () => {
         />
       )}
 
-      {/* Entrega oficial Shalom (voucher + clave) */}
+      {/* ENTREGA INTELIGENTE + REVISIÓN SHALOM PRO + OPCIONES BOT Y CARPETAS */}
       {deliveryTargetOrders && (
         <ShalomDeliveryModal
           isOpen={Boolean(deliveryTargetOrders)}
           orders={deliveryTargetOrders}
           tallerConfig={tallerConfig}
           onClose={() => setDeliveryTargetOrders(null)}
-          onOrdersDelivered={async (deliveredIds, updatedMeta) => {
-            for (const id of deliveredIds) {
-              const meta = updatedMeta?.[id];
-              const isRealGuia = meta?.guia && meta.guia !== 'S/G' && !meta.guia.startsWith('SH-');
-              await updatePedido(id, {
-                estado_envio: 'entregado',
-                registrado_shalom: true,
-                ...(isRealGuia ? { shalom_numero_guia: meta.guia } : {}),
-                ...(meta?.pickupCode ? { shalom_clave_recojo: meta.pickupCode } : {}),
-                ...(meta?.oseId ? { shalom_ose_id: meta.oseId } : {}),
-              });
-            }
-            clearSelection();
-            setDeliveryTargetOrders(null);
-            toast(`${deliveredIds.length} ${deliveredIds.length === 1 ? 'pedido entregado' : 'pedidos entregados'}`);
-          }}
+          onDeliveryComplete={handleDeliveryComplete}
         />
       )}
 
-      {/* Modal: Cambiar fecha de envío del pedido */}
-      {changeDateOrder && createPortal(
-        <div
-          className="fixed inset-0 z-9999 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
-          data-no-print="true"
-          onClick={() => setChangeDateOrder(null)}
-        >
+      {/* CAMBIAR FECHA DE ENVÍO */}
+      {changeDateOrder &&
+        createPortal(
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="change-date-title"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-cyan-500/30 p-5 sm:p-6 space-y-4 shadow-2xl animate-slideUp sm:animate-scaleUp pb-safe text-white"
+            className="fixed inset-0 z-9999 flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+            data-no-print="true"
+            onClick={() => setChangeDateOrder(null)}
           >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0">
-                  <Calendar className="w-5 h-5" />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="change-date-title"
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-slate-900 border border-cyan-500/30 p-5 sm:p-6 space-y-4 shadow-2xl animate-slideUp sm:animate-scaleUp pb-safe text-white"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 id="change-date-title" className="text-base font-black text-white truncate">
+                      Cambiar fecha de envío
+                    </h3>
+                    <p className="text-xs text-slate-400 truncate">
+                      #{changeDateOrder.codigo_seguimiento} · {changeDateOrder.usuario?.nombre_completo || 'Cliente'}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <h3 id="change-date-title" className="text-base font-black text-white truncate">
-                    Cambiar fecha de envío
-                  </h3>
-                  <p className="text-xs text-slate-400 truncate">
-                    Pedido #{changeDateOrder.codigo_seguimiento} • {changeDateOrder.usuario?.nombre_completo || 'Cliente'}
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setChangeDateOrder(null)}
+                  className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center shrink-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setChangeDateOrder(null)}
-                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center shrink-0"
-                aria-label="Cerrar"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="p-3 rounded-2xl bg-white/5 border border-white/5 text-xs text-slate-300">
-              <span className="text-slate-400 font-medium">Fecha actual: </span>
-              <strong className="text-cyan-300">
-                {changeDateOrder.fecha_limite
-                  ? formatFechaConDia(changeDateOrder.fecha_limite)
-                  : 'Sin fecha programada'}
-              </strong>
-            </div>
-
-            {/* Accesos rápidos: Hoy, Mañana, Pasado mañana */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-400 block">
-                Selección rápida:
-              </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { label: 'Hoy', date: today, hint: formatShortDate(today) },
                   { label: 'Mañana', date: tomorrow, hint: formatShortDate(tomorrow) },
-                  { label: 'Pasado mañana', date: dayAfterTomorrow, hint: formatShortDate(dayAfterTomorrow) },
-                ].map((item) => (
+                  { label: 'Pasado', date: dayAfterTomorrow, hint: formatShortDate(dayAfterTomorrow) },
+                ].map(item => (
                   <button
                     key={item.label}
                     type="button"
                     disabled={isProcessing}
                     onClick={() => handleSaveOrderDate(changeDateOrder.id, item.date)}
-                    className="p-2.5 rounded-2xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/40 text-center transition-all group disabled:opacity-50"
+                    className="p-2.5 rounded-2xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-400/40 text-center transition-all cursor-pointer disabled:opacity-50"
                   >
-                    <div className="text-xs font-black text-white group-hover:text-cyan-300">
-                      {item.label}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 font-medium">
-                      {item.hint}
-                    </div>
+                    <div className="text-xs font-black text-white">{item.label}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{item.hint}</div>
                   </button>
                 ))}
               </div>
-            </div>
 
-            {/* Elegir manualmente otra fecha */}
-            <div className="space-y-1.5 pt-1">
-              <label htmlFor="custom-order-date-input" className="text-xs font-bold text-slate-400 block">
-                O elige cualquier fecha en el calendario:
-              </label>
               <div className="flex gap-2">
                 <input
-                  id="custom-order-date-input"
                   type="date"
                   value={changeDateCustomValue}
-                  onChange={(e) => setChangeDateCustomValue(e.target.value)}
+                  onChange={e => setChangeDateCustomValue(e.target.value)}
                   className="flex-1 min-h-11 px-3 bg-slate-950 border border-white/15 focus:border-cyan-400 rounded-xl text-sm font-bold text-white focus:outline-none"
                 />
                 <button
                   type="button"
                   disabled={!changeDateCustomValue || isProcessing}
                   onClick={() => handleSaveOrderDate(changeDateOrder.id, changeDateCustomValue)}
-                  className="min-h-11 px-4 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs shadow-md shadow-cyan-400/20 disabled:opacity-50 transition-all"
+                  className="min-h-11 px-4 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs disabled:opacity-50 cursor-pointer"
                 >
-                  {isProcessing ? 'Guardando…' : 'Guardar'}
+                  Guardar
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                {changeDateOrder.fecha_limite ? (
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => handleSaveOrderDate(changeDateOrder.id, null)}
+                    className="text-xs font-bold text-rose-400 hover:underline cursor-pointer"
+                  >
+                    Quitar fecha
+                  </button>
+                ) : (
+                  <div />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setChangeDateOrder(null)}
+                  className="min-h-9 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Cerrar
                 </button>
               </div>
             </div>
-
-            {/* Acciones secundarias */}
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10">
-              {changeDateOrder.fecha_limite ? (
-                <button
-                  type="button"
-                  disabled={isProcessing}
-                  onClick={() => handleSaveOrderDate(changeDateOrder.id, null)}
-                  className="text-xs font-bold text-rose-400 hover:text-rose-300 hover:underline"
-                >
-                  Quitar fecha programada
-                </button>
-              ) : <div />}
-              <button
-                type="button"
-                onClick={() => setChangeDateOrder(null)}
-                className="min-h-9 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

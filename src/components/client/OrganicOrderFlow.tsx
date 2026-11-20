@@ -42,6 +42,7 @@ import {
 } from '../../services/whatsappService';
 
 import { OrderSuccessAnimation } from './OrderSuccessAnimation';
+import { getVisibleCustomFields } from '../../utils/customFields';
 import { DniService } from '../../services/dniService';
 import {
   Package,
@@ -1351,19 +1352,22 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
             {/* CAMPOS PERSONALIZADOS / INFORMACIÓN ADICIONAL EN COMPROBANTE */}
             {(() => {
               const campos = createdOrder?.campos_personalizados || customFieldValues;
-              if (!campos || Object.keys(campos).length === 0) return null;
-              const entries = Object.entries(campos).filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== '');
-              if (entries.length === 0) return null;
+              const visibleExtras = getVisibleCustomFields(campos, selectedMethod, {
+                dni: createdOrder?.usuario?.dni || dniShalom || currentUser?.dni,
+                phone: createdOrder?.usuario?.telefono_default || whatsapp,
+                name: createdOrder?.usuario?.nombre_completo || nombreCompleto,
+              });
+              if (visibleExtras.length === 0) return null;
               return (
                 <div className="pt-2.5 mt-2.5 border-t border-white/10 space-y-1.5 text-xs">
                   <span className="text-[10px] font-black uppercase tracking-wider text-indigo-300 block">
                     📋 Información Adicional Registrada:
                   </span>
                   <div className="grid grid-cols-2 gap-2">
-                    {entries.map(([k, v]) => (
-                      <div key={k} className="p-2 rounded-xl bg-white/5 border border-white/10">
-                        <span className="text-[10px] text-slate-400 block font-medium">{k}:</span>
-                        <span className="text-white font-bold text-xs">{String(v)}</span>
+                    {visibleExtras.map(field => (
+                      <div key={field.key} className="p-2 rounded-xl bg-white/5 border border-white/10">
+                        <span className="text-[10px] text-slate-400 block font-medium">{field.label}:</span>
+                        <span className="text-white font-bold text-xs">{field.value}</span>
                       </div>
                     ))}
                   </div>

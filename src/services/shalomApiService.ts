@@ -511,7 +511,7 @@ export class ShalomApiService {
     oseId: number | string,
     auth?: ShalomAuthCredentials,
     clientContext?: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string },
-    onMetadata?: (meta: { pickupCode?: string; guia?: string; oseId?: string }) => void
+    onMetadata?: (meta: { pickupCode?: string; guia?: string; oseId?: string; shalomStatus?: string; docSource?: string; shalomAgency?: string; shalomCreatedAt?: string }) => void
   ): Promise<string | null> {
     return this.fetchVoucherPdfBase64(oseId, auth, clientContext, onMetadata);
   }
@@ -525,7 +525,7 @@ export class ShalomApiService {
     oseId: number | string,
     auth?: ShalomAuthCredentials,
     clientContext?: { dni?: string; phone?: string; name?: string; guia?: string; orderDate?: string; internalCode?: string; refresh?: boolean | string },
-    onMetadata?: (meta: { pickupCode?: string; guia?: string; oseId?: string }) => void
+    onMetadata?: (meta: { pickupCode?: string; guia?: string; oseId?: string; shalomStatus?: string; docSource?: string; shalomAgency?: string; shalomCreatedAt?: string }) => void
   ): Promise<string | null> {
     try {
       const headers: Record<string, string> = {
@@ -562,6 +562,13 @@ export class ShalomApiService {
       const returnedDni = response.headers.get('x-shalom-receiver-dni') || response.headers.get('X-Shalom-Receiver-Dni');
       const returnedNameRaw = response.headers.get('x-shalom-receiver-name') || response.headers.get('X-Shalom-Receiver-Name');
       const returnedName = returnedNameRaw ? decodeURIComponent(returnedNameRaw).toLowerCase() : '';
+      const rawShalomStatus = response.headers.get('x-shalom-order-status') || response.headers.get('X-Shalom-Order-Status');
+      const liveShalomStatus = rawShalomStatus ? decodeURIComponent(rawShalomStatus) : undefined;
+      const liveDocSource = response.headers.get('x-shalom-doc-source') || response.headers.get('X-Shalom-Doc-Source') || undefined;
+      const rawShalomAgency = response.headers.get('x-shalom-agency') || response.headers.get('X-Shalom-Agency');
+      const liveShalomAgency = rawShalomAgency ? decodeURIComponent(rawShalomAgency) : undefined;
+      const rawShalomCreatedAt = response.headers.get('x-shalom-created-at') || response.headers.get('X-Shalom-Created-At');
+      const liveShalomCreatedAt = rawShalomCreatedAt ? decodeURIComponent(rawShalomCreatedAt) : undefined;
 
       // 1. Validar DNI con header de seguridad
       let dniMatchesOk = false;
@@ -594,8 +601,16 @@ export class ShalomApiService {
         }
       }
 
-      if (onMetadata && (livePin || liveGuia || liveOseId)) {
-        onMetadata({ pickupCode: livePin || undefined, guia: liveGuia || undefined, oseId: liveOseId || undefined });
+      if (onMetadata && (livePin || liveGuia || liveOseId || liveShalomStatus || liveDocSource || liveShalomAgency)) {
+        onMetadata({
+          pickupCode: livePin || undefined,
+          guia: liveGuia || undefined,
+          oseId: liveOseId || undefined,
+          shalomStatus: liveShalomStatus,
+          docSource: liveDocSource,
+          shalomAgency: liveShalomAgency,
+          shalomCreatedAt: liveShalomCreatedAt,
+        });
       }
 
 

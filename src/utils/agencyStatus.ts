@@ -14,9 +14,45 @@ export interface AgencyStatusInfo {
   isNameChangedRecently: boolean;
   previousName: string | null;
   previousAddress: string | null;
+  changedAtDate: string | null;
+  changedAtShort: string | null;
+  deletedAtDate: string | null;
+  deletedAtShort: string | null;
   statusBadgeText: string | null;
   statusTooltipText: string | null;
   canBeSelected: boolean;
+}
+
+/**
+ * Formatea una fecha ISO en hora Perú (America/Lima) con contexto relativo legible.
+ * Ej: "20 nov 2026 (hoy)", "19 nov 2026 (ayer)", "10 nov 2026 (hace 10 días)"
+ */
+export function formatAgencyChangeDate(iso?: string | null): { full: string; short: string } | null {
+  if (!iso) return null;
+  const parsed = new Date(iso);
+  if (isNaN(parsed.getTime()) || parsed.getUTCFullYear() <= 2025) return null;
+
+  const peruNow = new Date(Date.now() - 5 * 3600 * 1000);
+  const peruTarget = new Date(parsed.getTime() - 5 * 3600 * 1000);
+  const todayYmd = peruNow.toISOString().slice(0, 10);
+  const targetYmd = peruTarget.toISOString().slice(0, 10);
+
+  const dayDiff = Math.round(
+    (new Date(`${todayYmd}T00:00:00Z`).getTime() - new Date(`${targetYmd}T00:00:00Z`).getTime()) /
+      (24 * 60 * 60 * 1000)
+  );
+
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const [y, m, d] = targetYmd.split('-').map(Number);
+  const shortDate = `${d} ${months[(m || 1) - 1]}`;
+  const fullDate = `${shortDate} ${y}`;
+
+  let rel = '';
+  if (dayDiff <= 0) rel = ' (hoy)';
+  else if (dayDiff === 1) rel = ' (ayer)';
+  else rel = ` (hace ${dayDiff} días)`;
+
+  return { full: `${fullDate}${rel}`, short: shortDate };
 }
 
 /**
@@ -87,18 +123,25 @@ export function getAgencyStatusInfo(agency: {
 
   const prevName = agency.previous_name?.trim() || null;
   const prevAddr = agency.previous_address?.trim() || null;
+  const changedFmt = formatAgencyChangeDate(agency.name_changed_at);
+  const deletedFmt = formatAgencyChangeDate(agency.deleted_at);
 
   let statusBadgeText: string | null = null;
   let statusTooltipText: string | null = null;
 
   if (isDeleted) {
-    statusBadgeText = '⚠️ YA NO EXISTE';
+    statusBadgeText = deletedFmt ? `⚠️ YA NO EXISTE (${deletedFmt.short})` : '⚠️ YA NO EXISTE';
+    const dateSuffix = deletedFmt ? ` el ${deletedFmt.full}` : ' recientemente';
     statusTooltipText = prevName
-      ? `Esta agencia fue cerrada o eliminada recientemente (antigua agencia: ${prevName}). No está disponible para selección.`
-      : 'Esta agencia fue cerrada o eliminada recientemente y ya no está disponible para selección.';
+      ? `Esta agencia fue cerrada o eliminada${dateSuffix} (antigua agencia: ${prevName}). No está disponible para selección.`
+      : `Esta agencia fue cerrada o eliminada${dateSuffix} y ya no está disponible para selección.`;
   } else if (isNameChanged && prevName) {
-    statusBadgeText = `🔄 Nombre cambiado recientemente`;
-    statusTooltipText = `Nombre anterior: "${prevName}"`;
+    statusBadgeText = changedFmt
+      ? `🔄 Nombre cambiado (${changedFmt.short})`
+      : `🔄 Nombre cambiado recientemente`;
+    statusTooltipText = changedFmt
+      ? `Cambió el ${changedFmt.full}. Nombre anterior: "${prevName}"`
+      : `Nombre anterior: "${prevName}"`;
   }
 
   return {
@@ -107,6 +150,10 @@ export function getAgencyStatusInfo(agency: {
     isNameChangedRecently: isNameChanged,
     previousName: prevName,
     previousAddress: prevAddr,
+    changedAtDate: changedFmt?.full || null,
+    changedAtShort: changedFmt?.short || null,
+    deletedAtDate: deletedFmt?.full || null,
+    deletedAtShort: deletedFmt?.short || null,
     statusBadgeText,
     statusTooltipText,
     canBeSelected: !isDeleted,

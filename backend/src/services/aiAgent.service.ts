@@ -285,9 +285,11 @@ const tools: Record<string, ToolFn> = {
     if (metodoCodigo === 'shalom') {
       const live = await ShalomMatcherService.resolveDestinationLive(destino, dni);
       if (live.status === 'closed_or_disabled') {
+        const fechaBaja = live.closedMatch?.deletedAtFormatted || null;
         return {
           data: {
-            error: `La agencia Shalom "${live.closedMatch?.displayTitle}" no está disponible: ${live.closedMatch?.reason}.`,
+            error: `La agencia Shalom "${live.closedMatch?.displayTitle}" no está disponible${fechaBaja ? ` (cerrada/dada de baja el ${fechaBaja})` : ''}: ${live.closedMatch?.reason}.`,
+            fecha_baja: fechaBaja,
             alternativas_activas_cercanas: live.nearestAlternatives.map(x => ({ codigo: x.code, titulo: x.displayTitle, direccion: x.displayAddress, distancia_km: x.distanceKm ?? null })),
             alternativas_olva: live.olvaAlternatives,
           },
@@ -308,14 +310,21 @@ const tools: Record<string, ToolFn> = {
         return {
           data: {
             error: `Hay varias agencias Shalom activas para "${destino}". Pide a la usuaria elegir una exacta.`,
-            opciones: live.matches.slice(0, 6).map(x => ({ codigo: x.code, titulo: x.displayTitle, direccion: x.displayAddress, cambio_nombre_anterior: x.renameNotice?.previousName || null })),
+            opciones: live.matches.slice(0, 6).map(x => ({
+              codigo: x.code,
+              titulo: x.displayTitle,
+              direccion: x.displayAddress,
+              cambio_nombre_anterior: x.renameNotice?.previousName || null,
+              cambio_nombre_fecha: x.renameNotice?.changedAtFormatted || null,
+            })),
           },
           summary: 'Agencia Shalom ambigua',
         };
       }
       finalDestinoDetalle = live.resolvedDestination + (tel && !live.resolvedDestination.includes(tel) ? ` • Tel: ${tel}` : '');
       if (live.renameNotice) {
-        renameWarning = `Esta agencia cambió de nombre recientemente: antes "${live.renameNotice.previousName}", ahora "${live.renameNotice.newName}".`;
+        const cuando = live.renameNotice.changedAtFormatted ? ` el ${live.renameNotice.changedAtFormatted}` : ' recientemente';
+        renameWarning = `Esta agencia cambió de nombre${cuando}: antes "${live.renameNotice.previousName}", ahora "${live.renameNotice.newName}".`;
       }
     }
 
@@ -463,7 +472,14 @@ const tools: Record<string, ToolFn> = {
         cerrada_o_deshabilitada: liveRes.closedMatch || null,
         cambio_de_nombre: liveRes.renameNotice || null,
         activas: searchRes.activeMatches,
-        alternativas_cercanas: liveRes.nearestAlternatives.map(x => ({ codigo: x.code, titulo: x.displayTitle, direccion: x.displayAddress, distancia_km: x.distanceKm ?? null })),
+        alternativas_cercanas: liveRes.nearestAlternatives.map(x => ({
+          codigo: x.code,
+          titulo: x.displayTitle,
+          direccion: x.displayAddress,
+          distancia_km: x.distanceKm ?? null,
+          cambio_nombre_anterior: x.renameNotice?.previousName || null,
+          cambio_nombre_fecha: x.renameNotice?.changedAtFormatted || null,
+        })),
         alternativas_olva: liveRes.olvaAlternatives,
       },
       summary: `Consultó agencias Shalom ("${q}")`,
@@ -686,6 +702,7 @@ REGLAS
 - Estados de envío: pendiente, en_camino, listo_para_recojo, entregado. Producción: en_cola (almacén), bordando (alistando), completado.
 - Responde en español peruano, claro, breve y amable, pensado para leerse en el celular. Usa listas cortas y algunos emojis (📦 ✅ 🚚). Sin párrafos largos.
 - No reveles contraseñas, claves ni datos de otras empresas. Si piden algo fuera de Encomi, di amablemente que no puedes.
+- Si una agencia Shalom cambió de nombre o fue cerrada/eliminada, menciona SIEMPRE cuándo ocurrió el cambio o baja usando la fecha formateada devuelta por la herramienta (\`changedAtFormatted\` / \`deletedAtFormatted\` / \`fecha_baja\`).
 - Si una herramienta devuelve error, explícalo en simple y propone el siguiente paso.`;
 };
 

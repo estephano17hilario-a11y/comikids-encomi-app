@@ -827,7 +827,8 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
               .map((opt, i) => {
                 const emoji = numberEmojis[i] || `${i + 1}️⃣`;
                 const distTag = opt.distanceKm !== undefined ? ` _(a ~${opt.distanceKm} km)_` : '';
-                const renameTag = opt.renameNotice ? `\n   🔄 _Cambió de nombre (antes: ${opt.renameNotice.previousName})_` : '';
+                const renameWhen = opt.renameNotice?.changedAtFormatted ? ` el ${opt.renameNotice.changedAtFormatted}` : '';
+                const renameTag = opt.renameNotice ? `\n   🔄 _Cambió de nombre${renameWhen} (antes: ${opt.renameNotice.previousName})_` : '';
                 return `${emoji} *${opt.title}*${distTag}\n   📍 ${opt.address || 'Dirección de agencia'}${renameTag}`;
               })
               .join('\n\n')
@@ -838,10 +839,14 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
             matchResult.olvaAlternatives.slice(0, 2).map(o => `• *${o.name}* — ${o.address}`).join('\n')
           : '';
 
+        const closedDateLine = closed.deletedAtFormatted
+          ? `\n📅 *Fecha de cierre/baja:* ${closed.deletedAtFormatted}`
+          : '';
+
         const closedMsg =
           `🛑 *¡ATENCIÓN! Agencia Shalom NO disponible:*\n\n` +
           `🏢 *${closed.displayTitle}*\n` +
-          `⚠️ *Motivo:* ${closed.reason}.\n` +
+          `⚠️ *Motivo:* ${closed.reason}.${closedDateLine}\n` +
           `_No se registró el pedido para evitar errores en el envío._\n\n` +
           `✅ *Sedes Shalom ACTIVAS más cercanas:*\n\n${altListText}${olvaNote}\n\n` +
           `💬 *Responde con el número (ej: 1 o 2), escribe otra sede Shalom, "motorizado" o "cancelar":*`;
@@ -932,7 +937,8 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
         const optionsListText = options
           .map((opt, i) => {
             const emoji = numberEmojis[i] || `${i + 1}️⃣`;
-            const renameTag = opt.renameNotice ? `\n   🔄 _Nombre cambiado recientemente (antes: ${opt.renameNotice.previousName})_` : '';
+            const renameWhen = opt.renameNotice?.changedAtFormatted ? ` el ${opt.renameNotice.changedAtFormatted}` : ' recientemente';
+            const renameTag = opt.renameNotice ? `\n   🔄 _Nombre cambiado${renameWhen} (antes: ${opt.renameNotice.previousName})_` : '';
             return `${emoji} *${opt.title}*\n   📍 ${opt.address || 'Dirección de agencia'}${renameTag}`;
           })
           .join('\n\n');
@@ -960,8 +966,9 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
     });
 
     const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
+    const renameDateLine = renameNotice?.changedAtFormatted ? `\n📅 *Fecha del cambio:* ${renameNotice.changedAtFormatted}` : '';
     const renameBanner = renameNotice
-      ? `🔄 *AVISO DE CAMBIO DE NOMBRE SHALOM:*\n• Antes: _${renameNotice.previousName}_\n• Ahora: *${renameNotice.newName}*\n_(Pedido registrado automáticamente con el nombre oficial vigente)_\n\n`
+      ? `🔄 *AVISO DE CAMBIO DE NOMBRE SHALOM:*\n• Antes: _${renameNotice.previousName}_\n• Ahora: *${renameNotice.newName}*${renameDateLine}\n_(Pedido registrado automáticamente con el nombre oficial vigente)_\n\n`
       : '';
     const receiptMsg = `${renameBanner}Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* ${metodoEnvioNombre}\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
 
@@ -1474,8 +1481,9 @@ Reglas:
           await redisClient.del(pendingAgencyKey);
 
           const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
+          const chosenRenameDate = chosenOption.renameNotice?.changedAtFormatted ? `\n📅 *Fecha del cambio:* ${chosenOption.renameNotice.changedAtFormatted}` : '';
           const renameBanner = chosenOption.renameNotice
-            ? `🔄 *AVISO DE CAMBIO DE NOMBRE SHALOM:*\n• Antes: _${chosenOption.renameNotice.previousName}_\n• Ahora: *${chosenOption.renameNotice.newName}*\n\n`
+            ? `🔄 *AVISO DE CAMBIO DE NOMBRE SHALOM:*\n• Antes: _${chosenOption.renameNotice.previousName}_\n• Ahora: *${chosenOption.renameNotice.newName}*${chosenRenameDate}\n\n`
             : '';
           const receiptMsg = `${renameBanner}Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* Agencia Shalom Nacional\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
 

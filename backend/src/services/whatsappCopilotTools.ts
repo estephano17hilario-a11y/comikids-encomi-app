@@ -359,7 +359,8 @@ async function executeTool(
                 direccion: liveRes.closedMatch.displayAddress,
                 motivo: liveRes.closedMatch.reason,
                 categoria: liveRes.closedMatch.category,
-                fecha_baja: liveRes.closedMatch.deletedAt,
+                fecha_baja: liveRes.closedMatch.deletedAtFormatted || liveRes.closedMatch.deletedAt || null,
+                fecha_baja_iso: liveRes.closedMatch.deletedAt || null,
               }
             : null,
           aviso_cambio_nombre: liveRes.renameNotice || null,
@@ -371,6 +372,7 @@ async function executeTool(
             direccion: a.displayAddress,
             distancia_km: a.distanceKm ?? null,
             cambio_nombre_anterior: a.renameNotice?.previousName || null,
+            cambio_nombre_fecha: a.renameNotice?.changedAtFormatted || null,
           })),
           alternativas_olva_courier:
             liveRes.olvaAlternatives.length > 0 ? liveRes.olvaAlternatives : searchRes.olvaAlternatives,
@@ -601,10 +603,12 @@ async function executeTool(
           const live = await ShalomMatcherService.resolveDestinationLive(destStr, existingDni);
 
           if (live.status === 'closed_or_disabled') {
+            const fechaBaja = live.closedMatch?.deletedAtFormatted || null;
             return {
               output: {
                 error: 'AGENCIA_CERRADA_O_DESHABILITADA',
-                mensaje: `No se actualizó el pedido porque la agencia "${live.closedMatch?.displayTitle}" está inactiva: ${live.closedMatch?.reason}.`,
+                fecha_baja: fechaBaja,
+                mensaje: `No se actualizó el pedido porque la agencia "${live.closedMatch?.displayTitle}" está inactiva${fechaBaja ? ` desde el ${fechaBaja}` : ''}: ${live.closedMatch?.reason}.`,
                 alternativas_activas_cercanas: live.nearestAlternatives.map(a => ({
                   codigo: a.code,
                   titulo: a.displayTitle,
@@ -640,7 +644,8 @@ async function executeTool(
           }
           patch.destino_detalle = formatted;
           if (live.renameNotice) {
-            agencyNotice = `Aviso: esta agencia cambió de nombre recientemente (antes "${live.renameNotice.previousName}", ahora "${live.renameNotice.newName}").`;
+            const cuando = live.renameNotice.changedAtFormatted ? ` el ${live.renameNotice.changedAtFormatted}` : ' recientemente';
+            agencyNotice = `Aviso: esta agencia cambió de nombre${cuando} (antes "${live.renameNotice.previousName}", ahora "${live.renameNotice.newName}").`;
           }
         } else {
           patch.destino_detalle = destStr;
@@ -902,8 +907,8 @@ REGLAS CRÍTICAS DE AUTONOMÍA Y PRECISIÓN:
 2. **VALIDACIÓN INTELIGENTE DE AGENCIAS SHALOM:**
    - Si preguntan si hay Shalom en un lugar o quieren registrar/cambiar un pedido a una agencia: usa \`consultar_agencias_shalom\` o \`registrar_pedido\`.
    - Si la sede **NO EXISTE** (Shalom no tiene sucursal allí): dilo con total claridad ("⚠️ Shalom no tiene sucursal en..."), ofrece las **sedes Shalom activas más cercanas** (con dirección y distancia si está disponible) y menciona si **Olva Courier** sí cubre esa zona.
-   - Si la sede está **CERRADA / DESHABILITADA / SOLO ENVÍOS / (POR DEFINIR)**: explica el motivo exacto, NO permitas registrarla ahí y propón de inmediato las **sedes activas más cercanas**.
-   - Si la sede **CAMBIÓ DE NOMBRE recientemente**: avísalo explícitamente mostrando **Nombre anterior → Nombre oficial actual** y su dirección vigente.
+   - Si la sede está **CERRADA / DESHABILITADA / SOLO ENVÍOS / (POR DEFINIR)**: explica el motivo exacto, indica **SIEMPRE cuándo fue cerrada/eliminada** si viene \`fecha_baja\` / \`deletedAtFormatted\` (ej. "📅 Baja: 20 nov 2026 (hoy)"), NO permitas registrarla ahí y propón de inmediato las **sedes activas más cercanas**.
+   - Si la sede **CAMBIÓ DE NOMBRE recientemente**: avísalo explícitamente mostrando **Nombre anterior → Nombre oficial actual**, indica **SIEMPRE cuándo fue el cambio** si viene \`changedAtFormatted\` / \`cambio_nombre_fecha\` (ej. "📅 Cambió el 10 nov 2026 (hace 10 días)") y muestra su dirección vigente.
 3. **REGISTRO DE PEDIDOS:** Solo requiere 4 datos obligatorios (Nombre completo, DNI/CE 8+ dígitos, Teléfono 9 dígitos, Destino). Cuando los tengas completos, llama inmediatamente a \`registrar_pedido\`. Si falta alguno, pídelo en 1 frase corta.
 4. **ACTUALIZACIONES Y ELIMINACIONES:** Puedes actualizar estados, destinos (validados en vivo), fechas, guías, claves y datos de clientes de forma autónoma. Para eliminar un pedido, pide confirmación primero.
 5. **FORMATO WHATSAPP:** Español peruano, claro, directo, amable y escaneable en celular. Usa *negritas*, viñetas cortas y emojis moderados (📦 ✅ ⚠️ 🔄 📍 🚚). No repitas comprobantes si \`registrar_pedido\` o \`enviar_whatsapp_a_clienta\` ya envió el mensaje directo al usuario.

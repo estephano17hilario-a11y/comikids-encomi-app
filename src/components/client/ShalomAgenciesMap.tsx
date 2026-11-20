@@ -206,23 +206,25 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
 
       let statusBadgeHtml = '';
       if (statusInfo.isDeletedRecently) {
-        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #ffe4e6; color: #be123c; padding: 2px 8px; border-radius: 9999px;">⚠️ YA NO EXISTE</span>`;
+        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #ffe4e6; color: #be123c; padding: 2px 8px; border-radius: 9999px;">⚠️ YA NO EXISTE${statusInfo.deletedAtShort ? ` · ${statusInfo.deletedAtShort}` : ''}</span>`;
       } else if (statusInfo.isNameChangedRecently) {
-        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #fef3c7; color: #b45309; padding: 2px 8px; border-radius: 9999px;">🔄 NOMBRE CAMBIADO</span>`;
+        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #fef3c7; color: #b45309; padding: 2px 8px; border-radius: 9999px;">🔄 NOMBRE CAMBIADO${statusInfo.changedAtShort ? ` · ${statusInfo.changedAtShort}` : ''}</span>`;
       }
 
       let statusMessageHtml = '';
       if (statusInfo.isDeletedRecently) {
         statusMessageHtml = `
-          <div style="font-size: 11px; color: #9f1239; background: #fff1f2; border: 1px solid #fecdd3; padding: 6px 8px; border-radius: 8px; margin-bottom: 8px; line-height: 1.3;">
+          <div style="font-size: 11px; color: #9f1239; background: #fff1f2; border: 1px solid #fecdd3; padding: 6px 8px; border-radius: 8px; margin-bottom: 8px; line-height: 1.35;">
             ${statusInfo.previousName ? `<strong>Antigua agencia:</strong> ${statusInfo.previousName}<br/>` : ''}
+            ${statusInfo.deletedAtDate ? `📅 <strong>Fecha de cierre/baja:</strong> ${statusInfo.deletedAtDate}<br/>` : ''}
             Esta agencia fue cerrada o eliminada recientemente (vigencia de 30 días). <strong>No se puede seleccionar para envíos.</strong>
           </div>
         `;
       } else if (statusInfo.isNameChangedRecently && statusInfo.previousName) {
         statusMessageHtml = `
-          <div style="font-size: 11px; color: #92400e; background: #fffbeb; border: 1px solid #fef3c7; padding: 5px 8px; border-radius: 8px; margin-bottom: 8px; line-height: 1.3;">
-            ℹ️ <strong>Nombre cambiado recientemente.</strong> Antes se llamaba: "${statusInfo.previousName}" (vigencia 30 días).
+          <div style="font-size: 11px; color: #92400e; background: #fffbeb; border: 1px solid #fef3c7; padding: 5px 8px; border-radius: 8px; margin-bottom: 8px; line-height: 1.35;">
+            ℹ️ <strong>Nombre cambiado recientemente.</strong>${statusInfo.changedAtDate ? `<br/>📅 <strong>Fecha del cambio:</strong> ${statusInfo.changedAtDate}` : ''}<br/>
+            Antes se llamaba: <strong>"${statusInfo.previousName}"</strong> (vigencia 30 días).
           </div>
         `;
       }

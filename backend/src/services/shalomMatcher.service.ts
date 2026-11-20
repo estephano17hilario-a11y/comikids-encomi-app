@@ -18,6 +18,7 @@ export interface ShalomRenameNotice {
   previousAddress?: string | null;
   newName: string;
   changedAt?: string | null;
+  changedAtFormatted?: string | null;
   matchedViaOldName: boolean;
 }
 
@@ -28,6 +29,7 @@ export interface ShalomClosedInfo {
   reason: string;
   category: 'closed_or_disabled' | 'por_definir' | 'solo_envios' | 'airport' | 'internal' | 'qa_test';
   deletedAt?: string | null;
+  deletedAtFormatted?: string | null;
 }
 
 export interface OlvaAlternative {
@@ -67,6 +69,37 @@ export class ShalomMatcherService {
   public static invalidateCache(): void {
     this.liveAgenciesCache = null;
     this.liveCacheExpiresAt = 0;
+  }
+
+  /**
+   * Formatea una fecha ISO en hora Perú (America/Lima) con texto relativo legible.
+   * Ej: "20 nov 2026 (hoy)", "19 nov 2026 (ayer)", "10 nov 2026 (hace 10 días)"
+   */
+  public static formatChangeDatePeru(iso?: string | null): string | null {
+    if (!iso) return null;
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) return null;
+
+    // Ignorar fecha sentinela de registros internos/QA ocultos (2025-01-01)
+    if (parsed.getUTCFullYear() <= 2025) return null;
+
+    const peruNow = new Date(Date.now() - 5 * 3600 * 1000);
+    const peruTarget = new Date(parsed.getTime() - 5 * 3600 * 1000);
+    const todayYmd = peruNow.toISOString().slice(0, 10);
+    const targetYmd = peruTarget.toISOString().slice(0, 10);
+
+    const dayDiff = Math.round(
+      (new Date(`${todayYmd}T00:00:00Z`).getTime() - new Date(`${targetYmd}T00:00:00Z`).getTime()) /
+        (24 * 60 * 60 * 1000)
+    );
+
+    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const [y, m, d] = targetYmd.split('-').map(Number);
+    const base = `${d} ${months[(m || 1) - 1]} ${y}`;
+
+    if (dayDiff <= 0) return `${base} (hoy)`;
+    if (dayDiff === 1) return `${base} (ayer)`;
+    return `${base} (hace ${dayDiff} días)`;
   }
 
   /**
@@ -280,6 +313,7 @@ export class ShalomMatcherService {
       previousAddress: agency.previous_address || null,
       newName: currentName,
       changedAt: agency.name_changed_at || null,
+      changedAtFormatted: this.formatChangeDatePeru(agency.name_changed_at),
       matchedViaOldName,
     };
   }
@@ -546,6 +580,7 @@ export class ShalomMatcherService {
             reason: cls.reason,
             category: cls.category,
             deletedAt: exactClosed.deleted_at || null,
+            deletedAtFormatted: this.formatChangeDatePeru(exactClosed.deleted_at),
           },
           nearestAlternatives: nearest,
           olvaAlternatives: olva,
@@ -609,6 +644,7 @@ export class ShalomMatcherService {
           reason: cls.reason,
           category: cls.category,
           deletedAt: bestInactive.ag.deleted_at || null,
+          deletedAtFormatted: this.formatChangeDatePeru(bestInactive.ag.deleted_at),
         },
         nearestAlternatives: nearest,
         olvaAlternatives: olva,
@@ -697,6 +733,8 @@ export class ShalomMatcherService {
       district: string;
       renamedRecently?: boolean;
       previousName?: string | null;
+      changedAt?: string | null;
+      changedAtFormatted?: string | null;
     }>;
     closedOrDisabledMatches: Array<{
       id: number;
@@ -705,6 +743,8 @@ export class ShalomMatcherService {
       name: string;
       address: string;
       reason: string;
+      deletedAt?: string | null;
+      deletedAtFormatted?: string | null;
       nearestActive: Array<{ title: string; address: string; distanceKm?: number }>;
     }>;
     olvaAlternatives: OlvaAlternative[];
@@ -738,6 +778,8 @@ export class ShalomMatcherService {
           district: x.ag.district || x.ag.distrito || '',
           renamedRecently: Boolean(rename),
           previousName: rename ? rename.previousName : null,
+          changedAt: rename ? rename.changedAt : null,
+          changedAtFormatted: rename ? rename.changedAtFormatted : null,
         };
       });
 
@@ -760,6 +802,8 @@ export class ShalomMatcherService {
           name: x.ag.name || x.ag.nombre || '',
           address: this.cleanAddressText(x.ag.address || x.ag.direccion),
           reason: cls.reason,
+          deletedAt: x.ag.deleted_at || null,
+          deletedAtFormatted: this.formatChangeDatePeru(x.ag.deleted_at),
           nearestActive: nearest,
         };
       });
@@ -782,8 +826,8 @@ export class ShalomMatcherService {
     totalActive: number;
     totalClosedRecent30d: number;
     totalRenamedRecent30d: number;
-    renamedAgencies: Array<{ id: number; code: string | null; previousName: string; currentName: string; address: string; changedAt: string | null }>;
-    closedRecentAgencies: Array<{ id: number; code: string | null; name: string; address: string; deletedAt: string | null }>;
+    renamedAgencies: Array<{ id: number; code: string | null; previousName: string; currentName: string; address: string; changedAt: string | null; changedAtFormatted: string | null }>;
+    closedRecentAgencies: Array<{ id: number; code: string | null; name: string; address: string; deletedAt: string | null; deletedAtFormatted: string | null }>;
   }> {
     const allAgencies = await this.loadLiveAgencies();
     const nowMs = Date.now();
@@ -802,6 +846,7 @@ export class ShalomMatcherService {
         currentName: a.name || a.nombre || '',
         address: this.cleanAddressText(a.address || a.direccion),
         changedAt: a.name_changed_at || null,
+        changedAtFormatted: this.formatChangeDatePeru(a.name_changed_at),
       }));
 
     const closedRecent = allAgencies
@@ -816,6 +861,7 @@ export class ShalomMatcherService {
         name: a.name || a.nombre || '',
         address: this.cleanAddressText(a.address || a.direccion),
         deletedAt: a.deleted_at || null,
+        deletedAtFormatted: this.formatChangeDatePeru(a.deleted_at),
       }));
 
     return {

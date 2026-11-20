@@ -2,6 +2,7 @@ import axios from 'axios';
 import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { resolveShalomAgencyDetails } from './shalomAgencyResolver.js';
+import { ShalomMatcherService } from './shalomMatcher.service.js';
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
 const DEFAULT_API_KEY = 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
@@ -490,6 +491,9 @@ export class ShalomSyncService {
         errors,
       };
 
+      // Refrescar caché en memoria del matcher del bot WhatsApp / AI
+      ShalomMatcherService.invalidateCache();
+
       this.lastSyncReport = report;
       console.log(`[SHALOM SYNC COMPLETED] ✓ Sincronización 05:00 AM exitosa: ${activeValidCount} activas válidas de ${apiAgencies.length} en API (${newAgenciesCount} nuevas, ${updatedAgenciesCount} modificadas, ${deactivatedAgenciesCount} desactivadas, ${updatedOrdersList.length} pedidos actualizados).`);
       return report;
@@ -508,6 +512,9 @@ export class ShalomSyncService {
         updatedOrders: [],
         errors,
       };
+      // Refrescar caché en memoria del matcher del bot WhatsApp / AI
+      ShalomMatcherService.invalidateCache();
+
       this.lastSyncReport = report;
       return report;
     } finally {

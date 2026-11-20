@@ -2,7 +2,8 @@ import axios from 'axios';
 import { supabaseAdmin } from '../config/supabase.js';
 import { queryCopilotWithUsage, extractClientFromMedia } from './ai.service.js';
 import { EvolutionService } from './evolution.service.js';
-import { ShalomMatcherService } from './shalomMatcher.service.js';
+import { ShalomMatcherService, ShalomRenameNotice } from './shalomMatcher.service.js';
+import { runWhatsAppAutonomousAgent } from './whatsappCopilotTools.js';
 import { env } from '../config/env.js';
 import { redisClient } from '../config/redis.js';
 import { EvolutionMessageData } from '../types/evolution.types.js';
@@ -784,49 +785,167 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
     const cleanPhoneDisplay = this.normalizePhone(clienteTelefono).display;
 
     let resolvedDestination = '';
+    let renameNotice: ShalomRenameNotice | null = null;
+
     if (isMotorizado) {
       resolvedDestination = destino.replace(/^motorizado\s*:?\s*/i, '').trim();
     } else {
-      const matchResult = ShalomMatcherService.resolveDestination(destino, clienteDni);
+      const matchResult = await ShalomMatcherService.resolveDestinationLive(destino, clienteDni);
+      const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣'];
 
-      if (matchResult.isUnambiguousMatch) {
-        resolvedDestination = matchResult.resolvedDestination;
-      } else if (matchResult.matches.length > 1) {
-        const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣'];
+      // CASO 1: Agencia CERRADA / DESHABILITADA / SOLO ENVÍOS / (POR DEFINIR)
+      if (matchResult.status === 'closed_or_disabled' && matchResult.closedMatch) {
+        const closed = matchResult.closedMatch;
+        const altOptions = matchResult.nearestAlternatives.slice(0, 5).map((m, idx) => ({
+          index: idx + 1,
+          id: m.agency.id,
+          formatted: ShalomMatcherService.formatAgencyDestination(m.agency, clienteDni),
+          title: m.displayTitle,
+          address: m.displayAddress,
+          distanceKm: m.distanceKm,
+          renameNotice: m.renameNotice || null,
+        }));
+
+        await redisClient.set(
+          pendingAgencyKey,
+          JSON.stringify({
+            mode: 'closed_or_missing',
+            clienteNombre,
+            clienteDni,
+            clienteTelefono,
+            referencia,
+            prendasBordado,
+            originalDestino: destino,
+            options: altOptions,
+          }),
+          'EX',
+          1200
+        );
+
+        const altListText = altOptions.length > 0
+          ? altOptions
+              .map((opt, i) => {
+                const emoji = numberEmojis[i] || `${i + 1}️⃣`;
+                const distTag = opt.distanceKm !== undefined ? ` _(a ~${opt.distanceKm} km)_` : '';
+                const renameTag = opt.renameNotice ? `\n   🔄 _Cambió de nombre (antes: ${opt.renameNotice.previousName})_` : '';
+                return `${emoji} *${opt.title}*${distTag}\n   📍 ${opt.address || 'Dirección de agencia'}${renameTag}`;
+              })
+              .join('\n\n')
+          : '_No se encontraron sedes cercanas automáticamente._';
+
+        const olvaNote = matchResult.olvaAlternatives.length > 0
+          ? `\n\n🟡 *Alternativa Olva Courier en la zona:*\n` +
+            matchResult.olvaAlternatives.slice(0, 2).map(o => `• *${o.name}* — ${o.address}`).join('\n')
+          : '';
+
+        const closedMsg =
+          `🛑 *¡ATENCIÓN! Agencia Shalom NO disponible:*\n\n` +
+          `🏢 *${closed.displayTitle}*\n` +
+          `⚠️ *Motivo:* ${closed.reason}.\n` +
+          `_No se registró el pedido para evitar errores en el envío._\n\n` +
+          `✅ *Sedes Shalom ACTIVAS más cercanas:*\n\n${altListText}${olvaNote}\n\n` +
+          `💬 *Responde con el número (ej: 1 o 2), escribe otra sede Shalom, "motorizado" o "cancelar":*`;
+
+        await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, closedMsg);
+        return closedMsg;
+      }
+
+      // CASO 2: NO EXISTE SUCURSAL SHALOM EN ESA LOCALIDAD
+      if (matchResult.status === 'not_found') {
+        const altOptions = matchResult.nearestAlternatives.slice(0, 5).map((m, idx) => ({
+          index: idx + 1,
+          id: m.agency.id,
+          formatted: ShalomMatcherService.formatAgencyDestination(m.agency, clienteDni),
+          title: m.displayTitle,
+          address: m.displayAddress,
+          distanceKm: m.distanceKm,
+          renameNotice: m.renameNotice || null,
+        }));
+
+        await redisClient.set(
+          pendingAgencyKey,
+          JSON.stringify({
+            mode: 'closed_or_missing',
+            clienteNombre,
+            clienteDni,
+            clienteTelefono,
+            referencia,
+            prendasBordado,
+            originalDestino: destino,
+            options: altOptions,
+          }),
+          'EX',
+          1200
+        );
+
+        const altSection = altOptions.length > 0
+          ? `\n\n✅ *Sedes Shalom activas sugeridas en la región:*\n\n` +
+            altOptions
+              .map((opt, i) => {
+                const emoji = numberEmojis[i] || `${i + 1}️⃣`;
+                return `${emoji} *${opt.title}*\n   📍 ${opt.address || 'Dirección de agencia'}`;
+              })
+              .join('\n\n')
+          : '';
+
+        const olvaSection = matchResult.olvaAlternatives.length > 0
+          ? `\n\n🟡 *Olva Courier SÍ tiene cobertura allí:*\n` +
+            matchResult.olvaAlternatives.slice(0, 3).map(o => `• *${o.name}* — ${o.address}`).join('\n')
+          : '';
+
+        const notFoundMsg =
+          `⚠️ *Shalom NO tiene sucursal activa registrada en "${destino}".*\n\n` +
+          `_Por seguridad no registré el pedido en una agencia inexistente._${altSection}${olvaSection}\n\n` +
+          `💬 *¿En qué sede Shalom deseas registrarlo? Responde con el número${altOptions.length > 0 ? ' (1-' + altOptions.length + ')' : ''}, escribe otra agencia Shalom, "motorizado" o "cancelar":*`;
+
+        await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, notFoundMsg);
+        return notFoundMsg;
+      }
+
+      // CASO 3: MÚLTIPLES SEDES ACTIVAS (DESAMBIGUACIÓN)
+      if (matchResult.status === 'ambiguous' && matchResult.matches.length > 1) {
         const options = matchResult.matches.slice(0, 6).map((m, idx) => ({
           index: idx + 1,
           id: m.agency.id,
           formatted: ShalomMatcherService.formatAgencyDestination(m.agency, clienteDni),
           title: m.displayTitle,
           address: m.displayAddress,
+          renameNotice: m.renameNotice || null,
         }));
 
-        const pendingOrderData = {
-          clienteNombre,
-          clienteDni,
-          clienteTelefono,
-          referencia,
-          prendasBordado,
-          originalDestino: destino,
-          options,
-        };
-
-        await redisClient.set(pendingAgencyKey, JSON.stringify(pendingOrderData), 'EX', 1200);
+        await redisClient.set(
+          pendingAgencyKey,
+          JSON.stringify({
+            mode: 'disambiguation',
+            clienteNombre,
+            clienteDni,
+            clienteTelefono,
+            referencia,
+            prendasBordado,
+            originalDestino: destino,
+            options,
+          }),
+          'EX',
+          1200
+        );
 
         const optionsListText = options
           .map((opt, i) => {
             const emoji = numberEmojis[i] || `${i + 1}️⃣`;
-            return `${emoji} *${opt.title}*\n   📍 ${opt.address || 'Dirección de agencia'}`;
+            const renameTag = opt.renameNotice ? `\n   🔄 _Nombre cambiado recientemente (antes: ${opt.renameNotice.previousName})_` : '';
+            return `${emoji} *${opt.title}*\n   📍 ${opt.address || 'Dirección de agencia'}${renameTag}`;
           })
           .join('\n\n');
 
-        const disambiguationMsg = `🏢 *He encontrado ${options.length} agencias Shalom para "${destino}":*\n\n¿A cuál de ellas te refieres?\n\n${optionsListText}\n\n💬 *Por favor responde con el número de la opción (ej: 1 o 2) o el nombre de la sede:*`;
+        const disambiguationMsg = `🏢 *He encontrado ${options.length} agencias Shalom activas para "${destino}":*\n\n¿A cuál de ellas te refieres?\n\n${optionsListText}\n\n💬 *Por favor responde con el número de la opción (ej: 1 o 2), el nombre de la sede o "cancelar":*`;
 
         await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, disambiguationMsg);
         return disambiguationMsg;
-      } else {
-        resolvedDestination = matchResult.resolvedDestination;
       }
+
+      // CASO 4: COINCIDENCIA ACTIVA EXACTA (CON O SIN CAMBIO DE NOMBRE RECIENTE)
+      resolvedDestination = matchResult.resolvedDestination;
+      renameNotice = matchResult.renameNotice || null;
     }
 
     const { orderId, trackingCode, targetFechaLimite } = await this.persistRegisteredOrder({
@@ -841,7 +960,10 @@ ${formattedDelivered || '(No hay pedidos entregados recientes)'}
     });
 
     const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
-    const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* ${metodoEnvioNombre}\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
+    const renameBanner = renameNotice
+      ? `🔄 *AVISO DE CAMBIO DE NOMBRE SHALOM:*\n• Antes: _${renameNotice.previousName}_\n• Ahora: *${renameNotice.newName}*\n_(Pedido registrado automáticamente con el nombre oficial vigente)_\n\n`
+      : '';
+    const receiptMsg = `${renameBanner}Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* ${metodoEnvioNombre}\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
 
     await Promise.allSettled([
       EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, receiptMsg),
@@ -1295,19 +1417,27 @@ Reglas:
 
       if (pendingAgencyRaw) {
         const pendingChoice = JSON.parse(pendingAgencyRaw);
-        const options: Array<{ index: number; formatted: string; title: string; address: string }> = pendingChoice.options || [];
+        const options: Array<{ index: number; formatted: string; title: string; address: string; renameNotice?: ShalomRenameNotice | null }> = pendingChoice.options || [];
+
+        // Permitir cancelar explícitamente el registro pendiente
+        if (/^(cancelar|anular|no\s+registrar|olv[ií]dalo|salir)$/i.test(textTrimmed)) {
+          await redisClient.del(pendingAgencyKey);
+          const cancelMsg = '❌ Registro pendiente cancelado. Cuando gustes envíame los datos de nuevo o hazme cualquier consulta.';
+          await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, cancelMsg);
+          return cancelMsg;
+        }
 
         // Comprobar si el texto ingresado es un número de opción (1, 2, 3, etc.)
         const matchNum = textTrimmed.match(/^(?:opcion|opción|la|el|nro|n°|#)?\s*([1-9])\b/i);
         let selectedNum = matchNum ? parseInt(matchNum[1], 10) : null;
 
-        // O si el usuario escribió directamente una palabra clave de la agencia (ej. "Pangoa", "Mazamari", "Pastor")
+        // O si el usuario escribió directamente una palabra clave de una de las opciones sugeridas
         if (!selectedNum && options.length > 0) {
           const normInput = ShalomMatcherService.normalize(textTrimmed);
           const foundIdx = options.findIndex(opt => {
             const normTitle = ShalomMatcherService.normalize(opt.title);
             const normAddr = ShalomMatcherService.normalize(opt.address);
-            return normTitle.includes(normInput) || normAddr.includes(normInput);
+            return normInput.length >= 3 && (normTitle.includes(normInput) || normAddr.includes(normInput));
           });
           if (foundIdx !== -1) {
             selectedNum = foundIdx + 1;
@@ -1318,7 +1448,6 @@ Reglas:
           const chosenOption = options[selectedNum - 1];
           const resolvedDestination = chosenOption.formatted;
           const { clienteNombre, clienteDni, clienteTelefono, referencia, prendasBordado } = pendingChoice;
-
           const cleanPhoneDisplay = this.normalizePhone(clienteTelefono).display;
 
           const { orderId, trackingCode, targetFechaLimite } = await this.persistRegisteredOrder({
@@ -1332,7 +1461,6 @@ Reglas:
             empresaId: (sessionData as any)?.empresaId || 'empresa-master-comikids',
           });
 
-          // 3. Registrar Backup Incremental
           await this.recordIncrementalBackup(sessionData.empresaId, 'CREATE_ORDER', {
             orderId,
             trackingCode,
@@ -1343,17 +1471,42 @@ Reglas:
             fechaLimite: targetFechaLimite,
           });
 
-          // 4. Limpiar estado de elección
           await redisClient.del(pendingAgencyKey);
 
-          // 5. Emitir Comprobante Oficial
           const lineaRef = referencia ? `\n🏷️ *Referencia:* ${referencia}` : '';
-          const receiptMsg = `Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* Agencia Shalom Nacional\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
+          const renameBanner = chosenOption.renameNotice
+            ? `🔄 *AVISO DE CAMBIO DE NOMBRE SHALOM:*\n• Antes: _${chosenOption.renameNotice.previousName}_\n• Ahora: *${chosenOption.renameNotice.newName}*\n\n`
+            : '';
+          const receiptMsg = `${renameBanner}Hola Somos ComiKids aqui dejo mi comprobante de pedido: 📦✨\n\n-----------------------------------\n📦 *Código / Orden:* #${trackingCode}\n👤 *Destinatario:* ${clienteNombre}\n📱 *WhatsApp:* ${cleanPhoneDisplay}\n🪪 *DNI / CE Recojo:* ${clienteDni}\n🚚 *Tipo de Envío:* Agencia Shalom Nacional\n📍 *Destino / Agencia:*\n${resolvedDestination}${lineaRef}\n📅 *Fecha Programada:* ${targetFechaLimite}\n-----------------------------------\nGracias por la confianza 💖✨🙏`;
 
           await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, receiptMsg);
           return receiptMsg;
+        } else if (
+          pendingChoice.mode === 'closed_or_missing' &&
+          textTrimmed.length >= 3 &&
+          !textTrimmed.includes('?') &&
+          !/\b(cu[aá]ntos|lista|reporte|resumen|busca|estado|comprobantes)\b/i.test(textTrimmed)
+        ) {
+          // El usuario respondió con una NUEVA agencia o "motorizado ..." para completar el pedido pendiente
+          await redisClient.del(pendingAgencyKey);
+          return await this.executeCreateOrderAction({
+            actionData: {
+              clienteNombre: pendingChoice.clienteNombre,
+              clienteDni: pendingChoice.clienteDni,
+              clienteTelefono: pendingChoice.clienteTelefono,
+              referencia: pendingChoice.referencia,
+              prendasBordado: pendingChoice.prendasBordado,
+              destino: textTrimmed,
+              metodoEnvio: /motorizado|delivery|domicilio/i.test(textTrimmed) ? 'motorizado' : 'shalom',
+            },
+            textTrimmed,
+            masterInstance,
+            remoteJid,
+            pendingAgencyKey,
+            sessionData,
+          });
         } else {
-          // Si el usuario envió otra cosa (no un número de opción ni coincidencia), cancelar la desambiguación previa y procesar su nuevo mensaje
+          // Si el usuario envió otra consulta no relacionada, limpiar la desambiguación previa y procesar su nuevo mensaje
           await redisClient.del(pendingAgencyKey);
         }
       }
@@ -1400,10 +1553,8 @@ Reglas:
       }
 
       // -------------------------------------------------------------
-      // PASO 6: VISTA COMPLETA Y EN TIEMPO REAL DE LA BASE DE DATOS
+      // PASO 6: OCR VISUAL DE ADJUNTOS + AGENTE AUTÓNOMO CON ACCESO TOTAL A BD
       // -------------------------------------------------------------
-      const { fullOrdersText, statsSummary, todayOrdersCount, totalCount, rawOrders } = await this.getCompleteDatabaseView(textTrimmed);
-      const todayString = this.getTodayDateString();
       const attachedFileName =
         messageData?.message?.documentMessage?.fileName ||
         messageData?.message?.documentMessage?.title ||
@@ -1413,7 +1564,6 @@ Reglas:
         messageData?.message?.imageMessage?.mimetype ||
         (isImage ? 'image/jpeg' : 'application/pdf');
 
-      // Extracción Visual Inteligente de Destinatario si hay archivo adjunto (Vision OCR)
       let extractedClientInfo: any = null;
       let mediaBuffer: Buffer | null = null;
       let actualMime = attachedMimeType;
@@ -1431,287 +1581,136 @@ Reglas:
         }
       }
 
-      // -------------------------------------------------------------
-      // PASO 7: PROMPT DEL SISTEMA CON 4 CAMPOS Y COMPROBANTE ESTÁNDAR
-      // -------------------------------------------------------------
-      const masterPrompt = `
-Eres el "Copiloto Master de Inteligencia de Negocios y Operaciones de Base de Datos" de Encomi SaaS (encomi.vercel.app).
-Estás interactuando directamente con el administrador de la cuenta: ${userName} (Línea Sub-QR vinculada: +${userSenderPhone}).
-
-INFORMACIÓN DE ACCESO:
-- Cuenta de Empresa: "${sessionData.displayName}"
-- Línea de Despacho Sub-QR: +${userSenderPhone} (${userSenderInstance})
-- Tokens consumidos hoy: ${currentTokenUsage.toLocaleString()} / ${DAILY_TOKEN_LIMIT.toLocaleString()} tokens
-- Fecha actual del sistema (Perú UTC-5): ${todayString}
-- Archivo adjunto: ${hasAttachedMedia ? `SÍ (${isImage ? 'IMAGEN' : 'DOCUMENTO'}: ${attachedFileName})` : 'NO'}
-
-${hasAttachedMedia ? `--- DATOS DEL ARCHIVO/FOTO ADJUNTO LEÍDOS POR VISIÓN IA ---
-- Nombre detectado en archivo: ${extractedClientInfo?.nombre || 'No detectado'}
-- Teléfono detectado en archivo: ${extractedClientInfo?.telefono || 'No detectado'}
-- DNI detectado en archivo: ${extractedClientInfo?.dni || 'No detectado'}
-- Guía / Tracking detectado: ${extractedClientInfo?.guia || 'No detectado'}
-- Detalle / Descripción: ${extractedClientInfo?.descripcion || 'No detectado'}
---- FIN DATOS ADJUNTOS ---` : ''}
-
-${statsSummary}
-
---- VISTA COMPLETA DE TODOS LOS PEDIDOS ACTIVOS EN LA BASE DE DATOS DE COMIKIDS ---
-${fullOrdersText}
---- FIN BASE DE DATOS ---
-
-MENSAJE / INSTRUCCIÓN DEL ADMINISTRADOR:
-"${textTrimmed}"
-
---- REGLAS CRÍTICAS DE RESPUESTA Y ACCIÓN ---
-
-1. CONSULTAS DE PEDIDOS, MÉTRICAS Y RESÚMENES:
-- Usa ÚNICAMENTE las estadísticas reales y exactas indicadas en "ESTADÍSTICAS REALES Y EXACTAS":
-  • Hay EXACTAMENTE ${totalCount} pedidos activos en gestión en el sistema.
-  • Hay ${todayOrdersCount} pedidos programados/registrados para hoy (${todayString}).
-- NUNCA inventes números ni alucines cifras del pasado (ej: NUNCA digas 75 entregados).
-- Si el usuario pregunta "¿cuántos pedidos/envíos hay?" o pide un resumen:
-  - Responde con los ${totalCount} pedidos activos vigentes y su desglose real de la sección de estadísticas (en almacén, en camino, etc.).
-- Si el usuario pregunta "¿qué pedidos hay para hoy?":
-  - Revisa las órdenes marcadas con "⭐ (PARA HOY / REGISTRADO HOY)".
-  - Si hay pedidos para hoy, lístalos detalladamente con su código, cliente, DNI, destino y estado.
-  - Si no hay pedidos fechados para hoy, indícalo claramente y menciona los pedidos pendientes en almacén.
-- Si el usuario busca por nombre (ej: "busca el paquete de Estephano" o "Rosario") o por DNI/código:
-  - Revisa la lista de pedidos y responde con los datos exactos del pedido encontrado.
-  - Usa SIEMPRE el nombre exacto de la persona.
-
-2. REGISTRO DE NUEVO PEDIDO (SOLO 4 DATOS REQUERIDOS):
-Para registrar un nuevo pedido, SOLO SE NECESITAN ESTOS 4 DATOS (NO pidas prendas ni bordado):
-  1. Nombre completo de la clienta (nombre)
-  2. DNI o Carnet de Extranjería (dni)
-  3. Teléfono / WhatsApp (telefono - 9 dígitos)
-  4. Destino (agencia Shalom o dirección para motorizado con referencia si tiene)
-
-Si el usuario te envía estos datos, responde con este formato JSON estricto:
-\`\`\`json
-{
-  "action": "CREATE_ORDER",
-  "clienteNombre": "Nombre completo",
-  "clienteDni": "12345678",
-  "clienteTelefono": "987654321",
-  "destino": "Agencia Shalom o Dirección exacta de entrega",
-  "referencia": "Opcional",
-  "metodoEnvio": "shalom / motorizado",
-  "prendasBordado": "Bordado personalizado (o las prendas si las mencionó)"
-}
-\`\`\`
-
-3. ACTUALIZACIÓN DE PEDIDO:
-Si el usuario te pide cambiar estado de producción, envío o destino (ej: "marca el pedido #1050 como completado"):
-\`\`\`json
-{
-  "action": "UPDATE_ORDER",
-  "searchKey": "1050 o código o DNI",
-  "estadoProduccion": "completado / en_cola / bordando",
-  "estadoEnvio": "pendiente / en_camino / entregado",
-  "nuevoDestino": "opcional",
-  "claveShalom": "opcional"
-}
-\`\`\`
-
-4. ENVIAR MENSAJE O ARCHIVO A CLIENTA (LOTE O INDIVIDUAL):
-Si el usuario te envía una foto, comprobante, guía o documento y te pide que se lo envíes a su dueña/clienta:
-- Cruza los datos leídos del archivo (Nombre, DNI, Guía) con la BASE DE DATOS DE PEDIDOS de arriba para obtener su teléfono oficial (+51 9XXXXXXXX).
-- Responde con este formato JSON:
-\`\`\`json
-{
-  "action": "SEND_WHATSAPP_MESSAGE",
-  "targetPhone": "987654321",
-  "customerName": "Nombre de la clienta",
-  "text": "Hola {Nombre} 👋, te compartimos tu comprobante/foto de tu pedido en ComiKids. ✨",
-  "mediaUrl": null,
-  "sendAttachedDoc": ${hasAttachedMedia},
-  "mediaType": "${isImage ? 'image' : (isDoc ? 'document' : 'image')}",
-  "fileName": "${attachedFileName}"
-}
-\`\`\`
-
-5. RESPUESTAS CONVERSACIONALES O ANÁLISIS:
-Responde en texto plano con tono profesional, amable y conciso, utilizando la información real de la base de datos de arriba.
-`;
-
-      const aiResult = await queryCopilotWithUsage(masterPrompt, textTrimmed);
-      const aiResponse = aiResult.content;
-      const tokensUsed = aiResult.tokensUsed;
-
-      // Registrar consumo de tokens de esta consulta
-      await this.incrementTokenUsage(sessionData.accountCode, tokensUsed);
-
-      // -------------------------------------------------------------
-      // PASO 8: EJECUCIÓN DE ACCIONES EN BASE DE DATOS O WHATSAPP
-      // -------------------------------------------------------------
-      let parsedActionData: any = null;
-      const jsonMatch =
-        aiResponse.match(/```json\s*([\s\S]*?)\s*```/) ||
-        aiResponse.match(/(\{[\s\S]*"action"\s*:\s*"(?:CREATE_ORDER|REGISTRAR_PEDIDO|UPDATE_ORDER|SEND_WHATSAPP_MESSAGE)"[\s\S]*\})/);
-
-      if (jsonMatch) {
-        try {
-          parsedActionData = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-        } catch (parseErr) {
-          console.warn('[COPILOT ACTION PARSE WARN]', parseErr);
+      // Cargar memoria conversacional reciente de este chat (últimos 10 turnos en Redis, 6 horas TTL)
+      const chatHistoryKey = `copilot:chat_history:${cleanPhone}`;
+      let chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      try {
+        const rawHist = await redisClient.get(chatHistoryKey);
+        if (rawHist) {
+          const parsedHist = JSON.parse(rawHist);
+          if (Array.isArray(parsedHist)) chatHistory = parsedHist.slice(-10);
         }
+      } catch {
+        chatHistory = [];
       }
 
-      // Fallback: Si la IA no devolvió JSON pero el mensaje contiene datos de registro (DNI + Teléfono + Intención/Destino)
-      if (!parsedActionData) {
-        const dniMatch = textTrimmed.match(/(?:DNI|doc|documento|ce)?\s*[:#]?\s*([0-9]{8,12})\b/i);
-        const phoneMatch = textTrimmed.match(/(?:cel|celular|telefono|tel|whatsapp|wa|ws)?\s*[:#]?\s*(?:51)?(9\d{8})\b/i);
-        const hasDest = textTrimmed.toLowerCase().includes('shalom') || textTrimmed.toLowerCase().includes('agencia') || textTrimmed.toLowerCase().includes('lima') || textTrimmed.toLowerCase().includes('motorizado') || textTrimmed.toLowerCase().includes('olva');
-        const hasRegisterIntent = textTrimmed.toLowerCase().includes('registra') || textTrimmed.toLowerCase().includes('envio') || textTrimmed.toLowerCase().includes('envío') || textTrimmed.toLowerCase().includes('paquete') || textTrimmed.toLowerCase().includes('pedido');
+      const sendWhatsAppToClient = async (sendParams: {
+        targetPhone: string;
+        customerName?: string;
+        text: string;
+        sendAttachedDoc?: boolean;
+        mediaUrl?: string | null;
+        mediaType?: string;
+        fileName?: string;
+      }): Promise<string> => {
+        let target = String(sendParams.targetPhone).replace(/[^0-9]/g, '');
+        if (target.length === 9) target = `51${target}`;
 
-        if (dniMatch && (phoneMatch || hasDest || hasRegisterIntent)) {
-          parsedActionData = {
-            action: 'CREATE_ORDER',
-            clienteDni: dniMatch[1],
-            clienteTelefono: phoneMatch ? phoneMatch[1] : '',
-          };
-        }
-      }
+        const clientDisplayName = sendParams.customerName || extractedClientInfo?.nombre || 'Cliente';
+        const messageText = sendParams.text || `Hola ${clientDisplayName} 👋, te compartimos tu comprobante/foto de tu pedido en ComiKids. ✨`;
+        const targetMediaType = (sendParams.mediaType || (isImage ? 'image' : 'document')) as 'image' | 'document' | 'audio' | 'video';
+        const fileName = sendParams.fileName || attachedFileName || (targetMediaType === 'image' ? 'imagen.jpg' : 'documento.pdf');
 
-      if (parsedActionData) {
-        try {
-          const actionData = parsedActionData;
+        if (hasAttachedMedia && sendParams.sendAttachedDoc !== false && (mediaBuffer || messageData)) {
+          try {
+            let buf: Buffer | null = mediaBuffer;
+            if (!buf && messageData) {
+              const fetched = await EvolutionService.getMediaBuffer(messageData, masterInstance);
+              buf = fetched.buffer;
+            }
+            if (!buf) throw new Error('No se pudo recuperar el buffer del archivo adjunto');
+            const rawBase64 = buf.toString('base64');
+            const finalMediaType = actualMime.startsWith('image/') ? 'image' : (actualMime.startsWith('audio/') ? 'audio' : 'document');
 
-          // =========================================================
-          // ACCIÓN A: CREAR PEDIDO EN BASE DE DATOS (CON DESAMBIGUACIÓN SHALOM)
-          // =========================================================
-          if (actionData.action === 'CREATE_ORDER' || actionData.action === 'REGISTRAR_PEDIDO') {
-            return await this.executeCreateOrderAction({
-              actionData,
-              textTrimmed,
-              masterInstance,
-              remoteJid,
-              pendingAgencyKey,
-              sessionData,
+            await EvolutionService.sendWhatsAppMedia(userSenderInstance, target, rawBase64, {
+              caption: messageText,
+              fileName,
+              mediaType: finalMediaType,
+              mimeType: actualMime,
             });
+          } catch (mediaErr: any) {
+            console.error('[COPILOT MEDIA ERROR]', mediaErr?.message || mediaErr);
+            await EvolutionService.sendWhatsAppMessage(userSenderInstance, target, messageText);
           }
-
-          // =========================================================
-          // ACCIÓN B: ACTUALIZAR PEDIDO EXISTENTE EN BASE DE DATOS
-          // =========================================================
-          else if (actionData.action === 'UPDATE_ORDER') {
-            const { searchKey, estadoProduccion, estadoEnvio, nuevoDestino, claveShalom } = actionData;
-            const cleanKey = String(searchKey || '').replace(/[^a-zA-Z0-9-]/g, '').trim();
-
-            const updatePayload: any = { updated_at: new Date().toISOString() };
-            if (estadoProduccion) updatePayload.estado_produccion = estadoProduccion;
-            if (estadoEnvio) updatePayload.estado_envio = estadoEnvio;
-            if (nuevoDestino) updatePayload.destino_detalle = nuevoDestino;
-            if (claveShalom) updatePayload.shalom_clave_recojo = claveShalom;
-
-            const { data: updatedOrders, error: updErr } = await supabaseAdmin
-              .from('pedidos')
-              .update(updatePayload)
-              .or(`id.ilike.%${cleanKey}%,codigo_seguimiento.ilike.%${cleanKey}%`)
-              .select('id, codigo_seguimiento, estado_produccion, estado_envio, destino_detalle');
-
-            if (updErr || !updatedOrders || updatedOrders.length === 0) {
-              const notFoundMsg = `⚠️ No se encontró ningún pedido con el identificador "${searchKey}". Verifica el número de orden o código de seguimiento.`;
-              await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, notFoundMsg);
-              return notFoundMsg;
-            }
-
-            const targetOrder = updatedOrders[0];
-            await this.recordIncrementalBackup(sessionData.empresaId, 'UPDATE_ORDER', {
-              orderId: targetOrder.id,
-              changes: updatePayload,
-            });
-
-            const updateConfirmMsg = `✅ *Pedido Actualizado con Éxito en Base de Datos*\n\n🔖 *Pedido:* #${targetOrder.codigo_seguimiento}\n🧵 *Producción:* ${targetOrder.estado_produccion}\n🚚 *Envío:* ${targetOrder.estado_envio}\n📍 *Destino:* ${targetOrder.destino_detalle}\n\n💾 *Cambios respaldados en tiempo real.*`;
-            await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, updateConfirmMsg);
-            return updateConfirmMsg;
-          }
-
-          // =========================================================
-          // ACCIÓN C: ENVIAR MENSAJE DESDE LA LÍNEA DEL SUB-QR
-          // =========================================================
-          else if (actionData.action === 'SEND_WHATSAPP_MESSAGE' && actionData.targetPhone) {
-            let target = String(actionData.targetPhone).replace(/[^0-9]/g, '');
-            if (target.length === 9) target = `51${target}`;
-
-            const clientDisplayName = actionData.customerName || extractedClientInfo?.nombre || 'Cliente';
-            const messageText = actionData.text || `Hola ${clientDisplayName} 👋, te compartimos tu comprobante/foto de tu pedido en ComiKids. ✨`;
-            const mediaUrl = actionData.mediaUrl;
-            const targetMediaType = actionData.mediaType || (isImage ? 'image' : 'document');
-            const fileName = actionData.fileName || attachedFileName || (targetMediaType === 'image' ? 'imagen.jpg' : 'documento.pdf');
-
-            console.log(`[COPILOT ACTION] 🚀 Despachando ${hasAttachedMedia ? targetMediaType : 'texto'} desde instancia "${userSenderInstance}" (+${userSenderPhone}) a +${target}: "${messageText}"`);
-
-            if (hasAttachedMedia && (mediaBuffer || messageData)) {
-              try {
-                let buf: Buffer | null = mediaBuffer;
-                if (!buf && messageData) {
-                  const fetched = await EvolutionService.getMediaBuffer(messageData, masterInstance);
-                  buf = fetched.buffer;
-                }
-                if (!buf) {
-                  throw new Error('No se pudo recuperar el buffer del archivo adjunto');
-                }
-                const rawBase64 = buf.toString('base64');
-                const finalMediaType = actualMime.startsWith('image/') ? 'image' : (actualMime.startsWith('audio/') ? 'audio' : 'document');
-
-                await EvolutionService.sendWhatsAppMedia(userSenderInstance, target, rawBase64, {
-                  caption: messageText,
-                  fileName: fileName,
-                  mediaType: finalMediaType,
-                  mimeType: actualMime,
-                });
-              } catch (mediaErr: any) {
-                console.error('[COPILOT MEDIA ERROR]', mediaErr?.message || mediaErr);
-                await EvolutionService.sendWhatsAppMessage(userSenderInstance, target, messageText || 'Te comparto el documento adjunto.');
-              }
-            } else if (mediaUrl && mediaUrl.startsWith('http')) {
-              await EvolutionService.sendWhatsAppMedia(userSenderInstance, target, mediaUrl, {
-                caption: messageText,
-                fileName: fileName,
-                mediaType: targetMediaType,
-              });
-            } else {
-              await EvolutionService.sendWhatsAppMessage(userSenderInstance, target, messageText);
-            }
-
-            // Registrar en historial de lote en Redis
-            const batchKey = `copilot:batch_history:${cleanPhone}`;
-            const deliveryItem = {
-              targetPhone: target,
-              clientName: clientDisplayName,
-              fileName: fileName,
-              timestamp: Date.now(),
-              status: 'success'
-            };
-            await redisClient.rpush(batchKey, JSON.stringify(deliveryItem));
-            await redisClient.expire(batchKey, 3600); // 1 hora de memoria de lote
-
-            const totalBatchItemsRaw = await redisClient.lrange(batchKey, 0, -1);
-            const totalBatchCount = totalBatchItemsRaw.length;
-
-            let reportSummary = `✅ *Archivo entregado con éxito a clienta*\n\n👤 *Cliente:* ${clientDisplayName}\n📱 *Destinatario:* +${target}\n📎 *Archivo:* ${fileName}\n💬 *Mensaje:* "${messageText}"\n⚡ *Línea Emisora:* +${userSenderPhone} (${userSenderInstance})`;
-
-            if (totalBatchCount > 1) {
-              const listLines = totalBatchItemsRaw.map((raw, idx) => {
-                const it = JSON.parse(raw);
-                return `${idx + 1}. *${it.clientName}* (+${it.targetPhone}) ➔ ${it.fileName}`;
-              }).join('\n');
-
-              reportSummary += `\n\n📋 *Reporte de Lote Acumulado (${totalBatchCount} envíos hoy):*\n${listLines}`;
-            }
-
-            await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, reportSummary);
-            return reportSummary;
-          }
-        } catch (parseErr) {
-          console.warn('[COPILOT ACTION PARSE WARN]', parseErr);
+        } else if (sendParams.mediaUrl && sendParams.mediaUrl.startsWith('http')) {
+          await EvolutionService.sendWhatsAppMedia(userSenderInstance, target, sendParams.mediaUrl, {
+            caption: messageText,
+            fileName,
+            mediaType: targetMediaType,
+          });
+        } else {
+          await EvolutionService.sendWhatsAppMessage(userSenderInstance, target, messageText);
         }
+
+        const batchKey = `copilot:batch_history:${cleanPhone}`;
+        await redisClient.rpush(
+          batchKey,
+          JSON.stringify({ targetPhone: target, clientName: clientDisplayName, fileName, timestamp: Date.now(), status: 'success' })
+        );
+        await redisClient.expire(batchKey, 3600);
+        const totalBatchItemsRaw = await redisClient.lrange(batchKey, 0, -1);
+
+        let reportSummary = `✅ *Mensaje/archivo enviado con éxito a clienta*\n\n👤 *Cliente:* ${clientDisplayName}\n📱 *Destinatario:* +${target}\n💬 *Mensaje:* "${messageText}"\n⚡ *Línea Emisora:* +${userSenderPhone} (${userSenderInstance})`;
+        if (totalBatchItemsRaw.length > 1) {
+          const listLines = totalBatchItemsRaw
+            .map((raw, idx) => {
+              const it = JSON.parse(raw);
+              return `${idx + 1}. *${it.clientName}* (+${it.targetPhone}) ➔ ${it.fileName}`;
+            })
+            .join('\n');
+          reportSummary += `\n\n📋 *Reporte de Lote Acumulado (${totalBatchItemsRaw.length} envíos hoy):*\n${listLines}`;
+        }
+
+        await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, reportSummary);
+        return reportSummary;
+      };
+
+      const agentRes = await runWhatsAppAutonomousAgent(textTrimmed || (hasAttachedMedia ? `[Adjuntó ${attachedFileName}]` : 'Hola'), chatHistory, {
+        empresaId: sessionData.empresaId || 'empresa-master-comikids',
+        empresaNombre: userName,
+        accountCode: sessionData.accountCode,
+        userSenderInstance,
+        userSenderPhone,
+        hasAttachedMedia,
+        attachedFileName,
+        isImage,
+        isDoc,
+        extractedClientInfo,
+        registerOrderCallback: async (actionData: any) => {
+          const msg = await this.executeCreateOrderAction({
+            actionData,
+            textTrimmed,
+            masterInstance,
+            remoteJid,
+            pendingAgencyKey,
+            sessionData,
+          });
+          return { sentDirectly: true, message: msg };
+        },
+        sendWhatsAppToClientCallback: sendWhatsAppToClient,
+        recordBackupCallback: async (action: string, data: any) => {
+          await this.recordIncrementalBackup(sessionData.empresaId, action, data);
+        },
+      });
+
+      await this.incrementTokenUsage(sessionData.accountCode, agentRes.tokensUsed);
+
+      // Persistir historial de conversación en Redis (últimos 10 mensajes, 6 horas)
+      try {
+        const updatedHistory = [
+          ...chatHistory,
+          { role: 'user' as const, content: textTrimmed || `[Adjunto: ${attachedFileName}]` },
+          { role: 'assistant' as const, content: agentRes.reply.slice(0, 2000) },
+        ].slice(-10);
+        await redisClient.set(chatHistoryKey, JSON.stringify(updatedHistory), 'EX', 6 * 3600);
+      } catch {
+        // no-op
       }
 
-      // Respuesta conversacional o análisis de negocio al administrador
-      await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, aiResponse);
-      return aiResponse;
+      if (!agentRes.alreadySentDirectMessage) {
+        await EvolutionService.sendWhatsAppMessage(masterInstance, remoteJid, agentRes.reply);
+      }
+      return agentRes.reply;
     } catch (error: any) {
       console.error('[COPILOT ERROR]', error);
       const fallbackReply = '⚠️ Hubo una incidencia procesando tu solicitud. Por favor intenta nuevamente.';

@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type OpenAI from 'openai';
 import { supabaseAdmin } from '../config/supabase.js';
 import { aiClient, AI_MODEL } from './ai.service.js';
+import { ShalomMatcherService } from './shalomMatcher.service.js';
 
 /**
  * Agente de Encomi AI para el panel de la empresa.
@@ -278,6 +279,46 @@ const tools: Record<string, ToolFn> = {
     const metodoCodigo = found?.codigo || (wanted.includes('motor') ? 'motorizado' : wanted.includes('olva') ? 'olva' : 'shalom');
     const metodoNombre = found?.nombre || (metodoCodigo === 'motorizado' ? 'Motorizado Local Lima' : metodoCodigo === 'olva' ? 'Olva Courier Nacional' : 'Agencia Shalom Nacional');
 
+    // Validar agencia Shalom EN VIVO antes de registrar
+    let finalDestinoDetalle = destino + (dni ? ` • DNI: ${dni}` : '') + (tel ? ` • Tel: ${tel}` : '');
+    let renameWarning: string | undefined;
+    if (metodoCodigo === 'shalom') {
+      const live = await ShalomMatcherService.resolveDestinationLive(destino, dni);
+      if (live.status === 'closed_or_disabled') {
+        return {
+          data: {
+            error: `La agencia Shalom "${live.closedMatch?.displayTitle}" no está disponible: ${live.closedMatch?.reason}.`,
+            alternativas_activas_cercanas: live.nearestAlternatives.map(x => ({ codigo: x.code, titulo: x.displayTitle, direccion: x.displayAddress, distancia_km: x.distanceKm ?? null })),
+            alternativas_olva: live.olvaAlternatives,
+          },
+          summary: 'Agencia Shalom cerrada/deshabilitada',
+        };
+      }
+      if (live.status === 'not_found') {
+        return {
+          data: {
+            error: `Shalom no tiene sucursal activa registrada en "${destino}".`,
+            alternativas_shalom: live.nearestAlternatives.map(x => ({ codigo: x.code, titulo: x.displayTitle, direccion: x.displayAddress })),
+            alternativas_olva: live.olvaAlternatives,
+          },
+          summary: 'Sin sucursal Shalom en la zona',
+        };
+      }
+      if (live.status === 'ambiguous') {
+        return {
+          data: {
+            error: `Hay varias agencias Shalom activas para "${destino}". Pide a la usuaria elegir una exacta.`,
+            opciones: live.matches.slice(0, 6).map(x => ({ codigo: x.code, titulo: x.displayTitle, direccion: x.displayAddress, cambio_nombre_anterior: x.renameNotice?.previousName || null })),
+          },
+          summary: 'Agencia Shalom ambigua',
+        };
+      }
+      finalDestinoDetalle = live.resolvedDestination + (tel && !live.resolvedDestination.includes(tel) ? ` • Tel: ${tel}` : '');
+      if (live.renameNotice) {
+        renameWarning = `Esta agencia cambió de nombre recientemente: antes "${live.renameNotice.previousName}", ahora "${live.renameNotice.newName}".`;
+      }
+    }
+
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const codigo = `${Array.from({ length: 3 }, () => letters[Math.floor(Math.random() * 26)]).join('')}-${peruNow().getUTCFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date().toISOString();
@@ -290,7 +331,7 @@ const tools: Record<string, ToolFn> = {
       detalles_bordado: String(a.detalles || `Envío para ${nombre}`),
       metodo_envio_codigo: metodoCodigo,
       metodo_envio_nombre: metodoNombre,
-      destino_detalle: destino + (dni ? ` • DNI: ${dni}` : '') + (tel ? ` • Tel: ${tel}` : ''),
+      destino_detalle: finalDestinoDetalle,
       estado_produccion: 'en_cola',
       estado_envio: 'pendiente',
       fecha_limite: fecha,
@@ -300,7 +341,7 @@ const tools: Record<string, ToolFn> = {
     };
     const { error } = await supabaseAdmin.from('pedidos').insert(pedido);
     if (error) return { data: { error: `No se pudo crear el pedido: ${error.message}` }, summary: 'Error creando pedido' };
-    return { data: { creado: true, codigo, cliente: nombre, agencia: metodoNombre, fecha_envio: fecha }, summary: `Creó el pedido ${codigo}`, write: true };
+    return { data: { creado: true, codigo, cliente: nombre, agencia: metodoNombre, destino: finalDestinoDetalle, fecha_envio: fecha, aviso_cambio_nombre: renameWarning }, summary: `Creó el pedido ${codigo}`, write: true };
   },
 
   async actualizar_pedido(a, { empresaId }) {
@@ -407,6 +448,26 @@ const tools: Record<string, ToolFn> = {
     const { error } = await supabaseAdmin.from('usuarios').update(patch).eq('id', target.id);
     if (error) return { data: { error: error.message }, summary: 'Error actualizando cliente' };
     return { data: { actualizado: target.nombre_completo, cambios: Object.keys(patch) }, summary: `Actualizó al cliente ${target.nombre_completo}`, write: true };
+  },
+
+  async consultar_agencias_shalom(a) {
+    const q = String(a.busqueda || '').trim();
+    const [searchRes, liveRes] = await Promise.all([
+      ShalomMatcherService.searchAgenciesLive(q, 8),
+      ShalomMatcherService.resolveDestinationLive(q, ''),
+    ]);
+    return {
+      data: {
+        estado: liveRes.status,
+        total_activas_bd: searchRes.totalActiveCatalog,
+        cerrada_o_deshabilitada: liveRes.closedMatch || null,
+        cambio_de_nombre: liveRes.renameNotice || null,
+        activas: searchRes.activeMatches,
+        alternativas_cercanas: liveRes.nearestAlternatives.map(x => ({ codigo: x.code, titulo: x.displayTitle, direccion: x.displayAddress, distancia_km: x.distanceKm ?? null })),
+        alternativas_olva: liveRes.olvaAlternatives,
+      },
+      summary: `Consultó agencias Shalom ("${q}")`,
+    };
   },
 
   async listar_agencias(_a, { empresaId }) {
@@ -580,6 +641,7 @@ const toolDefs: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       parameters: S({ cliente: { type: 'string', description: 'DNI o nombre' }, nombre: { type: 'string' }, telefono: { type: 'string' }, direccion: { type: 'string' } }, ['cliente']),
     },
   },
+  { type: 'function', function: { name: 'consultar_agencias_shalom', description: 'Verifica EN VIVO en shalom_agencies si existe sucursal Shalom en un distrito/ciudad, si está cerrada/deshabilitada, si cambió de nombre recientemente y cuáles son las sedes activas más cercanas.', parameters: S({ busqueda: { type: 'string' } }, ['busqueda']) } },
   { type: 'function', function: { name: 'listar_agencias', description: 'Agencias de envío configuradas (visibles, días, preguntas).', parameters: S({}) } },
   {
     type: 'function',

@@ -1,22 +1,22 @@
 # 📦 Reporte Diario de Sincronización de Agencias Shalom
 
-- **Fecha (Hora Perú):** viernes, 20 de noviembre de 2026, 8:36:16 p. m.
+- **Fecha (Hora Perú):** sábado, 21 de noviembre de 2026, 12:03:36 p. m.
 - **Ejecución:** ✅ Producción (Base de datos actualizada)
-- **Duración:** 6.1s
-- **Estado:** ✨ **SIN CAMBIOS (Catálogo 100% al día)**
-- **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (570 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 3 discrepancias del proxy atrapadas)
+- **Duración:** 4s
+- **Estado:** 🔔 **CAMBIOS DETECTADOS Y APLICADOS**
+- **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (569 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 2 discrepancias del proxy atrapadas)
 
 ## 📊 Resumen Ejecutivo
 
 | Métrica | Cantidad |
 |---|---:|
-| 📡 Total registros devueltos por API Shalom | **570** |
-| ✅ Agencias activas válidas como destino (`OS=1` y `destino=1`) | **501** |
-| 🚫 Agencias SOLO ENVÍOS / No reciben destino (visibles 30d bloqueadas) | **12** |
-| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **22** |
+| 📡 Total registros devueltos por API Shalom | **569** |
+| ✅ Agencias activas válidas como destino (`OS=1` y `destino=1`) | **502** |
+| 🚫 Agencias SOLO ENVÍOS / No reciben destino (visibles 30d bloqueadas) | **11** |
+| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **21** |
 | 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **38** |
 | ✨ Nuevas agencias agregadas | **0** |
-| 🌟 Agencias reactivadas / recién habilitadas | **0** |
+| 🌟 Agencias reactivadas / recién habilitadas | **1** |
 | 🏷️ Cambios de nombre / sucursal / nomenclatura | **0** |
 | 🔤 Cambios de código / abreviatura | **0** |
 | 📍 Cambios de dirección / mudanzas / saneamiento de texto | **0** |
@@ -27,23 +27,27 @@
 | 📦 Pedidos activos actualizados / limpiados | **0** |
 | ⚠️ Alertas en pedidos activos | **0** |
 
-## 🛡️ Discrepancias Atrapadas por Verificación Cruzada Oficial (3)
+## 🛡️ Discrepancias Atrapadas por Verificación Cruzada Oficial (2)
 
 > Estas agencias aparecían con `habilitado: true` en el proxy (`api.shalom-api-peru.com`), pero en el servidor oficial de Shalom (`shalomcontrol.com`) tienen `destino: 0` (no reciben encomiendas como destino). Fueron bloqueadas automáticamente para evitar rechazos en ventanilla.
 
 | ID | Código | Agencia | Origen | Destino | Motivo |
 |---:|---|---|---:|---:|---|
-| 629 | `AVTPCMR` | LIMA / LIMA / COMAS / AV TUPAC AMARU CDRA. 57 | ✅ 1 | 🚫 0 | Discrepancia atrapada: SOLO ENVÍOS en Shalom oficial (origen=1, destino=0; NO recibe encomiendas como destino) |
 | 365 | `HPACO` | LIMA / LIMA / LURIGANCHO / HUACHIPA CO | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
 | 552 | `LCZ` | TUMBES / TUMBES / LA CRUZ / LA CRUZ TUMBES | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
 
-## 👀 Próximas Sedes en Preparación en API Shalom (`habilitado=false`) (13)
+## 🌟 2. Agencias Reactivadas / Recién Habilitadas (1)
+
+| ID | Código | Nombre Actual | Nombre Anterior | Dirección |
+|---:|---|---|---|---|
+| 719 | `AVTRS` | LIMA / LIMA / LURIGANCHO / AV LAS TORRES | LIMA / LIMA / LURIGANCHO / AV  LAS TORRES | AV. LAS TORRES SUB. LT. 18A - 1D, FUNDO HUACHIPA, PARCELA MEDIA, LURIGANCHO - LIMA - LIMA, REF. AL FRENTE DEL CRUCE CON AV. MEDIA LUNA |
+
+## 👀 Próximas Sedes en Preparación en API Shalom (`habilitado=false`) (12)
 
 > Estas sedes existen en la API de Shalom pero aún tienen `habilitado: false`. En cuanto Shalom las habilite, el cron diario de las **5:00 AM** las activará automáticamente.
 
 | ID | Código | Nombre | Dirección |
 |---:|---|---|---|
-| 719 | `AVTRS` | LIMA / LIMA / LURIGANCHO / AV LAS TORRES | AV. LAS TORRES SUB. LT. 18A - 1D, FUNDO HUACHIPA, PARCELA MEDIA, LURIGANCHO - LIMA - LIMA, REF. AL FRENTE DEL CRUCE CON AV. MEDIA LUNA |
 | 728 | `AVFRL` | LIMA / LIMA / SANTA ANITA / AV EL FERROCARRIL STA ANITA | AV. EL FERROCARRIL 530 COOPERATIVA. LOS CHANCAS DE ANDAHUAYLAS MZ. F1 LT. 06, REF. CRUCE CON AV. RUISEÑORES |
 | 730 | `MNLAVLO` | LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO | MZ. B21 LT. 05 URB MANUEL AREVALO III ETAPA B, REF. CRUCE CON AV. CAHUIDE A UNA CDRA. DEL COMPLEJO DEPORTIVO PAZ Y AMISTAD |
 | 733 | `CPNG` | LIMA / LIMA / LURIGANCHO / CARAPONGO - LURIGANCHO (POR DEFINIR) | AV. 24 DE SETIEMBRE MZ. A SUB LT. 9-A2 ASOC. NUEVO HORIZONTE, REF. A MEDIA CDRA. DEL CENTRO COMERCIAL MANTARO, FRENTE AL GRIFO PETROAMERICA |

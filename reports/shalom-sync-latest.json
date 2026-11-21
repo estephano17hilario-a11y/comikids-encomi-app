@@ -1,34 +1,26 @@
 {
-  "timestamp": "2026-11-21T01:36:16.441Z",
+  "timestamp": "2026-11-21T17:03:36.397Z",
   "dryRun": false,
-  "durationSec": 6.1,
-  "hasChanges": false,
-  "totalChangesCount": 0,
+  "durationSec": 4,
+  "hasChanges": true,
+  "totalChangesCount": 1,
   "totals": {
-    "apiTotal": 570,
-    "activeValid": 501,
-    "soloOrigenNoRecibe": 12,
-    "disabledReal": 22,
+    "apiTotal": 569,
+    "activeValid": 502,
+    "soloOrigenNoRecibe": 11,
+    "disabledReal": 21,
     "hiddenInternalOrQa": 38,
-    "dbUpserted": 0,
+    "dbUpserted": 1,
     "staticCatalogCount": 535,
-    "canonicalDestinations": 501
+    "canonicalDestinations": 502
   },
   "crossVerification": {
     "ok": true,
     "source": "https://newwebservices.shalomcontrol.com/api/v1/web/agencias/listar",
-    "total": 570,
-    "destCount": 501,
+    "total": 569,
+    "destCount": 502,
     "error": null,
     "discrepanciesCaught": [
-      {
-        "id": 629,
-        "code": "AVTPCMR",
-        "name": "LIMA / LIMA / COMAS / AV TUPAC AMARU CDRA. 57",
-        "origen": true,
-        "destino": false,
-        "reason": "Discrepancia atrapada: SOLO ENVÍOS en Shalom oficial (origen=1, destino=0; NO recibe encomiendas como destino)"
-      },
       {
         "id": 365,
         "code": "HPACO",
@@ -49,7 +41,15 @@
   },
   "changes": {
     "newAgencies": [],
-    "reactivated": [],
+    "reactivated": [
+      {
+        "id": 719,
+        "code": "AVTRS",
+        "name": "LIMA / LIMA / LURIGANCHO / AV LAS TORRES",
+        "previousName": "LIMA / LIMA / LURIGANCHO / AV  LAS TORRES",
+        "address": "AV. LAS TORRES SUB. LT. 18A - 1D, FUNDO HUACHIPA, PARCELA MEDIA, LURIGANCHO - LIMA - LIMA, REF. AL FRENTE DEL CRUCE CON AV. MEDIA LUNA"
+      }
+    ],
     "renamed": [],
     "codeChanged": [],
     "addressChanged": [],
@@ -65,12 +65,6 @@
     "warnings": []
   },
   "upcomingOrDisabledSummary": [
-    {
-      "id": 719,
-      "code": "AVTRS",
-      "name": "LIMA / LIMA / LURIGANCHO / AV LAS TORRES",
-      "address": "AV. LAS TORRES SUB. LT. 18A - 1D, FUNDO HUACHIPA, PARCELA MEDIA, LURIGANCHO - LIMA - LIMA, REF. AL FRENTE DEL CRUCE CON AV. MEDIA LUNA"
-    },
     {
       "id": 728,
       "code": "AVFRL",

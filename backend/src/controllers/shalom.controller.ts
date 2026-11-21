@@ -277,6 +277,31 @@ export class ShalomController {
       const officialAgencyName = resolvedDestino.officialDestination;
       const agencyFullName = resolvedDestino.agencyName;
 
+      // Guardia en vivo: verificar en shalom_agencies que la agencia destino esté realmente habilitada para recibir (destino=1)
+      if (destinyTerminalId) {
+        try {
+          const { data: liveDestRow } = await supabaseAdmin
+            .from('shalom_agencies')
+            .select('id, code, name, is_active, deleted_at, previous_agency_info')
+            .eq('id', destinyTerminalId)
+            .maybeSingle();
+
+          if (liveDestRow && liveDestRow.is_active === false) {
+            const isSoloOrigen = String(liveDestRow.previous_agency_info || '').includes('[SOLO_ORIGEN_NO_RECIBE]');
+            const motivo = isSoloOrigen
+              ? `La agencia "${liveDestRow.name}" (${liveDestRow.code || destinyTerminalId}) es SOLO ENVÍOS y NO recibe encomiendas como destino en Shalom.`
+              : `La agencia "${liveDestRow.name}" (${liveDestRow.code || destinyTerminalId}) está cerrada o deshabilitada como destino en Shalom.`;
+            console.warn(`[SHALOM PROXY CREATE ORDER BLOCKED] ${motivo}`);
+            return reply.code(200).send({
+              success: false,
+              error: `${motivo} Cambia la agencia destino del pedido antes de registrarlo en Shalom.`,
+            });
+          }
+        } catch (checkErr: any) {
+          console.warn('[SHALOM PROXY DEST CHECK WARN]', checkErr?.message);
+        }
+      }
+
       // Parsear datos del destinatario
       const rawReceiverName = (order.receiver?.name || order.destinatario?.nombre || order.customer_name || 'Cliente').trim();
       const nameParts = rawReceiverName.split(/\s+/);

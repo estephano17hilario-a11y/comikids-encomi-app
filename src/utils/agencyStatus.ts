@@ -11,6 +11,7 @@ export const VIGENCIA_AGENCIA_MS = VIGENCIA_AGENCIA_DIAS * 24 * 60 * 60 * 1000;
 export interface AgencyStatusInfo {
   isDeletedRecently: boolean;
   isDeletedExpired: boolean;
+  isSoloOrigenNoRecibe: boolean;
   isNameChangedRecently: boolean;
   previousName: string | null;
   previousAddress: string | null;
@@ -115,10 +116,16 @@ export function getAgencyStatusInfo(agency: {
   deleted_at?: string | null;
   previous_name?: string | null;
   previous_address?: string | null;
+  previous_agency_info?: string | null;
   name_changed_at?: string | null;
 }): AgencyStatusInfo {
   const isDeleted = isAgencyDeletedRecently(agency);
   const isExpired = isAgencyDeletedExpired(agency);
+  const isSoloOrigenNoRecibe = Boolean(
+    isDeleted &&
+    typeof agency.previous_agency_info === 'string' &&
+    agency.previous_agency_info.includes('[SOLO_ORIGEN_NO_RECIBE]')
+  );
   const isNameChanged = !isDeleted && isAgencyNameRecentlyChanged(agency);
 
   const prevName = agency.previous_name?.trim() || null;
@@ -129,7 +136,11 @@ export function getAgencyStatusInfo(agency: {
   let statusBadgeText: string | null = null;
   let statusTooltipText: string | null = null;
 
-  if (isDeleted) {
+  if (isDeleted && isSoloOrigenNoRecibe) {
+    statusBadgeText = deletedFmt ? `🚫 SOLO ENVÍOS · NO RECIBE (${deletedFmt.short})` : '🚫 SOLO ENVÍOS · NO RECIBE';
+    const dateSuffix = deletedFmt ? ` desde el ${deletedFmt.full}` : '';
+    statusTooltipText = `Esta sucursal es SOLO ENVÍOS (origen) y NO recibe encomiendas como destino en Shalom${dateSuffix}. No está disponible para selección.`;
+  } else if (isDeleted) {
     statusBadgeText = deletedFmt ? `⚠️ YA NO EXISTE (${deletedFmt.short})` : '⚠️ YA NO EXISTE';
     const dateSuffix = deletedFmt ? ` el ${deletedFmt.full}` : ' recientemente';
     statusTooltipText = prevName
@@ -147,6 +158,7 @@ export function getAgencyStatusInfo(agency: {
   return {
     isDeletedRecently: isDeleted,
     isDeletedExpired: isExpired,
+    isSoloOrigenNoRecibe,
     isNameChangedRecently: isNameChanged,
     previousName: prevName,
     previousAddress: prevAddr,

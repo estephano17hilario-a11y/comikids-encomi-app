@@ -260,8 +260,12 @@ export class ShalomMatcherService {
     reason: string;
   } {
     const n = (agency.name || agency.nombre || '').toUpperCase();
+    const prevInfo = String(agency.previous_agency_info || '');
     if (this.isQaOrTest(agency)) {
       return { category: 'qa_test', reason: 'Terminal interna de pruebas QA de Shalom (no es una agencia real)' };
+    }
+    if (prevInfo.includes('[SOLO_ORIGEN_NO_RECIBE]')) {
+      return { category: 'solo_envios', reason: 'Agencia SOLO ENVÍOS (origen): NO recibe encomiendas como destino en Shalom (destino=0)' };
     }
     if (n.includes('(POR DEFINIR)')) {
       return { category: 'por_definir', reason: 'Sede nueva en preparación (aún NO habilitada para recibir envíos)' };

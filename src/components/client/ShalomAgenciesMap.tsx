@@ -205,14 +205,23 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
       popupContent.style.minWidth = '240px';
 
       let statusBadgeHtml = '';
-      if (statusInfo.isDeletedRecently) {
+      if (statusInfo.isDeletedRecently && statusInfo.isSoloOrigenNoRecibe) {
+        statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #ffedd5; color: #c2410c; padding: 2px 8px; border-radius: 9999px;">🚫 SOLO ENVÍOS · NO RECIBE${statusInfo.deletedAtShort ? ` · ${statusInfo.deletedAtShort}` : ''}</span>`;
+      } else if (statusInfo.isDeletedRecently) {
         statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #ffe4e6; color: #be123c; padding: 2px 8px; border-radius: 9999px;">⚠️ YA NO EXISTE${statusInfo.deletedAtShort ? ` · ${statusInfo.deletedAtShort}` : ''}</span>`;
       } else if (statusInfo.isNameChangedRecently) {
         statusBadgeHtml = `<span style="font-size: 10px; font-weight: 800; background: #fef3c7; color: #b45309; padding: 2px 8px; border-radius: 9999px;">🔄 NOMBRE CAMBIADO${statusInfo.changedAtShort ? ` · ${statusInfo.changedAtShort}` : ''}</span>`;
       }
 
       let statusMessageHtml = '';
-      if (statusInfo.isDeletedRecently) {
+      if (statusInfo.isDeletedRecently && statusInfo.isSoloOrigenNoRecibe) {
+        statusMessageHtml = `
+          <div style="font-size: 11px; color: #9a3412; background: #fff7ed; border: 1px solid #fed7aa; padding: 6px 8px; border-radius: 8px; margin-bottom: 8px; line-height: 1.35;">
+            ${statusInfo.deletedAtDate ? `📅 <strong>Detectado:</strong> ${statusInfo.deletedAtDate}<br/>` : ''}
+            Esta sucursal es <strong>SOLO ENVÍOS (origen)</strong> y <strong>NO recibe encomiendas como destino</strong> en Shalom. <strong>Elige otra sede cercana.</strong>
+          </div>
+        `;
+      } else if (statusInfo.isDeletedRecently) {
         statusMessageHtml = `
           <div style="font-size: 11px; color: #9f1239; background: #fff1f2; border: 1px solid #fecdd3; padding: 6px 8px; border-radius: 8px; margin-bottom: 8px; line-height: 1.35;">
             ${statusInfo.previousName ? `<strong>Antigua agencia:</strong> ${statusInfo.previousName}<br/>` : ''}
@@ -243,7 +252,7 @@ export const ShalomAgenciesMap: React.FC<Props> = ({
             border-radius: 12px; 
             cursor: not-allowed;
           ">
-            ❌ Sede Cerrada (No seleccionable)
+            ${statusInfo.isSoloOrigenNoRecibe ? '🚫 Solo envíos (No recibe destino)' : '❌ Sede Cerrada (No seleccionable)'}
           </button>
         `;
       } else {

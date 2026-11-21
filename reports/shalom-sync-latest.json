@@ -1,17 +1,51 @@
 {
-  "timestamp": "2026-11-20T23:05:00.251Z",
+  "timestamp": "2026-11-21T01:36:16.441Z",
   "dryRun": false,
-  "durationSec": 5.5,
+  "durationSec": 6.1,
   "hasChanges": false,
   "totalChangesCount": 0,
   "totals": {
     "apiTotal": 570,
-    "activeValid": 504,
-    "disabledReal": 31,
+    "activeValid": 501,
+    "soloOrigenNoRecibe": 12,
+    "disabledReal": 22,
     "hiddenInternalOrQa": 38,
     "dbUpserted": 0,
     "staticCatalogCount": 535,
-    "canonicalDestinations": 504
+    "canonicalDestinations": 501
+  },
+  "crossVerification": {
+    "ok": true,
+    "source": "https://newwebservices.shalomcontrol.com/api/v1/web/agencias/listar",
+    "total": 570,
+    "destCount": 501,
+    "error": null,
+    "discrepanciesCaught": [
+      {
+        "id": 629,
+        "code": "AVTPCMR",
+        "name": "LIMA / LIMA / COMAS / AV TUPAC AMARU CDRA. 57",
+        "origen": true,
+        "destino": false,
+        "reason": "Discrepancia atrapada: SOLO ENVÍOS en Shalom oficial (origen=1, destino=0; NO recibe encomiendas como destino)"
+      },
+      {
+        "id": 365,
+        "code": "HPACO",
+        "name": "LIMA / LIMA / LURIGANCHO / HUACHIPA CO",
+        "origen": false,
+        "destino": false,
+        "reason": "Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe)"
+      },
+      {
+        "id": 552,
+        "code": "LCZ",
+        "name": "TUMBES / TUMBES / LA CRUZ / LA CRUZ TUMBES",
+        "origen": false,
+        "destino": false,
+        "reason": "Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe)"
+      }
+    ]
   },
   "changes": {
     "newAgencies": [],

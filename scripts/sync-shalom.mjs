@@ -37,6 +37,8 @@ const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || envVars.VITE_SUPABASE_URL
 const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || envVars.VITE_SUPABASE_ANON_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4Nzg0OTc2MCwiZXhwIjo0OTQzNTIzMzYwLCJyb2xlIjoiYW5vbiJ9._DvifLx6sViDd5UePak7xswzmT6dQp9FoQZqPnyxeRU';
 const SHALOM_API_KEY = process.env.SHALOM_API_KEY || envVars.SHALOM_API_KEY || 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
 const SHALOM_API_URL = (process.env.SHALOM_API_URL || envVars.SHALOM_API_URL || 'https://api.shalom-api-peru.com').replace(/\/+$/, '');
+const SHALOM_OFFICIAL_CONTROL_URL = 'https://newwebservices.shalomcontrol.com/api/v1/web/agencias/listar';
+const SOLO_ORIGEN_TAG = '[SOLO_ORIGEN_NO_RECIBE]';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -89,36 +91,60 @@ function isQaOrTestAgency(name, address) {
   );
 }
 
-function classifyApiAgency(raw) {
+function classifyApiAgency(raw, officialControl = null) {
   const nameUpper = cleanText(raw.nombre).toUpperCase();
   const addrUpper = cleanText(raw.direccion).toUpperCase();
-  const catUpper = cleanText(raw.categoria).toUpperCase();
-  const habilitado = raw.habilitado === true;
+  const catUpper = cleanText(raw.categoria || officialControl?.ter_categoria || '').toUpperCase();
+  const habilitadoApi = raw.habilitado === true;
+  const hasOfficial = Boolean(officialControl);
+  const officialOS = hasOfficial ? Number(officialControl.ter_habilitado_OS) === 1 : true;
+  const officialDestino = hasOfficial ? Number(officialControl.destino) === 1 : true;
+  const officialOrigen = hasOfficial ? Number(officialControl.origen) === 1 : false;
+  const isSoloEnviosCategory = catUpper === 'SOLO ENVÍOS' || catUpper === 'SOLO ENVIOS';
 
   if (isQaOrTestAgency(nameUpper, addrUpper)) {
     return {
       status: 'qa_test',
       isActive: false,
       hideImmediately: true,
+      isSoloOrigenNoRecibe: false,
+      proxyDiscrepancy: false,
       reason: 'Terminal de prueba / QA de Shalom'
     };
   }
 
-  if (habilitado) {
+  // Solo es operativa como destino si está habilitada en API Y en ShalomControl oficial (OS=1 y destino=1)
+  if (habilitadoApi && officialOS && officialDestino && !isSoloEnviosCategory) {
     return {
       status: 'active_valid',
       isActive: true,
       hideImmediately: false,
-      reason: 'Habilitada y operativa en Shalom'
+      isSoloOrigenNoRecibe: false,
+      proxyDiscrepancy: false,
+      reason: 'Habilitada y operativa como destino en Shalom oficial (OS=1, destino=1)'
     };
   }
 
-  // habilitado === false: distinguir por qué no está habilitada
+  // Categoría interna SOLO ENVÍOS (legacy como Luna Pizarro / Huarochirí)
+  if (isSoloEnviosCategory) {
+    return {
+      status: 'solo_envios',
+      isActive: false,
+      hideImmediately: true,
+      isSoloOrigenNoRecibe: true,
+      proxyDiscrepancy: habilitadoApi,
+      reason: 'Agencia SOLO ENVÍOS (no habilitada para recojo destino)'
+    };
+  }
+
+  // Verificar primero registros internos / QA / aeropuertos / por definir
   if (nameUpper.includes('(POR DEFINIR)')) {
     return {
       status: 'unlaunched_por_definir',
       isActive: false,
       hideImmediately: true,
+      isSoloOrigenNoRecibe: false,
+      proxyDiscrepancy: habilitadoApi,
       reason: 'Sede por definir / aún no inaugurada (habilitado=false)'
     };
   }
@@ -128,16 +154,9 @@ function classifyApiAgency(raw) {
       status: 'airport_internal',
       isActive: false,
       hideImmediately: true,
+      isSoloOrigenNoRecibe: false,
+      proxyDiscrepancy: habilitadoApi,
       reason: 'Terminal aeroportuaria interna (habilitado=false)'
-    };
-  }
-
-  if (catUpper === 'SOLO ENVÍOS' || catUpper === 'SOLO ENVIOS') {
-    return {
-      status: 'solo_envios',
-      isActive: false,
-      hideImmediately: true,
-      reason: 'Agencia SOLO ENVÍOS (no habilitada para recojo destino)'
     };
   }
 
@@ -154,7 +173,35 @@ function classifyApiAgency(raw) {
       status: 'internal_facility',
       isActive: false,
       hideImmediately: true,
+      isSoloOrigenNoRecibe: false,
+      proxyDiscrepancy: habilitadoApi,
       reason: 'Instalación interna / caja / almacén (habilitado=false)'
+    };
+  }
+
+  // CRÍTICO: Agencia real que en ShalomControl oficial tiene origen=1 pero destino=0 (SOLO ENVÍOS, NO RECIBE como destino!)
+  if (hasOfficial && !officialDestino && officialOrigen) {
+    return {
+      status: 'solo_origen_no_recibe',
+      isActive: false,
+      hideImmediately: false,
+      isSoloOrigenNoRecibe: true,
+      proxyDiscrepancy: habilitadoApi,
+      reason: habilitadoApi
+        ? 'Discrepancia atrapada: SOLO ENVÍOS en Shalom oficial (origen=1, destino=0; NO recibe encomiendas como destino)'
+        : 'Agencia SOLO ENVÍOS en Shalom oficial (origen=1, destino=0; NO recibe encomiendas como destino)'
+    };
+  }
+
+  // CRÍTICO: Agencia que el proxy reportaba habilitado=true pero en ShalomControl oficial tiene origen=0 y destino=0
+  if (hasOfficial && !officialDestino && !officialOrigen && habilitadoApi) {
+    return {
+      status: 'disabled_real',
+      isActive: false,
+      hideImmediately: false,
+      isSoloOrigenNoRecibe: false,
+      proxyDiscrepancy: true,
+      reason: 'Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe)'
     };
   }
 
@@ -162,6 +209,8 @@ function classifyApiAgency(raw) {
     status: 'disabled_real',
     isActive: false,
     hideImmediately: false,
+    isSoloOrigenNoRecibe: false,
+    proxyDiscrepancy: false,
     reason: 'Sede cerrada o temporalmente deshabilitada en Shalom (habilitado=false)'
   };
 }
@@ -174,36 +223,40 @@ function buildFullName(dep, prov, dist, name, address, code) {
   return `${basePath}${addrPart}${codeTag}`.toUpperCase();
 }
 
-function normalizeApiItem(raw, nowIso) {
+function normalizeApiItem(raw, nowIso, officialControl = null) {
   let scheduleText = 'Lunes a Sábado: 8:00 AM - 8:00 PM';
   if (typeof raw.horario === 'string' && raw.horario.trim()) {
     scheduleText = cleanText(raw.horario);
   } else if (raw.horario && typeof raw.horario === 'object' && raw.horario.hora_atencion) {
     scheduleText = cleanText(raw.horario.hora_atencion);
+  } else if (officialControl && typeof officialControl.hora_atencion === 'string' && officialControl.hora_atencion.trim()) {
+    scheduleText = cleanText(officialControl.hora_atencion);
   }
 
-  const department = cleanText(raw.departamento || 'LIMA').toUpperCase();
-  const province = cleanText(raw.provincia || 'LIMA').toUpperCase();
-  const district = cleanText(raw.distrito || raw.lugar_over || raw.zona || 'CENTRO').toUpperCase();
-  const rawCode = raw.abrebiatura || raw.code || null;
+  const department = cleanText(raw.departamento || officialControl?.departamento || 'LIMA').toUpperCase();
+  const province = cleanText(raw.provincia || officialControl?.provincia || 'LIMA').toUpperCase();
+  const district = cleanText(raw.distrito || raw.lugar_over || raw.zona || officialControl?.lugar_over || officialControl?.zona || 'CENTRO').toUpperCase();
+  const rawCode = raw.abrebiatura || raw.code || officialControl?.ter_abrebiatura || null;
   const code = rawCode ? cleanText(rawCode) : null;
-  const name = cleanText(raw.nombre || '');
-  const address = cleanText(raw.direccion || '');
+  const name = cleanText(raw.nombre || officialControl?.nombre || '');
+  const address = cleanText(raw.direccion || officialControl?.direccion || '');
 
   let ubigeo = null;
   if (raw.ubi_id) {
     ubigeo = String(raw.ubi_id).padStart(6, '0');
   } else if (raw.ubigeo) {
     ubigeo = String(raw.ubigeo).padStart(6, '0');
+  } else if (officialControl?.ubi_id) {
+    ubigeo = String(officialControl.ubi_id).padStart(6, '0');
   }
 
-  let phone = cleanText(raw.telefono || '');
+  let phone = cleanText(raw.telefono || officialControl?.telefono || '');
   if (!phone || phone.toLowerCase() === 'null' || phone.toLowerCase() === 'none') {
     phone = '(01) 500-7878';
   }
 
   const fullName = buildFullName(department, province, district, name, address, code);
-  const classification = classifyApiAgency(raw);
+  const classification = classifyApiAgency(raw, officialControl);
 
   const latitude = typeof raw.latitud === 'number' && !Number.isNaN(raw.latitud)
     ? raw.latitud
@@ -246,10 +299,15 @@ function normalizeApiItem(raw, nowIso) {
     _meta: {
       classification: classification.status,
       hideImmediately: classification.hideImmediately,
+      isSoloOrigenNoRecibe: classification.isSoloOrigenNoRecibe,
+      proxyDiscrepancy: classification.proxyDiscrepancy,
       reason: classification.reason,
       habilitadoApi: raw.habilitado === true,
-      categoriaApi: cleanText(raw.categoria || ''),
-      estadoApi: cleanText(raw.estado || '')
+      officialOS: officialControl ? Number(officialControl.ter_habilitado_OS) === 1 : null,
+      officialOrigen: officialControl ? Number(officialControl.origen) === 1 : null,
+      officialDestino: officialControl ? Number(officialControl.destino) === 1 : null,
+      categoriaApi: cleanText(raw.categoria || officialControl?.ter_categoria || ''),
+      estadoApi: cleanText(raw.estado || officialControl?.estadoAgencia || '')
     }
   };
 }
@@ -404,6 +462,48 @@ async function fetchAllAgenciesFromApi() {
   }
 
   return uniqueList;
+}
+
+// ---------------------------------------------------------------------------
+// 3b. Verificación Cruzada Oficial contra ShalomControl (origen / destino real)
+// ---------------------------------------------------------------------------
+async function fetchOfficialShalomControlMap() {
+  console.log('🔎 Consultando fuente oficial directa de Shalom (newwebservices.shalomcontrol.com) para validar origen/destino...');
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(SHALOM_OFFICIAL_CONTROL_URL, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; Incomi-AutoSync/2.1)',
+          'Origin': 'https://shalom.com.pe',
+          'Referer': 'https://shalom.com.pe/',
+          'Accept': 'application/json'
+        },
+        signal: AbortSignal.timeout(30000)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const json = await res.json();
+      const list = Array.isArray(json?.data) ? json.data : [];
+      if (list.length < MIN_EXPECTED_API_AGENCIES) {
+        throw new Error(`Respuesta incompleta de ShalomControl (${list.length} registros < ${MIN_EXPECTED_API_AGENCIES})`);
+      }
+      const map = new Map();
+      for (const row of list) {
+        if (row && row.ter_id !== undefined && row.ter_id !== null) {
+          map.set(Number(row.ter_id), row);
+        }
+      }
+      const destCount = Array.from(map.values()).filter((x) => Number(x.ter_habilitado_OS) === 1 && Number(x.destino) === 1).length;
+      console.log(`  ✅ ShalomControl Oficial OK: ${map.size} registros (${destCount} habilitados como destino real destino=1).`);
+      return { ok: true, map, total: map.size, destCount, error: null };
+    } catch (err) {
+      lastErr = err;
+      console.warn(`  ⚠️ Intento ${attempt}/3 ShalomControl falló: ${err.message}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500));
+    }
+  }
+  console.warn(`  ⚠️ Continuando en modo fallback sin verificación cruzada ShalomControl: ${lastErr?.message}`);
+  return { ok: false, map: new Map(), total: 0, destCount: 0, error: lastErr?.message || 'Error desconocido' };
 }
 
 // ---------------------------------------------------------------------------
@@ -663,6 +763,13 @@ function buildMarkdownReport(report) {
   lines.push(`- **Ejecución:** ${report.dryRun ? '🧪 Simulación (Dry-Run)' : '✅ Producción (Base de datos actualizada)'}`);
   lines.push(`- **Duración:** ${report.durationSec}s`);
   lines.push(`- **Estado:** ${report.hasChanges ? '🔔 **CAMBIOS DETECTADOS Y APLICADOS**' : '✨ **SIN CAMBIOS (Catálogo 100% al día)**'}`);
+  if (report.crossVerification) {
+    lines.push(
+      report.crossVerification.ok
+        ? `- **Verificación Cruzada Oficial (\`shalomcontrol.com\`):** ✅ Activa (${report.crossVerification.total} registros verificados · exige \`ter_habilitado_OS=1\` y \`destino=1\` · ${report.crossVerification.discrepanciesCaught.length} discrepancias del proxy atrapadas)`
+        : `- **Verificación Cruzada Oficial (\`shalomcontrol.com\`):** ⚠️ No disponible temporalmente (${escMd(report.crossVerification.error)}) — se usó solo \`api.shalom-api-peru.com\``
+    );
+  }
   lines.push('');
 
   lines.push('## 📊 Resumen Ejecutivo');
@@ -670,7 +777,8 @@ function buildMarkdownReport(report) {
   lines.push('| Métrica | Cantidad |');
   lines.push('|---|---:|');
   lines.push(`| 📡 Total registros devueltos por API Shalom | **${report.totals.apiTotal}** |`);
-  lines.push(`| ✅ Agencias activas válidas en BD (habilitadas para clientes) | **${report.totals.activeValid}** |`);
+  lines.push(`| ✅ Agencias activas válidas como destino (\`OS=1\` y \`destino=1\`) | **${report.totals.activeValid}** |`);
+  lines.push(`| 🚫 Agencias SOLO ENVÍOS / No reciben destino (visibles 30d bloqueadas) | **${report.totals.soloOrigenNoRecibe || 0}** |`);
   lines.push(`| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso \`YA NO EXISTE\`) | **${report.totals.disabledReal}** |`);
   lines.push(`| 🧹 Registros internos / aeropuertos / \`SOLO ENVÍOS\` / \`(POR DEFINIR)\` / QA ocultos | **${report.totals.hiddenInternalOrQa}** |`);
   lines.push(`| ✨ Nuevas agencias agregadas | **${report.changes.newAgencies.length}** |`);
@@ -685,6 +793,19 @@ function buildMarkdownReport(report) {
   lines.push(`| 📦 Pedidos activos actualizados / limpiados | **${report.orders.updated.length}** |`);
   lines.push(`| ⚠️ Alertas en pedidos activos | **${report.orders.warnings.length}** |`);
   lines.push('');
+
+  if (report.crossVerification?.discrepanciesCaught?.length > 0) {
+    lines.push(`## 🛡️ Discrepancias Atrapadas por Verificación Cruzada Oficial (${report.crossVerification.discrepanciesCaught.length})`);
+    lines.push('');
+    lines.push('> Estas agencias aparecían con `habilitado: true` en el proxy (`api.shalom-api-peru.com`), pero en el servidor oficial de Shalom (`shalomcontrol.com`) tienen `destino: 0` (no reciben encomiendas como destino). Fueron bloqueadas automáticamente para evitar rechazos en ventanilla.');
+    lines.push('');
+    lines.push('| ID | Código | Agencia | Origen | Destino | Motivo |');
+    lines.push('|---:|---|---|---:|---:|---|');
+    for (const d of report.crossVerification.discrepanciesCaught) {
+      lines.push(`| ${d.id} | \`${escMd(d.code || 'N/A')}\` | ${escMd(d.name)} | ${d.origen ? '✅ 1' : '❌ 0'} | ${d.destino ? '✅ 1' : '🚫 0'} | ${escMd(d.reason)} |`);
+    }
+    lines.push('');
+  }
 
   if (report.changes.newAgencies.length > 0) {
     lines.push(`## ✨ 1. Nuevas Agencias Activas (${report.changes.newAgencies.length})`);
@@ -856,13 +977,32 @@ async function runShalomSync() {
   console.log(`🕐 Timestamp   : ${nowIso}`);
   console.log('--------------------------------------------------------------------');
 
-  // 1. Descargar 100% del catálogo desde la API oficial
-  const rawApiAgencies = await fetchAllAgenciesFromApi();
+  // 1. Descargar 100% del catálogo desde ambas fuentes en paralelo (API integración + ShalomControl oficial)
+  const [rawApiAgencies, officialCross] = await Promise.all([
+    fetchAllAgenciesFromApi(),
+    fetchOfficialShalomControlMap()
+  ]);
   console.log(`📡 Total registros únicos recibidos de la API: ${rawApiAgencies.length}`);
 
-  // 2. Normalizar y clasificar todos los registros de la API
-  const normalizedApi = rawApiAgencies.map((raw) => normalizeApiItem(raw, nowIso));
+  // 2. Normalizar y clasificar todos los registros aplicando verificación cruzada (destino=1 obligatorio)
+  const normalizedApi = rawApiAgencies.map((raw) =>
+    normalizeApiItem(raw, nowIso, officialCross.ok ? officialCross.map.get(Number(raw.id)) || null : null)
+  );
   const apiById = new Map(normalizedApi.map((a) => [a.id, a]));
+  const proxyDiscrepanciesCaught = normalizedApi
+    .filter((a) => a._meta.proxyDiscrepancy)
+    .map((a) => ({
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      origen: a._meta.officialOrigen,
+      destino: a._meta.officialDestino,
+      reason: a._meta.reason
+    }));
+  if (proxyDiscrepanciesCaught.length > 0) {
+    console.log(`🛡️  Discrepancias atrapadas (habilitado=true en proxy pero destino=0 en Shalom oficial): ${proxyDiscrepanciesCaught.length}`);
+    proxyDiscrepanciesCaught.forEach((d) => console.log(`   🚫 [${d.code || d.id}] ${d.name} (origen=${d.origen ? 1 : 0}, destino=${d.destino ? 1 : 0})`));
+  }
 
   // 3. Descargar estado actual completo de Supabase
   const existingRows = await fetchAllDbAgencies();
@@ -917,10 +1057,17 @@ async function runShalomSync() {
 
     // Caso A: Agencia que pasa o permanece INACTIVA según clasificación inteligente
     if (!item.is_active) {
+      const basePrevInfo = String(existing.previous_agency_info || existing.full_name || item.full_name || '')
+        .replace(/^\[SOLO_ORIGEN_NO_RECIBE\]\s*/i, '')
+        .trim();
+      const taggedPrevInfo = meta.isSoloOrigenNoRecibe
+        ? `${SOLO_ORIGEN_TAG} ${basePrevInfo}`
+        : basePrevInfo;
+
       if (meta.hideImmediately) {
         item.deleted_at = EXPIRED_DELETED_AT;
         item.previous_name = existing.previous_name || existing.name || item.name;
-        item.previous_agency_info = existing.previous_agency_info || existing.full_name || item.full_name;
+        item.previous_agency_info = taggedPrevInfo;
         if (wasActive) {
           changes.deactivatedInternalOrQa.push({
             id: item.id,
@@ -930,11 +1077,11 @@ async function runShalomSync() {
           });
         }
       } else {
-        // Sede real deshabilitada: conservar deleted_at previo si ya estaba inactiva, o marcar hoy (30d vigencia)
+        // Sede real deshabilitada o SOLO ENVÍOS: conservar deleted_at previo si ya estaba inactiva, o marcar hoy (30d vigencia)
         item.deleted_at = wasActive ? nowIso : (existing.deleted_at || nowIso);
         item.previous_name = existing.previous_name || existing.name || item.name;
         item.previous_address = existing.previous_address || existing.address || item.address;
-        item.previous_agency_info = existing.previous_agency_info || existing.full_name || item.full_name;
+        item.previous_agency_info = taggedPrevInfo;
         if (wasActive) {
           deactivatedRealIds.add(item.id);
           changes.deactivatedReal.push({
@@ -946,14 +1093,15 @@ async function runShalomSync() {
         }
       }
 
-      // Actualizar fila si cambió estado, texto, full_name o deleted_at
+      // Actualizar fila si cambió estado, texto, full_name, previous_agency_info o deleted_at
       const needsDbUpdate =
         wasActive ||
         !sameTimestamp(existing.deleted_at, item.deleted_at) ||
         (existing.name || '') !== item.name ||
         (existing.address || '') !== item.address ||
         (existing.code || null) !== item.code ||
-        (existing.full_name || '') !== item.full_name;
+        (existing.full_name || '') !== item.full_name ||
+        (existing.previous_agency_info || null) !== (item.previous_agency_info || null);
 
       if (needsDbUpdate) {
         rowsToUpsert.push(item);
@@ -1278,12 +1426,21 @@ async function runShalomSync() {
     totals: {
       apiTotal: normalizedApi.length,
       activeValid: activeValidItems.length,
+      soloOrigenNoRecibe: normalizedApi.filter((a) => a._meta.classification === 'solo_origen_no_recibe').length,
       disabledReal: normalizedApi.filter((a) => a._meta.classification === 'disabled_real').length,
       hiddenInternalOrQa: normalizedApi.filter((a) => a._meta.hideImmediately).length +
         Array.from(existingMap.values()).filter((e) => !apiById.has(Number(e.id)) && isQaOrTestAgency(e.name, e.address)).length,
       dbUpserted: rowsToUpsert.length,
       staticCatalogCount: staticInfo.totalCatalog,
       canonicalDestinations: staticInfo.totalDestinations
+    },
+    crossVerification: {
+      ok: officialCross.ok,
+      source: SHALOM_OFFICIAL_CONTROL_URL,
+      total: officialCross.total,
+      destCount: officialCross.destCount,
+      error: officialCross.error,
+      discrepanciesCaught: proxyDiscrepanciesCaught
     },
     changes,
     orders: {

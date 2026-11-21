@@ -1,17 +1,19 @@
 # 📦 Reporte Diario de Sincronización de Agencias Shalom
 
-- **Fecha (Hora Perú):** viernes, 20 de noviembre de 2026, 6:05:00 p. m.
+- **Fecha (Hora Perú):** viernes, 20 de noviembre de 2026, 8:36:16 p. m.
 - **Ejecución:** ✅ Producción (Base de datos actualizada)
-- **Duración:** 5.5s
+- **Duración:** 6.1s
 - **Estado:** ✨ **SIN CAMBIOS (Catálogo 100% al día)**
+- **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (570 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 3 discrepancias del proxy atrapadas)
 
 ## 📊 Resumen Ejecutivo
 
 | Métrica | Cantidad |
 |---|---:|
 | 📡 Total registros devueltos por API Shalom | **570** |
-| ✅ Agencias activas válidas en BD (habilitadas para clientes) | **504** |
-| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **31** |
+| ✅ Agencias activas válidas como destino (`OS=1` y `destino=1`) | **501** |
+| 🚫 Agencias SOLO ENVÍOS / No reciben destino (visibles 30d bloqueadas) | **12** |
+| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **22** |
 | 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **38** |
 | ✨ Nuevas agencias agregadas | **0** |
 | 🌟 Agencias reactivadas / recién habilitadas | **0** |
@@ -24,6 +26,16 @@
 | 🧹 Depuración de QA / internos / aeropuertos / `(POR DEFINIR)` | **0** |
 | 📦 Pedidos activos actualizados / limpiados | **0** |
 | ⚠️ Alertas en pedidos activos | **0** |
+
+## 🛡️ Discrepancias Atrapadas por Verificación Cruzada Oficial (3)
+
+> Estas agencias aparecían con `habilitado: true` en el proxy (`api.shalom-api-peru.com`), pero en el servidor oficial de Shalom (`shalomcontrol.com`) tienen `destino: 0` (no reciben encomiendas como destino). Fueron bloqueadas automáticamente para evitar rechazos en ventanilla.
+
+| ID | Código | Agencia | Origen | Destino | Motivo |
+|---:|---|---|---:|---:|---|
+| 629 | `AVTPCMR` | LIMA / LIMA / COMAS / AV TUPAC AMARU CDRA. 57 | ✅ 1 | 🚫 0 | Discrepancia atrapada: SOLO ENVÍOS en Shalom oficial (origen=1, destino=0; NO recibe encomiendas como destino) |
+| 365 | `HPACO` | LIMA / LIMA / LURIGANCHO / HUACHIPA CO | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
+| 552 | `LCZ` | TUMBES / TUMBES / LA CRUZ / LA CRUZ TUMBES | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
 
 ## 👀 Próximas Sedes en Preparación en API Shalom (`habilitado=false`) (13)
 

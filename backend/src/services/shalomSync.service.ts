@@ -5,6 +5,8 @@ import { resolveShalomAgencyDetails } from './shalomAgencyResolver.js';
 import { ShalomMatcherService } from './shalomMatcher.service.js';
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
+const SHALOM_OFFICIAL_CONTROL_URL = 'https://newwebservices.shalomcontrol.com/api/v1/web/agencias/listar';
+const SOLO_ORIGEN_TAG = '[SOLO_ORIGEN_NO_RECIBE]';
 const DEFAULT_API_KEY = 'sk_qm4rm5ivepety4ausqnubkfegp4yr2lnqu3p4q55oc3v4yzw3oma';
 const EXPIRED_DELETED_AT = '2025-01-01T00:00:00.000Z';
 const MIN_EXPECTED_API_AGENCIES = 400;
@@ -79,24 +81,42 @@ function isQaOrTestAgency(name: string, address: string): boolean {
   );
 }
 
-function classifyApiAgency(raw: ShalomRawApiAgency): { isActive: boolean; hideImmediately: boolean } {
+interface ShalomOfficialControlRow {
+  ter_id: number;
+  ter_habilitado_OS?: number | string;
+  origen?: number | string;
+  destino?: number | string;
+  ter_categoria?: string;
+  estadoAgencia?: string;
+}
+
+function classifyApiAgency(
+  raw: ShalomRawApiAgency,
+  officialControl: ShalomOfficialControlRow | null = null
+): { isActive: boolean; hideImmediately: boolean; isSoloOrigenNoRecibe: boolean } {
   const nameUpper = cleanText(raw.nombre).toUpperCase();
   const addrUpper = cleanText(raw.direccion).toUpperCase();
-  const catUpper = cleanText(raw.categoria).toUpperCase();
-  const habilitado = raw.habilitado === true;
+  const catUpper = cleanText(raw.categoria || officialControl?.ter_categoria || '').toUpperCase();
+  const habilitadoApi = raw.habilitado === true;
+  const hasOfficial = Boolean(officialControl);
+  const officialOS = hasOfficial ? Number(officialControl!.ter_habilitado_OS) === 1 : true;
+  const officialDestino = hasOfficial ? Number(officialControl!.destino) === 1 : true;
+  const officialOrigen = hasOfficial ? Number(officialControl!.origen) === 1 : false;
+  const isSoloEnviosCategory = catUpper === 'SOLO ENVÍOS' || catUpper === 'SOLO ENVIOS';
 
   if (isQaOrTestAgency(nameUpper, addrUpper)) {
-    return { isActive: false, hideImmediately: true };
+    return { isActive: false, hideImmediately: true, isSoloOrigenNoRecibe: false };
   }
-  if (habilitado) {
-    return { isActive: true, hideImmediately: false };
+  if (habilitadoApi && officialOS && officialDestino && !isSoloEnviosCategory) {
+    return { isActive: true, hideImmediately: false, isSoloOrigenNoRecibe: false };
+  }
+  if (isSoloEnviosCategory) {
+    return { isActive: false, hideImmediately: true, isSoloOrigenNoRecibe: true };
   }
   if (
     nameUpper.includes('(POR DEFINIR)') ||
     nameUpper.includes('AEROPUERTO') ||
     nameUpper.includes('APEROPUERTO') ||
-    catUpper === 'SOLO ENVÍOS' ||
-    catUpper === 'SOLO ENVIOS' ||
     nameUpper.includes('CAJA ') ||
     nameUpper.includes('AREA SHALOM') ||
     nameUpper.includes('TALLERES-HUACHIPA') ||
@@ -105,9 +125,12 @@ function classifyApiAgency(raw: ShalomRawApiAgency): { isActive: boolean; hideIm
     nameUpper.includes('PUERTO YURIMAGUAS') ||
     nameUpper.includes('PUERTO IQUITOS')
   ) {
-    return { isActive: false, hideImmediately: true };
+    return { isActive: false, hideImmediately: true, isSoloOrigenNoRecibe: false };
   }
-  return { isActive: false, hideImmediately: false };
+  if (hasOfficial && !officialDestino && officialOrigen) {
+    return { isActive: false, hideImmediately: false, isSoloOrigenNoRecibe: true };
+  }
+  return { isActive: false, hideImmediately: false, isSoloOrigenNoRecibe: false };
 }
 
 export class ShalomSyncService {
@@ -174,6 +197,34 @@ export class ShalomSyncService {
     return allAgencies;
   }
 
+  public static async fetchOfficialControlMap(): Promise<Map<number, ShalomOfficialControlRow>> {
+    const map = new Map<number, ShalomOfficialControlRow>();
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await axios.get(SHALOM_OFFICIAL_CONTROL_URL, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Incomi-AutoSync/2.1)',
+            Origin: 'https://shalom.com.pe',
+            Referer: 'https://shalom.com.pe/',
+          },
+          timeout: 25000,
+        });
+        const list: ShalomOfficialControlRow[] = Array.isArray(res.data?.data) ? res.data.data : [];
+        if (list.length >= MIN_EXPECTED_API_AGENCIES) {
+          for (const row of list) {
+            if (row?.ter_id != null) map.set(Number(row.ter_id), row);
+          }
+          console.log(`[SHALOM SYNC OFFICIAL] ✓ Verificación cruzada shalomcontrol.com OK (${map.size} registros).`);
+          return map;
+        }
+      } catch (err: any) {
+        console.warn(`[SHALOM SYNC OFFICIAL WARN] Intento ${attempt}/3 falló:`, err?.message);
+        if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 1500));
+      }
+    }
+    return map;
+  }
+
   /**
    * Sincronización inteligente completa:
    * - Respeta `habilitado: true` y excluye terminales QA/prueba, aeropuertos, SOLO ENVÍOS, cajas internas y (POR DEFINIR).
@@ -210,8 +261,11 @@ export class ShalomSyncService {
     let unchangedAgenciesCount = 0;
 
     try {
-      // 1. Obtener agencias desde API con guardia de seguridad
-      const apiAgencies = await this.fetchAllAgenciesFromApi();
+      // 1. Obtener agencias desde API + verificación cruzada oficial ShalomControl (origen/destino real)
+      const [apiAgencies, officialControlMap] = await Promise.all([
+        this.fetchAllAgenciesFromApi(),
+        this.fetchOfficialControlMap(),
+      ]);
       if (apiAgencies.length < MIN_EXPECTED_API_AGENCIES) {
         throw new Error(`Safety guard: API devolvió solo ${apiAgencies.length} agencias (< ${MIN_EXPECTED_API_AGENCIES}).`);
       }
@@ -278,7 +332,8 @@ export class ShalomSyncService {
         const basePath = name.includes('/') ? name : `${department} / ${province} / ${district} / ${name}`;
         const fullName = `${basePath}${address ? ` - ${address}` : ''}${codeTag}`.toUpperCase();
 
-        const cls = classifyApiAgency(raw);
+        const officialRow = officialControlMap.size > 0 ? (officialControlMap.get(agId) || null) : null;
+        const cls = classifyApiAgency(raw, officialRow);
         if (cls.isActive) activeValidCount++;
 
         const normalizedDBRecord: any = {
@@ -324,17 +379,25 @@ export class ShalomSyncService {
         const wasActive = existing.is_active !== false;
 
         if (!cls.isActive) {
+          const basePrevInfo = String(existing.previous_agency_info || existing.full_name || fullName || '')
+            .replace(/^\[SOLO_ORIGEN_NO_RECIBE\]\s*/i, '')
+            .trim();
+          const taggedPrevInfo = cls.isSoloOrigenNoRecibe ? `${SOLO_ORIGEN_TAG} ${basePrevInfo}` : basePrevInfo;
           normalizedDBRecord.deleted_at = cls.hideImmediately
             ? EXPIRED_DELETED_AT
             : (wasActive ? nowIso : (existing.deleted_at || nowIso));
           normalizedDBRecord.previous_name = existing.previous_name || existing.name || name;
           normalizedDBRecord.previous_address = existing.previous_address || existing.address || address;
-          normalizedDBRecord.previous_agency_info = existing.previous_agency_info || existing.full_name || fullName;
+          normalizedDBRecord.previous_agency_info = taggedPrevInfo;
 
           if (wasActive) {
             deactivatedAgenciesCount++;
             agenciesToUpsert.push(normalizedDBRecord);
-          } else if (!sameTimestamp(existing.deleted_at, normalizedDBRecord.deleted_at) || (existing.full_name || '') !== fullName) {
+          } else if (
+            !sameTimestamp(existing.deleted_at, normalizedDBRecord.deleted_at) ||
+            (existing.full_name || '') !== fullName ||
+            (existing.previous_agency_info || null) !== (normalizedDBRecord.previous_agency_info || null)
+          ) {
             agenciesToUpsert.push(normalizedDBRecord);
           } else {
             unchangedAgenciesCount++;

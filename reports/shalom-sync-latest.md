@@ -1,9 +1,9 @@
 # 📦 Reporte Diario de Sincronización de Agencias Shalom
 
-- **Fecha (Hora Perú):** sábado, 21 de noviembre de 2026, 12:03:36 p. m.
+- **Fecha (Hora Perú):** domingo, 22 de noviembre de 2026, 12:34:00 p. m.
 - **Ejecución:** ✅ Producción (Base de datos actualizada)
-- **Duración:** 4s
-- **Estado:** 🔔 **CAMBIOS DETECTADOS Y APLICADOS**
+- **Duración:** 7.3s
+- **Estado:** ✨ **SIN CAMBIOS (Catálogo 100% al día)**
 - **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (569 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 2 discrepancias del proxy atrapadas)
 
 ## 📊 Resumen Ejecutivo
@@ -16,7 +16,7 @@
 | 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **21** |
 | 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **38** |
 | ✨ Nuevas agencias agregadas | **0** |
-| 🌟 Agencias reactivadas / recién habilitadas | **1** |
+| 🌟 Agencias reactivadas / recién habilitadas | **0** |
 | 🏷️ Cambios de nombre / sucursal / nomenclatura | **0** |
 | 🔤 Cambios de código / abreviatura | **0** |
 | 📍 Cambios de dirección / mudanzas / saneamiento de texto | **0** |
@@ -35,12 +35,6 @@
 |---:|---|---|---:|---:|---|
 | 365 | `HPACO` | LIMA / LIMA / LURIGANCHO / HUACHIPA CO | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
 | 552 | `LCZ` | TUMBES / TUMBES / LA CRUZ / LA CRUZ TUMBES | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
-
-## 🌟 2. Agencias Reactivadas / Recién Habilitadas (1)
-
-| ID | Código | Nombre Actual | Nombre Anterior | Dirección |
-|---:|---|---|---|---|
-| 719 | `AVTRS` | LIMA / LIMA / LURIGANCHO / AV LAS TORRES | LIMA / LIMA / LURIGANCHO / AV  LAS TORRES | AV. LAS TORRES SUB. LT. 18A - 1D, FUNDO HUACHIPA, PARCELA MEDIA, LURIGANCHO - LIMA - LIMA, REF. AL FRENTE DEL CRUCE CON AV. MEDIA LUNA |
 
 ## 👀 Próximas Sedes en Preparación en API Shalom (`habilitado=false`) (12)
 

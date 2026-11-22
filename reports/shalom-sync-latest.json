@@ -1,16 +1,16 @@
 {
-  "timestamp": "2026-11-21T17:03:36.397Z",
+  "timestamp": "2026-11-22T17:34:00.290Z",
   "dryRun": false,
-  "durationSec": 4,
-  "hasChanges": true,
-  "totalChangesCount": 1,
+  "durationSec": 7.3,
+  "hasChanges": false,
+  "totalChangesCount": 0,
   "totals": {
     "apiTotal": 569,
     "activeValid": 502,
     "soloOrigenNoRecibe": 11,
     "disabledReal": 21,
     "hiddenInternalOrQa": 38,
-    "dbUpserted": 1,
+    "dbUpserted": 0,
     "staticCatalogCount": 535,
     "canonicalDestinations": 502
   },
@@ -41,15 +41,7 @@
   },
   "changes": {
     "newAgencies": [],
-    "reactivated": [
-      {
-        "id": 719,
-        "code": "AVTRS",
-        "name": "LIMA / LIMA / LURIGANCHO / AV LAS TORRES",
-        "previousName": "LIMA / LIMA / LURIGANCHO / AV  LAS TORRES",
-        "address": "AV. LAS TORRES SUB. LT. 18A - 1D, FUNDO HUACHIPA, PARCELA MEDIA, LURIGANCHO - LIMA - LIMA, REF. AL FRENTE DEL CRUCE CON AV. MEDIA LUNA"
-      }
-    ],
+    "reactivated": [],
     "renamed": [],
     "codeChanged": [],
     "addressChanged": [],

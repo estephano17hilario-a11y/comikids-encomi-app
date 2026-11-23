@@ -1,24 +1,24 @@
 {
-  "timestamp": "2026-11-22T17:34:00.290Z",
+  "timestamp": "2026-11-23T21:52:26.434Z",
   "dryRun": false,
-  "durationSec": 7.3,
-  "hasChanges": false,
-  "totalChangesCount": 0,
+  "durationSec": 5.3,
+  "hasChanges": true,
+  "totalChangesCount": 1,
   "totals": {
     "apiTotal": 569,
-    "activeValid": 502,
+    "activeValid": 503,
     "soloOrigenNoRecibe": 11,
-    "disabledReal": 21,
-    "hiddenInternalOrQa": 38,
-    "dbUpserted": 0,
+    "disabledReal": 19,
+    "hiddenInternalOrQa": 39,
+    "dbUpserted": 2,
     "staticCatalogCount": 535,
-    "canonicalDestinations": 502
+    "canonicalDestinations": 503
   },
   "crossVerification": {
     "ok": true,
     "source": "https://newwebservices.shalomcontrol.com/api/v1/web/agencias/listar",
     "total": 569,
-    "destCount": 502,
+    "destCount": 503,
     "error": null,
     "discrepanciesCaught": [
       {
@@ -28,20 +28,20 @@
         "origen": false,
         "destino": false,
         "reason": "Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe)"
-      },
-      {
-        "id": 552,
-        "code": "LCZ",
-        "name": "TUMBES / TUMBES / LA CRUZ / LA CRUZ TUMBES",
-        "origen": false,
-        "destino": false,
-        "reason": "Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe)"
       }
     ]
   },
   "changes": {
     "newAgencies": [],
-    "reactivated": [],
+    "reactivated": [
+      {
+        "id": 730,
+        "code": "MNLAVLO",
+        "name": "LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO",
+        "previousName": "LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO",
+        "address": "MZ. B21 LT. 05 URB MANUEL AREVALO III ETAPA B, REF. CRUCE CON AV. CAHUIDE A UNA CDRA. DEL COMPLEJO DEPORTIVO PAZ Y AMISTAD"
+      }
+    ],
     "renamed": [],
     "codeChanged": [],
     "addressChanged": [],
@@ -62,12 +62,6 @@
       "code": "AVFRL",
       "name": "LIMA / LIMA / SANTA ANITA / AV EL FERROCARRIL STA ANITA",
       "address": "AV. EL FERROCARRIL 530 COOPERATIVA. LOS CHANCAS DE ANDAHUAYLAS MZ. F1 LT. 06, REF. CRUCE CON AV. RUISEÑORES"
-    },
-    {
-      "id": 730,
-      "code": "MNLAVLO",
-      "name": "LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO",
-      "address": "MZ. B21 LT. 05 URB MANUEL AREVALO III ETAPA B, REF. CRUCE CON AV. CAHUIDE A UNA CDRA. DEL COMPLEJO DEPORTIVO PAZ Y AMISTAD"
     },
     {
       "id": 733,

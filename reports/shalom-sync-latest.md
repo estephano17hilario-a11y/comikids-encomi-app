@@ -1,22 +1,22 @@
 # 📦 Reporte Diario de Sincronización de Agencias Shalom
 
-- **Fecha (Hora Perú):** domingo, 22 de noviembre de 2026, 12:34:00 p. m.
+- **Fecha (Hora Perú):** lunes, 23 de noviembre de 2026, 4:52:26 p. m.
 - **Ejecución:** ✅ Producción (Base de datos actualizada)
-- **Duración:** 7.3s
-- **Estado:** ✨ **SIN CAMBIOS (Catálogo 100% al día)**
-- **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (569 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 2 discrepancias del proxy atrapadas)
+- **Duración:** 5.3s
+- **Estado:** 🔔 **CAMBIOS DETECTADOS Y APLICADOS**
+- **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (569 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 1 discrepancias del proxy atrapadas)
 
 ## 📊 Resumen Ejecutivo
 
 | Métrica | Cantidad |
 |---|---:|
 | 📡 Total registros devueltos por API Shalom | **569** |
-| ✅ Agencias activas válidas como destino (`OS=1` y `destino=1`) | **502** |
+| ✅ Agencias activas válidas como destino (`OS=1` y `destino=1`) | **503** |
 | 🚫 Agencias SOLO ENVÍOS / No reciben destino (visibles 30d bloqueadas) | **11** |
-| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **21** |
-| 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **38** |
+| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **19** |
+| 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **39** |
 | ✨ Nuevas agencias agregadas | **0** |
-| 🌟 Agencias reactivadas / recién habilitadas | **0** |
+| 🌟 Agencias reactivadas / recién habilitadas | **1** |
 | 🏷️ Cambios de nombre / sucursal / nomenclatura | **0** |
 | 🔤 Cambios de código / abreviatura | **0** |
 | 📍 Cambios de dirección / mudanzas / saneamiento de texto | **0** |
@@ -27,23 +27,27 @@
 | 📦 Pedidos activos actualizados / limpiados | **0** |
 | ⚠️ Alertas en pedidos activos | **0** |
 
-## 🛡️ Discrepancias Atrapadas por Verificación Cruzada Oficial (2)
+## 🛡️ Discrepancias Atrapadas por Verificación Cruzada Oficial (1)
 
 > Estas agencias aparecían con `habilitado: true` en el proxy (`api.shalom-api-peru.com`), pero en el servidor oficial de Shalom (`shalomcontrol.com`) tienen `destino: 0` (no reciben encomiendas como destino). Fueron bloqueadas automáticamente para evitar rechazos en ventanilla.
 
 | ID | Código | Agencia | Origen | Destino | Motivo |
 |---:|---|---|---:|---:|---|
 | 365 | `HPACO` | LIMA / LIMA / LURIGANCHO / HUACHIPA CO | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
-| 552 | `LCZ` | TUMBES / TUMBES / LA CRUZ / LA CRUZ TUMBES | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
 
-## 👀 Próximas Sedes en Preparación en API Shalom (`habilitado=false`) (12)
+## 🌟 2. Agencias Reactivadas / Recién Habilitadas (1)
+
+| ID | Código | Nombre Actual | Nombre Anterior | Dirección |
+|---:|---|---|---|---|
+| 730 | `MNLAVLO` | LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO | LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO | MZ. B21 LT. 05 URB MANUEL AREVALO III ETAPA B, REF. CRUCE CON AV. CAHUIDE A UNA CDRA. DEL COMPLEJO DEPORTIVO PAZ Y AMISTAD |
+
+## 👀 Próximas Sedes en Preparación en API Shalom (`habilitado=false`) (11)
 
 > Estas sedes existen en la API de Shalom pero aún tienen `habilitado: false`. En cuanto Shalom las habilite, el cron diario de las **5:00 AM** las activará automáticamente.
 
 | ID | Código | Nombre | Dirección |
 |---:|---|---|---|
 | 728 | `AVFRL` | LIMA / LIMA / SANTA ANITA / AV EL FERROCARRIL STA ANITA | AV. EL FERROCARRIL 530 COOPERATIVA. LOS CHANCAS DE ANDAHUAYLAS MZ. F1 LT. 06, REF. CRUCE CON AV. RUISEÑORES |
-| 730 | `MNLAVLO` | LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO | MZ. B21 LT. 05 URB MANUEL AREVALO III ETAPA B, REF. CRUCE CON AV. CAHUIDE A UNA CDRA. DEL COMPLEJO DEPORTIVO PAZ Y AMISTAD |
 | 733 | `CPNG` | LIMA / LIMA / LURIGANCHO / CARAPONGO - LURIGANCHO (POR DEFINIR) | AV. 24 DE SETIEMBRE MZ. A SUB LT. 9-A2 ASOC. NUEVO HORIZONTE, REF. A MEDIA CDRA. DEL CENTRO COMERCIAL MANTARO, FRENTE AL GRIFO PETROAMERICA |
 | 735 | `CSCANT` | LAMBAYEQUE / CHICLAYO / LA VICTORIA / CHOSICA DEL NORTE CO | MZ. 1 LOTE 1C-2 URB. LOTIZACION CHOSICA DEL NORTE, REF. A MEDIA CDRA. DE LA INTERSECCIÓN CON CALLE SAN MARTIN / A UNOS MTS. DE ALBORADA EVENTOS Y RECEPCIONES |
 | 736 | `AVHRPT` | CUSCO / CUSCO / WANCHAQ / AV. HUAYRUROPATA | AV. TOMASA TITO CONDEMAYTA N1706, REF. AL COSTADO DEL TERMINAL DE SICUANI DE BUSES RÁPIDOS POR LA VIA DEL IPD |

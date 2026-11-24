@@ -1,24 +1,24 @@
 {
-  "timestamp": "2026-11-23T21:52:26.434Z",
+  "timestamp": "2026-11-24T20:27:58.963Z",
   "dryRun": false,
-  "durationSec": 5.3,
+  "durationSec": 8.2,
   "hasChanges": true,
   "totalChangesCount": 1,
   "totals": {
-    "apiTotal": 569,
-    "activeValid": 503,
+    "apiTotal": 570,
+    "activeValid": 504,
     "soloOrigenNoRecibe": 11,
-    "disabledReal": 19,
-    "hiddenInternalOrQa": 39,
+    "disabledReal": 18,
+    "hiddenInternalOrQa": 40,
     "dbUpserted": 2,
     "staticCatalogCount": 535,
-    "canonicalDestinations": 503
+    "canonicalDestinations": 504
   },
   "crossVerification": {
     "ok": true,
     "source": "https://newwebservices.shalomcontrol.com/api/v1/web/agencias/listar",
-    "total": 569,
-    "destCount": 503,
+    "total": 570,
+    "destCount": 504,
     "error": null,
     "discrepanciesCaught": [
       {
@@ -35,11 +35,11 @@
     "newAgencies": [],
     "reactivated": [
       {
-        "id": 730,
-        "code": "MNLAVLO",
-        "name": "LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO",
-        "previousName": "LA LIBERTAD / TRUJILLO / LA ESPERANZA / URB MANUEL AREVALO",
-        "address": "MZ. B21 LT. 05 URB MANUEL AREVALO III ETAPA B, REF. CRUCE CON AV. CAHUIDE A UNA CDRA. DEL COMPLEJO DEPORTIVO PAZ Y AMISTAD"
+        "id": 736,
+        "code": "AVHRPT",
+        "name": "CUSCO / CUSCO / WANCHAQ / AV. HUAYRUROPATA",
+        "previousName": "CUSCO / CUSCO / WANCHAQ / AV. HUAYRUROPATA",
+        "address": "AV. TOMASA TITO CONDEMAYTA N1706, REF. AL COSTADO DEL TERMINAL DE SICUANI DE BUSES RÁPIDOS POR LA VIA DEL IPD"
       }
     ],
     "renamed": [],
@@ -74,12 +74,6 @@
       "code": "CSCANT",
       "name": "LAMBAYEQUE / CHICLAYO / LA VICTORIA / CHOSICA DEL NORTE CO",
       "address": "MZ. 1 LOTE 1C-2 URB. LOTIZACION CHOSICA DEL NORTE, REF. A MEDIA CDRA. DE LA INTERSECCIÓN CON CALLE SAN MARTIN / A UNOS MTS. DE ALBORADA EVENTOS Y RECEPCIONES"
-    },
-    {
-      "id": 736,
-      "code": "AVHRPT",
-      "name": "CUSCO / CUSCO / WANCHAQ / AV. HUAYRUROPATA",
-      "address": "AV. TOMASA TITO CONDEMAYTA N1706, REF. AL COSTADO DEL TERMINAL DE SICUANI DE BUSES RÁPIDOS POR LA VIA DEL IPD"
     },
     {
       "id": 737,
@@ -122,6 +116,12 @@
       "code": "HRZPRA",
       "name": "ANCASH / HUARAZ / INDEPENDENCIA / HUARAZ PALMIRA (POR DEFINIR)",
       "address": "AV. CENTENARIO N°2371 – BARRIO PALMIRA, REF. AL COSTADO DE VENTA DE COMIDAS PLAZA NORTE"
+    },
+    {
+      "id": 751,
+      "code": "AVJSGZ",
+      "name": "CALLAO / CALLAO / BELLAVISTA / AV. JOSÉ GALVEZ BELLAVISTA (POR DEFINIR)",
+      "address": "AV. JOSE GALVEZ 1383 - BELLAVISTA, CALLAO - CALLAO, REF. A 2 CDRS. DE FARENET DEL ÓVALO LA PERLA"
     }
   ]
 }

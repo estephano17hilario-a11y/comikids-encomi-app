@@ -129,6 +129,8 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   const isVpsWhatsAppEnabled = empresaConfig?.vps_whatsapp_entregado !== false;
   const isShalomExcelMode = empresaConfig?.shalom_modo === 'excel';
 
+  const [step, setStep] = useState<'choose' | 'bot_audit'>('choose');
+  const [quickMovingFolder, setQuickMovingFolder] = useState<Exclude<DeliveryFolderChoice, 'keep'> | null>(null);
   const [processing, setProcessing] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
   const [progressList, setProgressList] = useState<DeliveryOrderProgress[]>([]);
@@ -347,12 +349,18 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       cancelledAuditRef.current = true;
       setCompletedSummary(null);
       setListFilter('all');
+      setStep('choose');
+      setQuickMovingFolder(null);
+      setIsAuditing(false);
       return;
     }
 
     if (auditedRef.current) return;
     auditedRef.current = true;
     cancelledAuditRef.current = false;
+    setStep('choose');
+    setQuickMovingFolder(null);
+    setIsAuditing(false);
 
     const initialFoundPin =
       orders.find(o => o.shalom_clave_recojo && o.shalom_clave_recojo.trim())?.shalom_clave_recojo?.trim() ||
@@ -391,9 +399,6 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
       const guideNumber = isRealShalomGuide ? o.shalom_numero_guia! : undefined;
       const manualGuideInput = isRealShalomGuide ? o.shalom_numero_guia! : '';
       const orderPickupCode = o.shalom_clave_recojo || (o as any).clave_recojo || initialFoundPin;
-
-      const cleanDni = dni.replace(/\D/g, '').trim();
-      const hasIdent = Boolean(cleanDni.length >= 6 || o.codigo_seguimiento || o.shalom_numero_guia || o.shalom_ose_id);
       const wasRegisteredLocally = Boolean(o.registrado_shalom || o.shalom_ose_id || isRealShalomGuide);
 
       return {
@@ -412,14 +417,13 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
         currentStageLabel: getCurrentStageLabel(o),
         fileName,
         pickupCode: orderPickupCode,
-        auditStatus: !shalom ? 'not_shalom' : hasIdent ? 'auditing' : 'not_found',
+        auditStatus: !shalom ? 'not_shalom' : 'idle',
         sendStatus: 'idle',
         sendWithBot: false,
       };
     });
 
     setProgressList(initial);
-    executeAudit(initial, true);
 
     fetch(`${getApiBaseUrl()}/tenant/${subInstance}/status`)
       .then(res => res.json())
@@ -453,6 +457,52 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
   }, [progressList, listFilter]);
 
   if (!isOpen) return null;
+
+  // Movimiento rápido de carpeta sin buscar en Shalom ni usar Bot
+  const handleQuickMoveOnly = async (targetFolder: Exclude<DeliveryFolderChoice, 'keep'>) => {
+    if (processing || quickMovingFolder) return;
+    cancelledAuditRef.current = true;
+    setIsAuditing(false);
+    setQuickMovingFolder(targetFolder);
+    const folderLabel = FOLDER_OPTIONS.find(f => f.id === targetFolder)?.label || 'Entregados';
+    const otherMoves = orders.map(o => ({ orderId: o.id, targetFolder }));
+    const summaryText = `${orders.length} ${orders.length === 1 ? 'pedido movido' : 'pedidos movidos'} a ${folderLabel} (sin bot)`;
+
+    try {
+      if (onDeliveryComplete) {
+        await onDeliveryComplete({
+          botSentIds: [],
+          otherMoves,
+          keptIds: [],
+          updatedMeta: {},
+          botMode: 'none',
+          summaryText,
+        });
+      } else if (onOrdersDelivered && targetFolder === 'entregado') {
+        await onOrdersDelivered(orders.map(o => o.id));
+      }
+      onClose();
+    } catch (err) {
+      console.error('Error moviendo carpeta sin bot:', err);
+    } finally {
+      setQuickMovingFolder(null);
+    }
+  };
+
+  // Iniciar búsqueda en Shalom Pro + modo Bot solo si el usuario lo pide explícitamente
+  const handleStartBotAudit = () => {
+    setStep('bot_audit');
+    executeAudit(progressList, true);
+  };
+
+  const handleStopAudit = () => {
+    cancelledAuditRef.current = true;
+    setIsAuditing(false);
+    setProgressList(prev =>
+      prev.map(p => (p.auditStatus === 'auditing' ? { ...p, auditStatus: 'not_found' } : p))
+    );
+    setCurrentStepText('Búsqueda detenida. Puedes elegir qué enviar o mover sin bot.');
+  };
 
   const handleOpenQrModal = async () => {
     setQrLoading(true);
@@ -793,6 +843,172 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
 
   const canConfirm = !processing && !isAuditing;
 
+  // PANTALLA INICIAL RÁPIDA (0ms, sin buscar en Shalom automáticamente):
+  // Permite mover de carpeta al instante sin bot, o elegir buscar PDFs y usar el Bot.
+  if (step === 'choose') {
+    const shalomCount = progressList.filter(p => p.isShalom).length;
+    const quickAltFolders = FOLDER_OPTIONS.filter(
+      (f): f is typeof f & { id: Exclude<DeliveryFolderChoice, 'keep' | 'entregado'> } =>
+        f.id !== 'keep' && f.id !== 'entregado'
+    );
+
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn"
+        data-no-print="true"
+        onClick={() => !quickMovingFolder && onClose()}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cómo entregar pedidos"
+          onClick={e => e.stopPropagation()}
+          className="bg-slate-900 border border-slate-700/80 rounded-t-3xl sm:rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-slideUp sm:animate-scaleUp pb-safe"
+        >
+          {/* Header */}
+          <div className="bg-gradient-to-r from-slate-900 via-emerald-950/50 to-slate-900 px-5 py-4 border-b border-white/10 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center text-slate-950 shadow-lg shadow-emerald-500/25 shrink-0">
+                <PackageCheck className="w-5 h-5 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-black text-white truncate">
+                  Entregar ({orders.length} {orders.length === 1 ? 'pedido' : 'pedidos'})
+                </h3>
+                <p className="text-xs text-slate-400 truncate">
+                  Elige si solo mover de carpeta o enviar con el Bot
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={Boolean(quickMovingFolder)}
+              className="min-w-10 min-h-10 flex items-center justify-center text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors disabled:opacity-50 shrink-0 cursor-pointer"
+              aria-label="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Contenido */}
+          <div className="p-4 sm:p-5 space-y-3.5">
+            {/* Vista previa compacta de pedidos */}
+            <div className="rounded-2xl bg-slate-950/70 border border-white/10 px-3 py-2.5 max-h-28 overflow-y-auto custom-scrollbar space-y-1">
+              {progressList.slice(0, 6).map(item => (
+                <div key={item.orderId} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-slate-200 truncate">
+                    #{item.trackingCode} · {item.customerName}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0">
+                    {item.currentStageLabel}
+                  </span>
+                </div>
+              ))}
+              {progressList.length > 6 && (
+                <p className="text-[11px] text-slate-400 font-semibold">
+                  +{progressList.length - 6} pedidos más seleccionados
+                </p>
+              )}
+            </div>
+
+            {/* OPCIÓN 1: Solo mover a Entregados (instantáneo, sin buscar en Shalom ni enviar bot) */}
+            <button
+              type="button"
+              disabled={Boolean(quickMovingFolder)}
+              onClick={() => handleQuickMoveOnly('entregado')}
+              className="w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:brightness-110 text-slate-950 shadow-lg shadow-emerald-500/25 flex items-center justify-between gap-3 transition-all active:scale-[0.98] disabled:opacity-60 cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-slate-950/15 flex items-center justify-center shrink-0">
+                  {quickMovingFolder === 'entregado' ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <FolderInput className="w-5 h-5 stroke-[2.5]" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-black leading-tight">
+                    Solo mover a Entregados
+                  </div>
+                  <div className="text-[11px] font-bold opacity-80 mt-0.5">
+                    Rápido · Sin buscar PDFs ni enviar con el Bot
+                  </div>
+                </div>
+              </div>
+              <CheckCircle2 className="w-5 h-5 shrink-0" />
+            </button>
+
+            {/* OPCIÓN 2: Buscar en Shalom Pro y Enviar con Bot (solo si el usuario lo elige) */}
+            <button
+              type="button"
+              disabled={Boolean(quickMovingFolder)}
+              onClick={handleStartBotAudit}
+              className="w-full p-3.5 rounded-2xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-400/40 text-white flex items-center justify-between gap-3 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/25 text-indigo-300 flex items-center justify-center shrink-0">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-black leading-tight text-indigo-100">
+                    {isVpsWhatsAppEnabled
+                      ? 'Buscar en Shalom y enviar con Bot'
+                      : 'Revisar PDFs en Shalom Pro'}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    {shalomCount > 0
+                      ? `Busca guías/PDFs (${shalomCount} Shalom) y envía por WhatsApp`
+                      : 'Abre opciones de envío por WhatsApp Bot'}
+                  </div>
+                </div>
+              </div>
+              <Send className="w-4 h-4 text-indigo-300 shrink-0" />
+            </button>
+
+            {/* Atajo extra: mover a otra carpeta directamente */}
+            <div className="pt-2 border-t border-white/10 space-y-2">
+              <p className="text-[11px] font-bold text-slate-400">
+                O mover directamente a otra carpeta:
+              </p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {quickAltFolders.map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={Boolean(quickMovingFolder)}
+                    onClick={() => handleQuickMoveOnly(opt.id)}
+                    className={`min-h-10 px-2 py-1.5 rounded-xl border text-[11px] font-black flex items-center justify-center gap-1 transition-all hover:brightness-125 disabled:opacity-50 cursor-pointer ${opt.cls}`}
+                  >
+                    {quickMovingFolder === opt.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    ) : (
+                      <span>{opt.emoji}</span>
+                    )}
+                    <span className="truncate">{opt.short}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Cancelar */}
+          <div className="px-4 sm:px-5 pb-4 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={Boolean(quickMovingFolder)}
+              className="w-full min-h-11 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 font-bold text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-slate-950/90 backdrop-blur-md animate-fadeIn"
@@ -937,16 +1153,28 @@ export const ShalomDeliveryModal: React.FC<ShalomDeliveryModalProps> = ({
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => executeAudit(progressList, true)}
-                  disabled={isAuditing || processing}
-                  className="min-h-8 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1 disabled:opacity-50 cursor-pointer"
-                  title="Volver a consultar Shalom Pro API"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isAuditing ? 'animate-spin' : ''}`} />
-                  <span>Refrescar</span>
-                </button>
+                {isAuditing ? (
+                  <button
+                    type="button"
+                    onClick={handleStopAudit}
+                    className="min-h-8 px-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 border border-rose-500/40 text-rose-200 font-black text-xs flex items-center gap-1 cursor-pointer"
+                    title="Detener búsqueda en Shalom Pro"
+                  >
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Detener</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => executeAudit(progressList, true)}
+                    disabled={processing}
+                    className="min-h-8 px-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                    title="Volver a consultar Shalom Pro API"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Refrescar</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

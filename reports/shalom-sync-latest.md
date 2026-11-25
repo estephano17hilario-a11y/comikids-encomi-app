@@ -1,9 +1,9 @@
 # 📦 Reporte Diario de Sincronización de Agencias Shalom
 
-- **Fecha (Hora Perú):** martes, 24 de noviembre de 2026, 3:27:58 p. m.
+- **Fecha (Hora Perú):** miércoles, 25 de noviembre de 2026, 2:43:32 p. m.
 - **Ejecución:** ✅ Producción (Base de datos actualizada)
-- **Duración:** 8.2s
-- **Estado:** 🔔 **CAMBIOS DETECTADOS Y APLICADOS**
+- **Duración:** 4.6s
+- **Estado:** ✨ **SIN CAMBIOS (Catálogo 100% al día)**
 - **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (570 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 1 discrepancias del proxy atrapadas)
 
 ## 📊 Resumen Ejecutivo
@@ -16,7 +16,7 @@
 | 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **18** |
 | 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **40** |
 | ✨ Nuevas agencias agregadas | **0** |
-| 🌟 Agencias reactivadas / recién habilitadas | **1** |
+| 🌟 Agencias reactivadas / recién habilitadas | **0** |
 | 🏷️ Cambios de nombre / sucursal / nomenclatura | **0** |
 | 🔤 Cambios de código / abreviatura | **0** |
 | 📍 Cambios de dirección / mudanzas / saneamiento de texto | **0** |
@@ -34,12 +34,6 @@
 | ID | Código | Agencia | Origen | Destino | Motivo |
 |---:|---|---|---:|---:|---|
 | 365 | `HPACO` | LIMA / LIMA / LURIGANCHO / HUACHIPA CO | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
-
-## 🌟 2. Agencias Reactivadas / Recién Habilitadas (1)
-
-| ID | Código | Nombre Actual | Nombre Anterior | Dirección |
-|---:|---|---|---|---|
-| 736 | `AVHRPT` | CUSCO / CUSCO / WANCHAQ / AV. HUAYRUROPATA | CUSCO / CUSCO / WANCHAQ / AV. HUAYRUROPATA | AV. TOMASA TITO CONDEMAYTA N1706, REF. AL COSTADO DEL TERMINAL DE SICUANI DE BUSES RÁPIDOS POR LA VIA DEL IPD |
 
 ## 👀 Próximas Sedes en Preparación en API Shalom (`habilitado=false`) (11)
 

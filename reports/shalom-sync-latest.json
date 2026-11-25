@@ -1,16 +1,16 @@
 {
-  "timestamp": "2026-11-24T20:27:58.963Z",
+  "timestamp": "2026-11-25T19:43:32.495Z",
   "dryRun": false,
-  "durationSec": 8.2,
-  "hasChanges": true,
-  "totalChangesCount": 1,
+  "durationSec": 4.6,
+  "hasChanges": false,
+  "totalChangesCount": 0,
   "totals": {
     "apiTotal": 570,
     "activeValid": 504,
     "soloOrigenNoRecibe": 11,
     "disabledReal": 18,
     "hiddenInternalOrQa": 40,
-    "dbUpserted": 2,
+    "dbUpserted": 0,
     "staticCatalogCount": 535,
     "canonicalDestinations": 504
   },
@@ -33,15 +33,7 @@
   },
   "changes": {
     "newAgencies": [],
-    "reactivated": [
-      {
-        "id": 736,
-        "code": "AVHRPT",
-        "name": "CUSCO / CUSCO / WANCHAQ / AV. HUAYRUROPATA",
-        "previousName": "CUSCO / CUSCO / WANCHAQ / AV. HUAYRUROPATA",
-        "address": "AV. TOMASA TITO CONDEMAYTA N1706, REF. AL COSTADO DEL TERMINAL DE SICUANI DE BUSES RÁPIDOS POR LA VIA DEL IPD"
-      }
-    ],
+    "reactivated": [],
     "renamed": [],
     "codeChanged": [],
     "addressChanged": [],

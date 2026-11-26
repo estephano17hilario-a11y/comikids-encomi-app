@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Pedido, TallerConfig } from '../../types/database.types';
 import { downloadShalomExcel, extractShalomDni, extractShalomPhone, extractShalomOrigen } from '../../utils/shalomExcelExporter';
-import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
+import { resolveShalomAgencyDetails, isShalomOrderAereo } from '../../utils/shalomAgencyResolver';
+import { ShalomTransportSwitch, ShalomModalidad } from '../common/ShalomTransportSwitch';
 import { ShalomApiService, ShalomDispatchResult, isShalomRateLimitError } from '../../services/shalomApiService';
 import { getApiBaseUrl } from '../../config/api';
 import { validateShalomPin, formatShalomPin, getDailyShalomPin, getNextShalomPin, saveUsedShalomPin, getLastUsedShalomPinInfo } from '../../utils/formatters';
@@ -54,7 +55,8 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   const isShalomExcelMode = empresaConfig?.shalom_modo === 'excel';
 
   // Estado de edición de datos por pedido
-  const [editedData, setEditedData] = useState<Record<string, { dni: string; phone: string; name: string; pickupCode?: string }>>({});
+  const [editedData, setEditedData] = useState<Record<string, { dni: string; phone: string; name: string; pickupCode?: string; aereo?: boolean }>>({});
+  const [batchModalidad, setBatchModalidad] = useState<ShalomModalidad>('terrestre');
   const [activeTab, setActiveTab] = useState<'audit' | 'dispatching' | 'finished'>('audit');
   
   // Estados de despacho
@@ -194,7 +196,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
   useEffect(() => {
     if (!initializedRef.current && pedidos.length > 0) {
       initializedRef.current = true;
-      const initial: Record<string, { dni: string; phone: string; name: string; pickupCode?: string }> = {};
+      const initial: Record<string, { dni: string; phone: string; name: string; pickupCode?: string; aereo?: boolean }> = {};
       for (const p of pedidos) {
         initial[p.id] = {
           dni: extractShalomDni(p) || '',
@@ -202,9 +204,13 @@ export const ShalomRegisterModal: React.FC<Props> = ({
           name: p.usuario?.nombre_completo || 'Cliente',
           // Todos los pedidos en este lote adoptan inicialmente la clave exacta del recuadro
           pickupCode: pickupCode || initialPinCandidate,
+          // Predeterminado en Terrestre (false); si el pedido fue marcado como Aéreo, lo respeta
+          aereo: isShalomOrderAereo(p),
         };
       }
       setEditedData(initial);
+      const allAereo = pedidos.length > 0 && pedidos.every(p => isShalomOrderAereo(p));
+      setBatchModalidad(allAereo ? 'aereo' : 'terrestre');
     }
   }, [pedidos, pickupCode, initialPinCandidate]);
 
@@ -234,6 +240,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         dni: extractShalomDni(p) || '',
         phone: extractShalomPhone(p) || '',
         name: p.usuario?.nombre_completo || 'Cliente',
+        aereo: isShalomOrderAereo(p),
       };
       const agencyDetails = resolveShalomAgencyDetails(p.destino_detalle);
       const destino = agencyDetails.officialDestination;
@@ -268,6 +275,36 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         [field]: value,
       },
     }));
+  };
+
+  const handleRowModalidadChange = (id: string, next: ShalomModalidad) => {
+    setEditedData(prev => ({
+      ...prev,
+      [id]: {
+        ...(prev[id] || { dni: '', phone: '', name: '' }),
+        aereo: next === 'aereo',
+      },
+    }));
+  };
+
+  const handleBatchModalidadChange = (next: ShalomModalidad) => {
+    setBatchModalidad(next);
+    const isAereo = next === 'aereo';
+    setEditedData(prev => {
+      const updated = { ...prev };
+      for (const p of pedidos) {
+        updated[p.id] = {
+          ...(updated[p.id] || {
+            dni: extractShalomDni(p) || '',
+            phone: extractShalomPhone(p) || '',
+            name: p.usuario?.nombre_completo || 'Cliente',
+            pickupCode,
+          }),
+          aereo: isAereo,
+        };
+      }
+      return updated;
+    });
   };
 
   // Aplicar nueva clave personalizada o sugerida y reintentar todo en 1 clic
@@ -321,6 +358,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
       pedidoId: row.pedido.id,
       codigoSeguimiento: row.pedido.codigo_seguimiento,
       pickup_code: rowPickupCode,
+      aereo: Boolean(row.data.aereo),
       destinyTerminalId: row.agencyDetails.terminalId,
       agencyCode: row.agencyDetails.code,
       agencyOfficialName: row.agencyDetails.officialDestination,
@@ -502,6 +540,7 @@ export const ShalomRegisterModal: React.FC<Props> = ({
         pedidoId: row.pedido.id,
         codigoSeguimiento: row.pedido.codigo_seguimiento,
         pickup_code: rowPickupCode,
+        aereo: Boolean(row.data.aereo),
         destinyTerminalId: row.agencyDetails.terminalId,
         agencyCode: row.agencyDetails.code,
         agencyOfficialName: row.agencyDetails.officialDestination,
@@ -961,6 +1000,15 @@ export const ShalomRegisterModal: React.FC<Props> = ({
               </div>
             </div>
 
+            {/* Switch Global de Modalidad Shalom: Terrestre (Predeterminado) vs Aéreo */}
+            {!isShalomExcelMode && (
+              <ShalomTransportSwitch
+                value={batchModalidad}
+                onChange={handleBatchModalidadChange}
+                label="Modalidad del lote Shalom (puedes cambiar también por pedido)"
+              />
+            )}
+
             {/* Aviso Preventivo Anticolisión de Clave de Ayer */}
             {isYesterdayConflict && (
               <div className="p-3 rounded-2xl bg-rose-500/15 border-2 border-rose-500/50 text-rose-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn shadow-lg shadow-rose-950/30">
@@ -1102,14 +1150,23 @@ export const ShalomRegisterModal: React.FC<Props> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300 bg-cyan-950/60 px-2.5 py-1 rounded-xl border border-cyan-500/40 truncate max-w-[320px]">
-                      <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                      <span className="truncate">Destino: <strong className="text-white font-black">{row.destino}</strong></span>
-                      {row.agencyDetails.code && (
-                        <span className="text-[10px] font-mono text-cyan-300 bg-cyan-900/60 px-1 py-0.2 rounded border border-cyan-500/30 font-bold shrink-0">
-                          {row.agencyDetails.code}
-                        </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!isShalomExcelMode && (
+                        <ShalomTransportSwitch
+                          compact
+                          value={row.data.aereo ? 'aereo' : 'terrestre'}
+                          onChange={(next) => handleRowModalidadChange(row.pedido.id, next)}
+                        />
                       )}
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300 bg-cyan-950/60 px-2.5 py-1 rounded-xl border border-cyan-500/40 truncate max-w-[320px]">
+                        <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                        <span className="truncate">Destino: <strong className="text-white font-black">{row.destino}</strong></span>
+                        {row.agencyDetails.code && (
+                          <span className="text-[10px] font-mono text-cyan-300 bg-cyan-900/60 px-1 py-0.2 rounded border border-cyan-500/30 font-bold shrink-0">
+                            {row.agencyDetails.code}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 

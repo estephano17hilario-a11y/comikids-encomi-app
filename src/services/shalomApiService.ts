@@ -1,6 +1,6 @@
 import { Pedido, TallerConfig } from '../types/database.types';
 import { extractShalomDni, extractShalomPhone, extractShalomOrigen } from '../utils/shalomExcelExporter';
-import { resolveShalomAgencyDetails } from '../utils/shalomAgencyResolver';
+import { resolveShalomAgencyDetails, isShalomOrderAereo } from '../utils/shalomAgencyResolver';
 import { getApiBaseUrl } from '../config/api';
 import { validateShalomPdfContent } from '../utils/shalomPdfValidator';
 import { getDailyShalomPin } from '../utils/formatters';
@@ -20,6 +20,7 @@ export interface ShalomOrderPayload {
   pedidoId: string;
   codigoSeguimiento: string;
   pickup_code?: string;
+  aereo?: boolean;
   destinyTerminalId?: number;
   agencyCode?: string;
   agencyOfficialName?: string;
@@ -63,6 +64,7 @@ export interface ShalomDispatchResult {
   agencyFullName?: string;
   terminalId?: number;
   pickupCode?: string;
+  aereo?: boolean;
 }
 
 export function isShalomRateLimitError(errorMsg?: any): boolean {
@@ -629,6 +631,7 @@ export class ShalomApiService {
       pedidoId: pedido.id,
       codigoSeguimiento: pedido.codigo_seguimiento,
       pickup_code: pickupCode,
+      aereo: isShalomOrderAereo(pedido),
       destinyTerminalId: agencyDetails.terminalId,
       agencyCode: agencyDetails.code,
       agencyOfficialName: agencyDetails.officialDestination,
@@ -669,8 +672,11 @@ export class ShalomApiService {
         agencyId: payload.destinyTerminalId || payload.destinatario.destinyTerminalId,
       });
 
+      const isAereo = Boolean(payload.aereo);
+
       const orderBody = {
         pickup_code: payload.pickup_code || getDailyShalomPin(),
+        aereo: isAereo,
         destiny_terminal_id: agencyDetails.terminalId,
         destination_agency: agencyDetails.officialDestination,
         destination_agency_code: agencyDetails.code,
@@ -759,6 +765,7 @@ export class ShalomApiService {
           agencyName: confirmedAgency,
           agencyFullName: confirmedFullName,
           terminalId: agencyDetails.terminalId,
+          aereo: isAereo,
         };
       }
 

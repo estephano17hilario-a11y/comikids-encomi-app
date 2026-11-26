@@ -7,7 +7,8 @@ import { ShalomAgenciesMap } from '../client/ShalomAgenciesMap';
 import { OlvaAgenciesMap } from '../client/OlvaAgenciesMap';
 import { DEPARTAMENTOS_PERU } from '../../data/shalomAgencies';
 import { DEPARTAMENTOS_OLVA } from '../../data/olvaAgencies';
-import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
+import { extractShalomDestino, isShalomOrderAereo, applyShalomModalidadToDestino } from '../../utils/shalomAgencyResolver';
+import { ShalomTransportSwitch, ShalomModalidad } from '../common/ShalomTransportSwitch';
 import { DniService } from '../../services/dniService';
 import { getDailyShalomPin } from '../../utils/formatters';
 import { getRelativeDayLabel } from '../../services/whatsappService';
@@ -149,6 +150,9 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
   } = useShalomAgencies({ initialDepartment: 'TODOS' });
 
   const [selectedShalomAgency, setSelectedShalomAgency] = useState<ShalomAgency | null>(null);
+  const [shalomModalidad, setShalomModalidad] = useState<ShalomModalidad>(() =>
+    isShalomOrderAereo(pedido) ? 'aereo' : 'terrestre'
+  );
   const [isShalomListOpen, setIsShalomListOpen] = useState(false);
   const [showShalomMapModal, setShowShalomMapModal] = useState(false);
 
@@ -291,7 +295,10 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
 
     const fullAgencyStr = formatFullAgencyName(agency);
     const docRecojo = dniRecojoShalom.trim() || dniCliente.trim() || 'No especificado';
-    const newDestino = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${docRecojo})`;
+    const newDestino = applyShalomModalidadToDestino(
+      `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${docRecojo})`,
+      shalomModalidad
+    );
     setDestinoDetalle(newDestino);
   };
 
@@ -300,7 +307,28 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
     if (selectedShalomAgency) {
       const fullAgencyStr = formatFullAgencyName(selectedShalomAgency);
       const docRecojo = newDni.trim() || dniCliente.trim() || 'No especificado';
-      setDestinoDetalle(`Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${docRecojo})`);
+      setDestinoDetalle(
+        applyShalomModalidadToDestino(
+          `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${docRecojo})`,
+          shalomModalidad
+        )
+      );
+    }
+  };
+
+  const handleShalomModalidadChange = (next: ShalomModalidad) => {
+    setShalomModalidad(next);
+    if (selectedShalomAgency) {
+      const fullAgencyStr = formatFullAgencyName(selectedShalomAgency);
+      const docRecojo = dniRecojoShalom.trim() || dniCliente.trim() || 'No especificado';
+      setDestinoDetalle(
+        applyShalomModalidadToDestino(
+          `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${docRecojo})`,
+          next
+        )
+      );
+    } else if (destinoDetalle) {
+      setDestinoDetalle(applyShalomModalidadToDestino(destinoDetalle, next));
     }
   };
 
@@ -381,11 +409,20 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
           finalDestino = 'Entrega acordada en taller';
         }
       }
+      if (selectedCourier === 'shalom') {
+        finalDestino = applyShalomModalidadToDestino(finalDestino, shalomModalidad);
+      }
+
+      const updatedCustomFields =
+        selectedCourier === 'shalom'
+          ? { ...(pedido.campos_personalizados || {}), sys_shalom_modalidad: shalomModalidad }
+          : pedido.campos_personalizados;
 
       await onSave(pedido.id, {
         metodo_envio_codigo: finalMetodoCodigo,
         metodo_envio_nombre: finalMetodoNombre,
         destino_detalle: finalDestino,
+        campos_personalizados: updatedCustomFields,
         detalles_bordado: updatedDetalles,
         observaciones_cliente: observaciones.trim(),
         fecha_limite: fechaEnvioCliente || undefined,
@@ -638,6 +675,12 @@ export const EditOrderModal: React.FC<Props> = ({ pedido, onClose, onSave }) => 
                     </button>
                   </div>
                 </div>
+
+                {/* Switch Modalidad Terrestre (Predeterminado) vs Aéreo */}
+                <ShalomTransportSwitch
+                  value={shalomModalidad}
+                  onChange={handleShalomModalidadChange}
+                />
 
                 {gpsErrorShalom && (
                   <div className="flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">

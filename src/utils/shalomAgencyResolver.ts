@@ -118,10 +118,13 @@ const tryExtractShalomDestino = (destinoDetalle: string, agencyCode?: string | n
     }
   }
 
-  // 2. Limpieza de metadatos de cliente (DNI, Tel, Correo, Ref, Distancia)
+  // 2. Limpieza de metadatos de cliente (DNI, Tel, Correo, Ref, Distancia, Modalidad)
   const clean = destinoDetalle
     .replace(/^Agencia Shalom:\s*/i, '')
-    .replace(/\(DNI[\s\/]*CE[^)]*\)/gi, '')
+    .replace(/\(MODALIDAD:\s*[^)]*\)/gi, '')
+    .replace(/\[A[EÉ]REO\]/gi, '')
+    .replace(/\[TERRESTRE\]/gi, '')
+    .replace(/\(DNI[\s/]*CE[^)]*\)/gi, '')
     .replace(/\(DNI[^)]*\)/gi, '')
     .replace(/\(CE[^)]*\)/gi, '')
     .replace(/\(Doc[^)]*\)/gi, '')
@@ -223,6 +226,51 @@ const tryExtractShalomDestino = (destinoDetalle: string, agencyCode?: string | n
 
 export const extractShalomDestino = (destinoDetalle: string, agencyCode?: string | null): string =>
   tryExtractShalomDestino(destinoDetalle, agencyCode) ?? 'LIMA AV TINGO MARÍA';
+
+/**
+ * Detecta si un pedido o cadena destino_detalle de Shalom está configurado como envío AÉREO.
+ * Por defecto siempre retorna false (TERRESTRE).
+ */
+export const isShalomOrderAereo = (
+  pedidoOrDestino?: string | { destino_detalle?: string; campos_personalizados?: Record<string, any> } | null
+): boolean => {
+  if (!pedidoOrDestino) return false;
+  if (typeof pedidoOrDestino === 'string') {
+    return /\(MODALIDAD:\s*A[EÉ]REO\)|\[A[EÉ]REO\]/i.test(pedidoOrDestino);
+  }
+  const modField = String(
+    pedidoOrDestino.campos_personalizados?.sys_shalom_modalidad ||
+    pedidoOrDestino.campos_personalizados?.shalom_modalidad ||
+    ''
+  ).toLowerCase().trim();
+  if (modField === 'aereo' || modField === 'aéreo') return true;
+  if (modField === 'terrestre') return false;
+  return /\(MODALIDAD:\s*A[EÉ]REO\)|\[A[EÉ]REO\]/i.test(pedidoOrDestino.destino_detalle || '');
+};
+
+/**
+ * Aplica o remueve el tag "(MODALIDAD: AÉREO)" en una cadena destino_detalle de Shalom.
+ * Cuando es terrestre (predeterminado), mantiene el texto limpio sin tag extra.
+ */
+export const applyShalomModalidadToDestino = (
+  destinoDetalle: string,
+  modalidad: 'terrestre' | 'aereo'
+): string => {
+  const cleaned = (destinoDetalle || '')
+    .replace(/\s*\(MODALIDAD:\s*[^)]*\)/gi, '')
+    .replace(/\s*\[A[EÉ]REO\]/gi, '')
+    .replace(/\s*\[TERRESTRE\]/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (modalidad !== 'aereo' || !cleaned) return cleaned;
+
+  const dniIdx = cleaned.search(/\s*\(DNI[\s/]*CE/i);
+  if (dniIdx > 0) {
+    return `${cleaned.slice(0, dniIdx).trim()} (MODALIDAD: AÉREO) ${cleaned.slice(dniIdx).trim()}`;
+  }
+  return `${cleaned} (MODALIDAD: AÉREO)`;
+};
 
 /**
  * Resuelve la agencia de Shalom de forma 100% determinista, canónica y ANTI-ERRORES.

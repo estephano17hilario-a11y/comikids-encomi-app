@@ -328,12 +328,20 @@ export class ShalomController {
         pickupCode = '0808';
       }
 
-      const orderToCreate = {
+      const isAereo = Boolean(
+        order.aereo === true ||
+        order.is_aereo === true ||
+        String(order.modalidad || '').toLowerCase() === 'aereo' ||
+        order.package?.aereo === true
+      );
+
+      const orderToCreate: Record<string, any> = {
         origin_terminal_id: originTerminalId,
         destiny_terminal_id: destinyTerminalId,
         product_id: order.product_id || 1090, // Caja Paquete XS
         pickup_code: pickupCode,
         declaracion_jurada: 'ropa',
+        ...(isAereo ? { aereo: true } : {}),
         receiver: {
           document: cleanDoc,
           document_type: docType,
@@ -343,7 +351,7 @@ export class ShalomController {
         }
       };
 
-      console.log(`[SHALOM PROXY CREATE ORDER] Despachando a terminal ${destinyTerminalId} ("${officialAgencyName}") para ${firstName} ${lastName} (${cleanDoc}) con PIN ${pickupCode}...`);
+      console.log(`[SHALOM PROXY CREATE ORDER] Despachando (${isAereo ? 'AÉREO ✈️' : 'TERRESTRE 🚚'}) a terminal ${destinyTerminalId} ("${officialAgencyName}") para ${firstName} ${lastName} (${cleanDoc}) con PIN ${pickupCode}...`);
 
       // Despacho serializado y rate-limited a través de ShalomQueueService
       const maxAttempts = 3;
@@ -419,6 +427,7 @@ export class ShalomController {
         numero_guia: fullGuia,
         tracking_code: trackingCode,
         pickup_code: confirmedPin,
+        aereo: isAereo,
       };
 
       // Inyectar inmediatamente la nueva orden creada en la caché en memoria para resolución en 0ms
@@ -436,6 +445,7 @@ export class ShalomController {
         agency_official: officialAgencyName,
         agency_full_name: agencyFullName,
         terminal_id: destinyTerminalId,
+        aereo: isAereo,
       });
     } catch (error: any) {
       console.error('[SHALOM PROXY CREATE ORDER ERROR]', error?.response?.data || error?.message);

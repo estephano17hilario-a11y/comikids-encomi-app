@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useOrders } from '../../context/OrderContext';
 import { ordersService } from '../../services/ordersService';
 import { useShalomAgencies, formatFullAgencyName } from '../../hooks/useShalomAgencies';
-import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
+import { extractShalomDestino, applyShalomModalidadToDestino } from '../../utils/shalomAgencyResolver';
+import { ShalomTransportSwitch, ShalomModalidad } from '../common/ShalomTransportSwitch';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import { DniService } from '../../services/dniService';
 import { isAgencyDateAllowed, getNextAvailableDateForAgency } from '../../utils/agencyAvailability';
@@ -92,6 +93,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
   } = useShalomAgencies({ initialDepartment: 'LIMA' });
 
   const [selectedAgencyId, setSelectedAgencyId] = useState<string | number>('');
+  const [shalomModalidad, setShalomModalidad] = useState<ShalomModalidad>('terrestre');
   const [direccionSimple, setDireccionSimple] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [fechaLimite, setFechaLimite] = useState<string>(() => minShippingDate);
@@ -144,7 +146,10 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
           return;
         }
         const fullAgencyStr = agencyObj ? formatFullAgencyName(agencyObj) : `AGENCIA SHALOM ${selectedDepartment}`;
-        destinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dni.trim()})`;
+        destinoDetalle = applyShalomModalidadToDestino(
+          `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${dni.trim()})`,
+          shalomModalidad
+        );
       } else if (selectedMethod?.tipo_formulario === 'olva') {
         const mod = olvaModalidad === 'agencia' ? 'Agencia Olva' : 'Domicilio';
         const ref = (olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? ` (Ref: ${olvaReferencia.trim()})` : '';
@@ -168,6 +173,7 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
           destino_detalle: destinoDetalle,
           observaciones_cliente: (selectedMethod?.tipo_formulario === 'olva' && olvaModalidad === 'domicilio' && olvaReferencia.trim()) ? olvaReferencia.trim() : (observaciones.trim() || 'Venta directa en taller'),
           fecha_limite: fechaLimite,
+          ...(selectedMethod?.tipo_formulario === 'shalom' ? { campos_personalizados: { sys_shalom_modalidad: shalomModalidad } } : {}),
         });
       }
 
@@ -369,6 +375,11 @@ export const QuickOrderModal: React.FC<Props> = ({ onClose }) => {
 
           {selectedMethod?.tipo_formulario === 'shalom' ? (
             <div className="space-y-2.5 bg-slate-950 p-3 rounded-2xl border border-cyan-500/30">
+              <ShalomTransportSwitch
+                value={shalomModalidad}
+                onChange={setShalomModalidad}
+              />
+
               <div className="flex items-center justify-between">
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
                   Agencia Shalom (Total: 546 sedes)

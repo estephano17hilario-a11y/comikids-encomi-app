@@ -53,7 +53,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { getApiBaseUrl } from '../../config/api';
-import { resolveShalomAgencyDetails } from '../../utils/shalomAgencyResolver';
+import { resolveShalomAgencyDetails, isShalomOrderAereo } from '../../utils/shalomAgencyResolver';
 import { formatFechaConDia } from '../../services/whatsappService';
 
 // Helper exhaustivo para extraer número celular de la clienta
@@ -1260,6 +1260,11 @@ export const OrdersSmartManager: React.FC = () => {
                         <span className="truncate">
                           <strong className="text-white">{agencyInfo.officialDestination}</strong>
                         </span>
+                        {isShalomOrderAereo(order) && (
+                          <span className="text-[10px] font-bold text-sky-200 bg-sky-500/25 border border-sky-400/45 px-1.5 py-0.2 rounded-md shrink-0">
+                            ✈️ AÉREO
+                          </span>
+                        )}
                         {agencyInfo.code && (
                           <span className="text-[10px] font-mono text-rose-200 bg-rose-900/60 px-1.5 rounded font-black shrink-0 ml-auto">
                             {agencyInfo.code}

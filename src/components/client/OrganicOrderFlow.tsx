@@ -21,7 +21,8 @@ const MapLoading: React.FC = () => (
 import { MetodoEnvio, ShalomAgency, OlvaAgency, Pedido, CampoPersonalizadoAgencia, EmpresaAccount } from '../../types/database.types';
 import { AgencyStatusBadge } from '../common/AgencyStatusBadge';
 import { getAgencyStatusInfo } from '../../utils/agencyStatus';
-import { extractShalomDestino } from '../../utils/shalomAgencyResolver';
+import { extractShalomDestino, applyShalomModalidadToDestino } from '../../utils/shalomAgencyResolver';
+import { ShalomTransportSwitch, ShalomModalidad } from '../common/ShalomTransportSwitch';
 import { evaluateShippingCutoff, getMinAvailableShippingDate, formatFriendlyDate, formatFriendlyTime } from '../../utils/shippingCutoff';
 import {
   isAgencyDateAllowed,
@@ -360,6 +361,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   }, [selectedAgencyObject]);
 
   const [isAgencyListOpen, setIsAgencyListOpen] = useState(false);
+  const [shalomModalidad, setShalomModalidad] = useState<ShalomModalidad>('terrestre');
   const shalomSearchBoxRef = React.useRef<HTMLDivElement>(null);
   const [showMapModal, setShowMapModal] = useState(false);
 
@@ -865,7 +867,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
     let finalDestinoDetalle = '';
     if (selectedMethod?.tipo_formulario === 'shalom') {
       const fullAgencyStr = selectedAgencyObject ? formatFullAgencyName(selectedAgencyObject) : 'AGENCIA SHALOM CENTRAL';
-      finalDestinoDetalle = `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${validDni || dniShalom.trim()})`;
+      finalDestinoDetalle = applyShalomModalidadToDestino(
+        `Agencia Shalom: ${fullAgencyStr} (DNI/CE Recojo: ${validDni || dniShalom.trim()})`,
+        shalomModalidad
+      );
     } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
       finalDestinoDetalle = `${distritoQuery.trim()} • ${direccionExacta.trim()}${referencia.trim() ? ` (Ref: ${referencia.trim()})` : ''}`;
     } else if (selectedMethod?.tipo_formulario === 'olva') {
@@ -939,7 +944,10 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
       };
 
       // Mantener únicamente los campos personalizados reales ingresados por el usuario
-      const finalCustomFields: Record<string, any> = { ...customFieldValues };
+      const finalCustomFields: Record<string, any> = {
+        ...customFieldValues,
+        ...(selectedMethod?.tipo_formulario === 'shalom' ? { sys_shalom_modalidad: shalomModalidad } : {}),
+      };
 
       const orderPayload = {
         usuario_id: clientUserData.id,
@@ -996,7 +1004,7 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
   const getDatosComprobanteActual = (order: Pedido | null): DatosComprobante => {
     let destinoTexto = order?.destino_detalle || '';
     if (selectedMethod?.tipo_formulario === 'shalom' && selectedAgencyObject) {
-      destinoTexto = formatFullAgencyName(selectedAgencyObject);
+      destinoTexto = `${formatFullAgencyName(selectedAgencyObject)}${shalomModalidad === 'aereo' ? ' (✈️ Envío Aéreo)' : ''}`;
     } else if (selectedMethod?.tipo_formulario === 'mapa_direccion') {
       destinoTexto = `${distritoQuery.trim()} • ${direccionExacta.trim()}`;
     } else if (selectedMethod?.tipo_formulario === 'olva') {
@@ -1805,6 +1813,12 @@ export const OrganicOrderFlow: React.FC<Props> = ({ onSuccess }) => {
               {/* RAMA A: AGENCIA SHALOM */}
               {selectedMethod?.tipo_formulario === 'shalom' && (
                 <div className="space-y-3.5">
+
+                  {/* Switch Modalidad de Envío Shalom: Terrestre (Predeterminado) vs Aéreo */}
+                  <ShalomTransportSwitch
+                    value={shalomModalidad}
+                    onChange={setShalomModalidad}
+                  />
                   
                   {/* Botones de Acción Superior */}
                   <div className="grid grid-cols-2 gap-2.5">

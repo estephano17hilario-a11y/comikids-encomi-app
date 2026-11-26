@@ -1,20 +1,20 @@
 # 📦 Reporte Diario de Sincronización de Agencias Shalom
 
-- **Fecha (Hora Perú):** miércoles, 25 de noviembre de 2026, 2:43:32 p. m.
+- **Fecha (Hora Perú):** jueves, 26 de noviembre de 2026, 2:23:49 p. m.
 - **Ejecución:** ✅ Producción (Base de datos actualizada)
-- **Duración:** 4.6s
+- **Duración:** 6.9s
 - **Estado:** ✨ **SIN CAMBIOS (Catálogo 100% al día)**
-- **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (570 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 1 discrepancias del proxy atrapadas)
+- **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (571 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 1 discrepancias del proxy atrapadas)
 
 ## 📊 Resumen Ejecutivo
 
 | Métrica | Cantidad |
 |---|---:|
-| 📡 Total registros devueltos por API Shalom | **570** |
+| 📡 Total registros devueltos por API Shalom | **571** |
 | ✅ Agencias activas válidas como destino (`OS=1` y `destino=1`) | **504** |
 | 🚫 Agencias SOLO ENVÍOS / No reciben destino (visibles 30d bloqueadas) | **11** |
 | 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **18** |
-| 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **40** |
+| 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **41** |
 | ✨ Nuevas agencias agregadas | **0** |
 | 🌟 Agencias reactivadas / recién habilitadas | **0** |
 | 🏷️ Cambios de nombre / sucursal / nomenclatura | **0** |

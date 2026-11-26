@@ -10,6 +10,7 @@ const CompanyAccountSettings = lazy(() => import('../components/admin/CompanyAcc
 const CompanyAgenciesTab = lazy(() => import('../components/admin/CompanyAgenciesTab').then(m => ({ default: m.CompanyAgenciesTab })));
 const CompanyAchievementsTab = lazy(() => import('../components/admin/CompanyAchievementsTab').then(m => ({ default: m.CompanyAchievementsTab })));
 const EmpresaAiAssistant = lazy(() => import('../components/admin/EmpresaAiAssistant').then(m => ({ default: m.EmpresaAiAssistant })));
+const ShalomProHub = lazy(() => import('../components/admin/ShalomProHub').then(m => ({ default: m.ShalomProHub })));
 import { OrganicOrderFlow } from '../components/client/OrganicOrderFlow';
 import { TallerConfigModal } from '../components/admin/TallerConfigModal';
 import { ExecutiveBriefingModal } from '../components/admin/ExecutiveBriefingModal';
@@ -26,10 +27,11 @@ import {
   FileBarChart,
   Plus,
   X,
-  Truck
+  Truck,
+  Zap
 } from 'lucide-react';
 
-export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'agencias' | 'hitos' | 'ajustes' | 'encomi_ai';
+export type EmpresaTab = 'pedidos' | 'agendas' | 'estadisticas' | 'agencias' | 'shalom_pro' | 'hitos' | 'ajustes' | 'encomi_ai';
 
 export const AdminPortal: React.FC = () => {
   const { pedidos, tallerConfig, refreshData } = useOrders();
@@ -76,9 +78,18 @@ export const AdminPortal: React.FC = () => {
 
 
   const pendingOrdersCount = pedidos.filter(p => p.estado_envio !== 'entregado').length;
+  const hasShalomApi = empresaConfig?.shalom_modo === 'api';
+
+  // Seguridad: si la empresa no tiene modo API Shalom, jamás permitir permanecer en la pestaña Shalom Pro
+  useEffect(() => {
+    if (!hasShalomApi && activeTab === 'shalom_pro') {
+      setActiveTab('pedidos');
+    }
+  }, [hasShalomApi, activeTab]);
 
   const dockItems: { id: EmpresaTab; label: string; short?: string; icon: React.ElementType; activeClass: string; badge?: number }[] = [
     { id: 'pedidos' as EmpresaTab, label: 'Pedidos', icon: ClipboardList, activeClass: 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30', badge: pendingOrdersCount, visible: sec.pedidos !== false },
+    { id: 'shalom_pro' as EmpresaTab, label: 'Shalom Pro', short: 'Shalom', icon: Zap, activeClass: 'bg-linear-to-r from-red-600 to-rose-500 text-white shadow-md shadow-red-600/30', visible: hasShalomApi },
     { id: 'agendas' as EmpresaTab, label: 'Clientes', icon: Users, activeClass: 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30', visible: sec.agendas !== false },
     { id: 'estadisticas' as EmpresaTab, label: 'Métricas', icon: BarChart3, activeClass: 'bg-blue-600 text-white shadow-md shadow-blue-600/30', visible: sec.estadisticas !== false },
     { id: 'agencias' as EmpresaTab, label: 'Agencias', icon: Truck, activeClass: 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30', visible: sec.agencias !== false },
@@ -207,6 +218,7 @@ export const AdminPortal: React.FC = () => {
         >
         <div className="transition-all duration-300">
           {activeTab === 'pedidos' && sec.pedidos !== false && <OrdersSmartManager />}
+          {activeTab === 'shalom_pro' && hasShalomApi && <ShalomProHub />}
           {activeTab === 'agendas' && sec.agendas !== false && <ClientDirectory />}
           {activeTab === 'estadisticas' && sec.estadisticas !== false && <VisionAnalyticsDashboard />}
           {activeTab === 'agencias' && sec.agencias !== false && (

@@ -989,7 +989,7 @@ export const MatrixPortal: React.FC = () => {
                       />
                     </div>
                     <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
-                      Permite registro directo en Shalom con 1 solo clic en 3-4 segundos mediante token oficial.
+                      Habilita registros por API en 1 clic, sección exclusiva <strong className="text-emerald-300">Shalom Pro (Autogestión, Autosugestiones, Cotizador, Rastreo)</strong> y escáner automático cada 3 horas con aviso + foto de prueba.
                     </p>
                   </div>
 
@@ -1016,7 +1016,7 @@ export const MatrixPortal: React.FC = () => {
                       />
                     </div>
                     <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
-                      Desactiva llamadas API para esta empresa y le entrega la plantilla Excel oficial lista para ventanilla.
+                      Desactiva la API y oculta completamente la sección Shalom Pro y el escáner automático de recojo. Solo entrega plantilla Excel.
                     </p>
                   </div>
                 </div>

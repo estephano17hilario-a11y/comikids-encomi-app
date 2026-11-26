@@ -87,7 +87,484 @@ export function isShalomRateLimitError(errorMsg?: any): boolean {
 }
 
 
+export interface ShalomTrackingMilestone {
+  fecha?: string;
+  completo?: boolean;
+  cargueros?: string[];
+  carguero?: string;
+}
+
+export interface ShalomTrackingStatusObj {
+  registrado?: ShalomTrackingMilestone | null;
+  origen?: ShalomTrackingMilestone | null;
+  transito?: ShalomTrackingMilestone | null;
+  demora?: ShalomTrackingMilestone | null;
+  destino?: ShalomTrackingMilestone | null;
+  entregado?: ShalomTrackingMilestone | null;
+  reparto?: ShalomTrackingMilestone | null;
+}
+
+export interface ShalomTrackingResponse {
+  detailed: boolean;
+  degraded_reason?: string;
+  order?: {
+    ose_id?: number;
+    numero_orden?: string;
+    codigo_orden?: string;
+    fecha_emision?: string;
+    fecha_traslado?: string;
+    tipo_pago?: string;
+    estado_pago?: string;
+    contenido?: string;
+    monto?: string;
+    entregado?: boolean;
+    reparto?: boolean;
+    aereo?: boolean;
+    tiempo_llegada?: string;
+    origen?: { id?: number; nombre?: string; abrebiatura?: string; departamento?: string; provincia?: string; distrito?: string };
+    destino?: { id?: number; nombre?: string; abrebiatura?: string; departamento?: string; provincia?: string; distrito?: string };
+    remitente?: { documento?: string; nombre?: string };
+    destinatario?: { documento?: string; nombre?: string };
+    comprobante?: { serie?: string; numero?: string; tipo?: string; tipo_pago?: string; estado_pago?: string; fecha?: string; hora?: string };
+  };
+  status?: ShalomTrackingStatusObj;
+}
+
+export interface ShalomProOrderItem {
+  id: number;
+  internal_id?: number;
+  guia?: string;
+  serie?: string;
+  codigo?: string;
+  pickup_code?: string;
+  created_at?: string;
+  updated_at?: string;
+  shipping_date?: string;
+  status?: number;
+  payer?: string;
+  aereo?: boolean;
+  delivered?: boolean;
+  paid?: boolean;
+  origin?: { ter_id?: number; name?: string; address?: string; ubigeo?: string };
+  destination?: { ter_id?: number; name?: string; address?: string; ubigeo?: string };
+  sender?: { document?: string; name?: string; full_name?: string; phone?: number | string };
+  receiver?: { document?: string; name?: string; last_name?: string; full_name?: string; phone?: number | string };
+  items?: Array<{ id?: number; quantity?: number; weight?: number; product_name?: string; product_price?: number }>;
+}
+
+export interface ShalomTariffResponse {
+  currency?: string;
+  aereo?: boolean;
+  breakdown?: {
+    sobre?: number;
+    caja_paquete_xxs?: number;
+    caja_paquete_xs?: number;
+    caja_paquete_s?: number;
+    caja_paquete_m?: number;
+    caja_paquete_l?: number;
+    otra_medida?: number;
+    [key: string]: number | undefined;
+  };
+  product?: { id: number; title: string; price: number };
+}
+
+export interface ShalomScannerNotification {
+  id: string;
+  pedidoId: string;
+  empresaId: string;
+  trackingCode: string;
+  orderNumber: string;
+  orderCode?: string;
+  oseId?: string;
+  clientName: string;
+  clientDni: string;
+  clientPhone: string;
+  agencyName: string;
+  pickupCode: string;
+  arrivedAt?: string;
+  notifiedAt: string;
+  sentWithPhoto: boolean;
+  senderInstance: string;
+  brandName: string;
+  status?: ShalomTrackingStatusObj;
+}
+
+export interface ShalomScannerStatus {
+  empresaId: string;
+  autoScanEnabled: boolean;
+  intervalHours: number;
+  microBatchSize: number;
+  isRunning: boolean;
+  nextScheduledRun: string | null;
+  lastReport: any;
+  recentNotifications: ShalomScannerNotification[];
+}
+
 export class ShalomApiService {
+  private static buildAuthHeaders(auth?: ShalomAuthCredentials): Record<string, string> {
+    const headers: Record<string, string> = {
+      'X-API-Key': SHALOM_API_KEY,
+    };
+    if (auth?.email) headers['X-Shalom-Email'] = auth.email.trim();
+    if (auth?.password) headers['X-Shalom-Password'] = auth.password;
+    return headers;
+  }
+
+  /**
+   * Estado de salud de la API upstream de Shalom
+   */
+  public static async getApiStatus(): Promise<{ status: string; overall?: string; raw?: any }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/status`);
+      const data = await res.json().catch(() => ({}));
+      return {
+        status: data?.overall || data?.status || (res.ok ? 'operational' : 'degraded'),
+        overall: data?.overall || data?.status,
+        raw: data,
+      };
+    } catch {
+      return { status: 'degraded' };
+    }
+  }
+
+  /**
+   * Lista órdenes en vivo desde Shalom Pro API (por estado/etapa/fechas)
+   */
+  public static async listLiveOrders(
+    params: {
+      state?: 'pending' | 'in_transit' | 'delivered';
+      stage?: 'en_origen' | 'en_transito' | 'en_reparto' | 'en_destino';
+      page?: number;
+      per_page?: number;
+      from?: string;
+      to?: string;
+      guia?: string;
+      document_number?: string;
+    },
+    auth?: ShalomAuthCredentials
+  ): Promise<{ success: boolean; orders: ShalomProOrderItem[]; meta?: any; error?: string }> {
+    try {
+      const qs = new URLSearchParams();
+      if (params.state) qs.set('state', params.state);
+      if (params.stage) qs.set('stage', params.stage);
+      if (params.page) qs.set('page', String(params.page));
+      if (params.per_page) qs.set('per_page', String(params.per_page));
+      if (params.from) qs.set('from', params.from);
+      if (params.to) qs.set('to', params.to);
+      if (params.guia) qs.set('guia', params.guia);
+      if (params.document_number) qs.set('document_number', params.document_number);
+
+      const res = await fetch(`${getApiBaseUrl()}/shalom/orders?${qs.toString()}`, {
+        headers: this.buildAuthHeaders(auth),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, orders: [], error: data?.error || 'Error listando órdenes Shalom Pro' };
+      }
+      return { success: true, orders: data.orders || [], meta: data.meta };
+    } catch (err: any) {
+      return { success: false, orders: [], error: err?.message || 'Error de red' };
+    }
+  }
+
+  /**
+   * Anula / borra una orden o preguía en Shalom Pro (solo si aún no fue recibida en agencia)
+   */
+  public static async deleteLiveOrder(
+    orderId: number | string,
+    auth?: ShalomAuthCredentials
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(orderId))}`, {
+        method: 'DELETE',
+        headers: this.buildAuthHeaders(auth),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'Shalom Pro rechazó la anulación.' };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de conexión' };
+    }
+  }
+
+  /**
+   * Rastreo en vivo individual por ose_id o (numero + codigo)
+   */
+  public static async trackOrder(
+    params: { ose_id?: string | number; numero?: string; codigo?: string },
+    auth?: ShalomAuthCredentials
+  ): Promise<{ success: boolean; tracking?: ShalomTrackingResponse; error?: string }> {
+    try {
+      const qs = new URLSearchParams();
+      if (params.numero && params.codigo) {
+        qs.set('numero', params.numero.replace(/\D/g, ''));
+        qs.set('codigo', params.codigo.trim().toUpperCase());
+      } else if (params.ose_id) {
+        qs.set('ose_id', String(params.ose_id));
+      }
+      const res = await fetch(`${getApiBaseUrl()}/shalom/tracking?${qs.toString()}`, {
+        headers: this.buildAuthHeaders(auth),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'No se pudo obtener el rastreo.' };
+      }
+      return { success: true, tracking: data.tracking };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de red' };
+    }
+  }
+
+  /**
+   * Rastreo en lote (hasta 50 guías)
+   */
+  public static async trackOrdersBatch(
+    items: Array<{ custom_id?: string; ose_id?: string; numero?: string; codigo?: string }>,
+    auth?: ShalomAuthCredentials
+  ): Promise<{ success: boolean; results?: any[]; summary?: any; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/tracking/batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.buildAuthHeaders(auth),
+        },
+        body: JSON.stringify({ items }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'Error en rastreo por lote' };
+      }
+      return { success: true, results: data.results || [], summary: data.summary };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de conexión' };
+    }
+  }
+
+  /**
+   * Obtiene el enlace de Guía de Remisión Transportista (GRT)
+   */
+  public static async getTrackingGrt(
+    oseId: string | number,
+    capId: string
+  ): Promise<{ success: boolean; enlace?: string; error?: string }> {
+    try {
+      const res = await fetch(
+        `${getApiBaseUrl()}/shalom/tracking/${encodeURIComponent(String(oseId))}/grt?cap_id=${encodeURIComponent(capId)}`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'GRT no disponible' };
+      }
+      return { success: true, enlace: data.enlace };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de red' };
+    }
+  }
+
+  /**
+   * Cotizador oficial de tarifas Shalom Pro
+   */
+  public static async calculateTariff(
+    payload: {
+      origin_terminal_id: number;
+      destiny_terminal_id: number;
+      aereo?: boolean;
+      product_id?: number;
+      dimensions?: { weight_kg?: number; height_m?: number; length_m?: number; width_m?: number };
+    },
+    auth?: ShalomAuthCredentials
+  ): Promise<{ success: boolean; tariff?: ShalomTariffResponse; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/tariff/calculate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.buildAuthHeaders(auth),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'No se pudo cotizar esta ruta.' };
+      }
+      return { success: true, tariff: data.tariff };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de conexión' };
+    }
+  }
+
+  /**
+   * Busca una persona registrada en Shalom Pro por DNI/RUC/CE
+   */
+  public static async searchPerson(
+    document: string,
+    type: 'DNI' | 'RUC' | 'CE' = 'DNI',
+    auth?: ShalomAuthCredentials
+  ): Promise<{ success: boolean; person?: any; error?: string }> {
+    try {
+      const qs = new URLSearchParams({ document: document.trim(), type });
+      const res = await fetch(`${getApiBaseUrl()}/shalom/persons/search?${qs.toString()}`, {
+        headers: this.buildAuthHeaders(auth),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'Persona no encontrada en Shalom Pro.' };
+      }
+      return { success: true, person: data.person };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de conexión' };
+    }
+  }
+
+  /**
+   * Busca agencias en vivo directamente en la API de Shalom
+   */
+  public static async searchAgenciesLive(query: string): Promise<{ success: boolean; items: any[]; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/agencies/search?q=${encodeURIComponent(query)}&per_page=20`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, items: [], error: data?.error || 'Error buscando agencias' };
+      }
+      return { success: true, items: data.items || [] };
+    } catch (err: any) {
+      return { success: false, items: [], error: err?.message || 'Error de red' };
+    }
+  }
+
+  /**
+   * Genera la foto PNG de constancia/prueba oficial de rastreo Shalom
+   */
+  public static async generateProofImage(payload: {
+    brandName: string;
+    clientName: string;
+    clientDni?: string;
+    agencyName: string;
+    agencyAddress?: string;
+    orderNumber: string;
+    orderCode?: string;
+    pickupCode?: string;
+    status: ShalomTrackingStatusObj;
+  }): Promise<{ success: boolean; dataUrl?: string; base64?: string; mimeType?: string; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/proof-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'No se pudo generar la constancia.' };
+      }
+      return data;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de red' };
+    }
+  }
+
+  /**
+   * Envía manualmente el aviso de WhatsApp "Listo para recoger" CON foto de prueba oficial
+   */
+  public static async sendManualPickupNotification(
+    payload: {
+      empresaId?: string;
+      brandName?: string;
+      pedidoId?: string;
+      trackingCode?: string;
+      orderNumber: string;
+      orderCode?: string;
+      oseId?: string;
+      clientName: string;
+      clientDni?: string;
+      clientPhone: string;
+      agencyName: string;
+      agencyAddress?: string;
+      pickupCode?: string;
+      status?: ShalomTrackingStatusObj;
+      preferredInstance?: string;
+    },
+    auth?: ShalomAuthCredentials
+  ): Promise<{ success: boolean; sentWithPhoto?: boolean; senderInstance?: string; proofBase64?: string; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/notify-pickup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.buildAuthHeaders(auth),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'No se pudo enviar el aviso por WhatsApp.' };
+      }
+      return data;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de conexión' };
+    }
+  }
+
+  /**
+   * Consulta el estado del escáner automático cada 3 horas para una empresa API
+   */
+  public static async getScannerStatus(empresaId: string): Promise<{ success: boolean; scanner?: ShalomScannerStatus; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/scanner/status?empresaId=${encodeURIComponent(empresaId)}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'Error consultando escáner 3h' };
+      }
+      return { success: true, scanner: data.scanner };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de red' };
+    }
+  }
+
+  /**
+   * Ejecuta un escaneo escalonado bajo demanda para una empresa API
+   */
+  public static async runScannerNow(empresaId: string): Promise<{ success: boolean; report?: any; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/scanner/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empresaId, forceFirstRun: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'Error ejecutando escaneo' };
+      }
+      return { success: true, report: data.report };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de conexión' };
+    }
+  }
+
+  /**
+   * Activa o pausa el escáner automático cada 3 horas para una empresa API
+   */
+  public static async setScannerAutoEnabled(
+    empresaId: string,
+    enabled: boolean
+  ): Promise<{ success: boolean; scanner?: ShalomScannerStatus; error?: string }> {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/shalom/scanner/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empresaId, enabled }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return { success: false, error: data?.error || 'Error guardando configuración' };
+      }
+      return { success: true, scanner: data.scanner };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Error de conexión' };
+    }
+  }
   /**
    * Prueba las credenciales de Shalom Pro a través del backend proxy (evita bloqueos de CORS en navegadores).
    */

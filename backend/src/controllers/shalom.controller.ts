@@ -5,6 +5,7 @@ import { resolveShalomAgencyDetails, extractShalomDestino } from '../services/sh
 import { ShalomSyncService } from '../services/shalomSync.service.js';
 import { ShalomTrackingListenerService } from '../services/shalomTrackingListener.service.js';
 import { ShalomQueueService } from '../services/shalomQueue.service.js';
+import { ShalomProofImageService, ShalomTrackingStatusObj } from '../services/shalomProofImage.service.js';
 
 
 const SHALOM_BASE_URL = 'https://api.shalom-api-peru.com';
@@ -1296,13 +1297,13 @@ export class ShalomController {
    */
   public static async runTrackingListener(
     request: FastifyRequest<{
-      Body?: { forceFirstRun?: boolean };
+      Body?: { forceFirstRun?: boolean; empresaId?: string };
     }>,
     reply: FastifyReply
   ) {
     try {
-      const forceFirstRun = Boolean(request.body?.forceFirstRun);
-      const report = await ShalomTrackingListenerService.executeListenerCycle(forceFirstRun);
+      const empresaId = request.body?.empresaId;
+      const report = await ShalomTrackingListenerService.executeListenerCycle(true, empresaId);
       return reply.code(200).send({
         success: true,
         report,
@@ -1318,12 +1319,600 @@ export class ShalomController {
   /**
    * Consulta el último reporte del Listener de Tracking de Shalom
    */
-  public static async getTrackingListenerStatus(request: FastifyRequest, reply: FastifyReply) {
-    const report = ShalomTrackingListenerService.getLastReport();
+  public static async getTrackingListenerStatus(
+    request: FastifyRequest<{ Querystring?: { empresaId?: string } }>,
+    reply: FastifyReply
+  ) {
+    const empresaId = request.query?.empresaId || 'empresa-master-comikids';
+    const scannerStatus = await ShalomTrackingListenerService.getScannerStatusForEmpresa(empresaId);
     return reply.code(200).send({
       success: true,
-      lastReport: report,
+      lastReport: scannerStatus.lastReport,
+      scanner: scannerStatus,
     });
+  }
+
+  /**
+   * Actualiza la configuración del escáner automático cada 3 horas para una empresa API
+   */
+  public static async updateScannerConfig(
+    request: FastifyRequest<{ Body: { empresaId: string; enabled: boolean } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const empresaId = request.body?.empresaId || 'empresa-master-comikids';
+      const enabled = Boolean(request.body?.enabled);
+      await ShalomTrackingListenerService.setAutoScanEnabled(empresaId, enabled);
+      const scanner = await ShalomTrackingListenerService.getScannerStatusForEmpresa(empresaId);
+      return reply.code(200).send({ success: true, scanner });
+    } catch (err: any) {
+      return reply.code(500).send({ success: false, error: err?.message || 'Error actualizando configuración' });
+    }
+  }
+
+  /**
+   * Lista órdenes directamente desde Shalom Pro API con filtros rápidos (state, stage, fechas, guía)
+   */
+  public static async listShalomOrders(
+    request: FastifyRequest<{
+      Querystring: {
+        state?: string;
+        stage?: string;
+        page?: string;
+        per_page?: string;
+        from?: string;
+        to?: string;
+        guia?: string;
+        document_number?: string;
+      };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const headers: Record<string, string> = {
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
+      const q = request.query || {};
+      const params: Record<string, any> = {
+        page: Number(q.page || 1),
+        per_page: Math.min(Number(q.per_page || 40), 100),
+      };
+      if (q.state) params.state = q.state;
+      if (q.stage) params.stage = q.stage;
+      if (q.from) params.from = q.from;
+      if (q.to) params.to = q.to;
+      if (q.guia) params.guia = q.guia;
+      if (q.document_number) params.document_number = q.document_number;
+
+      const res = await axios.get(`${SHALOM_BASE_URL}/v1/orders`, {
+        params,
+        headers,
+        timeout: 25000,
+      });
+
+      const orders = res.data?.orders || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      return reply.code(200).send({
+        success: true,
+        orders,
+        meta: res.data?.meta || { total: orders.length, page: params.page, per_page: params.per_page, last_page: 1 },
+      });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || 'Error consultando órdenes de Shalom Pro';
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({ success: false, error: msg });
+    }
+  }
+
+  /**
+   * Anula / borra una preguía o guía aún no recibida en agencia Shalom Pro (DELETE /v1/orders/{id})
+   */
+  public static async deleteShalomOrder(
+    request: FastifyRequest<{ Params: { orderId: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const { orderId } = request.params;
+      if (!orderId) {
+        return reply.code(400).send({ success: false, error: 'ID de orden requerido' });
+      }
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const headers: Record<string, string> = {
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
+      const res = await axios.delete(`${SHALOM_BASE_URL}/v1/orders/${encodeURIComponent(orderId)}`, {
+        headers,
+        timeout: 90000,
+      });
+
+      // Remover de caché en memoria si estaba
+      try {
+        ShalomController.cachedAllOrders = ShalomController.cachedAllOrders.filter(
+          (o: any) => String(o.id) !== String(orderId)
+        );
+      } catch {}
+
+      return reply.code(200).send({
+        success: true,
+        data: res.data,
+      });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      const msg =
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'No se pudo anular la orden en Shalom Pro';
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({ success: false, error: msg });
+    }
+  }
+
+  /**
+   * Rastreo en vivo individual (GET /v1/tracking?numero=&codigo= o ?ose_id=)
+   */
+  public static async trackOrder(
+    request: FastifyRequest<{ Querystring: { numero?: string; codigo?: string; ose_id?: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const { numero, codigo, ose_id } = request.query || {};
+      if (!ose_id && !(numero && codigo)) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Envía ose_id o el par numero + codigo para rastrear.',
+        });
+      }
+
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const headers: Record<string, string> = {
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
+      const params: Record<string, string> = {};
+      if (numero && codigo) {
+        params.numero = numero.replace(/\D/g, '').trim();
+        params.codigo = codigo.trim().toUpperCase();
+      } else if (ose_id) {
+        params.ose_id = String(ose_id).trim();
+      }
+
+      const res = await axios.get(`${SHALOM_BASE_URL}/v1/tracking`, {
+        params,
+        headers,
+        timeout: 20000,
+      });
+
+      return reply.code(200).send({
+        success: true,
+        tracking: res.data,
+      });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      const msg =
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'No se encontró información de rastreo en Shalom.';
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({ success: false, error: msg });
+    }
+  }
+
+  /**
+   * Rastreo en lote (POST /v1/tracking/batch, hasta 50 guías)
+   */
+  public static async trackOrdersBatch(
+    request: FastifyRequest<{
+      Body: {
+        items: Array<{ custom_id?: string; numero?: string; codigo?: string; ose_id?: string }>;
+      };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const rawItems = request.body?.items;
+      if (!Array.isArray(rawItems) || rawItems.length === 0) {
+        return reply.code(400).send({ success: false, error: 'Se requiere al menos 1 ítem para rastreo en lote.' });
+      }
+      const items = rawItems.slice(0, 50).map((it) => {
+        const clean: Record<string, string> = {};
+        if (it.custom_id) clean.custom_id = String(it.custom_id);
+        if (it.numero && it.codigo) {
+          clean.numero = String(it.numero).replace(/\D/g, '');
+          clean.codigo = String(it.codigo).trim().toUpperCase();
+        } else if (it.ose_id) {
+          clean.ose_id = String(it.ose_id);
+        }
+        return clean;
+      });
+
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
+      const res = await axios.post(
+        `${SHALOM_BASE_URL}/v1/tracking/batch`,
+        { items },
+        { headers, timeout: 30000 }
+      );
+
+      return reply.code(200).send({
+        success: true,
+        ...res.data,
+      });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      const msg = err?.response?.data?.error?.message || err?.message || 'Error en rastreo en lote';
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({ success: false, error: msg });
+    }
+  }
+
+  /**
+   * Eventos rápidos de tracking por OSE ID (GET /v1/tracking/{ose_id}/events)
+   */
+  public static async getTrackingEvents(
+    request: FastifyRequest<{ Params: { oseId: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const res = await axios.get(
+        `${SHALOM_BASE_URL}/v1/tracking/${encodeURIComponent(request.params.oseId)}/events`,
+        {
+          headers: { 'X-API-Key': credentials.apiKey },
+          timeout: 15000,
+        }
+      );
+      return reply.code(200).send({ success: true, status: res.data });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({
+        success: false,
+        error: err?.response?.data?.error?.message || err?.message || 'No se pudieron obtener eventos',
+      });
+    }
+  }
+
+  /**
+   * Obtiene el enlace de Guía de Remisión del Transportista (GRT)
+   */
+  public static async getTrackingGrt(
+    request: FastifyRequest<{ Params: { oseId: string }; Querystring: { cap_id?: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const capId = request.query?.cap_id;
+      if (!capId) {
+        return reply.code(400).send({ success: false, error: 'cap_id es requerido' });
+      }
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const res = await axios.get(
+        `${SHALOM_BASE_URL}/v1/tracking/${encodeURIComponent(request.params.oseId)}/grt`,
+        {
+          params: { cap_id: capId },
+          headers: { 'X-API-Key': credentials.apiKey },
+          timeout: 15000,
+        }
+      );
+      return reply.code(200).send({ success: true, ...res.data });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({
+        success: false,
+        error: err?.response?.data?.error?.message || err?.message || 'No se pudo obtener el GRT',
+      });
+    }
+  }
+
+  /**
+   * Catálogo oficial de productos Shalom Pro (GET /v1/products)
+   */
+  public static async getProducts(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const headers: Record<string, string> = {
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
+      const res = await axios.get(`${SHALOM_BASE_URL}/v1/products`, {
+        headers,
+        timeout: 15000,
+      });
+      return reply.code(200).send({
+        success: true,
+        products: res.data?.products || res.data || [],
+      });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({
+        success: false,
+        error: err?.response?.data?.error?.message || err?.message || 'Error consultando productos Shalom',
+      });
+    }
+  }
+
+  /**
+   * Cotizador oficial de tarifas Shalom Pro (POST /v1/tariff/calculate)
+   */
+  public static async calculateTariff(
+    request: FastifyRequest<{
+      Body: {
+        origin_terminal_id: number;
+        destiny_terminal_id: number;
+        aereo?: boolean;
+        product_id?: number;
+        dimensions?: { weight_kg?: number; height_m?: number; length_m?: number; width_m?: number };
+      };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const body = request.body || ({} as any);
+      if (!body.origin_terminal_id || !body.destiny_terminal_id) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Selecciona agencia de origen y destino para cotizar.',
+        });
+      }
+
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
+      const payload: Record<string, any> = {
+        origin_terminal_id: Number(body.origin_terminal_id),
+        destiny_terminal_id: Number(body.destiny_terminal_id),
+        aereo: Boolean(body.aereo),
+      };
+      if (body.product_id) payload.product_id = Number(body.product_id);
+      if (body.dimensions) payload.dimensions = body.dimensions;
+
+      const res = await axios.post(`${SHALOM_BASE_URL}/v1/tariff/calculate`, payload, {
+        headers,
+        timeout: 20000,
+      });
+
+      return reply.code(200).send({
+        success: true,
+        tariff: res.data,
+      });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      const msg =
+        err?.response?.data?.error?.message ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'No se pudo cotizar esta ruta en Shalom Pro';
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({ success: false, error: msg });
+    }
+  }
+
+  /**
+   * Busca una persona/empresa registrada en Shalom Pro por DNI/RUC/CE (GET /v1/persons/search)
+   */
+  public static async searchPerson(
+    request: FastifyRequest<{ Querystring: { document?: string; type?: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const doc = String(request.query?.document || '').trim();
+      const type = String(request.query?.type || (doc.length === 11 ? 'RUC' : doc.length === 8 ? 'DNI' : 'CE')).toUpperCase();
+      if (!doc) {
+        return reply.code(400).send({ success: false, error: 'Ingresa un número de documento.' });
+      }
+
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const headers: Record<string, string> = {
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
+      const res = await axios.get(`${SHALOM_BASE_URL}/v1/persons/search`, {
+        params: { document: doc, type },
+        headers,
+        timeout: 15000,
+      });
+
+      return reply.code(200).send({
+        success: true,
+        person: res.data,
+      });
+    } catch (err: any) {
+      const status = err?.response?.status || 500;
+      const msg =
+        status === 404
+          ? 'Este documento aún no está registrado en Shalom Pro (se dará de alta automáticamente al crear el envío).'
+          : err?.response?.data?.error?.message || err?.message || 'Error buscando persona en Shalom Pro';
+      return reply.code(status >= 400 && status < 500 ? status : 502).send({ success: false, error: msg });
+    }
+  }
+
+  /**
+   * Buscador en vivo de agencias en la API de Shalom (GET /v1/agencies/search)
+   */
+  public static async searchAgenciesLive(
+    request: FastifyRequest<{ Querystring: { q?: string; near?: string; radius_km?: string; per_page?: string } }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const params: Record<string, any> = {
+        per_page: Math.min(Number(request.query?.per_page || 20), 50),
+      };
+      if (request.query?.q) params.q = request.query.q;
+      if (request.query?.near) params.near = request.query.near;
+      if (request.query?.radius_km) params.radius_km = request.query.radius_km;
+
+      const res = await axios.get(`${SHALOM_BASE_URL}/v1/agencies/search`, {
+        params,
+        headers: { 'X-API-Key': credentials.apiKey },
+        timeout: 12000,
+      });
+      return reply.code(200).send({
+        success: true,
+        items: res.data?.items || res.data?.data || res.data || [],
+        total: res.data?.total,
+      });
+    } catch (err: any) {
+      return reply.code(502).send({
+        success: false,
+        error: err?.response?.data?.error?.message || err?.message || 'Error buscando agencias en vivo',
+      });
+    }
+  }
+
+  /**
+   * Genera la imagen PNG de constancia/prueba oficial de rastreo Shalom para previsualización o descarga
+   */
+  public static async generateProofImage(
+    request: FastifyRequest<{
+      Body: {
+        brandName?: string;
+        clientName: string;
+        clientDni?: string;
+        agencyName: string;
+        agencyAddress?: string;
+        orderNumber: string;
+        orderCode?: string;
+        pickupCode?: string;
+        status: ShalomTrackingStatusObj;
+      };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const b = request.body || ({} as any);
+      const proof = await ShalomProofImageService.generateProofPngBase64({
+        brandName: b.brandName || 'Encomi',
+        clientName: b.clientName || 'Cliente',
+        clientDni: b.clientDni || 'S/DNI',
+        agencyName: b.agencyName || 'Agencia Shalom Destino',
+        agencyAddress: b.agencyAddress,
+        orderNumber: b.orderNumber || '---',
+        orderCode: b.orderCode,
+        pickupCode: b.pickupCode || '0808',
+        status: b.status || {},
+      });
+
+      return reply.code(200).send({
+        success: true,
+        mimeType: proof.mimeType,
+        base64: proof.base64,
+        dataUrl: `data:${proof.mimeType};base64,${proof.base64}`,
+      });
+    } catch (err: any) {
+      return reply.code(500).send({
+        success: false,
+        error: err?.message || 'Error generando foto de prueba',
+      });
+    }
+  }
+
+  /**
+   * Envía manualmente por WhatsApp la notificación "Listo para recoger" con foto de prueba oficial
+   */
+  public static async notifyPickupManual(
+    request: FastifyRequest<{
+      Body: {
+        empresaId?: string;
+        brandName?: string;
+        pedidoId?: string;
+        trackingCode?: string;
+        orderNumber: string;
+        orderCode?: string;
+        oseId?: string;
+        clientName: string;
+        clientDni?: string;
+        clientPhone: string;
+        agencyName: string;
+        agencyAddress?: string;
+        pickupCode?: string;
+        status?: ShalomTrackingStatusObj;
+        preferredInstance?: string;
+      };
+    }>,
+    reply: FastifyReply
+  ) {
+    try {
+      const b = request.body || ({} as any);
+      if (!b.clientPhone || !b.orderNumber) {
+        return reply.code(400).send({
+          success: false,
+          error: 'Se requiere número de teléfono del cliente y número de orden.',
+        });
+      }
+
+      // Si no se envió status en vivo, consultarlo en caliente primero
+      let liveStatus: ShalomTrackingStatusObj = b.status || {};
+      if (!liveStatus?.destino && (b.oseId || (b.orderNumber && b.orderCode))) {
+        try {
+          const credentials = await ShalomController.getShalomCredentials(request.headers);
+          const headers: Record<string, string> = {
+            'X-API-Key': credentials.apiKey,
+            'X-Shalom-Email': credentials.email,
+          };
+          if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
+          const params: Record<string, string> =
+            b.orderNumber && b.orderCode
+              ? { numero: String(b.orderNumber).replace(/\D/g, ''), codigo: String(b.orderCode).toUpperCase() }
+              : { ose_id: String(b.oseId) };
+
+          const tRes = await axios.get(`${SHALOM_BASE_URL}/v1/tracking`, {
+            params,
+            headers,
+            timeout: 15000,
+          });
+          if (tRes.data?.status) {
+            liveStatus = tRes.data.status;
+          }
+        } catch {}
+      }
+
+      const result = await ShalomTrackingListenerService.sendPickupProofNotification({
+        empresaId: b.empresaId || 'empresa-master-comikids',
+        brandName: b.brandName || 'ComiKids',
+        pedidoId: b.pedidoId,
+        trackingCode: b.trackingCode,
+        orderNumber: b.orderNumber,
+        orderCode: b.orderCode,
+        oseId: b.oseId,
+        clientName: b.clientName || 'Cliente',
+        clientDni: b.clientDni || 'S/DNI',
+        clientPhone: b.clientPhone,
+        agencyName: b.agencyName || 'Agencia Shalom Destino',
+        agencyAddress: b.agencyAddress,
+        pickupCode: b.pickupCode || '0808',
+        status: liveStatus,
+        preferredInstance: b.preferredInstance,
+        markOrderNotifiedInDb: Boolean(b.pedidoId),
+      });
+
+      return reply.code(result.success ? 200 : 400).send(result);
+    } catch (err: any) {
+      return reply.code(500).send({
+        success: false,
+        error: err?.message || 'Error enviando aviso con foto de prueba',
+      });
+    }
   }
 }
 

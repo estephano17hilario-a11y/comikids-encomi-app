@@ -67,7 +67,7 @@ async function start() {
     // Iniciar Cron Job Diario de Shalom (05:00 AM hora Perú todos los días con propagación a pedidos)
     ShalomSyncService.initDailyCron();
 
-    // Iniciar Listener 24/7 de Tracking Shalom (cada 35 minutos con aviso WhatsApp)
+    // Iniciar Escáner Escalonado 24/7 de Tracking Shalom (cada 3 horas, solo empresas con API activa)
     ShalomTrackingListenerService.startListenerScheduler();
 
     // 4. Manejo de Cierre Elegante (Graceful Shutdown)

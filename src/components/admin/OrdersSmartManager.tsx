@@ -267,9 +267,10 @@ export const OrdersSmartManager: React.FC = () => {
     updatePedido,
     refreshData,
   } = useOrders();
-  const { currentEmpresa } = useAuth();
+  const { currentEmpresa, empresaConfig } = useAuth();
   const { toast, confirm } = useFeedback();
   const empresaId = currentEmpresa?.id || 'empresa-master-comikids';
+  const hasShalomApi = empresaConfig?.shalom_modo === 'api';
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleManualRefresh = async () => {
@@ -851,17 +852,18 @@ export const OrdersSmartManager: React.FC = () => {
   };
 
   const handleSyncShalomTracking = async () => {
+    if (!hasShalomApi) return;
     setIsTrackingSyncing(true);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/shalom/listener/run`, {
+      const response = await fetch(`${getApiBaseUrl()}/shalom/scanner/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ forceFirstRun: false }),
+        body: JSON.stringify({ forceFirstRun: true, empresaId }),
       });
       const data = await response.json().catch(() => ({}));
       if (data?.success) {
         toast(
-          `Shalom verificado: ${data.report?.totalShippedOrdersChecked || 0} paquetes, ${data.report?.newlyArrivedCount || 0} nuevos en destino`,
+          `Shalom verificado: ${data.report?.totalShippedOrdersChecked || 0} paquetes, ${data.report?.newlyArrivedCount || 0} listos, ${data.report?.notifiedCount || 0} avisados con foto`,
           'success'
         );
       } else {
@@ -1791,7 +1793,7 @@ export const OrdersSmartManager: React.FC = () => {
             </button>
           )}
 
-          {statusFilter === 'entregado' && (
+          {statusFilter === 'entregado' && hasShalomApi && (
             <button
               type="button"
               onClick={handleSyncShalomTracking}

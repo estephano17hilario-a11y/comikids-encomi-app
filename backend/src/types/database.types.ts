@@ -51,6 +51,7 @@ export interface Usuario {
 
 export interface Pedido {
   id: string;
+  empresa_id?: string;
   codigo_seguimiento: string;
   usuario_id: string;
   usuario?: Usuario;
@@ -66,6 +67,7 @@ export interface Pedido {
   shalom_numero_guia?: string | null;
   shalom_clave_recojo?: string | null;
   registrado_shalom?: boolean | null;
+  campos_personalizados?: Record<string, any> | null;
   created_at: string;
   updated_at?: string;
 }

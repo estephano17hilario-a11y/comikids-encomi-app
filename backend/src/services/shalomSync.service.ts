@@ -70,6 +70,7 @@ export interface SyncReport {
   deactivatedAgencies?: Array<{ id: number; code: string | null; name: string; reason: string }>;
   whatsappReportSent?: boolean;
   whatsappReportTarget?: string;
+  whatsappReportTargets?: string[];
   errors: string[];
 }
 
@@ -613,7 +614,8 @@ export class ShalomSyncService {
       if (options?.notifyWhatsApp) {
         const sent = await this.sendDailySyncWhatsAppReport(report, options.notifyPhone);
         report.whatsappReportSent = sent.sent;
-        report.whatsappReportTarget = sent.targetPhone;
+        report.whatsappReportTarget = sent.targetPhones.join(',');
+        report.whatsappReportTargets = sent.sentPhones;
       }
 
       this.lastSyncReport = report;
@@ -645,7 +647,8 @@ export class ShalomSyncService {
       if (options?.notifyWhatsApp) {
         const sent = await this.sendDailySyncWhatsAppReport(report, options.notifyPhone);
         report.whatsappReportSent = sent.sent;
-        report.whatsappReportTarget = sent.targetPhone;
+        report.whatsappReportTarget = sent.targetPhones.join(',');
+        report.whatsappReportTargets = sent.sentPhones;
       }
 
       this.lastSyncReport = report;
@@ -656,13 +659,23 @@ export class ShalomSyncService {
   }
 
   /**
-   * Construye y envía el informe diario de sincronización de agencias Shalom al WhatsApp personal del administrador (+51 963097546).
+   * Construye y envía el informe diario de sincronización de agencias Shalom a todos los WhatsApp configurados
+   * (+51 963097546 y +51 927781412 por defecto).
    */
   public static async sendDailySyncWhatsAppReport(
     report: SyncReport,
     customPhone?: string
-  ): Promise<{ sent: boolean; targetPhone: string; instanceUsed?: string }> {
-    const targetPhone = (customPhone || env.SHALOM_SYNC_REPORT_PHONE || '51963097546').replace(/\D/g, '');
+  ): Promise<{ sent: boolean; targetPhones: string[]; sentPhones: string[]; instanceUsed?: string }> {
+    const rawTargets = customPhone || env.SHALOM_SYNC_REPORT_PHONE || '51963097546,51927781412';
+    const targetPhones = Array.from(
+      new Set(
+        rawTargets
+          .split(/[,;\s]+/)
+          .map((p) => p.replace(/\D/g, ''))
+          .map((p) => (p.length === 9 ? `51${p}` : p))
+          .filter((p) => p.length >= 9)
+      )
+    );
     const peruDateStr = new Intl.DateTimeFormat('es-PE', {
       timeZone: 'America/Lima',
       weekday: 'long',
@@ -742,21 +755,43 @@ export class ShalomSyncService {
     lines.push(``, `🤖 _Cron automático 05:00 AM • Servidor VPS Encomi_`);
     const message = lines.join('\n');
 
-    const instancesToTry = Array.from(
+    const baseInstances = Array.from(
       new Set([env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp', 'comikids_whatsapp', 'tenant_Comikids'])
     );
 
-    for (const inst of instancesToTry) {
-      try {
-        await EvolutionService.sendWhatsAppMessage(inst, targetPhone, message);
-        console.log(`[SHALOM SYNC WHATSAPP] ✅ Informe diario enviado a +${targetPhone} vía "${inst}".`);
-        return { sent: true, targetPhone, instanceUsed: inst };
-      } catch (err: any) {
-        console.warn(`[SHALOM SYNC WHATSAPP WARN] Falló envío vía "${inst}":`, err?.message);
+    const sentPhones: string[] = [];
+    let lastInstanceUsed: string | undefined;
+
+    for (let idx = 0; idx < targetPhones.length; idx++) {
+      const phone = targetPhones[idx];
+      if (idx > 0) {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+
+      // Si el destino es +51 927781412 (número de tenant_Comikids), priorizar comikids_whatsapp para no auto-enviarse
+      const instancesForPhone = phone.endsWith('927781412')
+        ? baseInstances.filter((i) => i !== 'tenant_Comikids').concat(['tenant_Comikids'])
+        : baseInstances;
+
+      for (const inst of instancesForPhone) {
+        try {
+          await EvolutionService.sendWhatsAppMessage(inst, phone, message);
+          console.log(`[SHALOM SYNC WHATSAPP] ✅ Informe diario enviado a +${phone} vía "${inst}".`);
+          sentPhones.push(phone);
+          lastInstanceUsed = inst;
+          break;
+        } catch (err: any) {
+          console.warn(`[SHALOM SYNC WHATSAPP WARN] Falló envío a +${phone} vía "${inst}":`, err?.message);
+        }
       }
     }
 
-    return { sent: false, targetPhone };
+    return {
+      sent: sentPhones.length > 0,
+      targetPhones,
+      sentPhones,
+      instanceUsed: lastInstanceUsed,
+    };
   }
 
   /**

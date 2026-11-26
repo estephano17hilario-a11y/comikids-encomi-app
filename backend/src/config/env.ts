@@ -39,7 +39,7 @@ const envSchema = z.object({
   SHALOM_API_KEY: z.string().optional(),
   SHALOM_CLIENT_ID: z.string().optional(),
   SHALOM_CLIENT_SECRET: z.string().optional(),
-  SHALOM_SYNC_REPORT_PHONE: z.string().default('51963097546'),
+  SHALOM_SYNC_REPORT_PHONE: z.string().default('51963097546,51927781412'),
 });
 
 

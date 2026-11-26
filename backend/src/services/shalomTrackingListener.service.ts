@@ -392,8 +392,18 @@ export class ShalomTrackingListenerService {
     orderCode?: string;
     securityKey: string;
     brandName: string;
+    includePhotoNote?: boolean;
   }): string {
-    const { clientName, clientDni, agencyFormatted, numericShipmentNumber, orderCode, securityKey, brandName } = params;
+    const {
+      clientName,
+      clientDni,
+      agencyFormatted,
+      numericShipmentNumber,
+      orderCode,
+      securityKey,
+      brandName,
+      includePhotoNote = true,
+    } = params;
     const firstName = (clientName || 'Cliente').trim();
     const orderLine = orderCode
       ? `📦 *Orden:* ${numericShipmentNumber}  •  *Código:* ${orderCode}`
@@ -408,8 +418,9 @@ export class ShalomTrackingListenerService {
       orderLine,
       `🔑 *Clave de recojo:* *${securityKey}*`,
       ...(clientDni && clientDni !== 'S/DNI' ? [`🪪 *DNI:* ${clientDni}`] : []),
-      ``,
-      `Te adjuntamos la constancia de rastreo oficial de Shalom como prueba de llegada. 👆`,
+      ...(includePhotoNote
+        ? [``, `Te adjuntamos la constancia de rastreo oficial de Shalom como prueba de llegada. 👆`]
+        : [``, `🌐 *Rastreo oficial:* https://rastrea.shalom.pe`]),
       ``,
       `¡Muchas gracias por tu preferencia con *${brandName}*! 💖 Esperamos que tu pedido sea de tu total agrado. 🙏✨`,
     ].join('\n');
@@ -570,7 +581,7 @@ export class ShalomTrackingListenerService {
     const numericOrder = this.extractNumericShipmentCode(params.orderNumber) || params.orderNumber;
     const pickupPin = (params.pickupCode || '0808').trim().toUpperCase();
 
-    const caption = this.buildArrivalWhatsAppMessage({
+    const captionWithPhoto = this.buildArrivalWhatsAppMessage({
       clientName: params.clientName,
       clientDni: params.clientDni,
       agencyFormatted,
@@ -578,6 +589,18 @@ export class ShalomTrackingListenerService {
       orderCode: params.orderCode,
       securityKey: pickupPin,
       brandName: params.brandName,
+      includePhotoNote: true,
+    });
+
+    const captionTextOnly = this.buildArrivalWhatsAppMessage({
+      clientName: params.clientName,
+      clientDni: params.clientDni,
+      agencyFormatted,
+      numericShipmentNumber: numericOrder,
+      orderCode: params.orderCode,
+      securityKey: pickupPin,
+      brandName: params.brandName,
+      includePhotoNote: false,
     });
 
     const proof = await ShalomProofImageService.generateProofPngBase64({
@@ -601,18 +624,18 @@ export class ShalomTrackingListenerService {
     try {
       if (proof.mimeType === 'image/png' && proof.base64) {
         await EvolutionService.sendWhatsAppMedia(senderInstance, cleanPhone, proof.base64, {
-          caption,
+          caption: captionWithPhoto,
           fileName: `Prueba_Recojo_Shalom_${numericOrder}.png`,
           mediaType: 'image',
           mimeType: 'image/png',
         });
         sentWithPhoto = true;
       } else {
-        await EvolutionService.sendWhatsAppMessage(senderInstance, cleanPhone, caption);
+        await EvolutionService.sendWhatsAppMessage(senderInstance, cleanPhone, captionTextOnly);
       }
     } catch (mediaErr: any) {
       console.warn('[SHALOM SCANNER 3H] Falló envío con imagen, intentando texto simple:', mediaErr?.message);
-      await EvolutionService.sendWhatsAppMessage(senderInstance, cleanPhone, caption);
+      await EvolutionService.sendWhatsAppMessage(senderInstance, cleanPhone, captionTextOnly);
       sentWithPhoto = false;
     }
 
@@ -796,7 +819,7 @@ export class ShalomTrackingListenerService {
           .in('estado_envio', ['entregado', 'en_camino', 'listo_para_recojo'])
           .gte('updated_at', cutoffDate)
           .order('updated_at', { ascending: false })
-          .limit(120);
+          .limit(250);
 
         if (emp.empresaId === 'empresa-master-comikids') {
           query = query.or('empresa_id.eq.empresa-master-comikids,empresa_id.is.null');
@@ -1047,9 +1070,10 @@ export class ShalomTrackingListenerService {
           // Caso B: LLEGÓ A AGENCIA DESTINO Y AÚN NO FUE RECOGIDO -> ¡LISTO PARA RECOGER!
           const arrivedDateStr = status.destino?.fecha;
           if (arrivedDateStr) {
-            // Verificar que la fecha de llegada a agencia sea reciente (<= 10 días) para evitar alertas de paquetes viejos
+            // En automático, solo notificar llegadas recientes (<= 5 días) para evitar alertas de paquetes viejos
             const arrivedMs = new Date(String(arrivedDateStr).replace(' ', 'T')).getTime();
-            const isRecentArrival = isNaN(arrivedMs) || Date.now() - arrivedMs <= 10 * 86400 * 1000;
+            const maxAgeDays = forceManualRun ? 10 : 5;
+            const isRecentArrival = isNaN(arrivedMs) || Date.now() - arrivedMs <= maxAgeDays * 86400 * 1000;
 
             if (!isRecentArrival) {
               continue;
@@ -1165,6 +1189,19 @@ export class ShalomTrackingListenerService {
             });
           }
         }
+      }
+
+      // Persistir reporte por empresa escaneada para consulta instantánea en Shalom Pro
+      for (const emp of apiEmpresas) {
+        this.lastReportByEmpresa.set(emp.empresaId, report);
+        try {
+          await redisClient.set(
+            `shalom:scanner:last_report:${emp.empresaId}`,
+            JSON.stringify(report),
+            'EX',
+            86400 * 7
+          );
+        } catch {}
       }
 
       console.log(

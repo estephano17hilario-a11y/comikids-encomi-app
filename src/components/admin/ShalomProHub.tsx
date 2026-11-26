@@ -124,6 +124,8 @@ const ShalomProHubContent: React.FC = () => {
   const [enDestinoOrders, setEnDestinoOrders] = useState<ShalomProOrderItem[]>([]);
   const [pendingProOrders, setPendingProOrders] = useState<ShalomProOrderItem[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState('');
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
 
   // Autogestiones lista filtrada
   const [ordersFilter, setOrdersFilter] = useState<OrdersFilterKey>('en_destino');
@@ -240,6 +242,7 @@ const ShalomProHubContent: React.FC = () => {
   const loadScannerAndSuggestions = useCallback(async () => {
     setLoadingScanner(true);
     setLoadingSuggestions(true);
+    setSuggestionsError('');
     try {
       const [healthRes, scanRes, destRes, pendRes] = await Promise.all([
         ShalomApiService.getApiStatus(),
@@ -254,6 +257,8 @@ const ShalomProHubContent: React.FC = () => {
       }
       if (destRes.success) {
         setEnDestinoOrders(destRes.orders || []);
+      } else if (destRes.error) {
+        setSuggestionsError(destRes.error);
       }
       if (pendRes.success) {
         setPendingProOrders(pendRes.orders || []);
@@ -512,35 +517,63 @@ const ShalomProHubContent: React.FC = () => {
     }
   };
 
+  const runTrackLookup = useCallback(
+    async (params: { numero?: string; codigo?: string; ose_id?: string }) => {
+      setTrackingError('');
+      setTrackingResult(null);
+      setTrackingLoading(true);
+      try {
+        const res = await ShalomApiService.trackOrder(params, shalomAuth);
+        if (res.success && res.tracking) {
+          setTrackingResult(res.tracking);
+        } else {
+          setTrackingError(res.error || 'No se encontró la orden en Shalom.');
+        }
+      } finally {
+        setTrackingLoading(false);
+      }
+    },
+    [shalomAuth]
+  );
+
   const handleRunSingleTrack = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    setTrackingError('');
-    setTrackingResult(null);
-    setTrackingLoading(true);
+    const params =
+      trackMode === 'numero_codigo'
+        ? { numero: trackNumero.trim(), codigo: trackCodigo.trim() }
+        : { ose_id: trackOseId.trim() };
+    await runTrackLookup(params);
+  };
+
+  const handleDownloadPdf = async (ord: ShalomProOrderItem, kind: 'voucher' | 'label') => {
+    const key = `${kind}-${ord.id}`;
+    setDownloadingKey(key);
     try {
-      const params =
-        trackMode === 'numero_codigo'
-          ? { numero: trackNumero.trim(), codigo: trackCodigo.trim() }
-          : { ose_id: trackOseId.trim() };
-      const res = await ShalomApiService.trackOrder(params, shalomAuth);
-      if (res.success && res.tracking) {
-        setTrackingResult(res.tracking);
+      const fileNum = ord.guia || ord.id;
+      if (kind === 'voucher') {
+        await ShalomApiService.downloadVoucherPdf(ord.id, shalomAuth, `Voucher_Shalom_${fileNum}.pdf`, {
+          dni: ord.receiver?.document,
+          guia: ord.guia,
+        });
       } else {
-        setTrackingError(res.error || 'No se encontró la orden en Shalom.');
+        await ShalomApiService.downloadLabelPdf(ord.id, shalomAuth, `Rotulo_Shalom_${fileNum}.pdf`);
       }
+      toast(`${kind === 'voucher' ? 'Voucher' : 'Rótulo'} PDF descargado`, 'success');
+    } catch (err: any) {
+      toast(err?.message || `No se pudo descargar el ${kind === 'voucher' ? 'voucher' : 'rótulo'} PDF`, 'error');
     } finally {
-      setTrackingLoading(false);
+      setDownloadingKey(null);
     }
   };
 
   const handleOpenGrt = async (oseId: string | number, capId: string) => {
     setGrtLoadingCap(capId);
     try {
-      const res = await ShalomApiService.getTrackingGrt(oseId, capId);
+      const res = await ShalomApiService.getTrackingGrt(oseId, capId, shalomAuth);
       if (res.success && res.enlace) {
         window.open(res.enlace, '_blank', 'noopener,noreferrer');
       } else {
-        toast(res.error || 'Enlace GRT no disponible', 'error');
+        toast(res.error || 'Enlace GRT no disponible', 'info');
       }
     } finally {
       setGrtLoadingCap(null);
@@ -948,6 +981,19 @@ const ShalomProHubContent: React.FC = () => {
                 </span>
               </div>
 
+              {suggestionsError && (
+                <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-200 text-xs font-bold flex items-center justify-between gap-2">
+                  <span>⚠️ {suggestionsError}</span>
+                  <button
+                    type="button"
+                    onClick={loadScannerAndSuggestions}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500/25 hover:bg-amber-500/40 text-amber-100 text-[11px] font-black shrink-0 cursor-pointer"
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              )}
+
               {loadingSuggestions ? (
                 <div className="py-10 text-center text-xs text-slate-400">Consultando agencias destino en Shalom Pro…</div>
               ) : enDestinoOrders.length === 0 ? (
@@ -1044,13 +1090,20 @@ const ShalomProHubContent: React.FC = () => {
                             type="button"
                             onClick={() => {
                               setActiveSubTab('rastreo');
+                              const phone =
+                                (local ? extractShalomPhone(local) : '') ||
+                                String(ord.receiver?.phone || '').replace(/\D/g, '');
+                              if (phone && phone.length >= 9) setManualNotifyPhone(phone.slice(-9));
+                              if (pin) setManualNotifyPin(pin);
                               if (ord.guia && ord.codigo) {
                                 setTrackMode('numero_codigo');
                                 setTrackNumero(ord.guia);
                                 setTrackCodigo(ord.codigo);
+                                runTrackLookup({ numero: ord.guia, codigo: ord.codigo });
                               } else {
                                 setTrackMode('ose_id');
                                 setTrackOseId(String(ord.id));
+                                runTrackLookup({ ose_id: String(ord.id) });
                               }
                             }}
                             className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/12 border border-white/10 text-[11px] font-bold text-slate-300 inline-flex items-center gap-1 cursor-pointer"
@@ -1104,8 +1157,9 @@ const ShalomProHubContent: React.FC = () => {
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
-                            onClick={() => ShalomApiService.downloadLabelPdf(ord.id, shalomAuth, `Rotulo_${ord.guia || ord.id}.pdf`)}
-                            className="p-1.5 rounded-xl bg-white/8 hover:bg-white/15 text-slate-200 cursor-pointer"
+                            onClick={() => handleDownloadPdf(ord, 'label')}
+                            disabled={downloadingKey === `label-${ord.id}`}
+                            className="p-1.5 rounded-xl bg-white/8 hover:bg-white/15 text-slate-200 cursor-pointer disabled:opacity-50"
                             title="Descargar Rótulo PDF"
                           >
                             <FileDown className="w-3.5 h-3.5" />
@@ -1355,22 +1409,24 @@ const ShalomProHubContent: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => ShalomApiService.downloadVoucherPdf(ord.id, shalomAuth, `Voucher_${ord.guia || ord.id}.pdf`)}
-                          className="px-2.5 py-1.5 rounded-xl bg-white/8 hover:bg-white/15 border border-white/15 text-slate-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                          onClick={() => handleDownloadPdf(ord, 'voucher')}
+                          disabled={downloadingKey === `voucher-${ord.id}`}
+                          className="px-2.5 py-1.5 rounded-xl bg-white/8 hover:bg-white/15 border border-white/15 text-slate-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                           title="Descargar Comprobante / Ticket POS"
                         >
                           <FileDown className="w-3.5 h-3.5" />
-                          <span>Voucher</span>
+                          <span>{downloadingKey === `voucher-${ord.id}` ? '…' : 'Voucher'}</span>
                         </button>
 
                         <button
                           type="button"
-                          onClick={() => ShalomApiService.downloadLabelPdf(ord.id, shalomAuth, `Rotulo_${ord.guia || ord.id}.pdf`)}
-                          className="px-2.5 py-1.5 rounded-xl bg-white/8 hover:bg-white/15 border border-white/15 text-slate-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                          onClick={() => handleDownloadPdf(ord, 'label')}
+                          disabled={downloadingKey === `label-${ord.id}`}
+                          className="px-2.5 py-1.5 rounded-xl bg-white/8 hover:bg-white/15 border border-white/15 text-slate-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                           title="Descargar Rótulo Oficial PDF"
                         >
                           <FileDown className="w-3.5 h-3.5" />
-                          <span>Rótulo</span>
+                          <span>{downloadingKey === `label-${ord.id}` ? '…' : 'Rótulo'}</span>
                         </button>
 
                         {ordersFilter !== 'pending' && ordersFilter !== 'delivered' && (

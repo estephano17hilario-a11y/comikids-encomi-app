@@ -1,6 +1,6 @@
 import { Pedido, TallerConfig } from '../types/database.types';
 import { extractShalomDni, extractShalomPhone, extractShalomOrigen } from '../utils/shalomExcelExporter';
-import { resolveShalomAgencyDetails, ResolvedShalomAgency } from '../utils/shalomAgencyResolver';
+import { resolveShalomAgencyDetails } from '../utils/shalomAgencyResolver';
 import { getApiBaseUrl } from '../config/api';
 import { validateShalomPdfContent } from '../utils/shalomPdfValidator';
 import { getDailyShalomPin } from '../utils/formatters';
@@ -348,11 +348,13 @@ export class ShalomApiService {
    */
   public static async getTrackingGrt(
     oseId: string | number,
-    capId: string
+    capId: string,
+    auth?: ShalomAuthCredentials
   ): Promise<{ success: boolean; enlace?: string; error?: string }> {
     try {
       const res = await fetch(
-        `${getApiBaseUrl()}/shalom/tracking/${encodeURIComponent(String(oseId))}/grt?cap_id=${encodeURIComponent(capId)}`
+        `${getApiBaseUrl()}/shalom/tracking/${encodeURIComponent(String(oseId))}/grt?cap_id=${encodeURIComponent(capId)}`,
+        { headers: this.buildAuthHeaders(auth) }
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
@@ -745,6 +747,8 @@ export class ShalomApiService {
           codigoSeguimiento: payload.codigoSeguimiento,
           success: true,
           oseId: String(oseId),
+          guideNumber,
+          trackingCode,
           // CRÍTICO: La clave seleccionada en el recuadro por el usuario (payload.pickup_code) prevalece siempre
           pickupCode: (payload.pickup_code && String(payload.pickup_code).trim().replace(/\D/g, '').length === 4)
             ? String(payload.pickup_code).trim().replace(/\D/g, '').slice(0, 4)
@@ -797,15 +801,15 @@ export class ShalomApiService {
   }
 
   /**
-   * Descarga el Ticket Oficial POS con QR generado por Shalom a través del backend proxy.
+   * Descarga el Rótulo Oficial con QR generado por Shalom a través del backend proxy.
    */
   public static async downloadLabelPdf(
     oseId: string | number,
     auth: ShalomAuthCredentials,
-    fileName: string = `Ticket_Shalom_${oseId}.pdf`
+    fileName: string = `Rotulo_Shalom_${oseId}.pdf`
   ): Promise<void> {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${oseId}/voucher`, {
+      const response = await fetch(`${getApiBaseUrl()}/shalom/orders/${encodeURIComponent(String(oseId))}/label`, {
         method: 'GET',
         headers: {
           'X-API-Key': SHALOM_API_KEY,

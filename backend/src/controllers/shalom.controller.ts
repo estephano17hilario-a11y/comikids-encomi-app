@@ -1597,20 +1597,31 @@ export class ShalomController {
         return reply.code(400).send({ success: false, error: 'cap_id es requerido' });
       }
       const credentials = await ShalomController.getShalomCredentials(request.headers);
+      const headers: Record<string, string> = {
+        'X-API-Key': credentials.apiKey,
+        'X-Shalom-Email': credentials.email,
+      };
+      if (credentials.password) headers['X-Shalom-Password'] = credentials.password;
+
       const res = await axios.get(
         `${SHALOM_BASE_URL}/v1/tracking/${encodeURIComponent(request.params.oseId)}/grt`,
         {
           params: { cap_id: capId },
-          headers: { 'X-API-Key': credentials.apiKey },
+          headers,
           timeout: 15000,
         }
       );
       return reply.code(200).send({ success: true, ...res.data });
     } catch (err: any) {
       const status = err?.response?.status || 500;
+      const rawMsg = String(err?.response?.data?.error?.message || err?.message || '');
+      const friendlyError =
+        rawMsg.toLowerCase().includes('token de autenticaci') || status === 422 || status === 404
+          ? 'Shalom no tiene habilitado el enlace GRT público para este carguero en este momento.'
+          : rawMsg || 'No se pudo obtener el GRT';
       return reply.code(status >= 400 && status < 500 ? status : 502).send({
         success: false,
-        error: err?.response?.data?.error?.message || err?.message || 'No se pudo obtener el GRT',
+        error: friendlyError,
       });
     }
   }

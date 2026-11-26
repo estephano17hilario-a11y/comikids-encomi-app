@@ -69,10 +69,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ? 'empresa'
     : (currentUser?.rol || null);
 
+  const [empresasSyncVersion, setEmpresasSyncVersion] = useState(0);
+
   // Sincronizar empresas desde la nube al cargar la app para multi-dispositivos
   useEffect(() => {
-    ordersService.fetchEmpresasOnline().catch(() => {});
+    ordersService
+      .fetchEmpresasOnline()
+      .then(() => setEmpresasSyncVersion((v) => v + 1))
+      .catch(() => {});
   }, []);
+  void empresasSyncVersion;
 
   // Determinar la empresa activa (modo impersonación, login de empresa o parámetro URL para clientes)
   const getUrlEmpresaCode = (): string | null => {
@@ -126,6 +132,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateCurrentEmpresaConfig = (updates: Partial<EmpresaConfig>) => {
     if (!currentEmpresa) return;
     const updated = ordersService.updateEmpresaConfig(currentEmpresa.id, updates);
+    setEmpresasSyncVersion((v) => v + 1);
     if (updated && impersonatedEmpresa) {
       setImpersonatedEmpresa(updated);
       localStorage.setItem(IMPERSONATE_STORAGE_KEY, JSON.stringify(updated));

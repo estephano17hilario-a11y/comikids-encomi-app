@@ -46,7 +46,19 @@ async function start() {
 
     await app.register(cors, {
       origin: '*',
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Shalom-Email', 'X-Shalom-Password'],
+      exposedHeaders: [
+        'X-Shalom-Pickup-Code',
+        'X-Shalom-Guia',
+        'X-Shalom-Receiver-Dni',
+        'X-Shalom-Receiver-Name',
+        'X-Shalom-Ose-Id',
+        'X-Shalom-Order-Status',
+        'X-Shalom-Doc-Source',
+        'X-Shalom-Created-At',
+        'X-Shalom-Agency',
+      ],
     });
 
     app.setErrorHandler(unifiedErrorHandler);

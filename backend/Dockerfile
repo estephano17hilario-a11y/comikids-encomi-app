@@ -17,7 +17,7 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-RUN apk add --no-cache dumb-init librsvg font-dejavu fontconfig && fc-cache -f
+RUN apk add --no-cache dumb-init librsvg rsvg-convert font-dejavu fontconfig && fc-cache -f
 
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force

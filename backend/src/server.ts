@@ -11,13 +11,9 @@ import { aiRoutes } from './routes/ai.routes.js';
 import { ingestionWorker } from './workers/ingestion.worker.js';
 import { copilotWorker } from './workers/copilot.worker.js';
 import { redisClient } from './config/redis.js';
-import { EvolutionService } from './services/evolution.service.js';
 import { ShalomSyncService } from './services/shalomSync.service.js';
 import { ShalomTrackingListenerService } from './services/shalomTrackingListener.service.js';
-
-
 import { unifiedErrorHandler } from './plugins/error-handler.js';
-import { ConfigService } from './modules/config/config.service.js';
 
 const app = Fastify({
   bodyLimit: 50 * 1024 * 1024, // 50MB para soportar sincronización de mensajes e imágenes
@@ -103,7 +99,7 @@ async function start() {
       console.error('🔥 [FATAL UNCAUGHT EXCEPTION]', err);
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
+    process.on('unhandledRejection', (reason) => {
       console.error('⚠️ [UNHANDLED REJECTION]', reason);
     });
   } catch (error) {

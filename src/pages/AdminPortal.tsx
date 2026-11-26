@@ -79,22 +79,25 @@ export const AdminPortal: React.FC = () => {
 
   const pendingOrdersCount = pedidos.filter(p => p.estado_envio !== 'entregado').length;
   const hasShalomApi = empresaConfig?.shalom_modo === 'api';
+  const effectiveTab: EmpresaTab = !hasShalomApi && activeTab === 'shalom_pro' ? 'pedidos' : activeTab;
 
-  // Seguridad: si la empresa no tiene modo API Shalom, jamás permitir permanecer en la pestaña Shalom Pro
-  useEffect(() => {
-    if (!hasShalomApi && activeTab === 'shalom_pro') {
-      setActiveTab('pedidos');
-    }
-  }, [hasShalomApi, activeTab]);
-
-  const dockItems: { id: EmpresaTab; label: string; short?: string; icon: React.ElementType; activeClass: string; badge?: number }[] = [
-    { id: 'pedidos' as EmpresaTab, label: 'Pedidos', icon: ClipboardList, activeClass: 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30', badge: pendingOrdersCount, visible: sec.pedidos !== false },
-    { id: 'shalom_pro' as EmpresaTab, label: 'Shalom Pro', short: 'Shalom', icon: Zap, activeClass: 'bg-linear-to-r from-red-600 to-rose-500 text-white shadow-md shadow-red-600/30', visible: hasShalomApi },
-    { id: 'agendas' as EmpresaTab, label: 'Clientes', icon: Users, activeClass: 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30', visible: sec.agendas !== false },
-    { id: 'estadisticas' as EmpresaTab, label: 'Métricas', icon: BarChart3, activeClass: 'bg-blue-600 text-white shadow-md shadow-blue-600/30', visible: sec.estadisticas !== false },
-    { id: 'agencias' as EmpresaTab, label: 'Agencias', icon: Truck, activeClass: 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30', visible: sec.agencias !== false },
-    { id: 'encomi_ai' as EmpresaTab, label: 'IA', icon: Sparkles, activeClass: 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30', visible: sec.encomi_ai !== false },
-  ].filter(item => item.visible);
+  const allDockItems: {
+    id: EmpresaTab;
+    label: string;
+    short?: string;
+    icon: React.ElementType;
+    activeClass: string;
+    badge?: number;
+    visible: boolean;
+  }[] = [
+    { id: 'pedidos', label: 'Pedidos', icon: ClipboardList, activeClass: 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30', badge: pendingOrdersCount, visible: sec.pedidos !== false },
+    { id: 'shalom_pro', label: 'Shalom Pro', short: 'Shalom', icon: Zap, activeClass: 'bg-linear-to-r from-red-600 to-rose-500 text-white shadow-md shadow-red-600/30', visible: hasShalomApi },
+    { id: 'agendas', label: 'Clientes', icon: Users, activeClass: 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30', visible: sec.agendas !== false },
+    { id: 'estadisticas', label: 'Métricas', icon: BarChart3, activeClass: 'bg-blue-600 text-white shadow-md shadow-blue-600/30', visible: sec.estadisticas !== false },
+    { id: 'agencias', label: 'Agencias', icon: Truck, activeClass: 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30', visible: sec.agencias !== false },
+    { id: 'encomi_ai', label: 'IA', icon: Sparkles, activeClass: 'bg-linear-to-r from-purple-600 to-cyan-500 text-white shadow-md shadow-cyan-500/30', visible: sec.encomi_ai !== false },
+  ];
+  const dockItems = allDockItems.filter(item => item.visible);
 
   const isAnyAdminModalOpen = Boolean(
     showCreateOrderModal ||
@@ -171,9 +174,9 @@ export const AdminPortal: React.FC = () => {
             {sec.ajustes !== false && (
               <button
                 onClick={() => setActiveTab('ajustes')}
-                aria-current={activeTab === 'ajustes' ? 'page' : undefined}
+                aria-current={effectiveTab === 'ajustes' ? 'page' : undefined}
                 className={`min-h-10 min-w-10 flex items-center justify-center rounded-2xl border transition-all ${
-                  activeTab === 'ajustes'
+                  effectiveTab === 'ajustes'
                     ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/30'
                     : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/10'
                 }`}
@@ -200,7 +203,7 @@ export const AdminPortal: React.FC = () => {
       {/* Main Container */}
       <main
         className={`flex-1 w-full max-w-7xl mx-auto space-y-4 pb-32 print:hidden transition-all ${
-          activeTab === 'pedidos'
+          effectiveTab === 'pedidos'
             ? 'px-3 sm:px-6 pt-1.5 sm:pt-2.5 pb-24'
             : 'px-4 sm:px-8 py-6'
         }`}
@@ -217,18 +220,18 @@ export const AdminPortal: React.FC = () => {
           }
         >
         <div className="transition-all duration-300">
-          {activeTab === 'pedidos' && sec.pedidos !== false && <OrdersSmartManager />}
-          {activeTab === 'shalom_pro' && hasShalomApi && <ShalomProHub />}
-          {activeTab === 'agendas' && sec.agendas !== false && <ClientDirectory />}
-          {activeTab === 'estadisticas' && sec.estadisticas !== false && <VisionAnalyticsDashboard />}
-          {activeTab === 'agencias' && sec.agencias !== false && (
+          {effectiveTab === 'pedidos' && sec.pedidos !== false && <OrdersSmartManager />}
+          {effectiveTab === 'shalom_pro' && hasShalomApi && <ShalomProHub />}
+          {effectiveTab === 'agendas' && sec.agendas !== false && <ClientDirectory />}
+          {effectiveTab === 'estadisticas' && sec.estadisticas !== false && <VisionAnalyticsDashboard />}
+          {effectiveTab === 'agencias' && sec.agencias !== false && (
             <div className="max-w-6xl mx-auto space-y-4 animate-fadeIn">
               <CompanyAgenciesTab />
             </div>
           )}
-          {activeTab === 'hitos' && sec.hitos !== false && <CompanyAchievementsTab />}
-          {activeTab === 'ajustes' && sec.ajustes !== false && <CompanyAccountSettings />}
-          {activeTab === 'encomi_ai' && sec.encomi_ai !== false && <EmpresaAiAssistant />}
+          {effectiveTab === 'hitos' && sec.hitos !== false && <CompanyAchievementsTab />}
+          {effectiveTab === 'ajustes' && sec.ajustes !== false && <CompanyAccountSettings />}
+          {effectiveTab === 'encomi_ai' && sec.encomi_ai !== false && <EmpresaAiAssistant />}
         </div>
         </Suspense>
 
@@ -242,7 +245,7 @@ export const AdminPortal: React.FC = () => {
       >
         <div className="p-1.5 rounded-3xl bg-slate-950/90 border border-white/15 backdrop-blur-3xl shadow-2xl shadow-black/50 flex items-stretch justify-between gap-1">
           {dockItems.map(item => {
-            const isActive = activeTab === item.id;
+            const isActive = effectiveTab === item.id;
             const Icon = item.icon;
             return (
               <button

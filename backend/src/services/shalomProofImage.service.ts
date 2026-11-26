@@ -1,8 +1,5 @@
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import QRCode from 'qrcode';
-
-const execFileAsync = promisify(execFile);
 
 export interface ShalomTrackingMilestone {
   fecha?: string;

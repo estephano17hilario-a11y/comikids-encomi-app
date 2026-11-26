@@ -1261,9 +1261,17 @@ export class ShalomController {
   /**
    * Ejecuta la sincronización de agencias Shalom y propagación de cambios a pedidos
    */
-  public static async syncAgencies(request: FastifyRequest, reply: FastifyReply) {
+  public static async syncAgencies(
+    request: FastifyRequest<{ Body?: { notifyWhatsApp?: boolean; notifyPhone?: string } }>,
+    reply: FastifyReply
+  ) {
     try {
-      const report = await ShalomSyncService.syncAgenciesAndPropagateOrders();
+      const notifyWhatsApp = Boolean(request.body?.notifyWhatsApp);
+      const notifyPhone = request.body?.notifyPhone;
+      const report = await ShalomSyncService.syncAgenciesAndPropagateOrders({
+        notifyWhatsApp,
+        notifyPhone,
+      });
       return reply.code(200).send({
         success: true,
         report,
@@ -1279,8 +1287,8 @@ export class ShalomController {
   /**
    * Consulta el estado del último sync y la hora del próximo cron diario 05:00 AM
    */
-  public static async getSyncStatus(request: FastifyRequest, reply: FastifyReply) {
-    const lastReport = ShalomSyncService.getLastSyncReport();
+  public static async getSyncStatus(_request: FastifyRequest, reply: FastifyReply) {
+    const lastReport = await ShalomSyncService.getLastSyncReportPersisted();
     const msUntilNext = ShalomSyncService.getMsUntilNext0500();
     const nextCronDate = new Date(Date.now() + msUntilNext);
 

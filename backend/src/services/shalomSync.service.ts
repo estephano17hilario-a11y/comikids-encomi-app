@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
+import { redisClient } from '../config/redis.js';
+import { EvolutionService } from './evolution.service.js';
 import { resolveShalomAgencyDetails } from './shalomAgencyResolver.js';
 import { ShalomMatcherService } from './shalomMatcher.service.js';
 
@@ -50,14 +52,24 @@ export interface ShalomRawApiAgency {
 
 export interface SyncReport {
   timestamp: string;
+  durationMs?: number;
+  officialControlCount?: number;
   totalAgenciesFromApi: number;
   activeValidCount: number;
+  soloOrigenBlockedCount?: number;
   newAgenciesCount: number;
+  reactivatedAgenciesCount?: number;
   updatedAgenciesCount: number;
   deactivatedAgenciesCount: number;
   unchangedAgenciesCount: number;
   updatedOrdersCount: number;
   updatedOrders: Array<{ orderId: string; trackingCode: string; oldDestino: string; newDestino: string }>;
+  newAgencies?: Array<{ id: number; code: string | null; name: string }>;
+  reactivatedAgencies?: Array<{ id: number; code: string | null; name: string }>;
+  renamedAgencies?: Array<{ id: number; code: string | null; oldName: string; newName: string }>;
+  deactivatedAgencies?: Array<{ id: number; code: string | null; name: string; reason: string }>;
+  whatsappReportSent?: boolean;
+  whatsappReportTarget?: string;
   errors: string[];
 }
 
@@ -232,7 +244,10 @@ export class ShalomSyncService {
    * - Mantiene vigencia informativa de 30 días para sedes reales cerradas o renombradas.
    * - Propaga cambios de nombre solo a pedidos activos (ni cancelados ni entregados).
    */
-  public static async syncAgenciesAndPropagateOrders(): Promise<SyncReport> {
+  public static async syncAgenciesAndPropagateOrders(options?: {
+    notifyWhatsApp?: boolean;
+    notifyPhone?: string;
+  }): Promise<SyncReport> {
     if (this.isSyncing) {
       console.warn('[SHALOM SYNC] Ya hay una sincronización en curso. Omitiendo ejecución concurrente.');
       return this.lastSyncReport || {
@@ -254,11 +269,18 @@ export class ShalomSyncService {
     const nowIso = startTime.toISOString();
     const errors: string[] = [];
     const updatedOrdersList: Array<{ orderId: string; trackingCode: string; oldDestino: string; newDestino: string }> = [];
+    const newAgenciesList: Array<{ id: number; code: string | null; name: string }> = [];
+    const reactivatedAgenciesList: Array<{ id: number; code: string | null; name: string }> = [];
+    const renamedAgenciesList: Array<{ id: number; code: string | null; oldName: string; newName: string }> = [];
+    const deactivatedAgenciesList: Array<{ id: number; code: string | null; name: string; reason: string }> = [];
     let activeValidCount = 0;
+    let soloOrigenBlockedCount = 0;
     let newAgenciesCount = 0;
+    let reactivatedAgenciesCount = 0;
     let updatedAgenciesCount = 0;
     let deactivatedAgenciesCount = 0;
     let unchangedAgenciesCount = 0;
+    let officialControlSize = 0;
 
     try {
       // 1. Obtener agencias desde API + verificación cruzada oficial ShalomControl (origen/destino real)
@@ -266,6 +288,7 @@ export class ShalomSyncService {
         this.fetchAllAgenciesFromApi(),
         this.fetchOfficialControlMap(),
       ]);
+      officialControlSize = officialControlMap.size;
       if (apiAgencies.length < MIN_EXPECTED_API_AGENCIES) {
         throw new Error(`Safety guard: API devolvió solo ${apiAgencies.length} agencias (< ${MIN_EXPECTED_API_AGENCIES}).`);
       }
@@ -335,6 +358,7 @@ export class ShalomSyncService {
         const officialRow = officialControlMap.size > 0 ? (officialControlMap.get(agId) || null) : null;
         const cls = classifyApiAgency(raw, officialRow);
         if (cls.isActive) activeValidCount++;
+        if (cls.isSoloOrigenNoRecibe) soloOrigenBlockedCount++;
 
         const normalizedDBRecord: any = {
           id: agId,
@@ -367,6 +391,7 @@ export class ShalomSyncService {
         if (!existing) {
           if (cls.isActive) {
             newAgenciesCount++;
+            newAgenciesList.push({ id: agId, code, name });
           } else {
             normalizedDBRecord.deleted_at = cls.hideImmediately ? EXPIRED_DELETED_AT : nowIso;
             normalizedDBRecord.previous_name = name;
@@ -392,6 +417,12 @@ export class ShalomSyncService {
 
           if (wasActive) {
             deactivatedAgenciesCount++;
+            deactivatedAgenciesList.push({
+              id: agId,
+              code,
+              name,
+              reason: cls.isSoloOrigenNoRecibe ? 'Solo envíos (no recibe destino)' : 'Deshabilitada en Shalom',
+            });
             agenciesToUpsert.push(normalizedDBRecord);
           } else if (
             !sameTimestamp(existing.deleted_at, normalizedDBRecord.deleted_at) ||
@@ -421,6 +452,7 @@ export class ShalomSyncService {
           normalizedDBRecord.previous_address = existing.address;
           normalizedDBRecord.previous_agency_info = existing.full_name || `${existing.name} - ${existing.address}`;
           normalizedDBRecord.name_changed_at = nowIso;
+          renamedAgenciesList.push({ id: agId, code, oldName: existing.name || '', newName: name });
         } else if (existing.previous_name) {
           const changedTime = existing.name_changed_at ? new Date(existing.name_changed_at).getTime() : 0;
           if (changedTime && Date.now() - changedTime <= thirtyDaysMs) {
@@ -429,6 +461,11 @@ export class ShalomSyncService {
             normalizedDBRecord.previous_agency_info = existing.previous_agency_info;
             normalizedDBRecord.name_changed_at = existing.name_changed_at;
           }
+        }
+
+        if (!wasActive) {
+          reactivatedAgenciesCount++;
+          reactivatedAgenciesList.push({ id: agId, code, name });
         }
 
         if (!wasActive || isNameChanged || isAddressChanged || isDistrictChanged || isCodeChanged || isScheduleChanged || isLocationChanged || (existing.full_name || '') !== fullName) {
@@ -450,7 +487,15 @@ export class ShalomSyncService {
           const isJunk = isQaOrTestAgency(existing.name || '', existing.address || '');
           const targetDeletedAt = isJunk ? EXPIRED_DELETED_AT : (existing.deleted_at || nowIso);
           if (existing.is_active !== false || !sameTimestamp(existing.deleted_at, targetDeletedAt)) {
-            if (existing.is_active !== false) deactivatedAgenciesCount++;
+            if (existing.is_active !== false) {
+              deactivatedAgenciesCount++;
+              deactivatedAgenciesList.push({
+                id: dbId,
+                code: existing.code || null,
+                name: existing.name || `ID ${dbId}`,
+                reason: isJunk ? 'Depurada (QA/Prueba)' : 'Eliminada del catálogo oficial Shalom',
+              });
+            }
             toDeactivateAgencies.push({
               id: dbId,
               is_active: false,
@@ -543,21 +588,39 @@ export class ShalomSyncService {
 
       const report: SyncReport = {
         timestamp: nowIso,
+        durationMs: Date.now() - startTime.getTime(),
+        officialControlCount: officialControlSize,
         totalAgenciesFromApi: apiAgencies.length,
         activeValidCount,
+        soloOrigenBlockedCount,
         newAgenciesCount,
+        reactivatedAgenciesCount,
         updatedAgenciesCount,
         deactivatedAgenciesCount,
         unchangedAgenciesCount,
         updatedOrdersCount: updatedOrdersList.length,
         updatedOrders: updatedOrdersList,
+        newAgencies: newAgenciesList,
+        reactivatedAgencies: reactivatedAgenciesList,
+        renamedAgencies: renamedAgenciesList,
+        deactivatedAgencies: deactivatedAgenciesList,
         errors,
       };
 
       // Refrescar caché en memoria del matcher del bot WhatsApp / AI
       ShalomMatcherService.invalidateCache();
 
+      if (options?.notifyWhatsApp) {
+        const sent = await this.sendDailySyncWhatsAppReport(report, options.notifyPhone);
+        report.whatsappReportSent = sent.sent;
+        report.whatsappReportTarget = sent.targetPhone;
+      }
+
       this.lastSyncReport = report;
+      try {
+        await redisClient.set('shalom:agency_sync:last_report', JSON.stringify(report), 'EX', 86400 * 14);
+      } catch {}
+
       console.log(`[SHALOM SYNC COMPLETED] ✓ Sincronización 05:00 AM exitosa: ${activeValidCount} activas válidas de ${apiAgencies.length} en API (${newAgenciesCount} nuevas, ${updatedAgenciesCount} modificadas, ${deactivatedAgenciesCount} desactivadas, ${updatedOrdersList.length} pedidos actualizados).`);
       return report;
     } catch (err: any) {
@@ -565,6 +628,7 @@ export class ShalomSyncService {
       errors.push(err?.message || 'Error desconocido durante la sincronización');
       const report: SyncReport = {
         timestamp: nowIso,
+        durationMs: Date.now() - startTime.getTime(),
         totalAgenciesFromApi: 0,
         activeValidCount: 0,
         newAgenciesCount: 0,
@@ -578,11 +642,121 @@ export class ShalomSyncService {
       // Refrescar caché en memoria del matcher del bot WhatsApp / AI
       ShalomMatcherService.invalidateCache();
 
+      if (options?.notifyWhatsApp) {
+        const sent = await this.sendDailySyncWhatsAppReport(report, options.notifyPhone);
+        report.whatsappReportSent = sent.sent;
+        report.whatsappReportTarget = sent.targetPhone;
+      }
+
       this.lastSyncReport = report;
       return report;
     } finally {
       this.isSyncing = false;
     }
+  }
+
+  /**
+   * Construye y envía el informe diario de sincronización de agencias Shalom al WhatsApp personal del administrador (+51 963097546).
+   */
+  public static async sendDailySyncWhatsAppReport(
+    report: SyncReport,
+    customPhone?: string
+  ): Promise<{ sent: boolean; targetPhone: string; instanceUsed?: string }> {
+    const targetPhone = (customPhone || env.SHALOM_SYNC_REPORT_PHONE || '51963097546').replace(/\D/g, '');
+    const peruDateStr = new Intl.DateTimeFormat('es-PE', {
+      timeZone: 'America/Lima',
+      weekday: 'long',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(report.timestamp));
+
+    const hasChanges =
+      report.newAgenciesCount > 0 ||
+      (report.reactivatedAgenciesCount || 0) > 0 ||
+      report.updatedAgenciesCount > 0 ||
+      report.deactivatedAgenciesCount > 0 ||
+      report.updatedOrdersCount > 0;
+
+    const hasErrors = report.errors.length > 0;
+    const statusHeader = hasErrors
+      ? '⚠️ *COMPLETADO CON OBSERVACIONES*'
+      : hasChanges
+      ? '🔄 *BD ACTUALIZADA CON CAMBIOS*'
+      : '✨ *SIN CAMBIOS (BD 100% AL DÍA)*';
+
+    const durSec = report.durationMs ? `${(report.durationMs / 1000).toFixed(1)}s` : '—';
+
+    const lines: string[] = [
+      `📦 *INFORME DIARIO AGENCIAS SHALOM (VPS)*`,
+      `🗓️ ${peruDateStr} PET (${durSec})`,
+      `Estado: ${statusHeader}`,
+      ``,
+      `📊 *Resumen Base de Datos VPS:*`,
+      `• 📡 Total API Shalom: *${report.totalAgenciesFromApi}*`,
+      `• ✅ Activas válidas (destino=1): *${report.activeValidCount}*`,
+      ...(report.officialControlCount
+        ? [`• 🛡️ Validación oficial ShalomControl: *${report.officialControlCount}* sedes`]
+        : []),
+      ...(report.soloOrigenBlockedCount
+        ? [`• 🚫 Solo envíos bloqueadas: *${report.soloOrigenBlockedCount}*`]
+        : []),
+      `• ✨ Nuevas: *${report.newAgenciesCount}* | 🌟 Reactivadas: *${report.reactivatedAgenciesCount || 0}*`,
+      `• ✏️ Modificadas: *${report.updatedAgenciesCount}* | 🛑 Bajas: *${report.deactivatedAgenciesCount}*`,
+      `• 🚚 Pedidos activos actualizados: *${report.updatedOrdersCount}*`,
+    ];
+
+    if (report.newAgencies && report.newAgencies.length > 0) {
+      lines.push(``, `✨ *Nuevas agencias:*`);
+      report.newAgencies.slice(0, 8).forEach((a) => lines.push(`  + ${a.name}${a.code ? ` (${a.code})` : ''}`));
+      if (report.newAgencies.length > 8) lines.push(`  … y ${report.newAgencies.length - 8} más`);
+    }
+
+    if (report.reactivatedAgencies && report.reactivatedAgencies.length > 0) {
+      lines.push(``, `🌟 *Reactivadas / recién habilitadas:*`);
+      report.reactivatedAgencies.slice(0, 8).forEach((a) => lines.push(`  + ${a.name}${a.code ? ` (${a.code})` : ''}`));
+    }
+
+    if (report.renamedAgencies && report.renamedAgencies.length > 0) {
+      lines.push(``, `🏷️ *Renombradas:*`);
+      report.renamedAgencies.slice(0, 8).forEach((a) => lines.push(`  ~ ${a.oldName} → *${a.newName}*`));
+    }
+
+    if (report.deactivatedAgencies && report.deactivatedAgencies.length > 0) {
+      lines.push(``, `🛑 *Cerradas / deshabilitadas:*`);
+      report.deactivatedAgencies.slice(0, 8).forEach((a) => lines.push(`  - ${a.name} (${a.reason})`));
+    }
+
+    if (report.updatedOrders.length > 0) {
+      lines.push(``, `📦 *Pedidos actualizados automáticamente:*`);
+      report.updatedOrders.slice(0, 6).forEach((o) => lines.push(`  • #${o.trackingCode}`));
+    }
+
+    if (hasErrors) {
+      lines.push(``, `⚠️ *Errores detectados:*`);
+      report.errors.slice(0, 4).forEach((e) => lines.push(`  • ${e}`));
+    }
+
+    lines.push(``, `🤖 _Cron automático 05:00 AM • Servidor VPS Encomi_`);
+    const message = lines.join('\n');
+
+    const instancesToTry = Array.from(
+      new Set([env.EVOLUTION_INSTANCE_NAME || 'comikids_whatsapp', 'comikids_whatsapp', 'tenant_Comikids'])
+    );
+
+    for (const inst of instancesToTry) {
+      try {
+        await EvolutionService.sendWhatsAppMessage(inst, targetPhone, message);
+        console.log(`[SHALOM SYNC WHATSAPP] ✅ Informe diario enviado a +${targetPhone} vía "${inst}".`);
+        return { sent: true, targetPhone, instanceUsed: inst };
+      } catch (err: any) {
+        console.warn(`[SHALOM SYNC WHATSAPP WARN] Falló envío vía "${inst}":`, err?.message);
+      }
+    }
+
+    return { sent: false, targetPhone };
   }
 
   /**
@@ -626,15 +800,27 @@ export class ShalomSyncService {
     console.log(`⏰ [SHALOM CRON SCHEDULER] Próxima sincronización automática de agencias Shalom programada a las 05:00:00 AM PET (en ${hours}h ${minutes}m ${seconds}s).`);
 
     this.cronTimer = setTimeout(async () => {
-      console.log('🌟 [SHALOM CRON TRIGGER 05:00 AM] Ejecutando sincronización diaria automática de agencias Shalom...');
+      console.log('🌟 [SHALOM CRON TRIGGER 05:00 AM] Ejecutando sincronización diaria automática de agencias Shalom en VPS + envío de informe por WhatsApp...');
       try {
-        await this.syncAgenciesAndPropagateOrders();
+        await this.syncAgenciesAndPropagateOrders({ notifyWhatsApp: true });
       } catch (e) {
         console.error('[SHALOM CRON TRIGGER ERROR]', e);
       } finally {
         this.initDailyCron();
       }
     }, msUntilNext);
+  }
+
+  public static async getLastSyncReportPersisted(): Promise<SyncReport | null> {
+    if (this.lastSyncReport) return this.lastSyncReport;
+    try {
+      const raw = await redisClient.get('shalom:agency_sync:last_report');
+      if (raw) {
+        this.lastSyncReport = JSON.parse(raw);
+        return this.lastSyncReport;
+      }
+    } catch {}
+    return null;
   }
 
   public static getLastSyncReport(): SyncReport | null {

@@ -1,9 +1,9 @@
 # 📦 Reporte Diario de Sincronización de Agencias Shalom
 
-- **Fecha (Hora Perú):** jueves, 26 de noviembre de 2026, 2:23:49 p. m.
+- **Fecha (Hora Perú):** viernes, 27 de noviembre de 2026, 2:18:31 p. m.
 - **Ejecución:** ✅ Producción (Base de datos actualizada)
-- **Duración:** 6.9s
-- **Estado:** ✨ **SIN CAMBIOS (Catálogo 100% al día)**
+- **Duración:** 6.8s
+- **Estado:** 🔔 **CAMBIOS DETECTADOS Y APLICADOS**
 - **Verificación Cruzada Oficial (`shalomcontrol.com`):** ✅ Activa (571 registros verificados · exige `ter_habilitado_OS=1` y `destino=1` · 1 discrepancias del proxy atrapadas)
 
 ## 📊 Resumen Ejecutivo
@@ -11,9 +11,9 @@
 | Métrica | Cantidad |
 |---|---:|
 | 📡 Total registros devueltos por API Shalom | **571** |
-| ✅ Agencias activas válidas como destino (`OS=1` y `destino=1`) | **504** |
+| ✅ Agencias activas válidas como destino (`OS=1` y `destino=1`) | **503** |
 | 🚫 Agencias SOLO ENVÍOS / No reciben destino (visibles 30d bloqueadas) | **11** |
-| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **18** |
+| 🛑 Agencias cerradas/deshabilitadas (visibles 30d con aviso `YA NO EXISTE`) | **19** |
 | 🧹 Registros internos / aeropuertos / `SOLO ENVÍOS` / `(POR DEFINIR)` / QA ocultos | **41** |
 | ✨ Nuevas agencias agregadas | **0** |
 | 🌟 Agencias reactivadas / recién habilitadas | **0** |
@@ -22,7 +22,7 @@
 | 📍 Cambios de dirección / mudanzas / saneamiento de texto | **0** |
 | 🗺️ Cambios de ubicación (Depto / Prov / Ubigeo / GPS) | **0** |
 | 🕐 Cambios de horario o teléfono | **0** |
-| 🛑 Bajas reales detectadas (deshabilitadas o eliminadas) | **0** |
+| 🛑 Bajas reales detectadas (deshabilitadas o eliminadas) | **1** |
 | 🧹 Depuración de QA / internos / aeropuertos / `(POR DEFINIR)` | **0** |
 | 📦 Pedidos activos actualizados / limpiados | **0** |
 | ⚠️ Alertas en pedidos activos | **0** |
@@ -34,6 +34,12 @@
 | ID | Código | Agencia | Origen | Destino | Motivo |
 |---:|---|---|---:|---:|---|
 | 365 | `HPACO` | LIMA / LIMA / LURIGANCHO / HUACHIPA CO | ❌ 0 | 🚫 0 | Discrepancia atrapada: deshabilitada en Shalom oficial (origen=0, destino=0 — no envía ni recibe) |
+
+## 🛑 8. Agencias Cerradas / Deshabilitadas (Bajas con vigencia informativa de 30 días) (1)
+
+| ID | Código | Agencia | Motivo |
+|---:|---|---|---|
+| 240 | `PRO.SJL` | LIMA / LIMA / SAN JUAN DE LURIGANCHO / SJL-AV.PROCERES | Sede cerrada o temporalmente deshabilitada en Shalom (habilitado=false) |
 
 ## 👀 Próximas Sedes en Preparación en API Shalom (`habilitado=false`) (11)
 

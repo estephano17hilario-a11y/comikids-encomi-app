@@ -1,24 +1,24 @@
 {
-  "timestamp": "2026-11-26T19:23:49.794Z",
+  "timestamp": "2026-11-27T19:18:31.385Z",
   "dryRun": false,
-  "durationSec": 6.9,
-  "hasChanges": false,
-  "totalChangesCount": 0,
+  "durationSec": 6.8,
+  "hasChanges": true,
+  "totalChangesCount": 1,
   "totals": {
     "apiTotal": 571,
-    "activeValid": 504,
+    "activeValid": 503,
     "soloOrigenNoRecibe": 11,
-    "disabledReal": 18,
+    "disabledReal": 19,
     "hiddenInternalOrQa": 41,
-    "dbUpserted": 0,
+    "dbUpserted": 1,
     "staticCatalogCount": 535,
-    "canonicalDestinations": 504
+    "canonicalDestinations": 503
   },
   "crossVerification": {
     "ok": true,
     "source": "https://newwebservices.shalomcontrol.com/api/v1/web/agencias/listar",
     "total": 571,
-    "destCount": 504,
+    "destCount": 503,
     "error": null,
     "discrepanciesCaught": [
       {
@@ -39,7 +39,14 @@
     "addressChanged": [],
     "locationChanged": [],
     "scheduleOrPhoneChanged": [],
-    "deactivatedReal": [],
+    "deactivatedReal": [
+      {
+        "id": 240,
+        "code": "PRO.SJL",
+        "name": "LIMA / LIMA / SAN JUAN DE LURIGANCHO / SJL-AV.PROCERES",
+        "reason": "Sede cerrada o temporalmente deshabilitada en Shalom (habilitado=false)"
+      }
+    ],
     "deactivatedInternalOrQa": [],
     "sanitizedCount": 0,
     "sanitizedNotable": []
